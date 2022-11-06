@@ -44,12 +44,16 @@
 #include "Loaders/AmiraMeshLoader.hpp"
 #include "Loaders/DatRawFileLoader.hpp"
 #include "Loaders/FieldFileLoader.hpp"
+#ifdef USE_ECCODES
 #include "Loaders/GribLoader.hpp"
+#endif
 #include "Loaders/NetCdfLoader.hpp"
 #include "Loaders/RbcBinFileLoader.hpp"
 #include "Loaders/StructuredGridVtkLoader.hpp"
 #include "Loaders/VtkXmlLoader.hpp"
+#ifdef USE_ZARR
 #include "Loaders/ZarrLoader.hpp"
+#endif
 #include "Calculators/Calculator.hpp"
 #include "Calculators/VelocityCalculator.hpp"
 #include "VolumeData.hpp"
@@ -87,12 +91,16 @@ VolumeData::VolumeData(sgl::vk::Renderer* renderer, sgl::TransferFunctionWindow&
             registerVolumeLoader<AmiraMeshLoader>(),
             registerVolumeLoader<DatRawFileLoader>(),
             registerVolumeLoader<FieldFileLoader>(),
+#ifdef USE_ECCODES
             registerVolumeLoader<GribLoader>(),
+#endif
             registerVolumeLoader<NetCdfLoader>(),
             registerVolumeLoader<RbcBinFileLoader>(),
             registerVolumeLoader<StructuredGridVtkLoader>(),
             registerVolumeLoader<VtkXmlLoader>(),
-            registerVolumeLoader<ZarrLoader>()
+#ifdef USE_ZARR
+            registerVolumeLoader<ZarrLoader>(),
+#endif
     };
     for (auto& factory : factoriesMap) {
         for (const std::string& extension : factory.first) {
