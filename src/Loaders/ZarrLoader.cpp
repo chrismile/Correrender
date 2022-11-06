@@ -74,13 +74,15 @@ void ZarrLoader::loadFloatArray1D(size_t datasetIdx, size_t len, float*& array) 
     if (dataset->getDtype() == z5::types::Datatype::float32) {
         xt::xarray<float> outputArray(countp);
         z5::multiarray::readSubarray<float>(dataset, outputArray, startp.begin());
-        memcpy(array, outputArray.data(), len);
+        //memcpy(array, outputArray.data(), len);
+        for (size_t i = 0; i < len; i++) {
+            array[i] = outputArray.at(i);
+        }
     } else if (dataset->getDtype() == z5::types::Datatype::float64) {
         xt::xarray<double> outputArray(countp);
         z5::multiarray::readSubarray<double>(dataset, outputArray, startp.begin());
-        double* doubleData = outputArray.data();
-        for (int timeIdx = 0; timeIdx < ts; timeIdx++) {
-            array[timeIdx] = float(doubleData[timeIdx]);
+        for (size_t i = 0; i < len; i++) {
+            array[i] = float(outputArray.at(i));
         }
     } else {
         sgl::Logfile::get()->throwError("Error in ZarrLoader::loadFloatArray1D: Unsupported floating point format.");
@@ -95,7 +97,10 @@ void ZarrLoader::loadDoubleArray1D(size_t datasetIdx, size_t len, double*& array
     auto& dataset = datasets.at(datasetIdx);
     xt::xarray<double> outputArray(countp);
     z5::multiarray::readSubarray<double>(dataset, outputArray, startp.begin());
-    memcpy(array, outputArray.data(), len);
+    //memcpy(array, outputArray.data(), len);
+    for (size_t i = 0; i < len; i++) {
+        array[i] = outputArray.at(i);
+    }
 }
 
 void ZarrLoader::loadFloatArray3D(size_t datasetIdx, size_t zlen, size_t ylen, size_t xlen, float*& array) {
@@ -106,7 +111,14 @@ void ZarrLoader::loadFloatArray3D(size_t datasetIdx, size_t zlen, size_t ylen, s
     auto& dataset = datasets.at(datasetIdx);
     xt::xarray<float> outputArray(countp);
     z5::multiarray::readSubarray<float>(dataset, outputArray, startp.begin());
-    memcpy(array, outputArray.data(), xlen * ylen * zlen);
+    //memcpy(array, outputArray.data(), xlen * ylen * zlen);
+    for (size_t z = 0; z < zlen; z++) {
+        for (size_t y = 0; y < ylen; y++) {
+            for (size_t x = 0; x < xlen; x++) {
+                array[IDXS(x, y, z)] = outputArray.at(z, y, x);
+            }
+        }
+    }
 }
 
 void ZarrLoader::loadFloatArray3D(
@@ -118,7 +130,14 @@ void ZarrLoader::loadFloatArray3D(
     auto& dataset = datasets.at(datasetIdx);
     xt::xarray<float> outputArray(countp);
     z5::multiarray::readSubarray<float>(dataset, outputArray, startp.begin());
-    memcpy(array, outputArray.data(), xlen * ylen * zlen);
+    //memcpy(array, outputArray.data(), xlen * ylen * zlen);
+    for (size_t z = 0; z < zlen; z++) {
+        for (size_t y = 0; y < ylen; y++) {
+            for (size_t x = 0; x < xlen; x++) {
+                array[IDXS(x, y, z)] = outputArray.at(time, z, y, x);
+            }
+        }
+    }
 }
 
 bool ZarrLoader::setInputFiles(
