@@ -1,0 +1,468 @@
+cmake_minimum_required (VERSION 3.7)
+cmake_policy(VERSION 3.7...3.20)
+
+project(Correrender)
+list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/CMake)
+#MESSAGE(STATUS "CMAKE_MODULE_PATH: " ${CMAKE_MODULE_PATH})
+
+set(CMAKE_CXX_STANDARD 17)
+
+file(GLOB_RECURSE SOURCES src/*.cpp src/*.c src/*.hpp src/*.h Data/Shaders/*.glsl)
+include_directories(src)
+
+file(GLOB_RECURSE SHADER_FILES Data/Shaders/*.glsl)
+source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}/Data/Shaders" PREFIX "Shaders" FILES ${SHADER_FILES})
+
+if(MSVC)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /Zc:__cplusplus")
+    # Avoid warning 'IMPORTED_IMPLIB not set for imported target "sgl" configuration "MinSizeRel/RelWithDebInfo".'
+    set(CMAKE_CONFIGURATION_TYPES Debug Release)
+endif()
+
+if(MSVC)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -W3 /EHsc /Zc:__cplusplus")
+elseif(CMAKE_COMPILER_IS_GNUCXX)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
+elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
+endif()
+
+# Prefer GLVND by default when available.
+if (${CMAKE_VERSION} VERSION_GREATER "3.11")
+    cmake_policy(SET CMP0072 NEW)
+endif()
+
+if(VCPKG_TOOLCHAIN)
+    if(EXISTS "${Z_VCPKG_ROOT_DIR}/triplets/${VCPKG_TARGET_TRIPLET}.cmake")
+        include("${Z_VCPKG_ROOT_DIR}/triplets/${VCPKG_TARGET_TRIPLET}.cmake")
+    elseif(EXISTS "${Z_VCPKG_ROOT_DIR}/triplets/community/${VCPKG_TARGET_TRIPLET}.cmake")
+        include("${Z_VCPKG_ROOT_DIR}/triplets/community/${VCPKG_TARGET_TRIPLET}.cmake")
+    else()
+        message(FATAL_ERROR "Could not find a vcpkg triplet file for ${VCPKG_TARGET_TRIPLET}.")
+    endif()
+endif()
+
+option(USE_PYTHON "Build with Python 3 support for replay scripts." ON)
+option(USE_STATIC_STD_LIBRARIES "Link with standard libraries statically (only supported on Linux for now)." OFF)
+option(SUPPORT_PYTORCH "Build the PyTorch module." ON)
+
+set(DATA_PATH "${CMAKE_SOURCE_DIR}/Data" CACHE PATH "Location of folder 'Data'")
+add_definitions(-DDATA_PATH=\"${DATA_PATH}\")
+
+if ((UNIX OR MSYS) AND (NOT APPLE OR NOT VCPKG_TOOLCHAIN))
+    find_package(PkgConfig REQUIRED)
+endif()
+
+
+if (USE_PYTHON)
+    if (${CMAKE_VERSION} VERSION_GREATER "3.11")
+        # 2021-05-06: CMake won't find vcpkg version if we don't search for the interpreter.
+        # 2022-08-29: Finding interpreter fails with dynamic vcpkg build on Linux and macOS.
+        if(VCPKG_TOOLCHAIN) #  AND (NOT UNIX OR VCPKG_LIBRARY_LINKAGE STREQUAL "static")
+            find_package(Python3 COMPONENTS Development Interpreter REQUIRED)
+        else()
+            find_package(Python3 COMPONENTS Development REQUIRED)
+        endif()
+    else()
+        pkg_check_modules(Python3 QUIET python3)
+    endif()
+endif()
+
+if (Python3_FOUND AND USE_PYTHON)
+    MESSAGE(STATUS "Found Python ${Python3_VERSION}. Enabling replay script support.")
+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/pythonversion.txt" "python${Python3_VERSION_MAJOR}.${Python3_VERSION_MINOR}")
+else()
+    list(REMOVE_ITEM SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/Widgets/ReplayWidget.cpp)
+    MESSAGE(STATUS "Python 3 couldn't be found. Switching off replay script support.")
+endif()
+
+
+set(FPHSA_NAME_MISMATCHED TRUE)
+if(VCPKG_TOOLCHAIN)
+    find_package(SDL2 CONFIG REQUIRED)
+else()
+    find_package(SDL2 REQUIRED)
+endif()
+
+find_package(sgl REQUIRED)
+find_package(Boost COMPONENTS system filesystem REQUIRED)
+if(VCPKG_TOOLCHAIN)
+    find_package(netCDF CONFIG REQUIRED)
+    find_package(tinyxml2 CONFIG REQUIRED)
+    find_package(jsoncpp CONFIG REQUIRED)
+else()
+    find_package(NetCDF REQUIRED)
+    find_package(TinyXML2 REQUIRED)
+    find_package(jsoncpp QUIET)
+    if (NOT jsoncpp_FOUND)
+        pkg_check_modules(JSONCPP jsoncpp)
+    endif()
+endif()
+
+find_package(eccodes QUIET)
+if(NOT eccodes_FOUND)
+    list(REMOVE_ITEM SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/Loaders/GribLoader.cpp)
+    list(REMOVE_ITEM SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/Loaders/GribLoader.hpp)
+    MESSAGE(STATUS "ecCodes couldn't be found. Disabling GRIB file loading support.")
+endif()
+
+find_package(z5 QUIET)
+if(NOT z5_FOUND)
+    list(REMOVE_ITEM SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/Loaders/ZarrLoader.cpp)
+    list(REMOVE_ITEM SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/Loaders/ZarrLoader.hpp)
+    MESSAGE(STATUS "z5 couldn't be found. Disabling zarr file loading support.")
+endif()
+
+get_target_property(SGL_INTERFACE_COMPILE_DEFINITIONS sgl INTERFACE_COMPILE_DEFINITIONS)
+if (NOT "SUPPORT_VULKAN" IN_LIST SGL_INTERFACE_COMPILE_DEFINITIONS)
+    message(FATAL_ERROR "sgl was not built with Vulkan support enabled.")
+endif()
+
+if (${SUPPORT_PYTORCH})
+    find_package(Torch QUIET)
+endif()
+if (${SUPPORT_PYTORCH} AND NOT Torch_FOUND)
+    MESSAGE(STATUS "The PyTorch denoiser build was enabled, but PyTorch couldn't be found. Disabling PyTorch support.")
+endif()
+
+find_package(Imath CONFIG QUIET)
+if (NOT TARGET Imath::Imath)
+    find_package(IlmBase CONFIG QUIET)
+endif()
+find_package(OpenEXR CONFIG QUIET)
+if (NOT OpenEXR_FOUND AND NOT Imath_FOUND AND UNIX AND NOT APPLE)
+    set(USE_OPENEXR_PKGCONFIG TRUE)
+    pkg_check_modules(OpenEXR OpenEXR QUIET)
+    pkg_check_modules(IlmBase IlmBase QUIET)
+else()
+    set(USE_OPENEXR_PKGCONFIG FALSE)
+endif()
+if (OpenEXR_FOUND AND (Imath_FOUND OR IlmBase_FOUND))
+    if (${OpenEXR_VERSION} VERSION_LESS "2.3.0")
+        MESSAGE(STATUS "Found OpenEXR version ${OpenEXR_VERSION} is too old. Please upgrade to version >= 2.3.0.")
+    else()
+        MESSAGE(STATUS "Found OpenEXR ${OpenEXR_VERSION}. Enabling OpenEXR image loading support.")
+        set(SUPPORT_OPENEXR true)
+    endif()
+else()
+    MESSAGE(STATUS "OpenEXR not found. Disabling OpenEXR image loading support.")
+endif()
+if (NOT SUPPORT_OPENEXR)
+    list(REMOVE_ITEM SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/Renderers/Scattering/PathTracer/OpenExrLoader.cpp)
+endif()
+
+if (NOT ${SUPPORT_PYTORCH} OR NOT Torch_FOUND)
+    list(REMOVE_ITEM SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/Calculators/PyTorchSimilarityCalculator.hpp)
+    list(REMOVE_ITEM SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/Calculators/PyTorchSimilarityCalculator.cpp)
+endif()
+
+
+if(WIN32)
+    add_executable(Correrender WIN32 ${SOURCES} ${CMAKE_CURRENT_SOURCE_DIR}/CMake/winres.rc)
+elseif(APPLE)
+    add_executable(Correrender MACOSX_BUNDLE ${SOURCES})
+else()
+    add_executable(Correrender ${SOURCES})
+endif()
+
+if(${USE_STATIC_STD_LIBRARIES})
+    target_link_options(Correrender PRIVATE -static-libgcc -static-libstdc++)
+endif()
+
+if (VCPKG_TOOLCHAIN AND UNIX AND NOT APPLE AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND ${CMAKE_VERSION} VERSION_GREATER "3.12"
+        AND "SGL_STATIC_LIBRARY" IN_LIST SGL_INTERFACE_COMPILE_DEFINITIONS)
+    #target_link_options(Correrender PRIVATE "LINKER:--version-script=${CMAKE_CURRENT_SOURCE_DIR}/CMake/symbols_linux_gcc.map")
+    target_link_options(Correrender PRIVATE "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/CMake/symbols_linux_gcc.map")
+endif()
+
+if (APPLE)
+    set(BUNDLE_PATH ${CMAKE_CURRENT_BINARY_DIR}/Correrender.app)
+    set_target_properties(
+            Correrender PROPERTIES
+            OUTPUT_NAME "Correrender"
+            MACOSX_BUNDLE_EXECUTABLE_NAME "Correrender"
+            MACOSX_BUNDLE_BUNDLE_NAME "Correrender"
+            FOLDER "Correrender"
+            MACOSX_BUNDLE_SHORT_VERSION_STRING ""
+            MACOSX_BUNDLE_LONG_VERSION_STRING ""
+            MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/CMake/MacOSXBundleInfo.plist.in")
+endif()
+
+
+# Hide console window in release build on Windows/MSVC.
+# See: https://gitlab.kitware.com/cmake/community/-/wikis/doc/cmake/recipe/VSConfigSpecificSettings
+if(MSVC)
+    set_target_properties(Correrender PROPERTIES LINK_FLAGS_DEBUG "/SUBSYSTEM:CONSOLE")
+    set_target_properties(Correrender PROPERTIES COMPILE_DEFINITIONS_DEBUG "_CONSOLE")
+    set_target_properties(Correrender PROPERTIES LINK_FLAGS_RELWITHDEBINFO "/SUBSYSTEM:CONSOLE")
+    set_target_properties(Correrender PROPERTIES COMPILE_DEFINITIONS_RELWITHDEBINFO "_CONSOLE")
+    set_target_properties(Correrender PROPERTIES LINK_FLAGS_RELEASE "/SUBSYSTEM:WINDOWS")
+    set_target_properties(Correrender PROPERTIES LINK_FLAGS_MINSIZEREL "/SUBSYSTEM:WINDOWS")
+endif()
+
+if(MSVC)
+    #target_compile_definitions(Correrender PRIVATE /wd4251)
+    set_target_properties(Correrender PROPERTIES COMPILE_FLAGS "/wd4251")
+    target_compile_options(Correrender PRIVATE "/MP")
+
+    # Disable external warnings generated by NanoVDB.
+    target_compile_options(Correrender PRIVATE /experimental:external /external:W0)
+    target_compile_options(Correrender PRIVATE /external:I ${CMAKE_CURRENT_SOURCE_DIR}/src/Renderers/Scattering/nanovdb)
+endif()
+
+add_subdirectory(submodules/IsosurfaceCpp)
+if("TRACY_ENABLE" IN_LIST SGL_INTERFACE_COMPILE_DEFINITIONS)
+    target_compile_definitions(IsosurfaceCpp PUBLIC TRACY_ENABLE)
+    target_compile_definitions(IsosurfaceCpp PUBLIC TRACY_IMPORTS)
+    target_include_directories(IsosurfaceCpp PUBLIC $<TARGET_PROPERTY:sgl,INTERFACE_INCLUDE_DIRECTORIES>)
+endif()
+target_link_libraries(Correrender PRIVATE IsosurfaceCpp)
+target_include_directories(Correrender PRIVATE submodules)
+
+if (NOT MSVC)
+    if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+        target_compile_definitions(Correrender PRIVATE NDEBUG)
+    endif()
+endif()
+
+if((${CMAKE_GENERATOR} STREQUAL "MinGW Makefiles") OR (${CMAKE_GENERATOR} STREQUAL "MSYS Makefiles"))
+    if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -mconsole")
+    else()
+        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -mwindows")
+    endif()
+    target_link_libraries(Correrender PUBLIC mingw32)
+endif()
+if(VCPKG_TOOLCHAIN)
+    target_link_libraries(Correrender PUBLIC SDL2::SDL2main)
+else()
+    target_link_libraries(Correrender PUBLIC SDL2::Main)
+endif()
+
+target_link_libraries(Correrender PUBLIC sgl ${Boost_LIBRARIES})
+include_directories(${sgl_INCLUDES} ${Boost_INCLUDE_DIR})
+
+if(VCPKG_TOOLCHAIN)
+    target_link_libraries(Correrender PRIVATE tinyxml2::tinyxml2 netCDF::netcdf)
+else()
+    target_link_libraries(Correrender PRIVATE ${TINYXML2_LIBRARIES} ${NETCDF_LIBRARIES})
+    target_include_directories(Correrender PRIVATE ${NETCDF_INCLUDE_DIR})
+endif()
+target_include_directories(Correrender PRIVATE ${sgl_INCLUDES} ${TINYXML2_INCLUDE_DIR})
+
+if (eccodes_FOUND)
+    MESSAGE(STATUS "Found ecCodes ${eccodes_VERSION}. Enabling GRIB file loading support.")
+    target_link_libraries(Correrender PRIVATE ${eccodes_LIBRARIES} eccodes)
+    target_include_directories(Correrender PRIVATE ${eccodes_INCLUDE_DIR})
+    target_compile_definitions(Correrender PRIVATE USE_ECCODES)
+endif()
+
+if (z5_FOUND)
+    MESSAGE(STATUS "Found z5. Enabling zarr file loading support.")
+    set(THREADS_PREFER_PTHREAD_FLAG ON)
+    find_package(Threads REQUIRED)
+    find_package(z5 REQUIRED)
+    find_package(xtensor REQUIRED)
+    find_package(xtl REQUIRED)
+    target_link_libraries(Correrender PRIVATE z5 xtensor Threads::Threads)
+    target_include_directories(Correrender PRIVATE ${z5_INCLUDE_DIRS})
+    target_compile_definitions(Correrender PRIVATE USE_ZARR)
+endif()
+
+if (JSONCPP_LIBRARIES)
+    target_link_libraries(Correrender PRIVATE ${JSONCPP_LIBRARIES})
+    target_link_directories(Correrender PRIVATE ${JSONCPP_LIBRARY_DIRS})
+    target_include_directories(Correrender PRIVATE ${JSONCPP_INCLUDE_DIRS})
+endif()
+if (TARGET jsoncpp_lib)
+    get_target_property(jsoncpp_INCLUDES jsoncpp_lib INTERFACE_INCLUDE_DIRECTORIES)
+    target_link_libraries(Correrender PRIVATE jsoncpp_lib)
+elseif(TARGET jsoncpp_static)
+    get_target_property(jsoncpp_INCLUDES jsoncpp_static INTERFACE_INCLUDE_DIRECTORIES)
+    target_link_libraries(Correrender PRIVATE jsoncpp_static)
+endif()
+if (TARGET jsoncpp_object)
+    target_link_libraries(Correrender PRIVATE jsoncpp_object)
+endif()
+target_include_directories(Correrender PRIVATE ${jsoncpp_INCLUDES})
+
+if(VCPKG_TOOLCHAIN)
+    find_package(cppzmq CONFIG QUIET)
+else()
+    find_package(cppzmq QUIET)
+endif()
+if (${cppzmq_FOUND})
+    target_link_libraries(Correrender PRIVATE cppzmq)
+    if (${CMAKE_VERSION} VERSION_LESS "3.12")
+        target_compile_definitions(Correrender PRIVATE USE_ZEROMQ)
+    else()
+        add_compile_definitions(USE_ZEROMQ)
+    endif()
+else()
+    # https://stackoverflow.com/questions/41251474/how-to-import-zeromq-libraries-in-cmake/41252437
+    pkg_check_modules(PC_ZeroMQ QUIET zmq)
+    #if (${PC_ZeroMQ_FOUND})
+        find_path(ZeroMQ_INCLUDE_DIRS NAMES zmq.hpp PATHS ${PC_ZeroMQ_INCLUDE_DIRS})
+        find_library(ZeroMQ_LIBRARIES NAMES zmq PATHS ${PC_ZeroMQ_LIBRARY_DIRS})
+        target_include_directories(Correrender PRIVATE ${ZeroMQ_INCLUDE_DIRS})
+        target_link_libraries(Correrender PRIVATE ${ZeroMQ_LIBRARIES})
+        if (${CMAKE_VERSION} VERSION_LESS "3.12")
+            target_compile_definitions(Correrender PRIVATE USE_ZEROMQ)
+        else()
+            add_compile_definitions(USE_ZEROMQ)
+        endif()
+    #endif()
+endif()
+
+# Eigen is an optional dependency for eigenvalue solving.
+if(VCPKG_TOOLCHAIN)
+    find_package(Eigen3 CONFIG QUIET)
+else()
+    find_package(Eigen3 QUIET)
+endif()
+if(Eigen3_FOUND)
+    if(NOT (EIGEN3_VERSION_STRING LESS 3.3))
+        target_link_libraries(Correrender PRIVATE Eigen3::Eigen)
+    else()
+        include_directories(${EIGEN3_INCLUDE_DIR})
+    endif()
+   target_compile_definitions(Correrender PRIVATE USE_EIGEN)
+endif()
+
+if (Python3_FOUND AND USE_PYTHON)
+    target_compile_definitions(Correrender PRIVATE USE_PYTHON)
+    if(${CMAKE_VERSION} VERSION_GREATER "3.11")
+        target_link_libraries(Correrender PRIVATE Python3::Python)
+    else()
+        target_link_libraries(Correrender PRIVATE ${Python3_LIBRARIES})
+    endif()
+    if(UNIX AND NOT APPLE AND VCPKG_TOOLCHAIN AND ${CMAKE_VERSION} VERSION_GREATER "3.12")
+        # Python linked statically in this case. See:
+        # https://stackoverflow.com/questions/67891197/ctypes-cpython-39-x86-64-linux-gnu-so-undefined-symbol-pyfloat-type-in-embedd
+        if(VCPKG_LIBRARY_LINKAGE STREQUAL "static")
+            target_link_options(Correrender PRIVATE "-Xlinker")
+            target_link_options(Correrender PRIVATE "-export-dynamic")
+        endif()
+    endif()
+    target_include_directories(Correrender PRIVATE ${Python3_INCLUDE_DIRS})
+
+    # Add default PYTHONHOME path for vcpkg if no environment variable is set.
+    if(DEFINED ENV{PYTHONHOME})
+        set(PYTHONHOME "$ENV{PYTHONHOME}")
+    endif()
+    if(VCPKG_TOOLCHAIN AND (NOT APPLE OR NOT PYTHONHOME))
+        if(NOT DEFINED ENV{PYTHONHOME})
+            find_path(PYTHONHOME_PATH tools/python3 HINTS ${PYTHONHOME_PATH})
+            if (MSVC)
+                set(PYTHONHOME "${PYTHONHOME_PATH}/tools/python3")
+            else()
+                set(PYTHONHOME "${PYTHONHOME_PATH}")
+            endif()
+        endif()
+    endif()
+    if (PYTHONHOME)
+        if (NOT PYTHONPATH AND (APPLE OR MSYS))
+            set(PYTHONPATH "${PYTHONHOME}/lib/python${Python3_VERSION_MAJOR}.${Python3_VERSION_MINOR}")
+        endif()
+        set(PYTHONHOME "${PYTHONHOME}" CACHE STRING "PYTHONHOME path.")
+        target_compile_definitions(Correrender PRIVATE PYTHONHOME=L\"${PYTHONHOME}\")
+    endif()
+    if (PYTHONPATH)
+        set(PYTHONPATH "${PYTHONPATH}" CACHE STRING "PYTHONPATH path.")
+        target_compile_definitions(Correrender PRIVATE PYTHONPATH=L\"${PYTHONPATH}\")
+    endif()
+endif()
+
+# sgl provides Vulkan headers in its interface, which are provided if Vulkan was not found during its build.
+find_package(Vulkan QUIET)
+if (${Vulkan_FOUND} AND NOT "USE_SGL_VULKAN_HEADERS" IN_LIST SGL_INTERFACE_COMPILE_DEFINITIONS
+        AND ${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.21.0")
+    target_link_libraries(Correrender PUBLIC Vulkan::Headers)
+endif()
+
+if (${SUPPORT_PYTORCH} AND Torch_FOUND)
+    target_link_libraries(Correrender PRIVATE ${TORCH_LIBRARIES})
+    target_include_directories(Correrender PRIVATE ${TORCH_INCLUDE_DIR})
+    target_compile_definitions(Correrender PRIVATE SUPPORT_PYTORCH)
+endif()
+
+if (SUPPORT_OPENEXR)
+    if (${USE_OPENEXR_PKGCONFIG})
+        if (OpenEXR_FOUND)
+            target_link_libraries(Correrender PRIVATE ${OpenEXR_LIBRARIES})
+        endif()
+        if (IlmBase_FOUND)
+            target_link_libraries(Correrender PRIVATE ${IlmBase_LIBRARIES})
+        endif()
+    else()
+        target_link_libraries(
+                Correrender PRIVATE
+                # For OpenEXR/Imath 3.x:
+                $<$<TARGET_EXISTS:OpenEXR::OpenEXR>:OpenEXR::OpenEXR>
+                $<$<TARGET_EXISTS:Imath::Imath>:Imath::Imath>
+                $<$<TARGET_EXISTS:Imath::Half>:Imath::Half>
+                # For OpenEXR 2.4/2.5:
+                $<$<TARGET_EXISTS:OpenEXR::IlmImf>:OpenEXR::IlmImf>
+                $<$<TARGET_EXISTS:IlmBase::Imath>:IlmBase::Imath>
+                $<$<TARGET_EXISTS:IlmBase::Half>:IlmBase::Half>
+                $<$<TARGET_EXISTS:IlmBase::IlmThread>:IlmBase::IlmThread>
+                $<$<TARGET_EXISTS:IlmBase::Iex>:IlmBase::Iex>
+        )
+    endif()
+    target_compile_definitions(Correrender PRIVATE SUPPORT_OPENEXR)
+endif()
+
+# According to https://devblogs.microsoft.com/cppblog/improved-openmp-support-for-cpp-in-visual-studio/,
+# support for LLVM OpenMP was added with Visual Studio 2019 version 16.9. According to
+# https://docs.microsoft.com/en-us/cpp/preprocessor/predefined-macros?view=msvc-170,
+# both Visual Studio 2019 version 16.8 and 16.9 have _MSC_VER / MSVC_VERSION 1928, so we need to check
+# for a minimum version 1929.
+if (APPLE)
+    # There are some problems with Homebrew OpenMP as of 2022-10-20.
+    find_package(OpenMP QUIET)
+    if (OpenMP_FOUND)
+        MESSAGE(STATUS "Found OpenMP version ${OpenMP_CXX_VERSION}. Enabling OpenMP threading support.")
+    else()
+        MESSAGE(STATUS "OpenMP not found. Disabling OpenMP threading support.")
+    endif()
+else()
+    find_package(OpenMP REQUIRED)
+endif()
+if(OpenMP_FOUND)
+    if(MSVC)
+        option(USE_MSVC_OPENMP_LLVM "Use LLVM OpenMP with MSVC (available since Visual Studio 2019 version 16.9)." ON)
+        option(USE_MSVC_OPENMP_EXPERIMENTAL "Use experimental OpenMP with MSVC (available since Visual Studio 2019 version 16.9)." ON)
+
+        if(${MSVC_VERSION} GREATER_EQUAL 1929 AND (USE_MSVC_OPENMP_LLVM OR USE_MSVC_OPENMP_EXPERIMENTAL))
+            define_property(
+                    SOURCE
+                    PROPERTY COMPILE_FLAGS
+                    INHERITED
+                    BRIEF_DOCS "brief-doc"
+                    FULL_DOCS "full-doc"
+            )
+            if(USE_MSVC_OPENMP_LLVM)
+                #set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /openmp:llvm")
+                #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /openmp:llvm")
+                set_directory_properties(PROPERTIES COMPILE_FLAGS "/openmp:llvm")
+            endif()
+            if(USE_MSVC_OPENMP_EXPERIMENTAL)
+                #set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /openmp:experimental")
+                #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /openmp:experimental")
+                set_directory_properties(PROPERTIES COMPILE_FLAGS "/openmp:experimental")
+            endif()
+            if(USE_MSVC_OPENMP_LLVM AND USE_MSVC_OPENMP_EXPERIMENTAL)
+                set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /w44005")
+                set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /w44005")
+            endif()
+            set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/src/LineData/TrianglePayload/NodesBVHTreePayload.cpp" PROPERTIES COMPILE_FLAGS "")
+            set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/CMake/winres.rc" PROPERTIES COMPILE_FLAGS "")
+        endif()
+    elseif(NOT TARGET OpenMP::OpenMP_CXX)
+        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}")
+    else()
+        target_link_libraries(Correrender PUBLIC OpenMP::OpenMP_CXX)
+    endif()
+endif()
