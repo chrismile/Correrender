@@ -38,18 +38,18 @@ layout (std430, binding = MIN_MAX_BUFFER_BINDING) readonly buffer MinMaxBuffer {
 layout(binding = TRANSFER_FUNCTION_TEXTURE_BINDING) uniform sampler1DArray transferFunctionTexture;
 
 vec4 transferFunction(float attr, uint variableIndex) {
+#ifndef IGNORE_NAN
+    if (isnan(attr)) {
+        return vec4(1.0, 1.0, 0.0, 1.0);
+    }
+#endif
+
     vec2 minMaxValue = minMaxValues[variableIndex];
     float minAttributeValue = minMaxValue.x;
     float maxAttributeValue = minMaxValue.y;
 
     // Transfer to range [0,1].
     float posFloat = clamp((attr - minAttributeValue) / (maxAttributeValue - minAttributeValue), 0.0, 1.0);
-
-#ifdef IS_MULTIVAR_DATA
-    if (useColorIntensity == 0) {
-        posFloat = 1.0;
-    }
-#endif
 
     // Look up the color value.
     return texture(transferFunctionTexture, vec2(posFloat, variableIndex));
@@ -64,6 +64,12 @@ layout (binding = MIN_MAX_BUFFER_BINDING) uniform MinMaxUniformBuffer {
 layout(binding = TRANSFER_FUNCTION_TEXTURE_BINDING) uniform sampler1D transferFunctionTexture;
 
 vec4 transferFunction(float attr) {
+#ifndef IGNORE_NAN
+    if (isnan(attr)) {
+        return vec4(1.0, 1.0, 0.0, 1.0);
+    }
+#endif
+
     // Transfer to range [0,1].
     float posFloat = clamp((attr - minAttributeValue) / (maxAttributeValue - minAttributeValue), 0.0, 1.0);
     // Look up the color value.

@@ -112,10 +112,18 @@ void ZarrLoader::loadFloatArray3D(size_t datasetIdx, size_t zlen, size_t ylen, s
     xt::xarray<float> outputArray(countp);
     z5::multiarray::readSubarray<float>(dataset, outputArray, startp.begin());
     //memcpy(array, outputArray.data(), xlen * ylen * zlen);
+
+    float fillValue = 0.0f;
+    dataset->getFillValue(&fillValue);
+
     for (size_t z = 0; z < zlen; z++) {
         for (size_t y = 0; y < ylen; y++) {
             for (size_t x = 0; x < xlen; x++) {
-                array[IDXS(x, y, z)] = outputArray.at(z, y, x);
+                float val = outputArray.at(z, y, x);
+                if (val == fillValue) {
+                    val = 9999.0f;
+                }
+                array[IDXS(x, y, z)] = val;
             }
         }
     }
@@ -131,10 +139,18 @@ void ZarrLoader::loadFloatArray3D(
     xt::xarray<float> outputArray(countp);
     z5::multiarray::readSubarray<float>(dataset, outputArray, startp.begin());
     //memcpy(array, outputArray.data(), xlen * ylen * zlen);
+
+    float fillValue = 0.0f;
+    dataset->getFillValue(&fillValue);
+
     for (size_t z = 0; z < zlen; z++) {
         for (size_t y = 0; y < ylen; y++) {
             for (size_t x = 0; x < xlen; x++) {
-                array[IDXS(x, y, z)] = outputArray.at(time, z, y, x);
+                float val = outputArray.at(time, z, y, x);
+                if (val == fillValue) {
+                    val = 9999.0f;
+                }
+                array[IDXS(x, y, z)] = val;
             }
         }
     }
