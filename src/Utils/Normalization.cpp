@@ -35,24 +35,40 @@ void normalizeVertexPositions(
     glm::vec3 scale3D = 0.5f / aabb.getDimensions();
     float scale = std::min(scale3D.x, std::min(scale3D.y, scale3D.z));
 
+#ifdef USE_TBB
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, vertexPositions.size()), [&](auto const& r) {
+        for (size_t vertexIdx = r.begin(); vertexIdx != r.end(); vertexIdx++) {
+#else
 #if _OPENMP >= 200805
     #pragma omp parallel for shared(vertexPositions, translation, scale) default(none)
 #endif
     for (size_t vertexIdx = 0; vertexIdx < vertexPositions.size(); vertexIdx++) {
+#endif
         glm::vec3& v = vertexPositions.at(vertexIdx);
         v = (v + translation) * scale;
     }
+#ifdef USE_TBB
+    });
+#endif
 
     if (vertexTransformationMatrixPtr != nullptr) {
         glm::mat4 transformationMatrix = *vertexTransformationMatrixPtr;
 
+#ifdef USE_TBB
+        tbb::parallel_for(tbb::blocked_range<size_t>(0, vertexPositions.size()), [&](auto const& r) {
+            for (size_t vertexIdx = r.begin(); vertexIdx != r.end(); vertexIdx++) {
+#else
 #if _OPENMP >= 200805
         #pragma omp parallel for shared(vertexPositions, transformationMatrix) default(none)
 #endif
         for (size_t vertexIdx = 0; vertexIdx < vertexPositions.size(); vertexIdx++) {
+#endif
             glm::vec3& v = vertexPositions.at(vertexIdx);
             glm::vec4 transformedVec = transformationMatrix * glm::vec4(v.x, v.y, v.z, 1.0f);
             v = glm::vec3(transformedVec.x, transformedVec.y, transformedVec.z);
         }
+#ifdef USE_TBB
+        });
+#endif
     }
 }

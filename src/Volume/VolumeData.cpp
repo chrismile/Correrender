@@ -31,6 +31,13 @@
 
 #include <boost/algorithm/string/case_conv.hpp>
 
+#ifdef USE_TBB
+#include <tbb/parallel_for.h>
+#include <tbb/parallel_reduce.h>
+#include <tbb/blocked_range.h>
+#include <Utils/Parallel/Reduction.hpp>
+#endif
+
 #include <Utils/AppSettings.hpp>
 #include <Utils/File/FileUtils.hpp>
 #include <Graphics/Vulkan/Render/Data.hpp>
@@ -210,10 +217,15 @@ void VolumeData::addField(
         if (fieldType == FieldType::SCALAR) {
             auto* scalarFieldCopy = new float[ssxs * ssys * sszs];
             memcpy(scalarFieldCopy, fieldData, sizeof(float) * ssxs * ssys * sszs);
+#ifdef USE_TBB
+            tbb::parallel_for(tbb::blocked_range<int>(0, sszs), [&](auto const& r) {
+                for (auto z = r.begin(); z != r.end(); z++) {
+#else
 #if _OPENMP >= 201107
             #pragma omp parallel for shared(fieldData, scalarFieldCopy) default(none)
 #endif
             for (int z = 0; z < sszs; z++) {
+#endif
                 for (int y = 0; y < ssys; y++) {
                     for (int x = 0; x < ssxs; x++) {
                         int readPos = ((y)*ssxs*sszs + (z)*ssxs + (x));
@@ -222,14 +234,22 @@ void VolumeData::addField(
                     }
                 }
             }
+#ifdef USE_TBB
+            });
+#endif
             delete[] scalarFieldCopy;
         } else {
             auto* vectorFieldCopy = new float[3 * ssxs * ssys * sszs];
             memcpy(vectorFieldCopy, fieldData, sizeof(float) * 3 * ssxs * ssys * sszs);
+#ifdef USE_TBB
+            tbb::parallel_for(tbb::blocked_range<int>(0, sszs), [&](auto const& r) {
+                for (auto z = r.begin(); z != r.end(); z++) {
+#else
 #if _OPENMP >= 201107
             #pragma omp parallel for shared(fieldData, vectorFieldCopy) default(none)
 #endif
             for (int z = 0; z < sszs; z++) {
+#endif
                 for (int y = 0; y < ssys; y++) {
                     for (int x = 0; x < ssxs; x++) {
                         int readPos = ((y)*ssxs*sszs*3 + (z)*ssxs*3 + (x)*3);
@@ -240,6 +260,9 @@ void VolumeData::addField(
                     }
                 }
             }
+#ifdef USE_TBB
+            });
+#endif
             delete[] vectorFieldCopy;
         }
     }
@@ -248,10 +271,15 @@ void VolumeData::addField(
         if (fieldType == FieldType::SCALAR) {
             float* scalarFieldOld = fieldData;
             fieldData = new float[xs * ys * zs];
+#ifdef USE_TBB
+            tbb::parallel_for(tbb::blocked_range<int>(0, zs), [&](auto const& r) {
+                for (auto z = r.begin(); z != r.end(); z++) {
+#else
 #if _OPENMP >= 201107
             #pragma omp parallel for shared(fieldData, scalarFieldOld) default(none)
 #endif
             for (int z = 0; z < zs; z++) {
+#endif
                 for (int y = 0; y < ys; y++) {
                     for (int x = 0; x < xs; x++) {
                         int readPos =
@@ -263,14 +291,22 @@ void VolumeData::addField(
                     }
                 }
             }
+#ifdef USE_TBB
+            });
+#endif
             delete[] scalarFieldOld;
         } else {
             float* vectorFieldOld = fieldData;
             fieldData = new float[3 * xs * ys * zs];
+#ifdef USE_TBB
+            tbb::parallel_for(tbb::blocked_range<int>(0, zs), [&](auto const& r) {
+                for (auto z = r.begin(); z != r.end(); z++) {
+#else
 #if _OPENMP >= 201107
             #pragma omp parallel for shared(fieldData, vectorFieldOld) default(none)
 #endif
             for (int z = 0; z < zs; z++) {
+#endif
                 for (int y = 0; y < ys; y++) {
                     for (int x = 0; x < xs; x++) {
                         int readPos =
@@ -284,6 +320,9 @@ void VolumeData::addField(
                     }
                 }
             }
+#ifdef USE_TBB
+            });
+#endif
             delete[] vectorFieldOld;
         }
     }
@@ -297,11 +336,18 @@ void VolumeData::addField(
     hostFieldCache->push(access, HostCacheEntry(fieldData));
 
     /*if (fieldType == FieldType::VECTOR) {
+#ifdef USE_TBB
+        float maxVectorMagnitude = tbb::parallel_reduce(
+                tbb::blocked_range<int>(0, zs), 0.0f,
+                [&vectorField, this](tbb::blocked_range<int> const& r, float maxVectorMagnitude) {
+                    for (auto z = r.begin(); z != r.end(); z++) {
+#else
         float maxVectorMagnitude = 0.0f;
 #if _OPENMP >= 201107
         #pragma omp parallel for shared(fieldData) reduction(max: maxVectorMagnitude) default(none)
 #endif
         for (int z = 0; z < zs; z++) {
+#endif
             for (int y = 0; y < ys; y++) {
                 for (int x = 0; x < xs; x++) {
                     float vx = fieldData[IDXV(x, y, z, 0)];
@@ -312,6 +358,10 @@ void VolumeData::addField(
                 }
             }
         }
+#ifdef USE_TBB
+                    return maxVectorMagnitude;
+                }, sgl::max_predicate());
+#endif
     }*/
 }
 
@@ -484,10 +534,15 @@ VolumeData::HostCacheEntry VolumeData::getFieldEntryCpu(
             if (fieldType == FieldType::SCALAR) {
                 auto* scalarFieldCopy = new float[ssxs * ssys * sszs];
                 memcpy(scalarFieldCopy, fieldEntryBuffer, sizeof(float) * ssxs * ssys * sszs);
+#ifdef USE_TBB
+                tbb::parallel_for(tbb::blocked_range<int>(0, sszs), [&](auto const& r) {
+                    for (auto z = r.begin(); z != r.end(); z++) {
+#else
 #if _OPENMP >= 201107
                 #pragma omp parallel for shared(fieldEntryBuffer, scalarFieldCopy) default(none)
 #endif
                 for (int z = 0; z < sszs; z++) {
+#endif
                     for (int y = 0; y < ssys; y++) {
                         for (int x = 0; x < ssxs; x++) {
                             int readPos = ((y)*ssxs*sszs + (z)*ssxs + (x));
@@ -496,14 +551,22 @@ VolumeData::HostCacheEntry VolumeData::getFieldEntryCpu(
                         }
                     }
                 }
+#ifdef USE_TBB
+                });
+#endif
                 delete[] scalarFieldCopy;
             } else {
                 auto* vectorFieldCopy = new float[3 * ssxs * ssys * sszs];
                 memcpy(vectorFieldCopy, fieldEntryBuffer, sizeof(float) * 3 * ssxs * ssys * sszs);
+#ifdef USE_TBB
+                tbb::parallel_for(tbb::blocked_range<int>(0, sszs), [&](auto const& r) {
+                    for (auto z = r.begin(); z != r.end(); z++) {
+#else
 #if _OPENMP >= 201107
                 #pragma omp parallel for shared(fieldEntryBuffer, vectorFieldCopy) default(none)
 #endif
                 for (int z = 0; z < sszs; z++) {
+#endif
                     for (int y = 0; y < ssys; y++) {
                         for (int x = 0; x < ssxs; x++) {
                             int readPos = ((y)*ssxs*sszs*3 + (z)*ssxs*3 + (x)*3);
@@ -514,6 +577,9 @@ VolumeData::HostCacheEntry VolumeData::getFieldEntryCpu(
                         }
                     }
                 }
+#ifdef USE_TBB
+                });
+#endif
                 delete[] vectorFieldCopy;
             }
         }
@@ -573,10 +639,15 @@ VolumeData::DeviceCacheEntry VolumeData::getFieldEntryDevice(
             size_t bufferEntriesCount = size_t(xs) * size_t(ys) * size_t(zs);
             float* bufferIn = bufferCpu.get();
             auto* bufferPadded = new float[bufferEntriesCount * 4];
+#ifdef USE_TBB
+            tbb::parallel_for(tbb::blocked_range<size_t>(0, bufferEntriesCount), [&](auto const& r) {
+                for (auto i = r.begin(); i != r.end(); i++) {
+#else
 #if _OPENMP >= 200805
             #pragma omp parallel for shared(bufferEntriesCount, bufferPadded, bufferIn) default(none)
 #endif
             for (size_t i = 0; i < bufferEntriesCount; i++) {
+#endif
                 size_t iPadded = i * 4;
                 size_t iIn = i * 3;
                 bufferPadded[iPadded] = bufferIn[iIn];
@@ -584,6 +655,9 @@ VolumeData::DeviceCacheEntry VolumeData::getFieldEntryDevice(
                 bufferPadded[iPadded + 2] = bufferIn[iIn + 2];
                 bufferPadded[iPadded + 3] = 0.0f;
             }
+#ifdef USE_TBB
+            });
+#endif
             image->uploadData(bufferEntriesCount * sizeof(glm::vec4), bufferPadded);
         }
         image->uploadData(access.sizeInBytes, bufferCpu.get());

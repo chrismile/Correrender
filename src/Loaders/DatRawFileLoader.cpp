@@ -31,6 +31,11 @@
 #include <boost/algorithm/string/trim.hpp>
 #include <glm/vec3.hpp>
 
+#ifdef USE_TBB
+#include <tbb/parallel_for.h>
+#include <tbb/blocked_range.h>
+#endif
+
 #include <Utils/Convert.hpp>
 #include <Utils/StringUtils.hpp>
 #include <Utils/File/Logfile.hpp>
@@ -289,20 +294,36 @@ bool DatRawFileLoader::getFieldEntry(
         memcpy(scalarAttributeField, bufferRaw, sizeof(float) * totalSize);
     } else if (formatString == "uchar") {
         auto* dataField = bufferRaw;
+#ifdef USE_TBB
+        tbb::parallel_for(tbb::blocked_range<size_t>(0, totalSize), [&](auto const& r) {
+            for (auto i = r.begin(); i != r.end(); i++) {
+#else
 #if _OPENMP >= 201107
         #pragma omp parallel for default(none) shared(scalarAttributeField, dataField, totalSize)
 #endif
         for (size_t i = 0; i < totalSize; i++) {
+#endif
             scalarAttributeField[i] = float(dataField[i]) / 255.0f;
         }
+#ifdef USE_TBB
+        });
+#endif
     } else if (formatString == "ushort") {
         auto* dataField = reinterpret_cast<uint16_t*>(bufferRaw);
+#ifdef USE_TBB
+        tbb::parallel_for(tbb::blocked_range<size_t>(0, totalSize), [&](auto const& r) {
+            for (auto i = r.begin(); i != r.end(); i++) {
+#else
 #if _OPENMP >= 201107
         #pragma omp parallel for default(none) shared(scalarAttributeField, dataField, totalSize)
 #endif
         for (size_t i = 0; i < totalSize; i++) {
+#endif
             scalarAttributeField[i] = float(dataField[i]) / 65535.0f;
         }
+#ifdef USE_TBB
+        });
+#endif
     } else if (formatString == "float3") {
         auto* dataField = reinterpret_cast<float*>(bufferRaw);
         for (int z = 0; z < zs; z++) {

@@ -26,6 +26,11 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#ifdef USE_TBB
+#include <tbb/parallel_for.h>
+#include <tbb/blocked_range.h>
+#endif
+
 #include "Loaders/DataSet.hpp"
 #include "Loaders/LoadersUtil.hpp"
 #include "Volume/VolumeData.hpp"
@@ -67,8 +72,13 @@ void VelocityCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float* b
             FieldType::SCALAR, velocityFieldNameZ, timeStepIdx, ensembleIdx);
     float* velocityZ = entryVelocityZ.get();
 
+#ifdef USE_TBB
+    tbb::parallel_for(tbb::blocked_range<int>(0, zs), [&](auto const& r) {
+        for (auto z = r.begin(); z != r.end(); z++) {
+#else
     #pragma omp parallel for shared(xs, ys, zs, velocityX, velocityY, velocityZ, buffer) default(none)
     for (int z = 0; z < zs; z++) {
+#endif
         for (int y = 0; y < ys; y++) {
             for (int x = 0; x < xs; x++) {
                 buffer[IDXV(x, y, z, 0)] = velocityX[IDXS(x, y, z)];
@@ -77,6 +87,9 @@ void VelocityCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float* b
             }
         }
     }
+#ifdef USE_TBB
+    });
+#endif
 }
 
 void VectorMagnitudeCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float* buffer) {

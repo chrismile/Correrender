@@ -117,10 +117,15 @@ void PccCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float* buffer
 
     // See: https://en.wikipedia.org/wiki/Pearson_correlation_coefficient
     size_t numGridPoints = size_t(xs) * size_t(ys) * size_t(zs);
+#ifdef USE_TBB
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, numGridPoints), [&](auto const& r) {
+        for (auto gridPointIdx = r.begin(); gridPointIdx != r.end(); gridPointIdx++) {
+#else
 #if _OPENMP >= 200805
     #pragma omp parallel for shared(numGridPoints, es, referenceValues, ensembleFields, buffer) default(none)
 #endif
     for (size_t gridPointIdx = 0; gridPointIdx < numGridPoints; gridPointIdx++) {
+#endif
         auto n = float(es);
         float sumX = 0.0f;
         float sumY = 0.0f;
@@ -140,6 +145,9 @@ void PccCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float* buffer
                 (n * sumXY - sumX * sumY) / std::sqrt((n * sumXX - sumX * sumX) * (n * sumYY - sumY * sumY));
         buffer[gridPointIdx] = pearsonCorrelation;
     }
+#ifdef USE_TBB
+    });
+#endif
 
     delete[] referenceValues;
 }
