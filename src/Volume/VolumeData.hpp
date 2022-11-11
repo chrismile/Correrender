@@ -43,6 +43,8 @@
 #include <Graphics/Vulkan/Buffers/Buffer.hpp>
 #ifdef SUPPORT_CUDA_INTEROP
 #include <Graphics/Vulkan/Utils/InteropCuda.hpp>
+#include <ImGui/Widgets/MultiVarTransferFunctionWindow.hpp>
+
 #endif
 
 #include "Loaders/DataSetList.hpp"
@@ -53,7 +55,6 @@
 
 namespace sgl {
 class PropertyEditor;
-class TransferFunctionWindow;
 namespace vk {
 class RenderData;
 typedef std::shared_ptr<RenderData> RenderDataPtr;
@@ -78,8 +79,34 @@ public:
     VolumeData(sgl::vk::Renderer* renderer, sgl::TransferFunctionWindow& transferFunctionWindow);
     ~VolumeData();
 
+    /**
+     * Called every frame
+     * @param dtFrame The elapsed time in seconds since the last frame.
+     */
     void update(float dtFrame);
+
+    /**
+     * Renders the entries in the property editor.
+     * @return true if the gather shader needs to be reloaded.
+     */
     void renderGui(sgl::PropertyEditor& propertyEditor);
+    void renderGuiCalculators(sgl::PropertyEditor& propertyEditor);
+    /**
+     * For rendering secondary ImGui windows (e.g., for transfer function widgets).
+     * @return true if the gather shader needs to be reloaded.
+     */
+    void renderGuiWindowSecondary();
+    /**
+     * For rendering secondary, overlay ImGui windows.
+     * @return true if the gather shader needs to be reloaded.
+     */
+    void renderGuiOverlay(uint32_t viewIdx);
+
+    /// Certain GUI widgets might need the clear color.
+    virtual void setClearColor(const sgl::Color& clearColor);
+    /// Whether to use linear RGB when rendering.
+    virtual void setUseLinearRGB(bool useLinearRGB);
+    inline sgl::MultiVarTransferFunctionWindow& getMultiVarTransferFunctionWindow() { return multiVarTransferFunctionWindow; }
 
     void setTransposeAxes(const glm::ivec3& axes);
     void setGridSubsamplingFactor(int factor);
@@ -152,11 +179,13 @@ public:
 
     /// Sets data bindings used across renderers.
     virtual void setRenderDataBindings(const sgl::vk::RenderDataPtr& renderData);
+    virtual void getPreprocessorDefines(std::map<std::string, std::string>& preprocessorDefines);
     [[nodiscard]] inline const sgl::vk::ImageSamplerPtr& getImageSampler() const { return imageSampler; }
 
 protected:
     /// Size in x, y, z, time and ensemble dimensions.
     int xs = 0, ys = 0, zs = 0, ts = 1, es = 1;
+    int tsFileCount = 1, esFileCount = 1;
     /// Distance between two neighboring points in x/y/z/time direction.
     float dx = 0.0f, dy = 0.0f, dz = 0.0f, dt = 1.0f;
     /// Box encompassing all grid points.
@@ -176,14 +205,13 @@ protected:
     DataSetInformation dataSetInformation;
     std::unique_ptr<HostFieldCache> hostFieldCache;
     std::unique_ptr<DeviceFieldCache> deviceFieldCache;
-    std::vector<std::string> scalarFieldNames;
     std::unordered_map<FieldType, std::vector<std::string>> typeToFieldNamesMap;
     std::unordered_map<FieldType, std::vector<std::string>> typeToFieldNamesMapBase; ///< Without calculator output.
     sgl::vk::ImageSamplerPtr imageSampler{};
 
     bool dirty = true; ///< Should be set to true if the representation changed.
     bool reRender = false;
-    sgl::TransferFunctionWindow& transferFunctionWindow;
+    sgl::MultiVarTransferFunctionWindow multiVarTransferFunctionWindow;
     ImGuiFileDialog* fileDialogInstance = nullptr;
 
     // File loaders.
@@ -192,8 +220,12 @@ protected:
     std::vector<VolumeLoader*> volumeLoaders;
 
     // Calculators for derived variables.
+    void updateCalculatorName(const CalculatorPtr& calculator);
+    void updateCalculator(const CalculatorPtr& calculator);
+    std::vector<CalculatorPtr> calculators;
     std::unordered_map<std::string, CalculatorPtr> calculatorsHost;
     std::unordered_map<std::string, CalculatorPtr> calculatorsDevice;
+    size_t calculatorId = 0;
 
 private:
     FieldAccess createFieldAccessStruct(

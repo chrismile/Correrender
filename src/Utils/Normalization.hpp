@@ -37,4 +37,8 @@ void normalizeVertexPositions(
         std::vector<glm::vec3>& vertexPositions, const sgl::AABB3& aabb,
         const glm::mat4* vertexTransformationMatrixPtr = nullptr);
 
+void normalizeVertexNormals(
+        std::vector<glm::vec3>& vertexNormals, const sgl::AABB3& aabb,
+        const glm::mat4* vertexTransformationMatrixPtr = nullptr);
+
 #endif //CORRERENDER_NORMALIZATION_HPP

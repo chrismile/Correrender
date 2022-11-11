@@ -27,6 +27,7 @@
  */
 
 #include <ImGui/Widgets/PropertyEditor.hpp>
+#include "Volume/VolumeData.hpp"
 #include "Widgets/ViewManager.hpp"
 #include "RenderingModes.hpp"
 #include "Renderer.hpp"
@@ -108,4 +109,8 @@ void Renderer::renderGui(sgl::PropertyEditor& propertyEditor) {
         }
     }
     renderGuiImpl(propertyEditor);
+}
+
+void Renderer::renderGuiOverlay(uint32_t viewIdx) {
+    volumeData->renderGuiOverlay(viewIdx);
 }

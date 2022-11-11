@@ -53,6 +53,14 @@ class ViewManager;
 class VolumeData;
 typedef std::shared_ptr<VolumeData> VolumeDataPtr;
 
+// How should NaN values be handled in the transfer function?
+enum class NaNHandling {
+    IGNORE, SHOW_AS_YELLOW
+};
+const char* const NAN_HANDLING_NAMES[] = {
+        "Ignore", "Show as Yellow"
+};
+
 class Renderer {
 public:
     Renderer(std::string windowName, ViewManager* viewManager, sgl::TransferFunctionWindow& transferFunctionWindow);
@@ -61,6 +69,8 @@ public:
 
     /// Returns if the visualization mapping needs to be re-generated.
     [[nodiscard]] inline bool isDirty() const { return dirty; }
+    /// Called by MainApp to reset the dirty flag.
+    void resetDirty() { dirty = false; }
     /// Returns if the data needs to be re-rendered, but the visualization mapping is valid.
     [[nodiscard]] virtual bool needsReRender();
     [[nodiscard]] virtual bool needsReRenderView(uint32_t viewIdx);
@@ -91,7 +101,7 @@ public:
     virtual void renderGui(sgl::PropertyEditor& propertyEditor) final;
 
     /// Renders GUI overlays. The "dirty" and "reRender" flags might be set depending on the user's actions.
-    virtual void renderGuiOverlay(uint32_t viewIdx) {}
+    virtual void renderGuiOverlay(uint32_t viewIdx);
     /// For rendering secondary ImGui windows (e.g., for transfer function widgets).
     virtual void renderGuiWindowSecondary() {}
     /// Updates the internal logic (called once per frame).

@@ -56,6 +56,7 @@ private:
     std::string selectedScalarFieldName;
     float stepSize = 0.1f;
     float attenuationCoefficient = 100.0f;
+    NaNHandling nanHandling = NaNHandling::IGNORE;
 };
 
 /**
@@ -70,6 +71,7 @@ public:
     void setSelectedScalarFieldName(const std::string& _scalarFieldName);
     inline void setStepSize(float _stepSize) { stepSize = _stepSize; }
     inline void setAttenuationCoefficient(float _coeff) { renderSettingsData.attenuationCoefficient = _coeff; }
+    inline void setNaNHandling(NaNHandling _nanHandling) { nanHandling = _nanHandling; shaderDirty = true; }
     void recreateSwapchain(uint32_t width, uint32_t height) override;
 
 protected:
@@ -84,6 +86,7 @@ private:
     VolumeDataPtr volumeData;
     sgl::vk::ImageViewPtr sceneImageView;
     float voxelSize = 1.0f;
+    NaNHandling nanHandling = NaNHandling::IGNORE;
 
     // Renderer settings.
     std::string selectedScalarFieldName;

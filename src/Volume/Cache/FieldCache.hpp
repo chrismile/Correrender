@@ -93,6 +93,23 @@ public:
         }
     }
 
+    void removeEntriesForFieldName(const std::string& fieldName) {
+        cache.remove_if(
+                [this, fieldName](const std::pair<FieldAccess, CacheEntry>& entry) {
+                    if (entry.first.fieldName == fieldName) {
+                        typename CacheEntry::weak_type weakBufferPtr = entry.second;
+                        if (!weakBufferPtr.expired()) {
+                            evictionWaitList.emplace_back(entry.first, weakBufferPtr);
+                        } else {
+                            cacheSize -= entry.first.sizeInBytes;
+                        }
+                        return true;
+                    }
+                    return false;
+                }
+        );
+    }
+
 protected:
     size_t cacheSize = 0, cacheSizeMax = 0;
     // What percentage of the available host/device memory should be used for caching?

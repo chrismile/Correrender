@@ -67,6 +67,11 @@ void IsoSurfaceRasterizer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewD
     vertexPositionBuffer = {};
     vertexNormalBuffer = {};
 
+    for (auto& isoSurfaceRasterPass : isoSurfaceRasterPasses) {
+        isoSurfaceRasterPass->setVolumeData(volumeData, isNewData);
+        isoSurfaceRasterPass->setRenderData(indexBuffer, vertexPositionBuffer, vertexNormalBuffer);
+    }
+
     sgl::AABB3 gridAabb;
     //gridAabb.min = glm::vec3(0.0f, 0.0f, 0.0f);
     //gridAabb.max = glm::vec3(volumeData->getGridSizeX(), volumeData->getGridSizeY(), volumeData->getGridSizeZ());
@@ -96,6 +101,11 @@ void IsoSurfaceRasterizer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewD
             isosurfaceVertexPositions, isosurfaceVertexNormals,
             triangleIndices, vertexPositions, vertexNormals);
     normalizeVertexPositions(vertexPositions, gridAabb, nullptr);
+    //normalizeVertexNormals(vertexNormals, gridAabb, nullptr);
+
+    if (triangleIndices.empty()) {
+        return;
+    }
 
     sgl::vk::Device* device = renderer->getDevice();
     indexBuffer = std::make_shared<sgl::vk::Buffer>(
@@ -112,7 +122,6 @@ void IsoSurfaceRasterizer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewD
             VMA_MEMORY_USAGE_GPU_ONLY);
 
     for (auto& isoSurfaceRasterPass : isoSurfaceRasterPasses) {
-        isoSurfaceRasterPass->setVolumeData(volumeData, isNewData);
         isoSurfaceRasterPass->setRenderData(indexBuffer, vertexPositionBuffer, vertexNormalBuffer);
         isoSurfaceRasterPass->setSelectedScalarFieldName(selectedScalarFieldName);
     }
@@ -123,7 +132,9 @@ void IsoSurfaceRasterizer::recreateSwapchainView(uint32_t viewIdx, uint32_t widt
 }
 
 void IsoSurfaceRasterizer::renderViewImpl(uint32_t viewIdx) {
-    isoSurfaceRasterPasses.at(viewIdx)->render();
+    if (indexBuffer) {
+        isoSurfaceRasterPasses.at(viewIdx)->render();
+    }
 }
 
 void IsoSurfaceRasterizer::addViewImpl(uint32_t viewIdx) {
@@ -206,11 +217,12 @@ void IsoSurfaceRasterPass::setRenderData(
     vertexPositionBuffer = _vertexPositionBuffer;
     vertexNormalBuffer = _vertexNormalBuffer;
 
-    if (rasterData) {
-        rasterData->setIndexBuffer(indexBuffer);
-        rasterData->setVertexBuffer(vertexPositionBuffer, "vertexPosition");
-        rasterData->setVertexBuffer(vertexNormalBuffer, "vertexNormal");
-    }
+    setDataDirty();
+    //if (rasterData) {
+    //    rasterData->setIndexBuffer(indexBuffer);
+    //    rasterData->setVertexBuffer(vertexPositionBuffer, "vertexPosition");
+    //    rasterData->setVertexBuffer(vertexNormalBuffer, "vertexNormal");
+    //}
 }
 
 void IsoSurfaceRasterPass::loadShader() {

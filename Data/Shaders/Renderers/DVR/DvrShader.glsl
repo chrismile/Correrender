@@ -68,7 +68,9 @@ void main() {
     vec3 rayOrigin = (inverseViewMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
     vec2 fragNdc = 2.0 * ((vec2(gl_GlobalInvocationID.xy) + vec2(0.5)) / vec2(outputImageSize)) - 1.0;
     vec3 rayTarget = (inverseProjectionMatrix * vec4(fragNdc.xy, 1.0, 1.0)).xyz;
-    vec3 rayDirection = (inverseViewMatrix * vec4(normalize(rayTarget.xyz), 0.0)).xyz;
+    vec3 normalizedTarget = normalize(rayTarget.xyz);
+    vec3 rayDirection = (inverseViewMatrix * vec4(normalizedTarget, 0.0)).xyz;
+    float zFactor = abs(normalizedTarget.z);
 
     float tNear, tFar;
     if (rayBoxIntersectionRayCoords(rayOrigin, rayDirection, minBoundingBox, maxBoundingBox, tNear, tFar)) {
@@ -83,6 +85,8 @@ void main() {
 
 #ifdef SUPPORT_DEPTH_BUFFER
         closestDepth = convertDepthBufferValueToLinearDepth(imageLoad(depthBuffer, imageCoords).x);
+        // Convert depth to distance.
+        closestDepth = closestDepth / zFactor;
 #endif
 
         vec4 outputColor = vec4(0.0);
@@ -111,6 +115,8 @@ void main() {
         outputColor = vec4(outputColor.rgb / outputColor.a, outputColor.a);
         imageStore(outputImage, imageCoords, outputColor);
 #ifdef SUPPORT_DEPTH_BUFFER
+         // Convert depth to distance.
+        //closestDepth = closestDepth * zFactor;
         //imageStore(depthBuffer, imageCoords, vec4(convertLinearDepthToDepthBufferValue(closestDepth)));
 #endif
     }

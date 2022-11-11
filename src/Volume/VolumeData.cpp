@@ -40,6 +40,7 @@
 
 #include <Utils/AppSettings.hpp>
 #include <Utils/File/FileUtils.hpp>
+#include <Utils/Events/EventManager.hpp>
 #include <Graphics/Vulkan/Render/Data.hpp>
 #include <Graphics/Vulkan/Render/Renderer.hpp>
 #include <ImGui/Widgets/PropertyEditor.hpp>
@@ -63,6 +64,8 @@
 #endif
 #include "Calculators/Calculator.hpp"
 #include "Calculators/VelocityCalculator.hpp"
+#include "Calculators/SimilarityCalculator.hpp"
+#include "Renderers/RenderingModes.hpp"
 #include "VolumeData.hpp"
 
 template <typename T>
@@ -83,7 +86,7 @@ VolumeLoader* VolumeData::createVolumeLoaderByExtension(const std::string& fileE
 }
 
 VolumeData::VolumeData(sgl::vk::Renderer* renderer, sgl::TransferFunctionWindow& transferFunctionWindow)
-        : renderer(renderer), transferFunctionWindow(transferFunctionWindow) {
+        : renderer(renderer), multiVarTransferFunctionWindow() {
     device = renderer->getDevice();
     hostFieldCache = std::make_unique<HostFieldCache>();
     deviceFieldCache = std::make_unique<DeviceFieldCache>(device);
@@ -385,24 +388,20 @@ bool VolumeData::setInputFiles(
     filePaths = _filePaths;
     dataSetInformation = std::move(_dataSetInformation);
 
+    if (dataSetInformation.timeSteps.empty()) {
+        ts = 1;
+    } else {
+        setTimeSteps(dataSetInformation.timeSteps);
+    }
+    tsFileCount = ts;
+    esFileCount = es = int(filePaths.size()) / tsFileCount;
+
     for (size_t i = 0; i < filePaths.size(); i++) {
         std::string filePath = filePaths.at(i);
         std::string fileExtension = sgl::FileUtils::get()->getFileExtensionLower(filePath);
         VolumeLoader* volumeLoader = createVolumeLoaderByExtension(fileExtension);
         volumeLoader->setInputFiles(this, filePath, dataSetInformation);
         volumeLoaders.push_back(volumeLoader);
-    }
-
-    if (dataSetInformation.dataSetFileDimension == DataSetFileDimension::TIME) {
-        ts = int(filePaths.size());
-        es = 1;
-    } else if (dataSetInformation.dataSetFileDimension == DataSetFileDimension::ENSEMBLE) {
-        ts = 1;
-        es = int(filePaths.size());
-    } else {
-        sgl::Logfile::get()->throwError(
-                "Error in VolumeData::setInputFiles: Currently, only time and ensemble data set file modes "
-                "are supported.");
     }
 
     // Automatically add calculators for velocity, vorticity and helicity if possible.
@@ -439,16 +438,20 @@ bool VolumeData::setInputFiles(
         helicityVariableExists = true;
     }
 
+    addCalculator(std::make_shared<PccCalculator>(renderer));
+
     return true;
 }
 
 void VolumeData::addCalculator(const CalculatorPtr& calculator) {
+    calculators.push_back(calculator);
     if (calculator->getFilterDevice() == FilterDevice::CPU) {
         calculatorsHost.insert(std::make_pair(calculator->getOutputFieldName(), calculator));
     } else {
         calculatorsDevice.insert(std::make_pair(calculator->getOutputFieldName(), calculator));
     }
     typeToFieldNamesMap[calculator->getOutputFieldType()].push_back(calculator->getOutputFieldName());
+    calculator->setCalculatorId(calculatorId++);
     calculator->setVolumeData(this, true);
 }
 
@@ -496,14 +499,16 @@ VolumeData::HostCacheEntry VolumeData::getFieldEntryCpu(
         calculator->calculateCpu(timeStepIdx, ensembleIdx, fieldEntryBuffer);
     } else {
         VolumeLoader* volumeLoader = nullptr;
-        if (dataSetInformation.dataSetFileDimension == DataSetFileDimension::TIME) {
+        if (tsFileCount == 1 && esFileCount == 1) {
+            volumeLoader = volumeLoaders.front();
+        } else if (tsFileCount > 1 && esFileCount == 1) {
             volumeLoader = volumeLoaders.at(timeStepIdx);
-        } else if (dataSetInformation.dataSetFileDimension == DataSetFileDimension::ENSEMBLE) {
+        } else if (tsFileCount == 1 && esFileCount > 1) {
             volumeLoader = volumeLoaders.at(ensembleIdx);
-        } else if (dataSetInformation.dataSetFileDimension == DataSetFileDimension::TIME_ENSEMBLE) {
-            volumeLoader = volumeLoaders.at(timeStepIdx * es + ensembleIdx);
-        } else if (dataSetInformation.dataSetFileDimension == DataSetFileDimension::ENSEMBLE_TIME) {
-            volumeLoader = volumeLoaders.at(ensembleIdx * ts + timeStepIdx);
+        } else if (tsFileCount > 1 && esFileCount > 1 && !dataSetInformation.useTimeStepRange) {
+            volumeLoader = volumeLoaders.at(timeStepIdx * esFileCount + ensembleIdx);
+        } else if (tsFileCount > 1 && esFileCount > 1 && dataSetInformation.useTimeStepRange) {
+            volumeLoader = volumeLoaders.at(ensembleIdx * tsFileCount + timeStepIdx);
         } else {
             return {};
         }
@@ -668,6 +673,7 @@ VolumeData::DeviceCacheEntry VolumeData::getFieldEntryDevice(
 }
 
 void VolumeData::update(float dtFrame) {
+    multiVarTransferFunctionWindow.update(dt);
     hostFieldCache->updateEvictionWaitList();
     deviceFieldCache->updateEvictionWaitList();
 }
@@ -676,31 +682,105 @@ void VolumeData::setRenderDataBindings(const sgl::vk::RenderDataPtr& renderData)
     if (renderData->getShaderStages()->hasDescriptorBinding(0, "transferFunctionTexture")) {
         const sgl::vk::DescriptorInfo& descriptorInfo = renderData->getShaderStages()->getDescriptorInfoByName(
                 0, "transferFunctionTexture");
-        if (descriptorInfo.image.arrayed == 0) {
+        if (descriptorInfo.image.arrayed == 1) {
             renderData->setStaticTexture(
-                    transferFunctionWindow.getTransferFunctionMapTextureVulkan(),
+                    multiVarTransferFunctionWindow.getTransferFunctionMapTextureVulkan(),
                     "transferFunctionTexture");
             renderData->setStaticBuffer(
-                    transferFunctionWindow.getMinMaxUboVulkan(),
-                    "MinMaxUniformBuffer");
+                    multiVarTransferFunctionWindow.getMinMaxSsboVulkan(), "MinMaxBuffer");
         }
     }
 }
 
+void VolumeData::getPreprocessorDefines(std::map<std::string, std::string>& preprocessorDefines) {
+    preprocessorDefines.insert(std::make_pair("USE_MULTI_VAR_TRANSFER_FUNCTION", ""));
+}
+
 void VolumeData::renderGui(sgl::PropertyEditor& propertyEditor) {
     if (propertyEditor.beginNode("Volume Data")) {
-        if (propertyEditor.addSliderIntEdit(
+        propertyEditor.addText(
+                "Volume Size", std::to_string(xs) + "x" + std::to_string(ys) + "x" + std::to_string(zs));
+        if (ts > 1 && propertyEditor.addSliderIntEdit(
                 "Time Step", &currentTimeStepIdx, 0, ts - 1) == ImGui::EditMode::INPUT_FINISHED) {
+            currentTimeStepIdx = std::clamp(currentTimeStepIdx, 0, ts - 1);
             dirty = true;
             reRender = true;
         }
-        if (propertyEditor.addSliderIntEdit(
+        if (es > 1 && propertyEditor.addSliderIntEdit(
                 "Ensemble Member", &currentEnsembleIdx, 0, es - 1) == ImGui::EditMode::INPUT_FINISHED) {
+            currentEnsembleIdx = std::clamp(currentEnsembleIdx, 0, es - 1);
             dirty = true;
             reRender = true;
         }
         propertyEditor.endNode();
     }
+}
+
+void VolumeData::renderGuiCalculators(sgl::PropertyEditor& propertyEditor) {
+    for (const CalculatorPtr& calculator : calculators) {
+        if (!calculator->getShouldRenderGui()) {
+            continue;
+        }
+        calculator->renderGui(propertyEditor);
+        if (calculator->getHasNameChanged()) {
+            updateCalculatorName(calculator);
+            dirty = true;
+        }
+        if (calculator->getIsDirty()) {
+            updateCalculator(calculator);
+            dirty = true;
+        }
+    }
+}
+
+void VolumeData::renderGuiWindowSecondary() {
+    if (multiVarTransferFunctionWindow.renderGui()) {
+        reRender = true;
+        if (multiVarTransferFunctionWindow.getTransferFunctionMapRebuilt()) {
+            onTransferFunctionMapRebuilt();
+            sgl::EventManager::get()->triggerEvent(std::make_shared<sgl::Event>(
+                    ON_TRANSFER_FUNCTION_MAP_REBUILT_EVENT));
+        }
+    }
+}
+
+void VolumeData::renderGuiOverlay(uint32_t viewIdx) {
+    ;
+}
+
+void VolumeData::setClearColor(const sgl::Color& clearColor) {
+    multiVarTransferFunctionWindow.setClearColor(clearColor);
+}
+
+void VolumeData::setUseLinearRGB(bool useLinearRGB) {
+    multiVarTransferFunctionWindow.setUseLinearRGB(useLinearRGB);
+}
+
+void VolumeData::updateCalculatorName(const CalculatorPtr& calculator) {
+    std::string oldFieldName;
+    for (auto it = calculatorsHost.begin(); it != calculatorsHost.end(); it++) {
+        if (it->second == calculator) {
+            calculatorsHost.erase(it);
+            calculatorsHost.insert(std::make_pair(calculator->getOutputFieldName(), calculator));
+        }
+    }
+    for (auto it = calculatorsDevice.begin(); it != calculatorsDevice.end(); it++) {
+        if (it->second == calculator) {
+            calculatorsDevice.erase(it);
+            calculatorsDevice.insert(std::make_pair(calculator->getOutputFieldName(), calculator));
+        }
+    }
+    auto& fieldNames = typeToFieldNamesMap[calculator->getOutputFieldType()];
+    for (auto& fieldName : fieldNames) {
+        if (fieldName == oldFieldName) {
+            fieldName = calculator->getOutputFieldName();
+        }
+    }
+}
+
+void VolumeData::updateCalculator(const CalculatorPtr& calculator) {
+    hostFieldCache->removeEntriesForFieldName(calculator->getOutputFieldName());
+    deviceFieldCache->removeEntriesForFieldName(calculator->getOutputFieldName());
 }
 
 void VolumeData::setFileDialogInstance(ImGuiFileDialog* _fileDialogInstance) {

@@ -121,7 +121,7 @@ void ZarrLoader::loadFloatArray3D(size_t datasetIdx, size_t zlen, size_t ylen, s
             for (size_t x = 0; x < xlen; x++) {
                 float val = outputArray.at(z, y, x);
                 if (val == fillValue) {
-                    val = 9999.0f;
+                    val = std::numeric_limits<float>::quiet_NaN();
                 }
                 array[IDXS(x, y, z)] = val;
             }
@@ -148,7 +148,7 @@ void ZarrLoader::loadFloatArray3D(
             for (size_t x = 0; x < xlen; x++) {
                 float val = outputArray.at(time, z, y, x);
                 if (val == fillValue) {
-                    val = 9999.0f;
+                    val = std::numeric_limits<float>::quiet_NaN();
                 }
                 array[IDXS(x, y, z)] = val;
             }

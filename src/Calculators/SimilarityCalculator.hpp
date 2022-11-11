@@ -37,6 +37,7 @@ class EnsembleSimilarityCalculator : public Calculator {
 public:
     explicit EnsembleSimilarityCalculator(sgl::vk::Renderer* renderer) : Calculator(renderer) {}
     void setVolumeData(VolumeData* _volumeData, bool isNewData) override;
+    [[nodiscard]] bool getShouldRenderGui() const override { return true; }
     FieldType getOutputFieldType() override { return FieldType::SCALAR; }
     FilterDevice getFilterDevice() override { return FilterDevice::CPU; }
     RendererPtr getCalculatorRenderer() override { return referencePointSelectionRenderer; }
@@ -48,7 +49,7 @@ protected:
     std::vector<std::string> scalarFieldNames;
     std::vector<size_t> scalarFieldIndexArray;
     int fieldIndex = 0, fieldIndexGui = 0;
-    glm::ivec3 referencePointIndex;
+    glm::ivec3 referencePointIndex{};
     RendererPtr referencePointSelectionRenderer;
 };
 

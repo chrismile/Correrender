@@ -31,10 +31,10 @@
 #include "Calculator.hpp"
 
 void Calculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
-    volumeData = _volumeData;
-    if (isNewData) {
+    if (isNewData && volumeData) {
         dirty = true;
     }
+    volumeData = _volumeData;
 }
 
 bool Calculator::getIsDirty() {
@@ -43,12 +43,20 @@ bool Calculator::getIsDirty() {
     return tmp;
 }
 
+bool Calculator::getHasNameChanged() {
+    bool tmp = hasNameChanged;
+    hasNameChanged = false;
+    return tmp;
+}
+
 void Calculator::renderGui(sgl::PropertyEditor& propertyEditor) {
-    std::string nodeName = "Calculator (" + getOutputFieldName() + ")";
+    std::string nodeName = "Calculator (" + getOutputFieldName() + ")###calculator" + std::to_string(calculatorId);
     if (propertyEditor.beginNode(nodeName)) {
         const auto& calculatorRenderer = getCalculatorRenderer();
         renderGuiImpl(propertyEditor);
-        calculatorRenderer->renderGui(propertyEditor);
+        if (calculatorRenderer) {
+            calculatorRenderer->renderGui(propertyEditor);
+        }
         propertyEditor.endNode();
     }
 }

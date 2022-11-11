@@ -127,6 +127,10 @@ void PccCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float* buffer
     for (size_t gridPointIdx = 0; gridPointIdx < numGridPoints; gridPointIdx++) {
 #endif
         auto n = float(es);
+        if (n == 1) {
+            buffer[gridPointIdx] = 1.0f;
+            continue;
+        }
         float sumX = 0.0f;
         float sumY = 0.0f;
         float sumXY = 0.0f;

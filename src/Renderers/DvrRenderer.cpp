@@ -76,6 +76,7 @@ void DvrRenderer::addViewImpl(uint32_t viewIdx) {
     }
     dvrPass->setStepSize(stepSize);
     dvrPass->setAttenuationCoefficient(attenuationCoefficient);
+    dvrPass->setNaNHandling(nanHandling);
     dvrPasses.push_back(dvrPass);
 }
 
@@ -102,6 +103,13 @@ void DvrRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
     if (propertyEditor.addSliderFloat("Attenuation Coefficient", &attenuationCoefficient, 0, 500)) {
         for (auto& dvrPass : dvrPasses) {
             dvrPass->setAttenuationCoefficient(attenuationCoefficient);
+        }
+        reRender = true;
+    }
+    if (propertyEditor.addCombo(
+            "NaN Handling", (int*)&nanHandling, NAN_HANDLING_NAMES, IM_ARRAYSIZE(NAN_HANDLING_NAMES))) {
+        for (auto& dvrPass : dvrPasses) {
+            dvrPass->setNaNHandling(nanHandling);
         }
         reRender = true;
     }
@@ -142,8 +150,14 @@ void DvrPass::setSelectedScalarFieldName(const std::string& _field) {
 void DvrPass::loadShader() {
     sgl::vk::ShaderManager->invalidateShaderCache();
     std::map<std::string, std::string> preprocessorDefines;
+    volumeData->getPreprocessorDefines(preprocessorDefines);
     if (sceneData->useDepthBuffer) {
         preprocessorDefines.insert(std::make_pair("SUPPORT_DEPTH_BUFFER", ""));
+    }
+    if (nanHandling == NaNHandling::IGNORE) {
+        preprocessorDefines.insert(std::make_pair("IGNORE_NAN", ""));
+    } else if (nanHandling == NaNHandling::SHOW_AS_YELLOW) {
+        preprocessorDefines.insert(std::make_pair("NAN_YELLOW", ""));
     }
     shaderStages = sgl::vk::ShaderManager->getShaderStages({"DvrShader.Compute"}, preprocessorDefines);
 }

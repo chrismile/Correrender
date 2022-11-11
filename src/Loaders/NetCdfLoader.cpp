@@ -113,8 +113,9 @@ std::string NetCdfLoader::getStringAttribute(int varid, const char* attname) {
 }
 
 bool NetCdfLoader::setInputFiles(
-        VolumeData* volumeData, const std::string& _filePath, const DataSetInformation& dataSetInformation) {
+        VolumeData* volumeData, const std::string& _filePath, const DataSetInformation& _dataSetInformation) {
     filePath = _filePath;
+    dataSetInformation = _dataSetInformation;
     int status = nc_open(filePath.c_str(), NC_NOWRITE, &ncid);
     if (status != 0) {
         sgl::Logfile::get()->throwError(
@@ -244,7 +245,9 @@ bool NetCdfLoader::setInputFiles(
     delete[] yCoords;
     delete[] xCoords;
 
-    volumeData->setNumTimeSteps(ts);
+    if (!dataSetInformation.hasCustomDateTime) {
+        volumeData->setNumTimeSteps(ts);
+    }
 
     // Set the names of the existing fields/datasets.
     std::unordered_map<FieldType, std::vector<std::string>> fieldNameMap;
@@ -287,6 +290,10 @@ bool NetCdfLoader::getFieldEntry(
         sgl::Logfile::get()->throwError(
                 "Error in NetCdfLoader::getFieldEntry: Unknown field name \"" + fieldName + "\".");
         return false;
+    }
+
+    if (dataSetInformation.hasCustomDateTime) {
+        timestepIdx = dataSetInformation.time;
     }
 
     int varid = it->second;

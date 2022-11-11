@@ -42,6 +42,7 @@ enum class DataSetType {
 };
 
 enum class DataSetFileDimension {
+    UNSPECIFIED,
     TIME,
     ENSEMBLE,
     TIME_ENSEMBLE,
@@ -55,6 +56,8 @@ struct DataSetInformation {
     DataSetType type = DataSetType::NODE;
     std::string name;
     std::vector<std::string> filenames;
+    std::vector<int> timeSteps;
+    bool useTimeStepRange = true;
 
     // For type DATA_SET_TYPE_NODE.
     std::vector<DataSetInformationPtr> children;
@@ -65,14 +68,11 @@ struct DataSetInformation {
     glm::mat4 transformMatrix = sgl::matrixIdentity();
     std::vector<std::string> attributeNames; ///< Names of the associated attributes.
     float heightScale = 1.0f;
-    /// Do the entries in 'filenames' correspond to different time steps/ensemble members?
-    DataSetFileDimension dataSetFileDimension = DataSetFileDimension::TIME;
-
-
 
     // Date can be left 0. It is used for GRIB files storing time in a date-time format.
     // E.g., "data_date": 20161002, "data_time": 600 can be used for 2016-10-02 6:00.
     // Alternatively, "time": "2016-10-02 6:00" can be used. Time steps are specified via, e.g., "time": 10.
+    bool hasCustomDateTime = false;
     int date = 0;
     int time = 0;
     // Scale along each input axis.

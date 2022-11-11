@@ -619,17 +619,19 @@ vec4 traverseVoxelGridRayMarching(vec3 currentPoint, vec3 rayDirection, vec3 ent
         vec3 texCoords = (currentPoint - minBoundingBox) / (maxBoundingBox - minBoundingBox);
 
         float scalarValue = texture(scalarField, texCoords).r;
-        currentScalarSign = sign(scalarValue - isoValue);
-        if (isFirstPoint) {
-            isFirstPoint = false;
-            lastScalarSign = currentScalarSign;
-        }
+        if (!isnan(scalarValue)) {
+            currentScalarSign = sign(scalarValue - isoValue);
+            if (isFirstPoint) {
+                isFirstPoint = false;
+                lastScalarSign = currentScalarSign;
+            }
 
-        if (lastScalarSign != currentScalarSign) {
-            refineIsoSurfaceHit(currentPoint, rayDirection, currentScalarSign);
-            vec4 color = getIsoSurfaceHitColor(currentPoint);
-            if (blend(color, outputColor)) {
-                break;
+            if (lastScalarSign != currentScalarSign) {
+                refineIsoSurfaceHit(currentPoint, rayDirection, currentScalarSign);
+                vec4 color = getIsoSurfaceHitColor(currentPoint);
+                if (blend(color, outputColor)) {
+                    break;
+                }
             }
         }
 
@@ -653,7 +655,9 @@ void main() {
     vec3 rayOrigin = (inverseViewMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
     vec2 fragNdc = 2.0 * ((vec2(gl_GlobalInvocationID.xy) + vec2(0.5)) / vec2(outputImageSize)) - 1.0;
     vec3 rayTarget = (inverseProjectionMatrix * vec4(fragNdc.xy, 1.0, 1.0)).xyz;
-    vec3 rayDirection = (inverseViewMatrix * vec4(normalize(rayTarget.xyz), 0.0)).xyz;
+    vec3 normalizedTarget = normalize(rayTarget.xyz);
+    vec3 rayDirection = (inverseViewMatrix * vec4(normalizedTarget, 0.0)).xyz;
+    float zFactor = abs(normalizedTarget.z);
 
     float tNear, tFar;
 #ifdef ANALYTIC_INTERSECTIONS
@@ -672,6 +676,8 @@ void main() {
 
  #ifdef SUPPORT_DEPTH_BUFFER
         closestDepth = convertDepthBufferValueToLinearDepth(imageLoad(depthBuffer, imageCoords).x);
+        // Convert depth to distance.
+        closestDepth = closestDepth / zFactor;
         closestDepthNew = closestDepth;
 #endif
 
@@ -693,6 +699,8 @@ void main() {
         outputColor = vec4(outputColor.rgb / outputColor.a, outputColor.a);
         imageStore(outputImage, imageCoords, outputColor);
 #ifdef SUPPORT_DEPTH_BUFFER
+        // Convert depth to distance.
+        closestDepthNew = closestDepthNew * zFactor;
         imageStore(depthBuffer, imageCoords, vec4(convertLinearDepthToDepthBufferValue(closestDepthNew)));
 #endif
     }

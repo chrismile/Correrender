@@ -64,11 +64,14 @@ class Calculator {
 public:
     explicit Calculator(sgl::vk::Renderer* renderer) : renderer(renderer) {}
     virtual ~Calculator() = default;
+    inline void setCalculatorId(size_t _calculatorId) { calculatorId = _calculatorId; }
     virtual void setVolumeData(VolumeData* _volumeData, bool isNewData);
     bool getIsDirty();
+    bool getHasNameChanged();
     virtual void update(float dt) {}
     void renderGui(sgl::PropertyEditor& propertyEditor);
     virtual RendererPtr getCalculatorRenderer() { return {}; }
+    [[nodiscard]] virtual bool getShouldRenderGui() const { return false; }
     void setFileDialogInstance(ImGuiFileDialog* _fileDialogInstance) { this->fileDialogInstance = _fileDialogInstance; }
 
     // Metadata about the filter.
@@ -84,8 +87,10 @@ protected:
     virtual void renderGuiImpl(sgl::PropertyEditor& propertyEditor) {}
     VolumeData* volumeData = nullptr;
     sgl::vk::Renderer* renderer = nullptr;
-    bool dirty = true; ///< Recompute the data?
+    bool dirty = false; ///< Recompute the data?
+    bool hasNameChanged = false;
     ImGuiFileDialog* fileDialogInstance = nullptr;
+    size_t calculatorId = 0;
 };
 
 typedef std::shared_ptr<Calculator> CalculatorPtr;

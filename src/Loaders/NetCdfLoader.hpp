@@ -107,6 +107,7 @@ private:
 
     int ncid = 0;
     std::string filePath;
+    DataSetInformation dataSetInformation;
     std::unordered_map<std::string, int> datasetNameMap;
     int xs = 0, ys = 0, zs = 0, ts = 0;
 };

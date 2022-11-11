@@ -156,6 +156,7 @@ bool DatRawFileLoader::setInputFiles(
                 char* rawFilePathBuffer = new char[bufferSize];
                 snprintf(rawFilePathBuffer, bufferSize, it->second.c_str(), idx);
                 rawFilePaths.emplace_back(rawFilePathBuffer);
+                timeSteps.push_back(idx);
                 delete[] rawFilePathBuffer;
             }
 
@@ -290,6 +291,10 @@ bool DatRawFileLoader::getFieldEntry(
         helicityField = new float[scalarFieldNumEntries];
     }
 
+    if (numComponents == 1 || numComponents == 4) {
+        scalarAttributeField = new float[scalarFieldNumEntries];
+    }
+
     if (formatString == "float") {
         memcpy(scalarAttributeField, bufferRaw, sizeof(float) * totalSize);
     } else if (formatString == "uchar") {
@@ -337,7 +342,6 @@ bool DatRawFileLoader::getFieldEntry(
         }
     } else if (formatString == "float4") {
         auto* dataField = reinterpret_cast<float*>(bufferRaw);
-        scalarAttributeField = new float[scalarFieldNumEntries];
         for (int z = 0; z < zs; z++) {
             for (int y = 0; y < ys; y++) {
                 for (int x = 0; x < xs; x++) {

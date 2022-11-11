@@ -77,6 +77,18 @@ public:
         itemList.pop_back();
         return *it;
     }
+
+    void remove_if(std::function<bool(const std::pair<K, V>&)> predicate) {
+        auto it = itemList.begin();
+        while (it != itemList.end()) {
+            if (predicate(*it)) {
+                itemMap.erase(itemMap.find(it->first));
+                it = itemList.erase(it);
+            } else {
+                it++;
+            }
+        }
+    }
 };
 
 #endif //CORRERENDER_LRUCACHE_HPP

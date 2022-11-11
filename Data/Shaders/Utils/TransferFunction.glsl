@@ -1,7 +1,7 @@
 /*
  * BSD 2-Clause License
  *
- * Copyright (c) 2020 - 2021, Christoph Neuhauser
+ * Copyright (c) 2020 - 2022, Christoph Neuhauser
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -38,9 +38,14 @@ layout (std430, binding = MIN_MAX_BUFFER_BINDING) readonly buffer MinMaxBuffer {
 layout(binding = TRANSFER_FUNCTION_TEXTURE_BINDING) uniform sampler1DArray transferFunctionTexture;
 
 vec4 transferFunction(float attr, uint variableIndex) {
-#ifndef IGNORE_NAN
+#ifdef NAN_YELLOW
     if (isnan(attr)) {
         return vec4(1.0, 1.0, 0.0, 1.0);
+    }
+#endif
+#ifdef IGNORE_NAN
+    if (isnan(attr)) {
+        return vec4(0.0, 0.0, 0.0, 0.0);
     }
 #endif
 
@@ -64,9 +69,14 @@ layout (binding = MIN_MAX_BUFFER_BINDING) uniform MinMaxUniformBuffer {
 layout(binding = TRANSFER_FUNCTION_TEXTURE_BINDING) uniform sampler1D transferFunctionTexture;
 
 vec4 transferFunction(float attr) {
-#ifndef IGNORE_NAN
+#ifdef NAN_YELLOW
     if (isnan(attr)) {
         return vec4(1.0, 1.0, 0.0, 1.0);
+    }
+#endif
+#ifdef IGNORE_NAN
+    if (isnan(attr)) {
+        return vec4(0.0, 0.0, 0.0, 0.0);
     }
 #endif
 

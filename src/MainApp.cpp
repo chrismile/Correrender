@@ -643,7 +643,7 @@ void MainApp::resolutionChanged(sgl::EventPtr event) {
 void MainApp::updateColorSpaceMode() {
     SciVisApp::updateColorSpaceMode();
     transferFunctionWindow.setUseLinearRGB(useLinearRGB);
-    //volumeData->setUseLinearRGB(useLinearRGB);
+    volumeData->setUseLinearRGB(useLinearRGB);
     if (useDockSpaceMode) {
         for (DataViewPtr& dataView : dataViews) {
             dataView->useLinearRGB = useLinearRGB;
@@ -1099,7 +1099,7 @@ void MainApp::renderGui() {
 #endif
 
     if (volumeData) {
-        //volumeData->renderGuiWindowSecondary();
+        volumeData->renderGuiWindowSecondary();
     }
 }
 
@@ -1123,7 +1123,7 @@ void MainApp::loadAvailableDataSetInformation() {
                 DataSetInformationPtr dataSetInformationChild =
                         dataSetInformationParent->children.at(idx);
                 idx++;
-                if (dataSetInformationChild->type == DataSetType::NONE) {
+                if (dataSetInformationChild->type == DataSetType::NODE) {
                     dataSetInformationStack.push(std::make_pair(dataSetInformationRoot, idx));
                     dataSetInformationStack.push(std::make_pair(dataSetInformationChild, 0));
                     break;
@@ -1157,6 +1157,9 @@ void MainApp::renderGuiGeneralSettingsPropertyEditor() {
                 clearColorSelection.x, clearColorSelection.y, clearColorSelection.z, clearColorSelection.w);
         transferFunctionWindow.setClearColor(clearColor);
         coordinateAxesOverlayWidget.setClearColor(clearColor);
+        if (volumeData) {
+            volumeData->setClearColor(clearColor);
+        }
         for (DataViewPtr& dataView : dataViews) {
             dataView->setClearColor(clearColor);
         }
@@ -1375,10 +1378,7 @@ void MainApp::renderGuiPropertyEditorBegin() {
 
 void MainApp::renderGuiPropertyEditorCustomNodes() {
     if (volumeData) {
-        if (propertyEditor.beginNode("Volume Data")) {
-            volumeData->renderGui(propertyEditor);
-            propertyEditor.endNode();
-        }
+        volumeData->renderGui(propertyEditor);
     }
 
     if (useDockSpaceMode && dataViews.size() > 1) {
@@ -1433,6 +1433,10 @@ void MainApp::renderGuiPropertyEditorCustomNodes() {
             volumeRenderers.erase(volumeRenderers.begin() + i);
             i--;
         }
+    }
+
+    if (volumeData) {
+        volumeData->renderGuiCalculators(propertyEditor);
     }
 }
 
@@ -1725,7 +1729,8 @@ void MainApp::loadVolumeDataSet(const std::vector<std::string>& fileNames) {
         volumeData = newVolumeData;
         //lineData->onMainThreadDataInit();
         volumeData->recomputeHistogram();
-        //lineData->setUseLinearRGB(useLinearRGB);
+        volumeData->setClearColor(clearColor);
+        volumeData->setUseLinearRGB(useLinearRGB);
         newDataLoaded = true;
         reRender = true;
         boundingBox = volumeData->getBoundingBoxRendering();
@@ -1765,8 +1770,10 @@ void MainApp::prepareVisualizationPipeline() {
             if (volumeRenderer->isDirty() || isPreviousNodeDirty) {
                 rendererVk->getDevice()->waitIdle();
                 volumeRenderer->setVolumeData(volumeData, newDataLoaded);
+                volumeRenderer->resetDirty();
             }
         }
+        volumeData->resetDirty();
     }
     newDataLoaded = false;
 }

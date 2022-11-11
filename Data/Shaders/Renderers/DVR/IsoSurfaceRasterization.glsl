@@ -36,7 +36,7 @@ layout(location = 0) out vec3 fragmentPositionWorld;
 layout(location = 1) out vec3 fragmentNormal;
 
 void main() {
-    fragmentPositionWorld = (vMatrix * vec4(vertexPosition, 1.0)).xyz;
+    fragmentPositionWorld = vertexPosition;
     fragmentNormal = vertexNormal;
     gl_Position = mvpMatrix * vec4(vertexPosition, 1.0);
 }
@@ -59,7 +59,11 @@ layout(location = 0) out vec4 fragColor;
 #include "Lighting.glsl"
 
 void main() {
+    vec3 tangentX = dFdx(fragmentPositionWorld);
+    vec3 tangentY = dFdy(fragmentPositionWorld);
+    //vec3 n = normalize(cross(tangentX, tangentY));
     vec3 n = normalize(fragmentNormal);
     vec4 color = blinnPhongShadingSurface(isoSurfaceColor, fragmentPositionWorld, n);
     fragColor = color;
+    //fragColor = vec4(n * 0.5 + vec3(0.5), 1.0);
 }

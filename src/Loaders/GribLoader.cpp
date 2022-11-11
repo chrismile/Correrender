@@ -150,6 +150,17 @@ bool GribLoader::setInputFiles(
 
         long dataDate = getLong(handle, "dataDate");
         long dataTime = getLong(handle, "dataTime");
+        if (dataSetInformation.hasCustomDateTime
+                && (dataDate != dataSetInformation.date || dataTime != dataSetInformation.time)) {
+            CODES_CHECK(codes_handle_delete(handle), nullptr);
+            if (dataDate < dataSetInformation.date
+                    || (dataDate == dataSetInformation.date && dataTime < dataSetInformation.time)) {
+                continue;
+            } else {
+                break;
+            }
+        }
+
         std::string parameterShortName = getString(handle, "shortName");
         if (currDataDate != dataDate || currDataTime != dataTime) {
             timeSteps.emplace_back(dataDate, dataTime);
@@ -316,10 +327,15 @@ bool GribLoader::getFieldEntry(
     //long dataDateLoad = dataSetInformation.date;
     //long dataTimeLoad = dataSetInformation.time;
 
-    auto& dateTime = timeSteps.at(timestepIdx);
     GribTimeStep gribTimeStep;
-    gribTimeStep.dataDateLoad = dateTime.first;
-    gribTimeStep.dataTimeLoad = dateTime.second;
+    if (dataSetInformation.hasCustomDateTime) {
+        gribTimeStep.dataDateLoad = dataSetInformation.date;
+        gribTimeStep.dataTimeLoad = dataSetInformation.time;
+    } else {
+        auto& dateTime = timeSteps.at(timestepIdx);
+        gribTimeStep.dataDateLoad = dateTime.first;
+        gribTimeStep.dataTimeLoad = dateTime.second;
+    }
     auto varIt = encounteredVariableNamesMap.find(fieldName);
     if (varIt == encounteredVariableNamesMap.end()) {
         return false;

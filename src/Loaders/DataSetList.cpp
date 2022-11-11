@@ -36,6 +36,22 @@
 
 #include "DataSetList.hpp"
 
+bool jsonValueToBool(const Json::Value& value) {
+    if (value.isString()) {
+        std::string valueString = value.asString();
+        if (valueString == "true") {
+            return true;
+        } else if (valueString == "false") {
+            return false;
+        } else {
+            sgl::Logfile::get()->throwError("Error in jsonValueToBool: Invalid value \"" + valueString + "\".");
+            return false;
+        }
+    } else {
+        return value.asBool();
+    }
+}
+
 void processDataSetNodeChildren(Json::Value& childList, DataSetInformation* dataSetInformationParent) {
     for (Json::Value& source : childList) {
         auto* dataSetInformation = new DataSetInformation;
@@ -99,6 +115,53 @@ void processDataSetNodeChildren(Json::Value& childList, DataSetInformation* data
             }
         }
 
+        if (source.isMember("ensemble_range") || source.isMember("time_range")) {
+            std::string rangeString;
+            bool isTimeStepRange = false;
+            if (source.isMember("ensemble_range")) {
+                rangeString = source["ensemble_range"].asString();
+            } else if (source.isMember("time_range")) {
+                rangeString = source["time_range"].asString();
+                isTimeStepRange = true;
+            }
+            dataSetInformation->useTimeStepRange = true;
+
+            std::vector<std::string> rangeVector;
+            sgl::splitStringWhitespace(rangeString, rangeVector);
+            if (rangeVector.size() != 2 && rangeVector.size() != 3) {
+                sgl::Logfile::get()->throwError("Error in processDataSetNodeChildren: Invalid range statement.");
+            }
+            if (source.isMember("ensemble_range") && source.isMember("time_range")) {
+                sgl::Logfile::get()->throwError(
+                        "Error in processDataSetNodeChildren: An ensemble and time range cannot be provided at the "
+                        "same time.");
+            }
+            bool isRangeExclusive = true;
+            if (source.isMember("range_exclusive")) {
+                isRangeExclusive = jsonValueToBool(source["range_exclusive"]);
+            } else if (source.isMember("range_inclusive")) {
+                isRangeExclusive = !jsonValueToBool(source["range_inclusive"]);
+            }
+
+            int start = int(sgl::fromString<int>(rangeVector.at(0)));
+            int stop = int(sgl::fromString<int>(rangeVector.at(1)));
+            int step = rangeVector.size() == 3 ? int(sgl::fromString<int>(rangeVector.at(2))) : 1;
+            auto filenamesPattern = dataSetInformation->filenames;
+            dataSetInformation->filenames.clear();
+            for (const std::string& filenamePattern : filenamesPattern) {
+                size_t bufferSize = filenamePattern.size() + 100;
+                char* rawFilePathBuffer = new char[bufferSize];
+                for (int idx = start; idx < (isRangeExclusive ? stop : stop + 1); idx += step) {
+                    snprintf(rawFilePathBuffer, bufferSize, filenamePattern.c_str(), idx);
+                    dataSetInformation->filenames.emplace_back(rawFilePathBuffer);
+                    if (isTimeStepRange) {
+                        dataSetInformation->timeSteps.push_back(idx);
+                    }
+                }
+                delete[] rawFilePathBuffer;
+            }
+        }
+
         // Optional data: Transform.
         dataSetInformation->hasCustomTransform = source.isMember("transform");
         if (dataSetInformation->hasCustomTransform) {
@@ -111,7 +174,7 @@ void processDataSetNodeChildren(Json::Value& childList, DataSetInformation* data
             Json::Value attributes = source["attributes"];
             if (attributes.isArray()) {
                 for (Json::Value::const_iterator attributesIt = attributes.begin();
-                     attributesIt != attributes.end(); ++attributesIt) {
+                        attributesIt != attributes.end(); ++attributesIt) {
                     dataSetInformation->attributeNames.push_back(attributesIt->asString());
                 }
             } else {
@@ -151,12 +214,14 @@ void processDataSetNodeChildren(Json::Value& childList, DataSetInformation* data
             } else {
                 dataSetInformation->time = timeElement.asInt();
             }
+            dataSetInformation->hasCustomDateTime = true;
         }
         if (source.isMember("data_date") && source.isMember("data_time")) {
             auto dataDateElement = source["data_date"];
             auto dataTimeElement = source["data_time"];
             dataSetInformation->date = dataDateElement.asInt();
             dataSetInformation->time = dataTimeElement.asInt();
+            dataSetInformation->hasCustomDateTime = true;
         }
         if (source.isMember("scale")) {
             auto scaleElement = source["scale"];
@@ -184,6 +249,15 @@ void processDataSetNodeChildren(Json::Value& childList, DataSetInformation* data
         }
         if (source.isMember("velocity_field_name")) {
             dataSetInformation->velocityFieldName = source["velocity_field_name"].asString();
+        }
+
+        if (source.isMember("axes")) {
+            auto axesElement = source["axes"];
+            int dim = 0;
+            for (const auto& axisElement : axesElement) {
+                dataSetInformation->axes[dim] = axisElement.asInt();
+                dim++;
+            }
         }
 
         dataSetInformationParent->children.emplace_back(dataSetInformation);
