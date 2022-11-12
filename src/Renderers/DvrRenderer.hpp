@@ -36,7 +36,8 @@ class DvrPass;
 
 class DvrRenderer : public Renderer {
 public:
-    DvrRenderer(ViewManager* viewManager, sgl::TransferFunctionWindow& transferFunctionWindow);
+    explicit DvrRenderer(ViewManager* viewManager);
+    ~DvrRenderer() override;
     void initialize() override;
     void setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) override;
     void recreateSwapchainView(uint32_t viewIdx, uint32_t width, uint32_t height) override;
@@ -52,7 +53,7 @@ private:
     std::vector<std::shared_ptr<DvrPass>> dvrPasses;
 
     // UI renderer settings.
-    int selectedFieldIdx = 0;
+    int selectedFieldIdx = 0, oldSelectedFieldIdx = 0;
     std::string selectedScalarFieldName;
     float stepSize = 0.1f;
     float attenuationCoefficient = 100.0f;
@@ -68,7 +69,7 @@ public:
 
     // Public interface.
     void setVolumeData(VolumeDataPtr& _volumeData, bool isNewData);
-    void setSelectedScalarFieldName(const std::string& _scalarFieldName);
+    void setSelectedScalarField(int selectedFieldIdx, const std::string& _scalarFieldName);
     inline void setStepSize(float _stepSize) { stepSize = _stepSize; }
     inline void setAttenuationCoefficient(float _coeff) { renderSettingsData.attenuationCoefficient = _coeff; }
     inline void setNaNHandling(NaNHandling _nanHandling) { nanHandling = _nanHandling; shaderDirty = true; }
@@ -89,6 +90,7 @@ private:
     NaNHandling nanHandling = NaNHandling::IGNORE;
 
     // Renderer settings.
+    int selectedFieldIdx = 0;
     std::string selectedScalarFieldName;
     float stepSize = 0.1f;
 
@@ -97,7 +99,8 @@ private:
         glm::mat4 inverseProjectionMatrix;
         float zNear;
         float zFar;
-        float padding1, padding2;
+        uint32_t fieldIndex = 0;
+        float padding1;
         glm::vec3 minBoundingBox;
         float attenuationCoefficient = 100.0f;
         glm::vec3 maxBoundingBox;

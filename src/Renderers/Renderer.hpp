@@ -63,14 +63,14 @@ const char* const NAN_HANDLING_NAMES[] = {
 
 class Renderer {
 public:
-    Renderer(std::string windowName, ViewManager* viewManager, sgl::TransferFunctionWindow& transferFunctionWindow);
+    Renderer(std::string windowName, ViewManager* viewManager);
     virtual void initialize();
     virtual ~Renderer();
 
     /// Returns if the visualization mapping needs to be re-generated.
     [[nodiscard]] inline bool isDirty() const { return dirty; }
     /// Called by MainApp to reset the dirty flag.
-    void resetDirty() { dirty = false; }
+    inline void resetDirty() { dirty = false; }
     /// Returns if the data needs to be re-rendered, but the visualization mapping is valid.
     [[nodiscard]] virtual bool needsReRender();
     [[nodiscard]] virtual bool needsReRenderView(uint32_t viewIdx);
@@ -133,7 +133,6 @@ protected:
     ViewManager* viewManager;
     sgl::vk::Renderer* renderer = nullptr;
     VolumeDataPtr volumeData;
-    sgl::TransferFunctionWindow& transferFunctionWindow;
     bool dirty = true;
     bool reRender = true;
     std::vector<bool> reRenderViewArray;

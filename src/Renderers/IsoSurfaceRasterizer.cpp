@@ -44,10 +44,8 @@
 #include "RenderingModes.hpp"
 #include "IsoSurfaceRasterizer.hpp"
 
-IsoSurfaceRasterizer::IsoSurfaceRasterizer(ViewManager* viewManager, sgl::TransferFunctionWindow& transferFunctionWindow)
-        : Renderer(
-                RENDERING_MODE_NAMES[int(RENDERING_MODE_ISOSURFACE_RASTERIZER)],
-                viewManager, transferFunctionWindow) {
+IsoSurfaceRasterizer::IsoSurfaceRasterizer(ViewManager* viewManager)
+        : Renderer(RENDERING_MODE_NAMES[int(RENDERING_MODE_ISOSURFACE_RASTERIZER)], viewManager) {
     ;
 }
 
@@ -61,7 +59,15 @@ void IsoSurfaceRasterizer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewD
         selectedFieldIdx = 0;
     }
     const std::vector<std::string>& fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
+    std::string oldSelectedScalarFieldName = selectedScalarFieldName;
     selectedScalarFieldName = fieldNames.at(selectedFieldIdx);
+    minMaxScalarFieldValue = volumeData->getMinMaxScalarFieldValue(selectedScalarFieldName);
+    if (isNewData || oldSelectedScalarFieldName != selectedScalarFieldName) {
+        isoValue = (minMaxScalarFieldValue.first + minMaxScalarFieldValue.second) / 2.0f;
+        for (auto& isoSurfaceRasterPass : isoSurfaceRasterPasses) {
+            isoSurfaceRasterPass->setIsoValue(isoValue);
+        }
+    }
 
     indexBuffer = {};
     vertexPositionBuffer = {};
@@ -75,8 +81,12 @@ void IsoSurfaceRasterizer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewD
     sgl::AABB3 gridAabb;
     //gridAabb.min = glm::vec3(0.0f, 0.0f, 0.0f);
     //gridAabb.max = glm::vec3(volumeData->getGridSizeX(), volumeData->getGridSizeY(), volumeData->getGridSizeZ());
+    //gridAabb.min = glm::vec3(-0.5f, -0.5f, -0.5f);
+    //gridAabb.max = glm::vec3(volumeData->getGridSizeX(), volumeData->getGridSizeY(), volumeData->getGridSizeZ()) - glm::vec3(0.5f, 0.5f, 0.5f);
     gridAabb.min = glm::vec3(-0.5f, -0.5f, -0.5f);
     gridAabb.max = glm::vec3(volumeData->getGridSizeX(), volumeData->getGridSizeY(), volumeData->getGridSizeZ()) - glm::vec3(0.5f, 0.5f, 0.5f);
+    gridAabb.min *= glm::vec3(volumeData->getDx(), volumeData->getDy(), volumeData->getDz());
+    gridAabb.max *= glm::vec3(volumeData->getDx(), volumeData->getDy(), volumeData->getDz());
 
     auto scalarFieldData = volumeData->getFieldEntryCpu(FieldType::SCALAR, selectedScalarFieldName);
 
@@ -86,18 +96,20 @@ void IsoSurfaceRasterizer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewD
         polygonizeMarchingCubes(
                 scalarFieldData.get(),
                 volumeData->getGridSizeX(), volumeData->getGridSizeY(), volumeData->getGridSizeZ(),
+                volumeData->getDx(), volumeData->getDy(), volumeData->getDz(),
                 isoValue, isosurfaceVertexPositions, isosurfaceVertexNormals);
     } else {
         polygonizeSnapMC(
                 scalarFieldData.get(),
                 volumeData->getGridSizeX(), volumeData->getGridSizeY(), volumeData->getGridSizeZ(),
+                volumeData->getDx(), volumeData->getDy(), volumeData->getDz(),
                 isoValue, gammaSnapMC, isosurfaceVertexPositions, isosurfaceVertexNormals);
     }
 
     std::vector<uint32_t> triangleIndices;
     std::vector<glm::vec3> vertexPositions;
     std::vector<glm::vec3> vertexNormals;
-    computeSharedIndexRepresentation(
+    sgl::computeSharedIndexRepresentation(
             isosurfaceVertexPositions, isosurfaceVertexNormals,
             triangleIndices, vertexPositions, vertexNormals);
     normalizeVertexPositions(vertexPositions, gridAabb, nullptr);
@@ -158,11 +170,15 @@ void IsoSurfaceRasterizer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         const std::vector<std::string>& fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
         if (propertyEditor.addCombo("Scalar Field", &selectedFieldIdx, fieldNames.data(), int(fieldNames.size()))) {
             selectedScalarFieldName = fieldNames.at(selectedFieldIdx);
+            minMaxScalarFieldValue = volumeData->getMinMaxScalarFieldValue(selectedScalarFieldName);
+            isoValue = (minMaxScalarFieldValue.first + minMaxScalarFieldValue.second) / 2.0f;
             dirty = true;
             reRender = true;
         }
     }
-    if (propertyEditor.addSliderFloatEdit("Iso Value", &isoValue, 0.0f, 1.0f) == ImGui::EditMode::INPUT_FINISHED) {
+    if (propertyEditor.addSliderFloatEdit(
+            "Iso Value", &isoValue, minMaxScalarFieldValue.first,
+            minMaxScalarFieldValue.second) == ImGui::EditMode::INPUT_FINISHED) {
         for (auto& isoSurfaceRasterPass : isoSurfaceRasterPasses) {
             isoSurfaceRasterPass->setIsoValue(isoValue);
         }

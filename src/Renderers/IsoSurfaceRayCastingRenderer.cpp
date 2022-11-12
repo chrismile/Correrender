@@ -34,10 +34,8 @@
 #include "RenderingModes.hpp"
 #include "IsoSurfaceRayCastingRenderer.hpp"
 
-IsoSurfaceRayCastingRenderer::IsoSurfaceRayCastingRenderer(ViewManager* viewManager, sgl::TransferFunctionWindow& transferFunctionWindow)
-        : Renderer(
-                RENDERING_MODE_NAMES[int(RENDERING_MODE_ISOSURFACE_RAYCASTER)],
-                viewManager, transferFunctionWindow) {
+IsoSurfaceRayCastingRenderer::IsoSurfaceRayCastingRenderer(ViewManager* viewManager)
+        : Renderer(RENDERING_MODE_NAMES[int(RENDERING_MODE_ISOSURFACE_RAYCASTER)], viewManager) {
     ;
 }
 
@@ -51,7 +49,15 @@ void IsoSurfaceRayCastingRenderer::setVolumeData(VolumeDataPtr& _volumeData, boo
         selectedFieldIdx = 0;
     }
     const std::vector<std::string>& fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
+    std::string oldSelectedScalarFieldName = selectedScalarFieldName;
     selectedScalarFieldName = fieldNames.at(selectedFieldIdx);
+    minMaxScalarFieldValue = volumeData->getMinMaxScalarFieldValue(selectedScalarFieldName);
+    if (isNewData || oldSelectedScalarFieldName != selectedScalarFieldName) {
+        isoValue = (minMaxScalarFieldValue.first + minMaxScalarFieldValue.second) / 2.0f;
+        for (auto& isoSurfaceRayCastingPass : isoSurfaceRayCastingPasses) {
+            isoSurfaceRayCastingPass->setIsoValue(isoValue);
+        }
+    }
 
     for (auto& isoSurfaceRayCastingPass : isoSurfaceRayCastingPasses) {
         isoSurfaceRayCastingPass->setVolumeData(volumeData, isNewData);
@@ -90,11 +96,14 @@ void IsoSurfaceRayCastingRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEd
         const std::vector<std::string>& fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
         if (propertyEditor.addCombo("Scalar Field", &selectedFieldIdx, fieldNames.data(), int(fieldNames.size()))) {
             selectedScalarFieldName = fieldNames.at(selectedFieldIdx);
+            minMaxScalarFieldValue = volumeData->getMinMaxScalarFieldValue(selectedScalarFieldName);
+            isoValue = (minMaxScalarFieldValue.first + minMaxScalarFieldValue.second) / 2.0f;
             dirty = true;
             reRender = true;
         }
     }
-    if (propertyEditor.addSliderFloat("Iso Value", &isoValue, 0.0f, 1.0f)) {
+    if (propertyEditor.addSliderFloat(
+            "Iso Value", &isoValue, minMaxScalarFieldValue.first, minMaxScalarFieldValue.second)) {
         for (auto& isoSurfaceRayCastingPass : isoSurfaceRayCastingPasses) {
             isoSurfaceRayCastingPass->setIsoValue(isoValue);
         }
@@ -148,6 +157,9 @@ void IsoSurfaceRayCastingPass::setVolumeData(VolumeDataPtr& _volumeData, bool is
     renderSettingsData.minBoundingBox = aabb.min;
     renderSettingsData.maxBoundingBox = aabb.max;
     renderSettingsData.stepSize = voxelSize * stepSize;
+    renderSettingsData.dx = volumeData->getDx();
+    renderSettingsData.dy = volumeData->getDy();
+    renderSettingsData.dz = volumeData->getDz();
 
     dataDirty = true;
 }

@@ -98,7 +98,7 @@ MainApp::MainApp()
                 &useCameraFlight, &MOVE_SPEED, &MOUSE_ROT_SPEED,
                 &nonBlockingMsgBoxHandles),
 #ifdef USE_PYTHON
-          //replayWidget(&sceneData, transferFunctionWindow, checkpointWindow),
+          //replayWidget(&sceneData, checkpointWindow),
 #endif
           boundingBox() {
     sgl::AppSettings::get()->getVulkanInstance()->setDebugCallback(&vulkanErrorCallback);
@@ -317,8 +317,6 @@ MainApp::MainApp()
     sgl::AppSettings::get()->getSettings().getValueOpt("showCoordinateAxesOverlay", showCoordinateAxesOverlay);
 
     useLinearRGB = false;
-    transferFunctionWindow.setClearColor(clearColor);
-    transferFunctionWindow.setUseLinearRGB(useLinearRGB);
     coordinateAxesOverlayWidget.setClearColor(clearColor);
 
     resolutionChanged(sgl::EventPtr());
@@ -591,11 +589,11 @@ void MainApp::setRenderer(RenderingMode newRenderingMode, RendererPtr& newVolume
     }
 
     if (newRenderingMode == RENDERING_MODE_DIRECT_VOLUME_RENDERING) {
-        newVolumeRenderer = std::make_shared<DvrRenderer>(viewManager, transferFunctionWindow);
+        newVolumeRenderer = std::make_shared<DvrRenderer>(viewManager);
     } else if (newRenderingMode == RENDERING_MODE_ISOSURFACE_RAYCASTER) {
-        newVolumeRenderer = std::make_shared<IsoSurfaceRayCastingRenderer>(viewManager, transferFunctionWindow);
+        newVolumeRenderer = std::make_shared<IsoSurfaceRayCastingRenderer>(viewManager);
     } else if (newRenderingMode == RENDERING_MODE_ISOSURFACE_RASTERIZER) {
-        newVolumeRenderer = std::make_shared<IsoSurfaceRasterizer>(viewManager, transferFunctionWindow);
+        newVolumeRenderer = std::make_shared<IsoSurfaceRasterizer>(viewManager);
     } else {
         int idx = std::clamp(int(newRenderingMode), 0, IM_ARRAYSIZE(RENDERING_MODE_NAMES) - 1);
         std::string warningText =
@@ -625,7 +623,7 @@ void MainApp::onUnsupportedRendererSelected(const std::string& warningText, Rend
     auto handle = sgl::dialog::openMessageBox(
             "Unsupported Renderer", warningText, sgl::dialog::Icon::WARNING);
     nonBlockingMsgBoxHandles.push_back(handle);
-    newVolumeRenderer = std::make_shared<DvrRenderer>(viewManager, transferFunctionWindow);
+    newVolumeRenderer = std::make_shared<DvrRenderer>(viewManager);
 }
 
 void MainApp::resolutionChanged(sgl::EventPtr event) {
@@ -642,7 +640,6 @@ void MainApp::resolutionChanged(sgl::EventPtr event) {
 
 void MainApp::updateColorSpaceMode() {
     SciVisApp::updateColorSpaceMode();
-    transferFunctionWindow.setUseLinearRGB(useLinearRGB);
     volumeData->setUseLinearRGB(useLinearRGB);
     if (useDockSpaceMode) {
         for (DataViewPtr& dataView : dataViews) {
@@ -987,6 +984,9 @@ void MainApp::renderGui() {
                         for (auto& volumeRenderer : volumeRenderers) {
                             volumeRenderer->renderGuiOverlay(viewIdx);
                         }
+                        if (volumeData) {
+                            volumeData->renderGuiOverlay(viewIdx);
+                        }
                     }
                 }
                 ImGui::End();
@@ -1019,16 +1019,8 @@ void MainApp::renderGui() {
         for (auto& volumeRenderer : volumeRenderers) {
             volumeRenderer->renderGuiOverlay(0);
         }
-    }
-
-    if ((!volumeData || volumeData->shallRenderTransferFunctionWindow()) && transferFunctionWindow.renderGui()) {
-        reRender = true;
-        if (transferFunctionWindow.getTransferFunctionMapRebuilt()) {
-            if (volumeData) {
-                volumeData->onTransferFunctionMapRebuilt();
-            }
-            sgl::EventManager::get()->triggerEvent(std::make_shared<sgl::Event>(
-                    ON_TRANSFER_FUNCTION_MAP_REBUILT_EVENT));
+        if (volumeData) {
+            volumeData->renderGuiOverlay(0);
         }
     }
 
@@ -1155,7 +1147,6 @@ void MainApp::renderGuiGeneralSettingsPropertyEditor() {
     if (propertyEditor.addColorEdit3("Clear Color", (float*)&clearColorSelection, 0)) {
         clearColor = sgl::colorFromFloat(
                 clearColorSelection.x, clearColorSelection.y, clearColorSelection.z, clearColorSelection.w);
-        transferFunctionWindow.setClearColor(clearColor);
         coordinateAxesOverlayWidget.setClearColor(clearColor);
         if (volumeData) {
             volumeData->setClearColor(clearColor);
@@ -1297,10 +1288,6 @@ void MainApp::renderGuiMenuBar() {
             }
             if (ImGui::MenuItem("Property Editor", nullptr, showPropertyEditor)) {
                 showPropertyEditor = !showPropertyEditor;
-            }
-            if (ImGui::MenuItem(
-                    "Transfer Function Window", nullptr, transferFunctionWindow.getShowWindow())) {
-                transferFunctionWindow.setShowWindow(!transferFunctionWindow.getShowWindow());
             }
             if (ImGui::MenuItem("Checkpoint Window", nullptr, checkpointWindow.getShowWindow())) {
                 checkpointWindow.setShowWindow(!checkpointWindow.getShowWindow());
@@ -1555,7 +1542,6 @@ void MainApp::update(float dt) {
     }*/
 #endif
 
-    transferFunctionWindow.update(dt);
     if (volumeData) {
         volumeData->update(dt);
     }
@@ -1593,10 +1579,6 @@ void MainApp::update(float dt) {
             }
         } else {
             moveCameraKeyboard(dt);
-        }
-
-        if (sgl::Keyboard->isKeyDown(SDLK_u)) {
-            transferFunctionWindow.setShowWindow(showSettingsWindow);
         }
     }
 
@@ -1715,7 +1697,7 @@ void MainApp::loadVolumeDataSet(const std::vector<std::string>& fileNames) {
 
     VolumeDataPtr newVolumeData;
     if (dataSetType == DataSetType::VOLUME) {
-        newVolumeData = std::make_shared<VolumeData>(rendererVk, transferFunctionWindow);
+        newVolumeData = std::make_shared<VolumeData>(rendererVk);
     } else {
         sgl::Logfile::get()->writeError("Error in MainApp::loadVolumeDataSet: Invalid data set type.");
         return;

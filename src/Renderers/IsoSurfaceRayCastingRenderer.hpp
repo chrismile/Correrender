@@ -44,7 +44,7 @@ const char* const INTERSECTION_SOLVER_NAMES[] = {
 
 class IsoSurfaceRayCastingRenderer : public Renderer {
 public:
-    IsoSurfaceRayCastingRenderer(ViewManager* viewManager, sgl::TransferFunctionWindow& transferFunctionWindow);
+    explicit IsoSurfaceRayCastingRenderer(ViewManager* viewManager);
     void initialize() override;
     void setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) override;
     void recreateSwapchainView(uint32_t viewIdx, uint32_t width, uint32_t height) override;
@@ -62,6 +62,7 @@ private:
     // UI renderer settings.
     int selectedFieldIdx = 0;
     std::string selectedScalarFieldName;
+    std::pair<float, float> minMaxScalarFieldValue;
     float isoValue = 0.5f;
     bool analyticIntersections = false;
     float stepSize = 0.1f;
@@ -109,10 +110,11 @@ private:
         glm::mat4 inverseViewMatrix;
         glm::mat4 inverseProjectionMatrix;
         glm::vec3 cameraPosition;
-        float padding0;
+        float dx;
+        float dy;
+        float dz;
         float zNear;
         float zFar;
-        float padding1, padding2;
         glm::vec3 minBoundingBox;
         float isoValue;
         glm::vec3 maxBoundingBox;

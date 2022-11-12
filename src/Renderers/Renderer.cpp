@@ -32,10 +32,8 @@
 #include "RenderingModes.hpp"
 #include "Renderer.hpp"
 
-Renderer::Renderer(
-        std::string windowName, ViewManager* viewManager, sgl::TransferFunctionWindow& transferFunctionWindow)
-        : windowName(std::move(windowName)), viewManager(viewManager), renderer(viewManager->getRenderer()),
-          transferFunctionWindow(transferFunctionWindow) {
+Renderer::Renderer(std::string windowName, ViewManager* viewManager)
+        : windowName(std::move(windowName)), viewManager(viewManager), renderer(viewManager->getRenderer()) {
 }
 
 void Renderer::initialize() {
@@ -112,5 +110,4 @@ void Renderer::renderGui(sgl::PropertyEditor& propertyEditor) {
 }
 
 void Renderer::renderGuiOverlay(uint32_t viewIdx) {
-    volumeData->renderGuiOverlay(viewIdx);
 }

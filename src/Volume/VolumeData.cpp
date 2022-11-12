@@ -41,11 +41,16 @@
 #include <Utils/AppSettings.hpp>
 #include <Utils/File/FileUtils.hpp>
 #include <Utils/Events/EventManager.hpp>
+#include <Utils/Parallel/Reduction.hpp>
 #include <Graphics/Vulkan/Render/Data.hpp>
 #include <Graphics/Vulkan/Render/Renderer.hpp>
 #include <ImGui/Widgets/PropertyEditor.hpp>
 #include <ImGui/Widgets/TransferFunctionWindow.hpp>
 #include <ImGui/imgui_custom.h>
+
+#ifdef SUPPORT_CUDA_INTEROP
+#include <Graphics/Vulkan/Utils/InteropCuda.hpp>
+#endif
 
 #include "Loaders/DataSet.hpp"
 #include "Loaders/VolumeLoader.hpp"
@@ -66,6 +71,7 @@
 #include "Calculators/VelocityCalculator.hpp"
 #include "Calculators/SimilarityCalculator.hpp"
 #include "Renderers/RenderingModes.hpp"
+#include "Renderers/Renderer.hpp"
 #include "VolumeData.hpp"
 
 template <typename T>
@@ -85,11 +91,11 @@ VolumeLoader* VolumeData::createVolumeLoaderByExtension(const std::string& fileE
     }
 }
 
-VolumeData::VolumeData(sgl::vk::Renderer* renderer, sgl::TransferFunctionWindow& transferFunctionWindow)
-        : renderer(renderer), multiVarTransferFunctionWindow() {
+VolumeData::VolumeData(sgl::vk::Renderer* renderer) : renderer(renderer), multiVarTransferFunctionWindow() {
     device = renderer->getDevice();
     hostFieldCache = std::make_unique<HostFieldCache>();
     deviceFieldCache = std::make_unique<DeviceFieldCache>(device);
+    fieldMinMaxCache = std::make_unique<FieldMinMaxCache>();
 
     typeToFieldNamesMap.insert(std::make_pair(FieldType::SCALAR, std::vector<std::string>()));
     typeToFieldNamesMap.insert(std::make_pair(FieldType::VECTOR, std::vector<std::string>()));
@@ -440,6 +446,25 @@ bool VolumeData::setInputFiles(
 
     addCalculator(std::make_shared<PccCalculator>(renderer));
 
+    const auto& scalarFieldNames = typeToFieldNamesMap[FieldType::SCALAR];
+    multiVarTransferFunctionWindow.setRequestAttributeValuesCallback([this](
+            int varIdx, std::shared_ptr<float[]>& values, size_t& numValues, float& minValue, float& maxValue) {
+        std::string fieldName = typeToFieldNamesMap[FieldType::SCALAR].at(varIdx);
+        HostCacheEntry cacheEntry = this->getFieldEntryCpu(FieldType::SCALAR, fieldName);
+        values = cacheEntry;
+        numValues = this->getSlice3dEntryCount();
+        std::tie(minValue, maxValue) = getMinMaxScalarFieldValue(fieldName);
+    });
+    multiVarTransferFunctionWindow.setAttributeNames(scalarFieldNames);
+
+    colorLegendWidgets.clear();
+    colorLegendWidgets.resize(scalarFieldNames.size());
+    for (size_t i = 0; i < colorLegendWidgets.size(); i++) {
+        colorLegendWidgets.at(i).setPositionIndex(0, 1);
+        colorLegendWidgets.at(i).setAttributeDisplayName(scalarFieldNames.at(i));
+    }
+    recomputeColorLegend();
+
     return true;
 }
 
@@ -607,7 +632,11 @@ VolumeData::DeviceCacheEntry VolumeData::getFieldEntryDevice(
     deviceFieldCache->ensureSufficientMemory(bufferSize);
     auto itCalc = calculatorsDevice.find(fieldName);
 
+#ifdef SUPPORT_CUDA_INTEROP
     bool canUseCuda = sgl::vk::getIsCudaDeviceApiFunctionTableInitialized();
+#else
+    bool canUseCuda = false;
+#endif
 
     sgl::vk::ImageSettings imageSettings{};
     imageSettings.width = uint32_t(xs);
@@ -672,10 +701,35 @@ VolumeData::DeviceCacheEntry VolumeData::getFieldEntryDevice(
     return deviceCacheEntry;
 }
 
+std::pair<float, float> VolumeData::getMinMaxScalarFieldValue(
+        const std::string& fieldName, int timeStepIdx, int ensembleIdx) {
+    FieldAccess access = createFieldAccessStruct(FieldType::SCALAR, fieldName, timeStepIdx, ensembleIdx);
+
+    if (fieldMinMaxCache->exists(access)) {
+        return fieldMinMaxCache->get(access);
+    }
+
+    HostCacheEntry scalarValues = getFieldEntryCpu(FieldType::SCALAR, fieldName, timeStepIdx, ensembleIdx);
+    auto minMaxVal = sgl::reduceFloatArrayMinMax(scalarValues.get(), getSlice3dEntryCount());
+    fieldMinMaxCache->push(access, minMaxVal);
+    return minMaxVal;
+}
+
 void VolumeData::update(float dtFrame) {
     multiVarTransferFunctionWindow.update(dt);
     hostFieldCache->updateEvictionWaitList();
     deviceFieldCache->updateEvictionWaitList();
+}
+
+void VolumeData::resetDirty() {
+    if (dirty) {
+        const auto& scalarFieldNames = typeToFieldNamesMap[FieldType::SCALAR];
+        int numScalarFields = int(scalarFieldNames.size());
+        for (int varIdx = 0; varIdx < numScalarFields; varIdx++) {
+            multiVarTransferFunctionWindow.setAttributeDataDirty(varIdx);
+        }
+    }
+    dirty = false;
 }
 
 void VolumeData::setRenderDataBindings(const sgl::vk::RenderDataPtr& renderData) {
@@ -712,6 +766,7 @@ void VolumeData::renderGui(sgl::PropertyEditor& propertyEditor) {
             dirty = true;
             reRender = true;
         }
+        propertyEditor.addCheckbox("Render Color Legend", &shallRenderColorLegendWidgets);
         propertyEditor.endNode();
     }
 }
@@ -745,11 +800,74 @@ void VolumeData::renderGuiWindowSecondary() {
 }
 
 void VolumeData::renderGuiOverlay(uint32_t viewIdx) {
-    ;
+    if (shallRenderColorLegendWidgets) {
+        int numWidgetsVisible = 0;
+        for (size_t i = 0; i < colorLegendWidgets.size(); i++) {
+            if (getIsTransferFunctionVisible(viewIdx, uint32_t(i))) {
+                numWidgetsVisible++;
+            }
+        }
+        int positionCounter = 0;
+        for (size_t i = 0; i < colorLegendWidgets.size(); i++) {
+            colorLegendWidgets.at(i).setPositionIndex(positionCounter, numWidgetsVisible);
+            if (getIsTransferFunctionVisible(viewIdx, uint32_t(i))) {
+                positionCounter++;
+                colorLegendWidgets.at(i).setAttributeMinValue(
+                        multiVarTransferFunctionWindow.getSelectedRangeMin(int(i)));
+                colorLegendWidgets.at(i).setAttributeMaxValue(
+                        multiVarTransferFunctionWindow.getSelectedRangeMax(int(i)));
+                colorLegendWidgets.at(i).renderGui();
+            }
+        }
+    }
+}
+
+void VolumeData::acquireTf(Renderer* renderer, int varIdx) {
+    multiVarTransferFunctionWindow.loadAttributeDataIfEmpty(varIdx);
+    transferFunctionToRendererMap.insert(std::make_pair(varIdx, renderer));
+}
+
+void VolumeData::releaseTf(Renderer* renderer, int varIdx) {
+    auto iterRange = transferFunctionToRendererMap.equal_range(varIdx);
+    auto it = iterRange.first;
+    while (it != iterRange.second) {
+        if (it->second == renderer) {
+            transferFunctionToRendererMap.erase(it);
+            break;
+        }
+        it++;
+    }
+}
+
+bool VolumeData::getIsTransferFunctionVisible(uint32_t viewIdx, uint32_t varIdx) {
+    auto iterRange = transferFunctionToRendererMap.equal_range(int(varIdx));
+    auto it = iterRange.first;
+    while (it != iterRange.second) {
+        if (it->second->isVisibleInView(viewIdx)) {
+            return true;
+        }
+        it++;
+    }
+    return false;
+}
+
+void VolumeData::onTransferFunctionMapRebuilt() {
+    recomputeColorLegend();
+}
+
+void VolumeData::recomputeColorLegend() {
+    for (size_t i = 0; i < colorLegendWidgets.size(); i++) {
+        std::vector<sgl::Color16> transferFunctionColorMap =
+                multiVarTransferFunctionWindow.getTransferFunctionMap_sRGB(int(i));
+        colorLegendWidgets.at(i).setTransferFunctionColorMap(transferFunctionColorMap);
+    }
 }
 
 void VolumeData::setClearColor(const sgl::Color& clearColor) {
     multiVarTransferFunctionWindow.setClearColor(clearColor);
+    for (auto& colorLegendWidget : colorLegendWidgets) {
+        colorLegendWidget.setClearColor(clearColor);
+    }
 }
 
 void VolumeData::setUseLinearRGB(bool useLinearRGB) {
@@ -771,16 +889,37 @@ void VolumeData::updateCalculatorName(const CalculatorPtr& calculator) {
         }
     }
     auto& fieldNames = typeToFieldNamesMap[calculator->getOutputFieldType()];
+    int fieldNameIdx = 0;
     for (auto& fieldName : fieldNames) {
         if (fieldName == oldFieldName) {
             fieldName = calculator->getOutputFieldName();
+            break;
         }
+        fieldNameIdx++;
+    }
+
+    if (calculator->getOutputFieldType() == FieldType::SCALAR) {
+        multiVarTransferFunctionWindow.updateAttributeName(fieldNameIdx, calculator->getOutputFieldName());
+        colorLegendWidgets.at(fieldNameIdx).setAttributeDisplayName(calculator->getOutputFieldName());
     }
 }
 
 void VolumeData::updateCalculator(const CalculatorPtr& calculator) {
     hostFieldCache->removeEntriesForFieldName(calculator->getOutputFieldName());
     deviceFieldCache->removeEntriesForFieldName(calculator->getOutputFieldName());
+    fieldMinMaxCache->removeEntriesForFieldName(calculator->getOutputFieldName());
+
+    if (calculator->getOutputFieldType() == FieldType::SCALAR) {
+        auto& fieldNames = typeToFieldNamesMap[calculator->getOutputFieldType()];
+        int fieldNameIdx = 0;
+        for (auto& fieldName : fieldNames) {
+            if (fieldName == calculator->getOutputFieldName()) {
+                break;
+            }
+            fieldNameIdx++;
+        }
+        multiVarTransferFunctionWindow.setAttributeDataDirty(fieldNameIdx);
+    }
 }
 
 void VolumeData::setFileDialogInstance(ImGuiFileDialog* _fileDialogInstance) {

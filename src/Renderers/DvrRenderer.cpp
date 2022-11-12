@@ -34,11 +34,15 @@
 #include "RenderingModes.hpp"
 #include "DvrRenderer.hpp"
 
-DvrRenderer::DvrRenderer(ViewManager* viewManager, sgl::TransferFunctionWindow& transferFunctionWindow)
-        : Renderer(
-                RENDERING_MODE_NAMES[int(RENDERING_MODE_DIRECT_VOLUME_RENDERING)],
-                viewManager, transferFunctionWindow) {
+DvrRenderer::DvrRenderer(ViewManager* viewManager)
+        : Renderer(RENDERING_MODE_NAMES[int(RENDERING_MODE_DIRECT_VOLUME_RENDERING)], viewManager) {
     ;
+}
+
+DvrRenderer::~DvrRenderer() {
+    if (!selectedScalarFieldName.empty()) {
+        volumeData->releaseTf(this, selectedFieldIdx);
+    }
 }
 
 void DvrRenderer::initialize() {
@@ -47,15 +51,20 @@ void DvrRenderer::initialize() {
 
 void DvrRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) {
     volumeData = _volumeData;
+    if (!selectedScalarFieldName.empty()) {
+        volumeData->releaseTf(this, oldSelectedFieldIdx);
+    }
     if (isNewData) {
         selectedFieldIdx = 0;
     }
     const std::vector<std::string>& fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
     selectedScalarFieldName = fieldNames.at(selectedFieldIdx);
+    volumeData->acquireTf(this, selectedFieldIdx);
+    oldSelectedFieldIdx = selectedFieldIdx;
 
     for (auto& dvrPass : dvrPasses) {
         dvrPass->setVolumeData(volumeData, isNewData);
-        dvrPass->setSelectedScalarFieldName(selectedScalarFieldName);
+        dvrPass->setSelectedScalarField(selectedFieldIdx, selectedScalarFieldName);
         dvrPass->setStepSize(stepSize);
     }
 }
@@ -72,7 +81,7 @@ void DvrRenderer::addViewImpl(uint32_t viewIdx) {
     auto dvrPass = std::make_shared<DvrPass>(renderer, viewManager->getViewSceneData(viewIdx));
     if (volumeData) {
         dvrPass->setVolumeData(volumeData, true);
-        dvrPass->setSelectedScalarFieldName(selectedScalarFieldName);
+        dvrPass->setSelectedScalarField(selectedFieldIdx, selectedScalarFieldName);
     }
     dvrPass->setStepSize(stepSize);
     dvrPass->setAttenuationCoefficient(attenuationCoefficient);
@@ -89,6 +98,9 @@ void DvrRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         const std::vector<std::string>& fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
         if (propertyEditor.addCombo("Scalar Field", &selectedFieldIdx, fieldNames.data(), int(fieldNames.size()))) {
             selectedScalarFieldName = fieldNames.at(selectedFieldIdx);
+            for (auto& dvrPass : dvrPasses) {
+                dvrPass->setSelectedScalarField(selectedFieldIdx, selectedScalarFieldName);
+            }
             dirty = true;
             reRender = true;
         }
@@ -139,8 +151,9 @@ void DvrPass::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) {
     dataDirty = true;
 }
 
-void DvrPass::setSelectedScalarFieldName(const std::string& _field) {
-    selectedScalarFieldName = _field;
+void DvrPass::setSelectedScalarField(int _selectedFieldIdx, const std::string& _scalarFieldName) {
+    selectedFieldIdx = _selectedFieldIdx;
+    selectedScalarFieldName = _scalarFieldName;
     if (volumeData && computeData) {
         auto scalarFieldData = volumeData->getFieldEntryDevice(FieldType::SCALAR, selectedScalarFieldName);
         computeData->setStaticTexture(scalarFieldData->getVulkanTexture(), "scalarField");
@@ -188,6 +201,7 @@ void DvrPass::_render() {
     renderSettingsData.inverseProjectionMatrix = glm::inverse((*camera)->getProjectionMatrix());
     renderSettingsData.zNear = (*camera)->getNearClipDistance();
     renderSettingsData.zFar = (*camera)->getFarClipDistance();
+    renderSettingsData.fieldIndex = uint32_t(selectedFieldIdx);
     rendererUniformDataBuffer->updateData(
             sizeof(RenderSettingsData), &renderSettingsData, renderer->getVkCommandBuffer());
     renderer->insertMemoryBarrier(

@@ -37,7 +37,8 @@ layout(binding = 0) uniform RendererUniformDataBuffer {
     mat4 inverseProjectionMatrix;
     float zNear;
     float zFar;
-    float padding1, padding2;
+    uint fieldIndex;
+    float padding1;
     vec3 minBoundingBox;
     float attenuationCoefficient;
     vec3 maxBoundingBox;
@@ -99,7 +100,7 @@ void main() {
             vec3 texCoords = (currentPoint - minBoundingBox) / (maxBoundingBox - minBoundingBox);
 
             float scalarValue = texture(scalarField, texCoords).r;
-            vec4 volumeColor = transferFunction(scalarValue);
+            vec4 volumeColor = transferFunction(scalarValue, fieldIndex);
             float alpha = 1 - exp(-volumeColor.a * stepSize * attenuationCoefficient);
             vec4 color = vec4(volumeColor.rgb, alpha);
 

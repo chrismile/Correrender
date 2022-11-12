@@ -41,11 +41,8 @@
 
 #include <Math/Geometry/AABB3.hpp>
 #include <Graphics/Vulkan/Buffers/Buffer.hpp>
-#ifdef SUPPORT_CUDA_INTEROP
-#include <Graphics/Vulkan/Utils/InteropCuda.hpp>
 #include <ImGui/Widgets/MultiVarTransferFunctionWindow.hpp>
-
-#endif
+#include <ImGui/Widgets/ColorLegendWidget.hpp>
 
 #include "Loaders/DataSetList.hpp"
 #include "Cache/FieldCache.hpp"
@@ -67,6 +64,7 @@ class FileDialog;
 typedef IGFD::FileDialog ImGuiFileDialog;
 
 class VolumeLoader;
+class Renderer;
 class Calculator;
 typedef std::shared_ptr<Calculator> CalculatorPtr;
 
@@ -76,7 +74,7 @@ public:
     using DeviceCacheEntry = std::shared_ptr<DeviceCacheEntryType>;
 
 public:
-    VolumeData(sgl::vk::Renderer* renderer, sgl::TransferFunctionWindow& transferFunctionWindow);
+    explicit VolumeData(sgl::vk::Renderer* renderer);
     ~VolumeData();
 
     /**
@@ -131,6 +129,7 @@ public:
     [[nodiscard]] inline size_t getSlice3dSizeInBytes(FieldType fieldType) const {
         return size_t(xs) * size_t(ys) * size_t(zs) * sizeof(float) * (fieldType == FieldType::SCALAR ? 1 : 3);
     }
+    [[nodiscard]] inline size_t getSlice3dEntryCount() const { return size_t(xs) * size_t(ys) * size_t(zs); }
     [[nodiscard]] inline float getDx() const { return dx; }
     [[nodiscard]] inline float getDy() const { return dy; }
     [[nodiscard]] inline float getDz() const { return dz; }
@@ -151,16 +150,12 @@ public:
     // Sets the global file dialog.
     void setFileDialogInstance(ImGuiFileDialog* fileDialogInstance);
 
-    // TODO
-    void onTransferFunctionMapRebuilt() {}
-
     /// Returns if the visualization mapping needs to be re-generated.
     [[nodiscard]] inline bool isDirty() const { return dirty; }
     /// Called by MainApp to reset the dirty flag.
-    void resetDirty() { dirty = false; }
+    void resetDirty();
     /// Returns if the data needs to be re-rendered, but the visualization mapping is valid.
     virtual bool needsReRender() { bool tmp = reRender; reRender = false; return tmp; }
-    inline bool shallRenderTransferFunctionWindow() { return true; }
 
     // TODO
     /// For changing performance measurement modes.
@@ -176,6 +171,13 @@ public:
             FieldType fieldType, const std::string& fieldName, int timeStepIdx = -1, int ensembleIdx = -1);
     DeviceCacheEntry getFieldEntryDevice(
             FieldType fieldType, const std::string& fieldName, int timeStepIdx = -1, int ensembleIdx = -1);
+    std::pair<float, float> getMinMaxScalarFieldValue(
+            const std::string& fieldName, int timeStepIdx = -1, int ensembleIdx = -1);
+
+    /// Keep track of transfer function use in renderers to display overlays in renderer.
+    void acquireTf(Renderer* renderer, int varIdx);
+    void releaseTf(Renderer* renderer, int varIdx);
+    void onTransferFunctionMapRebuilt();
 
     /// Sets data bindings used across renderers.
     virtual void setRenderDataBindings(const sgl::vk::RenderDataPtr& renderData);
@@ -205,14 +207,23 @@ protected:
     DataSetInformation dataSetInformation;
     std::unique_ptr<HostFieldCache> hostFieldCache;
     std::unique_ptr<DeviceFieldCache> deviceFieldCache;
+    std::unique_ptr<FieldMinMaxCache> fieldMinMaxCache;
     std::unordered_map<FieldType, std::vector<std::string>> typeToFieldNamesMap;
     std::unordered_map<FieldType, std::vector<std::string>> typeToFieldNamesMapBase; ///< Without calculator output.
     sgl::vk::ImageSamplerPtr imageSampler{};
 
     bool dirty = true; ///< Should be set to true if the representation changed.
     bool reRender = false;
-    sgl::MultiVarTransferFunctionWindow multiVarTransferFunctionWindow;
     ImGuiFileDialog* fileDialogInstance = nullptr;
+    sgl::MultiVarTransferFunctionWindow multiVarTransferFunctionWindow;
+
+    // Color legend widgets for different attributes.
+    bool getIsTransferFunctionVisible(uint32_t viewIdx, uint32_t tfIdx);
+    void recomputeColorLegend();
+    bool shallRenderColorLegendWidgets = true;
+    std::vector<sgl::ColorLegendWidget> colorLegendWidgets;
+    /// Keep track of transfer function use in renderers to display overlays in renderer.
+    std::unordered_multimap<int, Renderer*> transferFunctionToRendererMap;
 
     // File loaders.
     VolumeLoader* createVolumeLoaderByExtension(const std::string& fileExtension);

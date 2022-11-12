@@ -79,14 +79,15 @@ public:
 
     void push(const FieldAccess& access, const CacheEntry& buffer) {
         cache.push(access, buffer);
+        cacheSize += access.sizeInBytes;
     }
 
     void updateEvictionWaitList() {
         auto it = evictionWaitList.begin();
         while (it != evictionWaitList.end()) {
             if (it->second.expired()) {
-                it = evictionWaitList.erase(it);
                 cacheSize -= it->first.sizeInBytes;
+                it = evictionWaitList.erase(it);
             } else {
                 it++;
             }
@@ -140,6 +141,19 @@ public:
 class DeviceFieldCache : public FieldCache<DeviceCacheEntryType> {
 public:
     explicit DeviceFieldCache(sgl::vk::Device* device);
+};
+
+class FieldMinMaxCache {
+    using CacheEntry = std::pair<float, float>;
+
+public:
+    bool exists(const FieldAccess& access);
+    void push(const FieldAccess& access, const CacheEntry& entry);
+    CacheEntry get(const FieldAccess& access);
+    void removeEntriesForFieldName(const std::string& fieldName);
+
+private:
+    std::unordered_map<FieldAccess, CacheEntry> cache;
 };
 
 #endif //CORRERENDER_FIELDCACHE_HPP

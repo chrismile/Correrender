@@ -43,7 +43,7 @@ const char* const ISO_SURFACE_EXTRACTION_TECHNIQUE_NAMES[] = {
 
 class IsoSurfaceRasterizer : public Renderer {
 public:
-    IsoSurfaceRasterizer(ViewManager* viewManager, sgl::TransferFunctionWindow& transferFunctionWindow);
+    explicit IsoSurfaceRasterizer(ViewManager* viewManager);
     void initialize() override;
     void setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) override;
     void recreateSwapchainView(uint32_t viewIdx, uint32_t width, uint32_t height) override;
@@ -65,8 +65,9 @@ private:
     // UI renderer settings.
     int selectedFieldIdx = 0;
     std::string selectedScalarFieldName;
-    float gammaSnapMC = 0.3f;
+    std::pair<float, float> minMaxScalarFieldValue;
     float isoValue = 0.5f;
+    float gammaSnapMC = 0.3f;
     glm::vec4 isoSurfaceColor = glm::vec4(0.8f, 0.8f, 0.8f, 1.0f);
     IsoSurfaceExtractionTechnique isoSurfaceExtractionTechnique = IsoSurfaceExtractionTechnique::SNAP_MC;
 };

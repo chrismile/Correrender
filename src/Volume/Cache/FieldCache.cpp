@@ -41,3 +41,26 @@ DeviceFieldCache::DeviceFieldCache(sgl::vk::Device* device) {
     size_t availableVram = device->getMemoryHeapBudgetVma(memoryHeapIndex);
     cacheSizeMax = size_t(double(availableVram) * availableMemoryFactor);
 }
+
+bool FieldMinMaxCache::exists(const FieldAccess& access) {
+    return cache.find(access) != cache.end();
+}
+
+void FieldMinMaxCache::push(const FieldAccess& access, const CacheEntry& entry) {
+    cache[access] = entry;
+}
+
+FieldMinMaxCache::CacheEntry FieldMinMaxCache::get(const FieldAccess& access) {
+    return cache[access];
+}
+
+void FieldMinMaxCache::removeEntriesForFieldName(const std::string& fieldName) {
+    auto it = cache.begin();
+    while (it != cache.end()) {
+        if (it->first.fieldName == fieldName) {
+            it = cache.erase(it);
+        } else {
+            it++;
+        }
+    }
+}

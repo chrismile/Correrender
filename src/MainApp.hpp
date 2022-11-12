@@ -34,7 +34,6 @@
 #include <map>
 
 #include <Utils/SciVis/SciVisApp.hpp>
-#include <ImGui/Widgets/TransferFunctionWindow.hpp>
 
 #ifdef SUPPORT_CUDA_INTEROP
 #include <Graphics/Vulkan/Utils/InteropCuda.hpp>
@@ -131,9 +130,6 @@ private:
     ImGuiFileDialog* fileDialogInstance = nullptr;
     std::string fileDialogDirectory;
     std::vector<sgl::dialog::MsgBoxHandlePtr> nonBlockingMsgBoxHandles;
-
-    // Coloring & filtering dependent on importance criteria.
-    sgl::TransferFunctionWindow transferFunctionWindow;
 
     // For making performance measurements.
     AutomaticPerformanceMeasurer* performanceMeasurer = nullptr;

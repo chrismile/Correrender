@@ -44,10 +44,11 @@ layout(binding = 0) uniform RendererUniformDataBuffer {
     mat4 inverseViewMatrix;
     mat4 inverseProjectionMatrix;
     vec3 cameraPosition;
-    float padding0;
+    float dx;
+    float dy;
+    float dz;
     float zNear;
     float zFar;
-    float padding1, padding2;
     vec3 minBoundingBox;
     float isoValue;
     vec3 maxBoundingBox;
@@ -68,19 +69,18 @@ ivec3 gridSize;
 #include "RayIntersectionTests.glsl"
 #include "Blending.glsl"
 #include "UniformData.glsl"
-#include "TransferFunction.glsl"
 #include "Lighting.glsl"
 
 vec3 computeGradient(vec3 texCoords) {
     float gradX =
             (textureOffset(scalarField, texCoords, ivec3(-1, 0, 0)).r
-            - textureOffset(scalarField, texCoords, ivec3(1, 0, 0)).r) * 0.5;
+            - textureOffset(scalarField, texCoords, ivec3(1, 0, 0)).r) * 0.5 / dx;
     float gradY =
             (textureOffset(scalarField, texCoords, ivec3(0, -1, 0)).r
-            - textureOffset(scalarField, texCoords, ivec3(0, 1, 0)).r) * 0.5;
+            - textureOffset(scalarField, texCoords, ivec3(0, 1, 0)).r) * 0.5 / dy;
     float gradZ =
             (textureOffset(scalarField, texCoords, ivec3(0, 0, -1)).r
-            - textureOffset(scalarField, texCoords, ivec3(0, 0, 1)).r) * 0.5;
+            - textureOffset(scalarField, texCoords, ivec3(0, 0, 1)).r) * 0.5 / dz;
     return normalize(vec3(gradX, gradY, gradZ));
 }
 
