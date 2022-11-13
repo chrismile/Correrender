@@ -129,7 +129,7 @@ if (${SUPPORT_PYTORCH})
     find_package(Torch QUIET)
 endif()
 if (${SUPPORT_PYTORCH} AND NOT Torch_FOUND)
-    MESSAGE(STATUS "The PyTorch denoiser build was enabled, but PyTorch couldn't be found. Disabling PyTorch support.")
+    MESSAGE(STATUS "PyTorch support was enabled, but PyTorch couldn't be found. Disabling PyTorch support.")
 endif()
 
 find_package(Imath CONFIG QUIET)
