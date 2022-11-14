@@ -127,7 +127,9 @@ protected:
     // Metadata about renderer.
     bool isRasterizer = true;
     std::string windowName;
+    void updateViewComboSelection();
     std::vector<bool> viewVisibilityArray;
+    std::string showInViewComboValue;
     ImGuiFileDialog* fileDialogInstance = nullptr;
 
     ViewManager* viewManager;

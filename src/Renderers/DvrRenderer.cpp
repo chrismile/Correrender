@@ -180,8 +180,8 @@ void DvrPass::createComputeData(sgl::vk::Renderer* renderer, sgl::vk::ComputePip
     computeData = std::make_shared<sgl::vk::ComputeData>(renderer, computePipeline);
     volumeData->setRenderDataBindings(computeData);
     computeData->setStaticBuffer(rendererUniformDataBuffer, "RendererUniformDataBuffer");
-    computeData->setStaticImageView(sceneImageView, "outputImage");
     computeData->setStaticTexture(scalarFieldData->getVulkanTexture(), "scalarField");
+    computeData->setStaticImageView(sceneImageView, "outputImage");
     if (sceneData->useDepthBuffer) {
         computeData->setStaticImageView(sceneData->sceneDepthColorImage, "depthBuffer");
     }
@@ -192,6 +192,9 @@ void DvrPass::recreateSwapchain(uint32_t width, uint32_t height) {
 
     if (computeData) {
         computeData->setStaticImageView(sceneImageView, "outputImage");
+        if (sceneData->useDepthBuffer) {
+            computeData->setStaticImageView(sceneData->sceneDepthColorImage, "depthBuffer");
+        }
     }
 }
 

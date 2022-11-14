@@ -73,9 +73,9 @@ struct ModuleWrapper;
 class PyTorchSimilarityCalculator : public EnsembleSimilarityCalculator {
 public:
     explicit PyTorchSimilarityCalculator(sgl::vk::Renderer* renderer);
-    ~PyTorchSimilarityCalculator();
+    ~PyTorchSimilarityCalculator() override;
     std::string getOutputFieldName() override { return "Similarity Metric (Torch)"; }
-    FilterDevice getFilterDevice() override { return FilterDevice::CPU; }
+    FilterDevice getFilterDevice() override;
     void calculateCpu(int timeStepIdx, int ensembleIdx, float* buffer) override;
     void calculateDevice(int timeStepIdx, int ensembleIdx, const DeviceCacheEntry& deviceCacheEntry) override;
 

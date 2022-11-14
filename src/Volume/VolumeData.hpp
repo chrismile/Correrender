@@ -237,6 +237,7 @@ protected:
     std::unordered_map<std::string, CalculatorPtr> calculatorsHost;
     std::unordered_map<std::string, CalculatorPtr> calculatorsDevice;
     size_t calculatorId = 0;
+    sgl::vk::BufferPtr stagingBuffer; ///< For transferring calculator output from the GPU to the CPU.
 
 private:
     FieldAccess createFieldAccessStruct(

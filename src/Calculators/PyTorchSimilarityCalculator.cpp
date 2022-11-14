@@ -224,6 +224,13 @@ void PyTorchSimilarityCalculator::calculateCpu(int timeStepIdx, int ensembleIdx,
      ;
 }
 
+FilterDevice PyTorchSimilarityCalculator::PyTorchSimilarityCalculator::getFilterDevice() {
+    if (pyTorchDevice == PyTorchDevice::CUDA) {
+        return FilterDevice::CUDA;
+    }
+    return FilterDevice::CPU;
+}
+
 void PyTorchSimilarityCalculator::calculateDevice(
         int timeStepIdx, int ensembleIdx, const DeviceCacheEntry& deviceCacheEntry) {
     /*cudaStream_t stream = at::cuda::getCurrentCUDAStream();

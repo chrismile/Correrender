@@ -70,6 +70,9 @@
 #include "Calculators/Calculator.hpp"
 #include "Calculators/VelocityCalculator.hpp"
 #include "Calculators/SimilarityCalculator.hpp"
+#ifdef SUPPORT_PYTORCH
+#include "Calculators/PyTorchSimilarityCalculator.hpp"
+#endif
 #include "Renderers/RenderingModes.hpp"
 #include "Renderers/Renderer.hpp"
 #include "VolumeData.hpp"
@@ -445,6 +448,9 @@ bool VolumeData::setInputFiles(
     }
 
     addCalculator(std::make_shared<PccCalculator>(renderer));
+#ifdef SUPPORT_PYTORCH
+    addCalculator(std::make_shared<PyTorchSimilarityCalculator>(renderer));
+#endif
 
     const auto& scalarFieldNames = typeToFieldNamesMap[FieldType::SCALAR];
     multiVarTransferFunctionWindow.setRequestAttributeValuesCallback([this](
@@ -522,6 +528,19 @@ VolumeData::HostCacheEntry VolumeData::getFieldEntryCpu(
         size_t numComponents = fieldType == FieldType::SCALAR ? 1 : 3;
         fieldEntryBuffer = new float[size_t(xs) * size_t(ys) * size_t(zs) * numComponents];
         calculator->calculateCpu(timeStepIdx, ensembleIdx, fieldEntryBuffer);
+    } else if (calculatorsDevice.find(fieldName) != calculatorsDevice.end()) {
+        auto deviceEntry = getFieldEntryDevice(fieldType, fieldName, timeStepIdx, ensembleIdx);
+        size_t numComponents = fieldType == FieldType::SCALAR ? 1 : 3;
+        size_t sizeInBytes = numComponents * size_t(xs) * size_t(ys) * size_t(zs) * sizeof(float);
+        if (!stagingBuffer) {
+            stagingBuffer = std::make_shared<sgl::vk::Buffer>(
+                    device, sizeInBytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_TO_CPU);
+        }
+        deviceEntry->getVulkanImage()->copyToBuffer(stagingBuffer); //< synchronous copy.
+        fieldEntryBuffer = new float[size_t(xs) * size_t(ys) * size_t(zs) * numComponents];
+        void* data = stagingBuffer->mapMemory();
+        memcpy(fieldEntryBuffer, data, sizeInBytes);
+        stagingBuffer->unmapMemory();
     } else {
         VolumeLoader* volumeLoader = nullptr;
         if (tsFileCount == 1 && esFileCount == 1) {
@@ -780,10 +799,12 @@ void VolumeData::renderGuiCalculators(sgl::PropertyEditor& propertyEditor) {
         if (calculator->getHasNameChanged()) {
             updateCalculatorName(calculator);
             dirty = true;
+            reRender = true;
         }
         if (calculator->getIsDirty()) {
             updateCalculator(calculator);
             dirty = true;
+            reRender = true;
         }
     }
 }

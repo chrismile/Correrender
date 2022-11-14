@@ -74,11 +74,11 @@ void EnsembleSimilarityCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEd
             == ImGui::EditMode::INPUT_FINISHED;
     inputFinished[1] =
             propertyEditor.addSliderIntEdit(
-                    "Reference Point (Y)", &referencePointIndex[1], 0, volumeData->getGridSizeX())
+                    "Reference Point (Y)", &referencePointIndex[1], 0, volumeData->getGridSizeY())
             == ImGui::EditMode::INPUT_FINISHED;
     inputFinished[2] =
             propertyEditor.addSliderIntEdit(
-                    "Reference Point (Z)", &referencePointIndex[2], 0, volumeData->getGridSizeX())
+                    "Reference Point (Z)", &referencePointIndex[2], 0, volumeData->getGridSizeZ())
             == ImGui::EditMode::INPUT_FINISHED;
     if (inputFinished[0] || inputFinished[1] || inputFinished[2]) {
         dirty = true;
@@ -108,8 +108,9 @@ void PccCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float* buffer
         ensembleEntryFields.push_back(ensembleEntryField);
     }
 
-    size_t referencePointIdx =
-            size_t(referencePointIndex.x) * size_t(referencePointIndex.y) * size_t(referencePointIndex.z);
+    //size_t referencePointIdx =
+    //        size_t(referencePointIndex.x) * size_t(referencePointIndex.y) * size_t(referencePointIndex.z);
+    size_t referencePointIdx = IDXS(referencePointIndex.x, referencePointIndex.y, referencePointIndex.z);
     auto* referenceValues = new float[es];
     for (int e = 0; e < es; e++) {
         referenceValues[e] = ensembleFields.at(e)[referencePointIdx];

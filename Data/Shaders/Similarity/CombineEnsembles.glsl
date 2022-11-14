@@ -50,6 +50,7 @@ void main() {
     }
     vec3 pointCoords =
             vec3(pointIdx) / vec3(xs - 1, ys - 1, zs - 1) * (boundingBoxMax - boundingBoxMin) + boundingBoxMin;
+    pointCoords = pointCoords * 2.0 - vec3(1.0);
     uint pointOffset = (pointIdx.x + (pointIdx.y + pointIdx.z * ys) * xs) * es;
     for (uint e = 0; e < es; e++) {
         float ensembleValue = texelFetch(sampler3D(scalarFieldEnsembles[e], scalarFieldSampler), ivec3(pointIdx), 0).r;

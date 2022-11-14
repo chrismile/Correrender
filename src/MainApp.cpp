@@ -102,6 +102,8 @@ MainApp::MainApp()
 #endif
           boundingBox() {
     sgl::AppSettings::get()->getVulkanInstance()->setDebugCallback(&vulkanErrorCallback);
+    clearColor = sgl::Color(0, 0, 0, 255);
+    clearColorSelection = ImColor(0, 0, 0, 255);
 
 #ifdef SUPPORT_CUDA_INTEROP
     sgl::vk::Device* device = sgl::AppSettings::get()->getPrimaryDevice();

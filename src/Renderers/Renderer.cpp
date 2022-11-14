@@ -86,26 +86,80 @@ void Renderer::addView(uint32_t viewIdx) {
     reRenderViewArray.resize(viewIdx + 1);
     reRenderViewArray.at(viewIdx) = true;
     addViewImpl(viewIdx);
+    updateViewComboSelection();
 }
 
 void Renderer::removeView(uint32_t viewIdx) {
     viewVisibilityArray.erase(viewVisibilityArray.begin() + viewIdx);
     reRenderViewArray.erase(reRenderViewArray.begin() + viewIdx);
     removeViewImpl(viewIdx);
+    updateViewComboSelection();
 }
 
 void Renderer::recreateSwapchainView(uint32_t viewIdx, uint32_t width, uint32_t height) {
 }
 
-void Renderer::renderGui(sgl::PropertyEditor& propertyEditor) {
+void Renderer::updateViewComboSelection() {
+    std::vector<std::string> comboSelVec(0);
+
     for (size_t viewIdx = 0; viewIdx < viewVisibilityArray.size(); viewIdx++) {
-        std::string text = "Show in View " + std::to_string(viewIdx + 1);
-        bool showInView = viewVisibilityArray.at(viewIdx);
-        if (propertyEditor.addCheckbox(text, &showInView)) {
-            viewVisibilityArray.at(viewIdx) = showInView;
-            reRenderViewArray.at(viewIdx) = true;
+        if (viewVisibilityArray.at(viewIdx)) {
+            comboSelVec.push_back("View " + std::to_string(viewIdx + 1));
         }
     }
+
+    showInViewComboValue = "";
+    for (size_t v = 0; v < comboSelVec.size(); ++v) {
+        showInViewComboValue += comboSelVec[v];
+        if (comboSelVec.size() > 1 && v + 1 != comboSelVec.size()) {
+            showInViewComboValue += ", ";
+        }
+    }
+}
+
+void Renderer::renderGui(sgl::PropertyEditor& propertyEditor) {
+    if (viewVisibilityArray.size() <= 1) {
+        for (size_t viewIdx = 0; viewIdx < viewVisibilityArray.size(); viewIdx++) {
+            std::string text = "Show in View " + std::to_string(viewIdx + 1);
+            bool showInView = viewVisibilityArray.at(viewIdx);
+            if (propertyEditor.addCheckbox(text, &showInView)) {
+                viewVisibilityArray.at(viewIdx) = showInView;
+                reRenderViewArray.at(viewIdx) = true;
+                updateViewComboSelection();
+            }
+        }
+    } else {
+        if (propertyEditor.addBeginCombo(
+                "Show in View", showInViewComboValue, ImGuiComboFlags_NoArrowButton)) {
+            std::vector<std::string> comboSelVec(0);
+
+            for (size_t viewIdx = 0; viewIdx < viewVisibilityArray.size(); viewIdx++) {
+                std::string text = "View " + std::to_string(viewIdx + 1);
+                bool showInView = viewVisibilityArray.at(viewIdx);
+                if (ImGui::Selectable(
+                        text.c_str(), &showInView, ImGuiSelectableFlags_::ImGuiSelectableFlags_DontClosePopups)) {
+                    viewVisibilityArray.at(viewIdx) = showInView;
+                    reRenderViewArray.at(viewIdx) = true;
+                }
+
+                if (showInView) {
+                    ImGui::SetItemDefaultFocus();
+                    comboSelVec.push_back(text);
+                }
+            }
+
+            showInViewComboValue = "";
+            for (size_t v = 0; v < comboSelVec.size(); ++v) {
+                showInViewComboValue += comboSelVec[v];
+                if (comboSelVec.size() > 1 && v + 1 != comboSelVec.size()) {
+                    showInViewComboValue += ", ";
+                }
+            }
+
+            propertyEditor.addEndCombo();
+        }
+    }
+
     renderGuiImpl(propertyEditor);
 }
 
