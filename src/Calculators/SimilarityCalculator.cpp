@@ -102,12 +102,6 @@ void PccCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float* buffer
         ensembleFields.push_back(ensembleEntryField.get());
     }
 
-    for (ensembleIdx = 0; ensembleIdx < es; ensembleIdx++) {
-        VolumeData::HostCacheEntry ensembleEntryField = volumeData->getFieldEntryCpu(
-                FieldType::SCALAR, scalarFieldNames.at(fieldIndexGui), timeStepIdx, ensembleIdx);
-        ensembleEntryFields.push_back(ensembleEntryField);
-    }
-
     //size_t referencePointIdx =
     //        size_t(referencePointIndex.x) * size_t(referencePointIndex.y) * size_t(referencePointIndex.z);
     size_t referencePointIdx = IDXS(referencePointIndex.x, referencePointIndex.y, referencePointIndex.z);

@@ -11,7 +11,9 @@ file(GLOB_RECURSE SOURCES src/*.cpp src/*.c src/*.hpp src/*.h Data/Shaders/*.gls
 include_directories(src)
 
 file(GLOB_RECURSE SHADER_FILES Data/Shaders/*.glsl)
+file(GLOB_RECURSE CUDA_MODULES Data/Shaders/*.cu)
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}/Data/Shaders" PREFIX "Shaders" FILES ${SHADER_FILES})
+source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}/Data/Shaders" PREFIX "CUDA Modules" FILES ${CUDA_MODULES})
 
 if(MSVC)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /Zc:__cplusplus")
@@ -468,4 +470,39 @@ else()
             target_link_libraries(Correrender PUBLIC OpenMP::OpenMP_CXX)
         endif()
     endif()
+endif()
+
+
+# Compile all CUDA modules if sgl is built with CUDA support.
+if ("SUPPORT_CUDA_INTEROP" IN_LIST SGL_INTERFACE_COMPILE_DEFINITIONS)
+    if(${CMAKE_VERSION} VERSION_LESS "3.18.0")
+        # https://cmake.org/cmake/help/git-stage/module/FindCUDA.html
+        find_package(CUDA QUIET)
+    else()
+        # https://cmake.org/cmake/help/git-stage/module/FindCUDAToolkit.html
+        find_package(CUDAToolkit QUIET)
+    endif()
+    file(MAKE_DIRECTORY "${CMAKE_SOURCE_DIR}/Data/__cudacache__")
+    MESSAGE(STATUS "Adding CUDA module compile commands.")
+endif()
+
+function(compile_fatbin SRC OUTPUT)
+    add_custom_command(
+            OUTPUT "${OUTPUT}"
+            COMMAND "${CMAKE_CUDA_COMPILER}" -fatbin -arch=all -Wno-deprecated-gpu-targets "${SRC}" -o "${OUTPUT}"
+            MAIN_DEPENDENCY "${SRC}"
+            VERBATIM
+    )
+endfunction()
+
+if ("SUPPORT_CUDA_INTEROP" IN_LIST SGL_INTERFACE_COMPILE_DEFINITIONS)
+    foreach(CUDA_MODULE IN LISTS CUDA_MODULES)
+        get_filename_component(CUDA_MODULE_NAME "${CUDA_MODULE}" NAME_WE)
+        set(DEST "${CUDA_MODULE_NAME}.fatbin")
+        set(OUTPUT "${CMAKE_SOURCE_DIR}/Data/__cudacache__/${DEST}")
+        compile_fatbin("${CMAKE_SOURCE_DIR}/Data/Shaders/Similarity/CombineEnsembles.cu" "${OUTPUT}")
+        list(APPEND CUDA_FATBIN_FILES "${OUTPUT}")
+    endforeach()
+    add_custom_target(COMPILE_CUDA_MODULES ALL DEPENDS ${CUDA_FATBIN_FILES})
+    add_dependencies(${CMAKE_PROJECT_NAME} COMPILE_CUDA_MODULES)
 endif()

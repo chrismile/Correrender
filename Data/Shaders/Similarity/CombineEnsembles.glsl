@@ -29,6 +29,9 @@
 -- Compute
 
 #version 450 core
+#extension GL_EXT_nonuniform_qualifier : require
+
+layout(local_size_x = BLOCK_SIZE, local_size_y = 1, local_size_z = 1) in;
 
 layout (binding = 0) uniform UniformBuffer {
     uint xs, ys, zs, es;
@@ -41,19 +44,65 @@ layout (binding = 1) writeonly buffer OutputBuffer {
     vec4 outputBuffer[];
 };
 layout (binding = 2) uniform sampler scalarFieldSampler;
-layout (binding = 3) uniform texture3D scalarFieldEnsembles[];
+layout (binding = 3) uniform texture3D scalarFieldEnsembles[ENSEMBLE_MEMBER_COUNT];
+
+layout(push_constant) uniform PushConstants {
+    uint linearPointIdx;
+    uint batchSize;
+};
 
 void main() {
-    uvec3 pointIdx = gl_GlobalInvocationID;
-    if (pointIdx.x >= xs || pointIdx.y >= ys || pointIdx.z >= zs) {
+    uint pointIdxWriteOffset = gl_GlobalInvocationID.x;
+    uint pointIdxReadOffset = gl_GlobalInvocationID.x + linearPointIdx;
+    uint x = pointIdxReadOffset % xs;
+    uint y = (pointIdxReadOffset / xs) % ys;
+    uint z = pointIdxReadOffset / (xs * ys);
+    //if (x >= xs || y >= ys || z >= zs) {
+    //    return;
+    //}
+    if (linearPointIdx >= batchSize) {
         return;
     }
-    vec3 pointCoords =
-            vec3(pointIdx) / vec3(xs - 1, ys - 1, zs - 1) * (boundingBoxMax - boundingBoxMin) + boundingBoxMin;
-    pointCoords = pointCoords * 2.0 - vec3(1.0);
-    uint pointOffset = (pointIdx.x + (pointIdx.y + pointIdx.z * ys) * xs) * es;
+    vec3 pointCoords = vec3(x, y, z) / vec3(xs - 1, ys - 1, zs - 1) * 2.0 - vec3(1.0);
     for (uint e = 0; e < es; e++) {
-        float ensembleValue = texelFetch(sampler3D(scalarFieldEnsembles[e], scalarFieldSampler), ivec3(pointIdx), 0).r;
-        outputBuffer[pointOffset + e] = vec4(pointCoords, ensembleValue);
+        float ensembleValue = texelFetch(sampler3D(
+                scalarFieldEnsembles[nonuniformEXT(e)], scalarFieldSampler), ivec3(x, y, z), 0).r;
+        outputBuffer[pointIdxWriteOffset + e] = vec4(ensembleValue, pointCoords.x, pointCoords.y, pointCoords.z);
     }
+}
+
+
+-- Compute.Reference
+
+#version 450 core
+#extension GL_EXT_nonuniform_qualifier : require
+
+layout(local_size_x = BLOCK_SIZE, local_size_y = 1, local_size_z = 1) in;
+
+layout (binding = 0) uniform UniformBuffer {
+    uint xs, ys, zs, es;
+    vec3 boundingBoxMin;
+    float padding0;
+    vec3 boundingBoxMax;
+    float padding1;
+};
+layout (binding = 1) writeonly buffer OutputBuffer {
+    vec4 outputBuffer[];
+};
+layout (binding = 2) uniform sampler scalarFieldSampler;
+layout (binding = 3) uniform texture3D scalarFieldEnsembles[ENSEMBLE_MEMBER_COUNT];
+
+layout(push_constant) uniform PushConstants {
+    uvec3 referencePointIdx;
+};
+
+void main() {
+    uint e = gl_GlobalInvocationID.x;
+    if (e >= es) {
+        return;
+    }
+    vec3 pointCoords = vec3(referencePointIdx) / vec3(xs - 1, ys - 1, zs - 1) * 2.0 - vec3(1.0);
+    float ensembleValue = texelFetch(sampler3D(
+            scalarFieldEnsembles[nonuniformEXT(e)], scalarFieldSampler), ivec3(referencePointIdx), 0).r;
+    outputBuffer[e] = vec4(ensembleValue, pointCoords.x, pointCoords.y, pointCoords.z);
 }

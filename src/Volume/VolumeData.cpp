@@ -484,6 +484,7 @@ void VolumeData::addCalculator(const CalculatorPtr& calculator) {
     typeToFieldNamesMap[calculator->getOutputFieldType()].push_back(calculator->getOutputFieldName());
     calculator->setCalculatorId(calculatorId++);
     calculator->setVolumeData(this, true);
+    calculator->setFileDialogInstance(fileDialogInstance);
 }
 
 FieldAccess VolumeData::createFieldAccessStruct(
@@ -536,11 +537,16 @@ VolumeData::HostCacheEntry VolumeData::getFieldEntryCpu(
             stagingBuffer = std::make_shared<sgl::vk::Buffer>(
                     device, sizeInBytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_TO_CPU);
         }
-        deviceEntry->getVulkanImage()->copyToBuffer(stagingBuffer); //< synchronous copy.
+        deviceEntry->getVulkanImage()->transitionImageLayout(
+                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, renderer->getVkCommandBuffer());
+        deviceEntry->getVulkanImage()->copyToBuffer(stagingBuffer, renderer->getVkCommandBuffer());
+        renderer->syncWithCpu();
         fieldEntryBuffer = new float[size_t(xs) * size_t(ys) * size_t(zs) * numComponents];
         void* data = stagingBuffer->mapMemory();
         memcpy(fieldEntryBuffer, data, sizeInBytes);
         stagingBuffer->unmapMemory();
+        deviceEntry->getVulkanImage()->transitionImageLayout(
+                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, renderer->getVkCommandBuffer());
     } else {
         VolumeLoader* volumeLoader = nullptr;
         if (tsFileCount == 1 && esFileCount == 1) {
@@ -664,7 +670,9 @@ VolumeData::DeviceCacheEntry VolumeData::getFieldEntryDevice(
     imageSettings.imageType = VK_IMAGE_TYPE_3D;
     imageSettings.format = fieldType == FieldType::SCALAR ? VK_FORMAT_R32_SFLOAT : VK_FORMAT_R32G32B32A32_SFLOAT;
     imageSettings.tiling = VK_IMAGE_TILING_OPTIMAL;
-    imageSettings.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    imageSettings.usage =
+            VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
+            | VK_IMAGE_USAGE_STORAGE_BIT;
     imageSettings.memoryUsage = VMA_MEMORY_USAGE_GPU_ONLY;
     imageSettings.exportMemory = canUseCuda;
     imageSettings.useDedicatedAllocationForExportedMemory = false;

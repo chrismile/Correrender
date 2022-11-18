@@ -101,7 +101,6 @@ int main(int argc, char *argv[]) {
     optionalDeviceExtensions.insert(
             optionalDeviceExtensions.end(),
             raytracingDeviceExtensions.begin(), raytracingDeviceExtensions.end());
-    optionalDeviceExtensions.push_back(VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME);
 
     sgl::vk::Instance* instance = sgl::AppSettings::get()->getVulkanInstance();
     sgl::vk::Device* device = new sgl::vk::Device;
@@ -109,10 +108,16 @@ int main(int argc, char *argv[]) {
     requestedDeviceFeatures.optionalPhysicalDeviceFeatures.sampleRateShading = VK_TRUE; // For MSAA.
     requestedDeviceFeatures.optionalEnableShaderDrawParametersFeatures = true; // For deferred shading.
     requestedDeviceFeatures.requestedPhysicalDeviceFeatures.fragmentStoresAndAtomics = VK_TRUE;
+    // For ensemble combination when using Vulkan-CUDA interop with PyTorch.
+    requestedDeviceFeatures.optionalPhysicalDeviceFeatures.shaderSampledImageArrayDynamicIndexing = VK_TRUE;
+    requestedDeviceFeatures.optionalVulkan12Features.descriptorIndexing = VK_TRUE;
+    requestedDeviceFeatures.optionalVulkan12Features.descriptorBindingVariableDescriptorCount = VK_TRUE;
+    requestedDeviceFeatures.optionalVulkan12Features.runtimeDescriptorArray = VK_TRUE;
+    requestedDeviceFeatures.optionalVulkan12Features.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
     device->createDeviceSwapchain(
             instance, window,
             {
-                    VK_EXT_SCALAR_BLOCK_LAYOUT_EXTENSION_NAME
+                    VK_EXT_SCALAR_BLOCK_LAYOUT_EXTENSION_NAME, VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME
             },
             optionalDeviceExtensions, requestedDeviceFeatures);
     sgl::vk::Swapchain* swapchain = new sgl::vk::Swapchain(device);

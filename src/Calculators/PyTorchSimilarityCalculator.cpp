@@ -34,25 +34,28 @@
 #include <c10/cuda/CUDAStream.h>
 #endif
 
+#include <Math/Math.hpp>
 #include <Utils/AppSettings.hpp>
 #include <Utils/File/Logfile.hpp>
 #include <Utils/File/FileUtils.hpp>
+#include <Utils/File/FileLoader.hpp>
+#include <Graphics/Vulkan/Utils/Swapchain.hpp>
 #ifdef SUPPORT_CUDA_INTEROP
 #include <Graphics/Vulkan/Utils/InteropCuda.hpp>
 #endif
 #include <Graphics/Vulkan/Render/Renderer.hpp>
 #include <Graphics/Vulkan/Render/CommandBuffer.hpp>
+#include <Graphics/Vulkan/Render/ComputePipeline.hpp>
 #include <ImGui/ImGuiWrapper.hpp>
 #include <ImGui/Widgets/PropertyEditor.hpp>
 #include <ImGui/ImGuiFileDialog/ImGuiFileDialog.h>
 
+#include "Loaders/DataSet.hpp"
 #include "Volume/VolumeData.hpp"
 #include "PyTorchSimilarityCalculator.hpp"
 
-#if CUDA_VERSION >= 11020
-#define USE_TIMELINE_SEMAPHORES
-#elif defined(_WIN32)
-#error Binary semaphore sharing is broken on Windows. Please install CUDA >= 11.2 for timeline semaphore support.
+#if CUDA_VERSION < 11020
+#error CUDA >= 11.2 is required for timeline semaphore support.
 #endif
 
 struct ModuleWrapper {
@@ -78,7 +81,18 @@ PyTorchSimilarityCalculator::PyTorchSimilarityCalculator(sgl::vk::Renderer* rend
         : EnsembleSimilarityCalculator(renderer) {
     sgl::vk::Device* device = renderer->getDevice();
 
-    sgl::AppSettings::get()->getSettings().getValueOpt("pyTorchDenoiserModelFilePath", modelFilePath);
+    sgl::AppSettings::get()->getSettings().getValueOpt(
+            "pyTorchSimilarityCalculatorModelFilePathEncoder", modelFilePathEncoder);
+    sgl::AppSettings::get()->getSettings().getValueOpt(
+            "pyTorchSimilarityCalculatorModelFilePathDecoder", modelFilePathDecoder);
+    if (sgl::FileUtils::get()->exists(modelFilePathEncoder)
+            && !sgl::FileUtils::get()->isDirectory(modelFilePathEncoder)) {
+        loadModelFromFile(0, modelFilePathEncoder);
+    }
+    if (sgl::FileUtils::get()->exists(modelFilePathDecoder)
+            && !sgl::FileUtils::get()->isDirectory(modelFilePathDecoder)) {
+        loadModelFromFile(1, modelFilePathDecoder);
+    }
 
 #ifdef SUPPORT_CUDA_INTEROP
     // Support CUDA on NVIDIA GPUs using the proprietary driver.
@@ -89,27 +103,86 @@ PyTorchSimilarityCalculator::PyTorchSimilarityCalculator(sgl::vk::Renderer* rend
                     "Error in VolumetricPathTracingModuleRenderer::renderFrameCuda: "
                     "sgl::vk::getIsCudaDeviceApiFunctionTableInitialized() returned false.");
         }
+        uint8_t* moduleBuffer = nullptr;
+        size_t bufferSize = 0;
+        sgl::loadFileFromSource(
+                sgl::AppSettings::get()->getDataDirectory() + "/__cudacache__/CombineEnsembles.fatbin",
+                moduleBuffer, bufferSize, true);
+        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleLoadFatBinary(
+                &combineEnsemblesModuleCu, moduleBuffer), "Error in cuModuleLoadFatBinary: ");
+        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
+                &combineEnsemblesFunctionCu, combineEnsemblesModuleCu, "combineEnsembles"), "Error in cuModuleGetFunction: ");
     }
 #endif
+
+    // TODO: Test
+    pyTorchDevice = PyTorchDevice::CPU;
+
+    referenceEnsembleCombinePass = std::make_shared<ReferenceEnsembleCombinePass>(renderer);
+    ensembleCombinePass = std::make_shared<EnsembleCombinePass>(renderer);
+    ensembleCombinePass->setBatchSize(gpuBatchSize1D);
 }
 
 PyTorchSimilarityCalculator::~PyTorchSimilarityCalculator() {
-    sgl::AppSettings::get()->getSettings().addKeyValue("pyTorchDenoiserModelFilePath", modelFilePath);
+    sgl::AppSettings::get()->getSettings().addKeyValue(
+            "pyTorchSimilarityCalculatorModelFilePathEncoder", modelFilePathEncoder);
+    sgl::AppSettings::get()->getSettings().addKeyValue(
+            "pyTorchSimilarityCalculatorModelFilePathDecoder", modelFilePathDecoder);
 
-    /*if (renderedImageData) {
-        delete[] renderedImageData;
-        renderedImageData = nullptr;
+    if (referenceInputValues) {
+        delete[] referenceInputValues;
+        referenceInputValues = nullptr;
     }
-    if (denoisedImageData) {
-        delete[] denoisedImageData;
-        denoisedImageData = nullptr;
-    }*/
+    if (batchInputValues) {
+        delete[] batchInputValues;
+        batchInputValues = nullptr;
+    }
+    if (outputImageBufferCu != 0) {
+        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFree(
+                outputImageBufferCu), "Error in cuMemFree: ");
+    }
+    if (ensembleTextureArrayCu != 0) {
+        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFree(
+                ensembleTextureArrayCu), "Error in cuMemFree: ");
+    }
+    if (sgl::vk::getIsCudaDeviceApiFunctionTableInitialized()) {
+        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleUnload(
+                combineEnsemblesModuleCu), "Error in cuModuleUnload: ");
+    }
 }
 
-bool PyTorchSimilarityCalculator::loadModelFromFile(const std::string& modelPath) {
+void PyTorchSimilarityCalculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
+    EnsembleSimilarityCalculator::setVolumeData(_volumeData, isNewData);
+
+    referenceEnsembleCombinePass->setVolumeData(volumeData, isNewData);
+    ensembleCombinePass->setVolumeData(volumeData, isNewData);
+
+    /*isgl::vk::Device* device = sgl::AppSettings::get()->getPrimaryDevice();
+    f (referenceInputValues) {
+        delete[] referenceInputValues;
+        referenceInputValues = nullptr;
+    }
+    if (batchInputValues) {
+        delete[] batchInputValues;
+        batchInputValues = nullptr;
+    }
+    renderImageStagingBuffers = {};
+    denoisedImageStagingBuffer = {};
+#ifdef SUPPORT_CUDA_INTEROP
+    outputImageBufferCu = {};
+    //outputImageBufferVk = {};
+    postRenderCommandBuffers = {};
+    renderFinishedSemaphores = {};
+    denoiseFinishedSemaphores = {};
+    timelineValue = 0;
+#endif*/
+}
+
+bool PyTorchSimilarityCalculator::loadModelFromFile(int idx, const std::string& modelPath) {
     torch::DeviceType deviceType = getTorchDeviceType(pyTorchDevice);
     torch::jit::ExtraFilesMap extraFilesMap;
     extraFilesMap["model_info.json"] = "";
+    auto& wrapper = idx == 0 ? encoderWrapper : decoderWrapper;
     wrapper = std::make_shared<ModuleWrapper>();
     try {
         // std::shared_ptr<torch::jit::script::Module>
@@ -128,100 +201,338 @@ bool PyTorchSimilarityCalculator::loadModelFromFile(const std::string& modelPath
         return false;
     }
 
-    // Read the model JSON metadata next.
-    /*auto inputFeatureMapsUsedOld = inputFeatureMapsUsed;
-    inputFeatureMapsUsed.clear();
-    inputFeatureMapsIndexMap.clear();
-    auto it = extraFilesMap.find("model_info.json");
-    if (it == extraFilesMap.end()) {
-        sgl::Logfile::get()->writeError(
-                "Error: Couldn't find model_info.json in the PyTorch module loaded from \"" + modelPath + "\"!");
-        wrapper = {};
-        return false;
-    }
-
-    Json::CharReaderBuilder builder;
-    std::unique_ptr<Json::CharReader> const charReader(builder.newCharReader());
-    JSONCPP_STRING errorString;
-    Json::Value root;
-    if (!charReader->parse(
-            it->second.c_str(), it->second.c_str() + it->second.size(), &root, &errorString)) {
-        sgl::Logfile::get()->writeError("Error in PyTorchSimilarityCalculator::loadModelFromFile: " + errorString);
-        wrapper = {};
-        return false;
-    }*/
-
-    /*
-     * Example: { "input_feature_maps": [ "color", "normal" ] }
-     */
-    /*if (!root.isMember("input_feature_maps")) {
-        sgl::Logfile::get()->writeError(
-                "Error: Array 'input_feature_maps' could not be found in the model_info.json file of the PyTorch "
-                "module loaded from \"" + modelPath + "\"!");
-        wrapper = {};
-        return false;
-    }
-    Json::Value& inputFeatureMapsNode = root["input_feature_maps"];
-    if (!inputFeatureMapsNode.isArray()) {
-        sgl::Logfile::get()->writeError(
-                "Error: 'input_feature_maps' is not an array in the model_info.json file of the PyTorch "
-                "module loaded from \"" + modelPath + "\"!");
-        wrapper = {};
-        return false;
-    }
-
-    for (Json::Value& inputFeatureMapNode : inputFeatureMapsNode) {
-        if (!inputFeatureMapNode.isString()) {
-            sgl::Logfile::get()->writeError(
-                    "Error: A child of the array 'input_feature_maps' in the model_info.json file of the PyTorch "
-                    "module loaded from \"" + modelPath + "\" is not a string!");
-            wrapper = {};
-            return false;
-        }
-        std::string inputFeatureMapName = boost::to_lower_copy(inputFeatureMapNode.asString());
-        int i;
-        for (i = 0; i < IM_ARRAYSIZE(FEATURE_MAP_NAMES); i++) {
-            if (boost::to_lower_copy(std::string() + FEATURE_MAP_NAMES[i]) == inputFeatureMapName) {
-                inputFeatureMapsUsed.push_back(FeatureMapType(i));
-                break;
-            }
-        }
-        if (i == IM_ARRAYSIZE(FEATURE_MAP_NAMES)) {
-            std::string errorStringLogfile = "Error: Invalid feature map name '" + inputFeatureMapName;
-            errorStringLogfile +=
-                    "' found in the model_info.json file of the PyTorch module loaded from \"" + modelPath + "\"!";
-            sgl::Logfile::get()->writeError(errorStringLogfile);
-            wrapper = {};
-            return false;
-        }
-    }
-
-    for (size_t i = 0; i < inputFeatureMapsUsed.size(); i++) {
-        inputFeatureMapsIndexMap.insert(std::make_pair(inputFeatureMapsUsed.at(i), i));
-    }
-    inputFeatureMaps.resize(inputFeatureMapsUsed.size());
-    computeNumChannels();
-    if (inputFeatureMapsUsed != inputFeatureMapsUsedOld) {
-        renderer->getDevice()->waitIdle();
-        recreateSwapchain(
-                inputImageVulkan->getImage()->getImageSettings().width,
-                inputImageVulkan->getImage()->getImageSettings().height);
-    }
-    isFirstContiguousWarning = true;
-
-    // Does the model use 3 or 4 input dimensions?
-    if (wrapper->module.parameters().size() > 0) {
-        auto paramSizes = (*wrapper->module.parameters().begin()).sizes();
-        if (paramSizes.size() == 4) {
-            useBatchDimension = true;
-        }
-    }*/
-
+    dirty = true;
     return true;
 }
 
 void PyTorchSimilarityCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float* buffer) {
-     ;
+    int xs = volumeData->getGridSizeX();
+    int ys = volumeData->getGridSizeY();
+    int zs = volumeData->getGridSizeZ();
+    int es = volumeData->getEnsembleMemberCount();
+    auto ues = uint32_t(es);
+
+    if (!encoderWrapper || !decoderWrapper) {
+        memset(buffer, 0, volumeData->getSlice3dSizeInBytes(FieldType::SCALAR));
+        sgl::Logfile::get()->writeWarning(
+                "Warning in PyTorchSimilarityCalculator::calculateCpu: Encoder or decoder module is not loaded.",
+                true);
+        return;
+    }
+
+    if (cachedEnsembleSizeHost != size_t(es)) {
+        if (cachedEnsembleSizeHost != 0) {
+            delete[] referenceInputValues;
+            delete[] batchInputValues;
+        }
+        cachedEnsembleSizeHost = size_t(es);
+        referenceInputValues = new float[es * 4];
+        batchInputValues = new float[es * 4 * batchSize1D];
+    }
+
+    std::vector<VolumeData::HostCacheEntry> ensembleEntryFields;
+    std::vector<float*> ensembleFields;
+    ensembleEntryFields.reserve(es);
+    ensembleFields.reserve(es);
+    float minEnsembleVal = std::numeric_limits<float>::max();
+    float maxEnsembleVal = std::numeric_limits<float>::lowest();
+    for (ensembleIdx = 0; ensembleIdx < es; ensembleIdx++) {
+        VolumeData::HostCacheEntry ensembleEntryField = volumeData->getFieldEntryCpu(
+                FieldType::SCALAR, scalarFieldNames.at(fieldIndexGui), timeStepIdx, ensembleIdx);
+        auto [minVal, maxVal] = volumeData->getMinMaxScalarFieldValue(
+                scalarFieldNames.at(fieldIndexGui), timeStepIdx, ensembleIdx);
+        minEnsembleVal = std::min(minEnsembleVal, minVal);
+        maxEnsembleVal = std::max(maxEnsembleVal, maxVal);
+        ensembleEntryFields.push_back(ensembleEntryField);
+        ensembleFields.push_back(ensembleEntryField.get());
+    }
+
+    std::vector<int64_t> referenceInputSizes = { 1, es, 4 };
+
+    size_t referencePointIdx = IDXS(referencePointIndex.x, referencePointIndex.y, referencePointIndex.z);
+    glm::vec3 referencePointNorm =
+            glm::vec3(referencePointIndex) / glm::vec3(xs - 1, ys - 1, zs - 1) * 2.0f - glm::vec3(1.0f);
+    for (int e = 0; e < es; e++) {
+        referenceInputValues[e * 4] =
+                (ensembleFields.at(e)[referencePointIdx] - minEnsembleVal) / (maxEnsembleVal - minEnsembleVal);
+        referenceInputValues[e * 4 + 1] = referencePointNorm.x;
+        referenceInputValues[e * 4 + 2] = referencePointNorm.y;
+        referenceInputValues[e * 4 + 3] = referencePointNorm.z;
+    }
+
+    torch::Tensor referenceInputTensor = torch::from_blob(
+            referenceInputValues, referenceInputSizes,
+            torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCPU));
+    std::vector<torch::jit::IValue> referenceInputs;
+    referenceInputs.emplace_back(referenceInputTensor);
+    at::Tensor referenceEncodedTensor = encoderWrapper->module.forward(referenceInputs).toTensor();
+
+    std::vector<torch::jit::IValue> encoderInputs;
+    encoderInputs.resize(1);
+    std::vector<torch::jit::IValue> decoderInputs;
+    decoderInputs.resize(2);
+    decoderInputs.at(0) = referenceEncodedTensor;
+
+    std::vector<int64_t> inputSizes = { batchSize1D, es, 4 };
+
+    uint32_t numSliceEntries = uint32_t(xs) * uint32_t(ys) * uint32_t(zs);
+    uint32_t numBatches = sgl::uiceil(numSliceEntries, uint32_t(batchSize1D));
+    for (uint32_t batchIdx = 0; batchIdx < numBatches; batchIdx++) {
+        uint32_t batchOffset = batchIdx * batchSize1D;
+        uint32_t batchSize = std::min(uint32_t(batchSize1D), numSliceEntries - batchOffset);
+
+#ifdef USE_TBB
+        tbb::parallel_for(tbb::blocked_range<uint32_t>(0, batchSize), [&](auto const& r) {
+            for (auto pointIdx = r.begin(); pointIdx != r.end(); pointIdx++) {
+#else
+#if _OPENMP >= 201107
+        #pragma omp parallel for default(none) shared(xs, ys, zs, es, ues, batchSize, batchOffset) \
+        shared(ensembleFields, minEnsembleVal, maxEnsembleVal)
+#endif
+        for (uint32_t pointIdx = 0; pointIdx < batchSize; pointIdx++) {
+#endif
+            uint32_t pointIdxWriteOffset = pointIdx * es * 4;
+            uint32_t pointIdxReadOffset = pointIdx + batchOffset;
+            uint32_t x = pointIdxReadOffset % uint32_t(xs);
+            uint32_t y = (pointIdxReadOffset / uint32_t(xs)) % uint32_t(ys);
+            uint32_t z = pointIdxReadOffset / uint32_t(xs * ys);
+            glm::vec3 pointNorm = glm::vec3(x, y, z) / glm::vec3(xs - 1, ys - 1, zs - 1) * 2.0f - glm::vec3(1.0f);
+            for (uint32_t e = 0; e < ues; e++) {
+                batchInputValues[pointIdxWriteOffset + e * 4] =
+                        (ensembleFields.at(e)[pointIdxReadOffset] - minEnsembleVal) / (maxEnsembleVal - minEnsembleVal);
+                batchInputValues[pointIdxWriteOffset + e * 4 + 1] = pointNorm.x;
+                batchInputValues[pointIdxWriteOffset + e * 4 + 2] = pointNorm.y;
+                batchInputValues[pointIdxWriteOffset + e * 4 + 3] = pointNorm.z;
+            }
+        }
+#ifdef USE_TBB
+        });
+#endif
+
+        torch::Tensor inputTensor = torch::from_blob(
+                batchInputValues, inputSizes,
+                torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCPU));
+        encoderInputs.at(0) = inputTensor;
+        at::Tensor encodedTensor = encoderWrapper->module.forward(encoderInputs).toTensor();
+        decoderInputs.at(1) = encodedTensor;
+        at::Tensor similarityMetricTensor = decoderWrapper->module.forward(decoderInputs).toTensor();
+        if (!similarityMetricTensor.is_contiguous()) {
+            if (isFirstContiguousWarning) {
+                sgl::Logfile::get()->writeWarning("Error in PyTorchDenoiser::denoise: Output tensor is not contiguous.");
+                isFirstContiguousWarning = false;
+            }
+            similarityMetricTensor = similarityMetricTensor.contiguous();
+        }
+        memcpy(buffer + batchOffset, similarityMetricTensor.data_ptr(), sizeof(float) * batchSize);
+    }
+}
+
+void PyTorchSimilarityCalculator::calculateDevice(
+        int timeStepIdx, int ensembleIdx, const DeviceCacheEntry& deviceCacheEntry) {
+    int xs = volumeData->getGridSizeX();
+    int ys = volumeData->getGridSizeY();
+    int zs = volumeData->getGridSizeZ();
+    int es = volumeData->getEnsembleMemberCount();
+
+    renderer->insertImageMemoryBarrier(
+            deviceCacheEntry->getVulkanImage(),
+            VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_ACCESS_NONE_KHR, VK_ACCESS_TRANSFER_WRITE_BIT);
+
+    if (!encoderWrapper || !decoderWrapper) {
+        deviceCacheEntry->getVulkanImage()->clearColor(glm::vec4(0.0f), renderer->getVkCommandBuffer());
+        sgl::Logfile::get()->writeWarning(
+                "Warning in PyTorchSimilarityCalculator::calculateCpu: Encoder or decoder module is not loaded.",
+                true);
+        return;
+    }
+
+    // TODO
+    cudaStream_t stream = at::cuda::getCurrentCUDAStream();
+
+    if (cachedEnsembleSizeDevice != size_t(es)) {
+        referenceInputBufferCu = {};
+        inputBufferCu = {};
+        if (outputImageBufferCu != 0) {
+            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
+                    outputImageBufferCu, stream), "Error in cuMemFreeAsync: ");
+        }
+        if (ensembleTextureArrayCu != 0) {
+            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
+                    ensembleTextureArrayCu, stream), "Error in cuMemFreeAsync: ");
+        }
+        cachedEnsembleSizeDevice = size_t(es);
+        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
+                &outputImageBufferCu, volumeData->getSlice3dSizeInBytes(FieldType::SCALAR), stream), "Error in cuMemAllocAsync: ");
+        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
+                &ensembleTextureArrayCu, es * sizeof(CUtexObject), stream), "Error in cuMemAllocAsync: ");
+
+        auto referenceInputBufferVk = std::make_shared<sgl::vk::Buffer>(
+                renderer->getDevice(), sizeof(float) * es * 4,
+                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY,
+                true, true);
+        referenceInputBufferCu = std::make_shared<sgl::vk::BufferCudaDriverApiExternalMemoryVk>(referenceInputBufferVk);
+
+        auto inputBufferVk = std::make_shared<sgl::vk::Buffer>(
+                renderer->getDevice(), sizeof(float) * gpuBatchSize1D * es * 4,
+                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY,
+                true, true);
+        inputBufferCu = std::make_shared<sgl::vk::BufferCudaDriverApiExternalMemoryVk>(inputBufferVk);
+
+        ensembleCombinePass->setOutputBuffer(inputBufferCu->getVulkanBuffer());
+        referenceEnsembleCombinePass->setOutputBuffer(referenceInputBufferCu->getVulkanBuffer());
+    }
+
+    sgl::vk::Swapchain* swapchain = sgl::AppSettings::get()->getSwapchain();
+    uint32_t frameIndex = swapchain ? swapchain->getImageIndex() : 0;
+    size_t numSwapchainImages = swapchain ? swapchain->getNumImages() : 1;
+    if (numSwapchainImages != cachedNumSwapchainImages) {
+        sgl::vk::Device* device = renderer->getDevice();
+        timelineValue = 0;
+        postRenderCommandBuffers.clear();
+        sgl::vk::CommandPoolType commandPoolType;
+        commandPoolType.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+        for (size_t frameIdx = 0; frameIdx < numSwapchainImages; frameIdx++) {
+            postRenderCommandBuffers.push_back(std::make_shared<sgl::vk::CommandBuffer>(device, commandPoolType));
+        }
+        vulkanFinishedSemaphore = std::make_shared<sgl::vk::SemaphoreVkCudaDriverApiInterop>(
+                device, 0, VK_SEMAPHORE_TYPE_TIMELINE, timelineValue);
+        cudaFinishedSemaphore = std::make_shared<sgl::vk::SemaphoreVkCudaDriverApiInterop>(
+                device, 0, VK_SEMAPHORE_TYPE_TIMELINE, timelineValue);
+    }
+    timelineValue++;
+
+    std::vector<VolumeData::DeviceCacheEntry> ensembleEntryFields;
+    std::vector<sgl::vk::ImageViewPtr> ensembleImageViews;
+    std::vector<CUtexObject> ensembleTexturesCu;
+    ensembleEntryFields.reserve(es);
+    ensembleImageViews.reserve(es);
+    ensembleTexturesCu.reserve(es);
+    for (ensembleIdx = 0; ensembleIdx < es; ensembleIdx++) {
+        VolumeData::DeviceCacheEntry ensembleEntryField = volumeData->getFieldEntryDevice(
+                FieldType::SCALAR, scalarFieldNames.at(fieldIndexGui), timeStepIdx, ensembleIdx);
+        ensembleEntryFields.push_back(ensembleEntryField);
+        ensembleImageViews.push_back(ensembleEntryField->getVulkanImageView());
+        ensembleTexturesCu.push_back(ensembleEntryField->getCudaTexture());
+        if (ensembleEntryField->getVulkanImage()->getVkImageLayout() != VK_IMAGE_LAYOUT_GENERAL) {
+            deviceCacheEntry->getVulkanImage()->transitionImageLayout(
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, renderer->getVkCommandBuffer());
+        }
+    }
+
+    referenceEnsembleCombinePass->setEnsembleImageViews(ensembleImageViews);
+    if (createBatchesWithVulkan) {
+        ensembleCombinePass->setEnsembleImageViews(ensembleImageViews);
+    } else {
+        if (cachedEnsembleTexturesCu != ensembleTexturesCu) {
+            cachedEnsembleTexturesCu = ensembleTexturesCu;
+            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
+                    stream), "Error in cuStreamSynchronize: ");
+            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyHtoD(
+                    ensembleTextureArrayCu, ensembleTexturesCu.data(), sizeof(CUtexObject) * es), "Error in cuMemcpyHtoD: ");
+        }
+    }
+
+    std::vector<int64_t> referenceInputSizes = { 1, es, 4 };
+
+    referenceEnsembleCombinePass->buildIfNecessary();
+    renderer->pushConstants(
+            referenceEnsembleCombinePass->getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, 0, &referencePointIndex);
+    referenceEnsembleCombinePass->render();
+
+    sgl::vk::CommandBufferPtr commandBufferRender = renderer->getCommandBuffer();
+    vulkanFinishedSemaphore->setSignalSemaphoreValue(timelineValue);
+    commandBufferRender->pushSignalSemaphore(vulkanFinishedSemaphore);
+    renderer->endCommandBuffer();
+
+    /*
+     * 'model->forward()' uses device caching allocators, which may call functions like 'cudaStreamIsCapturing',
+     * which enforce synchronization of the stream with the host if more memory needs to be allocated. Thus, we must
+     * submit the Vulkan command buffers before this function, as otherwise, CUDA will wait forever on the render
+     * finished semaphore!
+     */
+    renderer->submitToQueue();
+
+#ifdef USE_TIMELINE_SEMAPHORES
+    vulkanFinishedSemaphore->waitSemaphoreCuda(stream, timelineValue);
+#else
+    vulkanFinishedSemaphore->waitSemaphoreCuda(stream);
+#endif
+
+    torch::Tensor referenceInputTensor = torch::from_blob(
+            (void*)referenceInputBufferCu->getCudaDevicePtr(), referenceInputSizes,
+            torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCPU));
+    std::vector<torch::jit::IValue> referenceInputs;
+    referenceInputs.emplace_back(referenceInputTensor);
+    at::Tensor referenceEncodedTensor = encoderWrapper->module.forward(referenceInputs).toTensor();
+
+    std::vector<torch::jit::IValue> encoderInputs;
+    encoderInputs.resize(1);
+    std::vector<torch::jit::IValue> decoderInputs;
+    decoderInputs.resize(2);
+    decoderInputs.at(0) = referenceEncodedTensor;
+
+    std::vector<int64_t> inputSizes = { gpuBatchSize1D, es, 4 };
+
+    uint32_t numSliceEntries = uint32_t(xs) * uint32_t(ys) * uint32_t(zs);
+    uint32_t numBatches = sgl::uiceil(numSliceEntries, uint32_t(gpuBatchSize1D));
+    for (uint32_t batchIdx = 0; batchIdx < numBatches; batchIdx++) {
+        uint32_t batchOffset = batchIdx * gpuBatchSize1D;
+        uint32_t batchSize = std::min(uint32_t(gpuBatchSize1D), numSliceEntries - batchOffset);
+
+        if (createBatchesWithVulkan) {
+            ensembleCombinePass->buildIfNecessary();
+            renderer->pushConstants(
+                    ensembleCombinePass->getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, 0, batchOffset);
+            renderer->pushConstants(
+                    ensembleCombinePass->getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, sizeof(uint32_t), batchSize);
+            ensembleCombinePass->render();
+        } else {
+            void* kernelParameters[] = {
+                    &xs, &ys, &zs, &es, &batchOffset, &batchSize,
+                    (void*)inputBufferCu->getCudaDevicePtr(), (void*)ensembleTextureArrayCu
+            };
+            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuLaunchKernel(
+                    combineEnsemblesFunctionCu,
+                    sgl::uiceil(batchSize, 256), 1, 1, //< Grid size.
+                    256, 1, 1, //< Block size.
+                    0, //< Dynamic shared memory size.
+                    stream,
+                    kernelParameters, //< Kernel parameters.
+                    nullptr //< Extra (empty).
+            ), "Error in cuLaunchKernel: ");
+        }
+
+        torch::Tensor inputTensor = torch::from_blob(
+                (void*)inputBufferCu->getCudaDevicePtr(), inputSizes,
+                torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCPU));
+        encoderInputs.at(0) = inputTensor;
+        at::Tensor encodedTensor = encoderWrapper->module.forward(encoderInputs).toTensor();
+        decoderInputs.at(1) = encodedTensor;
+        at::Tensor similarityMetricTensor = decoderWrapper->module.forward(decoderInputs).toTensor();
+        if (!similarityMetricTensor.is_contiguous()) {
+            if (isFirstContiguousWarning) {
+                sgl::Logfile::get()->writeWarning("Error in PyTorchDenoiser::denoise: Output tensor is not contiguous.");
+                isFirstContiguousWarning = false;
+            }
+            similarityMetricTensor = similarityMetricTensor.contiguous();
+        }
+        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyAsync(
+                outputImageBufferCu + batchOffset * sizeof(float),
+                (CUdeviceptr)similarityMetricTensor.data_ptr(),
+                sizeof(float) * batchSize, stream), "Error in cuMemcpyAsync: ");
+    }
+
+    deviceCacheEntry->getImageCudaExternalMemory()->memcpyCudaDtoA3DAsync(outputImageBufferCu, stream);
+
+    cudaFinishedSemaphore->signalSemaphoreCuda(stream, timelineValue);
+    cudaFinishedSemaphore->setWaitSemaphoreValue(timelineValue);
+    sgl::vk::CommandBufferPtr postRenderCommandBuffer = postRenderCommandBuffers.at(frameIndex);
+    renderer->pushCommandBuffer(postRenderCommandBuffer);
+    renderer->beginCommandBuffer();
+    postRenderCommandBuffer->pushWaitSemaphore(
+            cudaFinishedSemaphore, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
 }
 
 FilterDevice PyTorchSimilarityCalculator::PyTorchSimilarityCalculator::getFilterDevice() {
@@ -231,98 +542,22 @@ FilterDevice PyTorchSimilarityCalculator::PyTorchSimilarityCalculator::getFilter
     return FilterDevice::CPU;
 }
 
-void PyTorchSimilarityCalculator::calculateDevice(
-        int timeStepIdx, int ensembleIdx, const DeviceCacheEntry& deviceCacheEntry) {
-    /*cudaStream_t stream = at::cuda::getCurrentCUDAStream();
-    sgl::vk::ImageCudaExternalMemoryVkPtr imageCudaExternalMemory = deviceCacheEntry->getImageCudaExternalMemory();
-    imageCudaExternalMemory->memcpyCudaDtoA3DAsync(devicePtr, stream);
-
-    int xs = volumeData->getGridSizeX();
-    int ys = volumeData->getGridSizeY();
-    int zs = volumeData->getGridSizeZ();
-    int es = volumeData->getEnsembleMemberCount();
-
-    std::vector<VolumeData::HostCacheEntry> ensembleEntryFields;
-    std::vector<float*> ensembleFields;
-    ensembleEntryFields.reserve(es);
-    ensembleFields.reserve(es);
-    for (ensembleIdx = 0; ensembleIdx < es; ensembleIdx++) {
-        VolumeData::HostCacheEntry ensembleEntryField = volumeData->getFieldEntryCpu(
-                FieldType::SCALAR, scalarFieldNames.at(fieldIndexGui), timeStepIdx, ensembleIdx);
-        ensembleEntryFields.push_back(ensembleEntryField);
-        ensembleFields.push_back(ensembleEntryField.get());
-    }
-
-    for (ensembleIdx = 0; ensembleIdx < es; ensembleIdx++) {
-        VolumeData::HostCacheEntry ensembleEntryField = volumeData->getFieldEntryCpu(
-                FieldType::SCALAR, scalarFieldNames.at(fieldIndexGui), timeStepIdx, ensembleIdx);
-        ensembleEntryFields.push_back(ensembleEntryField);
-    }
-
-    size_t referencePointIdx =
-            size_t(referencePointIndex.x) * size_t(referencePointIndex.y) * size_t(referencePointIndex.z);
-    auto* referenceValues = new float[es];
-    for (int e = 0; e < es; e++) {
-        referenceValues[e] = ensembleFields.at(e)[referencePointIdx];
-    }
-
-    // See: https://en.wikipedia.org/wiki/Pearson_correlation_coefficient
-    size_t numGridPoints = size_t(xs) * size_t(ys) * size_t(zs);
-#ifdef USE_TBB
-    tbb::parallel_for(tbb::blocked_range<size_t>(0, numGridPoints), [&](auto const& r) {
-        for (auto gridPointIdx = r.begin(); gridPointIdx != r.end(); gridPointIdx++) {
-#else
-#if _OPENMP >= 200805
-    #pragma omp parallel for shared(numGridPoints, es, referenceValues, ensembleFields, buffer) default(none)
-#endif
-    for (size_t gridPointIdx = 0; gridPointIdx < numGridPoints; gridPointIdx++) {
-#endif
-        auto n = float(es);
-        float sumX = 0.0f;
-        float sumY = 0.0f;
-        float sumXY = 0.0f;
-        float sumXX = 0.0f;
-        float sumYY = 0.0f;
-        for (int e = 0; e < es; e++) {
-            float x = referenceValues[e];
-            float y = ensembleFields.at(e)[gridPointIdx];
-            sumX += x;
-            sumY += y;
-            sumXY += x * y;
-            sumXX += x * x;
-            sumYY += y * y;
-        }
-        float pearsonCorrelation =
-                (n * sumXY - sumX * sumY) / std::sqrt((n * sumXX - sumX * sumX) * (n * sumYY - sumY * sumY));
-        buffer[gridPointIdx] = pearsonCorrelation;
-    }
-#ifdef USE_TBB
-    });
-#endif
-
-    delete[] referenceValues;*/
-}
-
 void PyTorchSimilarityCalculator::setPyTorchDevice(PyTorchDevice pyTorchDeviceNew) {
     if (pyTorchDeviceNew == pyTorchDevice) {
         return;
     }
 
     pyTorchDevice = pyTorchDeviceNew;
-    /*if (inputImageVulkan) {
-        renderer->getDevice()->waitIdle();
-        recreateSwapchain(
-                inputImageVulkan->getImage()->getImageSettings().width,
-                inputImageVulkan->getImage()->getImageSettings().height);
+    if (encoderWrapper) {
+        encoderWrapper->module.to(getTorchDeviceType(pyTorchDevice));
     }
-    if (wrapper) {
-        wrapper->module.to(getTorchDeviceType(pyTorchDevice));
-    }*/
+    if (decoderWrapper) {
+        decoderWrapper->module.to(getTorchDeviceType(pyTorchDevice));
+    }
 }
 
 void PyTorchSimilarityCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
-    bool reRender = false;
-
+    EnsembleSimilarityCalculator::renderGuiImpl(propertyEditor);
     if (IGFD_DisplayDialog(
             fileDialogInstance,
             "ChoosePyTorchModelFile", ImGuiWindowFlags_NoCollapse,
@@ -353,33 +588,31 @@ void PyTorchSimilarityCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEdi
 
             fileDialogDirectory = sgl::FileUtils::get()->getPathToFile(filename);
 
-            modelFilePath = filename;
-            loadModelFromFile(modelFilePath);
-            reRender = true;
+            if (modelSelectionIndex == 0) {
+                modelFilePathEncoder = filename;
+            } else {
+                modelFilePathDecoder = filename;
+            }
+            loadModelFromFile(modelSelectionIndex, filename);
+            dirty = true;
         }
         IGFD_CloseDialog(fileDialogInstance);
     }
 
-    propertyEditor.addInputAction("Model Path", &modelFilePath);
-    if (propertyEditor.addButton("", "Load")) {
-        loadModelFromFile(modelFilePath);
-        reRender = true;
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Open from Disk...")) {
-        if (fileDialogDirectory.empty() || !sgl::FileUtils::get()->directoryExists(fileDialogDirectory)) {
-            fileDialogDirectory = sgl::AppSettings::get()->getDataDirectory() + "LineDataSets/";
-            if (!sgl::FileUtils::get()->exists(fileDialogDirectory)) {
-                fileDialogDirectory = sgl::AppSettings::get()->getDataDirectory();
-            }
+    for (int i = 0; i < 2; i++) {
+        propertyEditor.addInputAction(
+                i == 0 ? ("Model Path (Encoder)##" + std::to_string(i)) : ("Model Path (Decoder)##" + std::to_string(i)),
+                i == 0 ? &modelFilePathEncoder : &modelFilePathDecoder);
+        if (propertyEditor.addButton("", "Load##" + std::to_string(i))) {
+            loadModelFromFile(i, i == 0 ? modelFilePathEncoder : modelFilePathDecoder);
+            dirty = true;
         }
-        IGFD_OpenModal(
-                fileDialogInstance,
-                "ChoosePyTorchModelFile", "Choose TorchScript Model File",
-                ".*,.pt,.pth",
-                fileDialogDirectory.c_str(),
-                "", 1, nullptr,
-                ImGuiFileDialogFlags_ConfirmOverwrite);
+        ImGui::SameLine();
+        std::string buttonText = "Open from Disk...##" + std::to_string(i);
+        if (ImGui::Button(buttonText.c_str())) {
+            modelSelectionIndex = i;
+            openModelSelectionDialog();
+        }
     }
 
     PyTorchDevice pyTorchDeviceNew = pyTorchDevice;
@@ -387,10 +620,156 @@ void PyTorchSimilarityCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEdi
             "Device", (int*)&pyTorchDeviceNew,
             PYTORCH_DEVICE_NAMES, IM_ARRAYSIZE(PYTORCH_DEVICE_NAMES))) {
         setPyTorchDevice(pyTorchDeviceNew);
-        reRender = true;
+        dirty = true;
     }
+}
 
-    (void)reRender;
-    // TODO
-    //return reRender;
+void PyTorchSimilarityCalculator::openModelSelectionDialog() {
+    if (fileDialogDirectory.empty() || !sgl::FileUtils::get()->directoryExists(fileDialogDirectory)) {
+        fileDialogDirectory = sgl::AppSettings::get()->getDataDirectory() + "PyTorch/";
+        if (!sgl::FileUtils::get()->exists(fileDialogDirectory)) {
+            fileDialogDirectory = sgl::AppSettings::get()->getDataDirectory();
+        }
+    }
+    IGFD_OpenModal(
+            fileDialogInstance,
+            "ChoosePyTorchModelFile", "Choose TorchScript Model File",
+            ".*,.pt,.pth",
+            fileDialogDirectory.c_str(),
+            "", 1, nullptr,
+            ImGuiFileDialogFlags_ConfirmOverwrite);
+}
+
+
+
+EnsembleCombinePass::EnsembleCombinePass(sgl::vk::Renderer* renderer) : ComputePass(renderer) {
+    uniformBuffer = std::make_shared<sgl::vk::Buffer>(
+            device, sizeof(UniformData),
+            VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+            VMA_MEMORY_USAGE_GPU_ONLY);
+}
+
+void EnsembleCombinePass::setVolumeData(VolumeData *_volumeData, bool isNewData) {
+    volumeData = _volumeData;
+    uniformData.xs = uint32_t(volumeData->getGridSizeX());
+    uniformData.ys = uint32_t(volumeData->getGridSizeY());
+    uniformData.zs = uint32_t(volumeData->getGridSizeZ());
+    uniformData.es = uint32_t(volumeData->getEnsembleMemberCount());
+    uniformData.boundingBoxMin = volumeData->getBoundingBox().min;
+    uniformData.boundingBoxMax = volumeData->getBoundingBox().min;
+    uniformBuffer->updateData(
+            sizeof(UniformData), &uniformData, renderer->getVkCommandBuffer());
+    renderer->insertMemoryBarrier(
+            VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_UNIFORM_READ_BIT,
+            VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+    if (cachedEnsembleMemberCount != volumeData->getEnsembleMemberCount()) {
+        cachedEnsembleMemberCount = volumeData->getEnsembleMemberCount();
+        setShaderDirty();
+    }
+}
+
+void EnsembleCombinePass::setEnsembleImageViews(const std::vector<sgl::vk::ImageViewPtr>& _ensembleImageViews) {
+    if (ensembleImageViews == _ensembleImageViews) {
+        return;
+    }
+    ensembleImageViews = _ensembleImageViews;
+    if (computeData) {
+        computeData->setStaticImageViewArray(ensembleImageViews, "scalarFieldEnsembles");
+    }
+}
+
+void EnsembleCombinePass::setOutputBuffer(const sgl::vk::BufferPtr& _outputBuffer) {
+    outputBuffer = _outputBuffer;
+    if (computeData) {
+        computeData->setStaticBuffer(outputBuffer, "OutputBuffer");
+    }
+}
+
+void EnsembleCombinePass::loadShader() {
+    sgl::vk::ShaderManager->invalidateShaderCache();
+    std::map<std::string, std::string> preprocessorDefines;
+    preprocessorDefines.insert(std::make_pair("BLOCK_SIZE", std::to_string(computeBlockSize)));
+    preprocessorDefines.insert(std::make_pair(
+            "ENSEMBLE_MEMBER_COUNT", std::to_string(volumeData->getEnsembleMemberCount())));
+    shaderStages = sgl::vk::ShaderManager->getShaderStages(
+            { "CombineEnsembles.Compute" }, preprocessorDefines);
+}
+
+void EnsembleCombinePass::createComputeData(sgl::vk::Renderer* renderer, sgl::vk::ComputePipelinePtr& computePipeline) {
+    computeData = std::make_shared<sgl::vk::ComputeData>(renderer, computePipeline);
+    computeData->setStaticBuffer(uniformBuffer, "UniformBuffer");
+    computeData->setImageSampler(volumeData->getImageSampler(), "scalarFieldSampler");
+    computeData->setStaticImageViewArray(ensembleImageViews, "scalarFieldEnsembles");
+    computeData->setStaticBuffer(outputBuffer, "OutputBuffer");
+}
+
+void EnsembleCombinePass::_render() {
+    renderer->dispatch(computeData, sgl::iceil(batchSize, computeBlockSize), 1, 1);
+}
+
+
+
+ReferenceEnsembleCombinePass::ReferenceEnsembleCombinePass(sgl::vk::Renderer* renderer) : ComputePass(renderer) {
+    uniformBuffer = std::make_shared<sgl::vk::Buffer>(
+            device, sizeof(UniformData),
+            VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+            VMA_MEMORY_USAGE_GPU_ONLY);
+}
+
+void ReferenceEnsembleCombinePass::setVolumeData(VolumeData *_volumeData, bool isNewData) {
+    volumeData = _volumeData;
+    uniformData.xs = uint32_t(volumeData->getGridSizeX());
+    uniformData.ys = uint32_t(volumeData->getGridSizeY());
+    uniformData.zs = uint32_t(volumeData->getGridSizeZ());
+    uniformData.es = uint32_t(volumeData->getEnsembleMemberCount());
+    uniformData.boundingBoxMin = volumeData->getBoundingBox().min;
+    uniformData.boundingBoxMax = volumeData->getBoundingBox().min;
+    uniformBuffer->updateData(
+            sizeof(UniformData), &uniformData, renderer->getVkCommandBuffer());
+    renderer->insertMemoryBarrier(
+            VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_UNIFORM_READ_BIT,
+            VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+    if (cachedEnsembleMemberCount != volumeData->getEnsembleMemberCount()) {
+        cachedEnsembleMemberCount = volumeData->getEnsembleMemberCount();
+        setShaderDirty();
+    }
+}
+
+void ReferenceEnsembleCombinePass::setEnsembleImageViews(const std::vector<sgl::vk::ImageViewPtr>& _ensembleImageViews) {
+    if (ensembleImageViews == _ensembleImageViews) {
+        return;
+    }
+    ensembleImageViews = _ensembleImageViews;
+    if (computeData) {
+        computeData->setStaticImageViewArray(ensembleImageViews, "scalarFieldEnsembles");
+    }
+}
+
+void ReferenceEnsembleCombinePass::setOutputBuffer(const sgl::vk::BufferPtr& _outputBuffer) {
+    outputBuffer = _outputBuffer;
+    if (computeData) {
+        computeData->setStaticBuffer(outputBuffer, "OutputBuffer");
+    }
+}
+
+void ReferenceEnsembleCombinePass::loadShader() {
+    sgl::vk::ShaderManager->invalidateShaderCache();
+    std::map<std::string, std::string> preprocessorDefines;
+    preprocessorDefines.insert(std::make_pair("BLOCK_SIZE", std::to_string(computeBlockSize)));
+    preprocessorDefines.insert(std::make_pair(
+            "ENSEMBLE_MEMBER_COUNT", std::to_string(volumeData->getEnsembleMemberCount())));
+    shaderStages = sgl::vk::ShaderManager->getShaderStages(
+            { "CombineEnsembles.Compute.Reference" }, preprocessorDefines);
+}
+
+void ReferenceEnsembleCombinePass::createComputeData(sgl::vk::Renderer* renderer, sgl::vk::ComputePipelinePtr& computePipeline) {
+    computeData = std::make_shared<sgl::vk::ComputeData>(renderer, computePipeline);
+    computeData->setStaticBuffer(uniformBuffer, "UniformBuffer");
+    computeData->setImageSampler(volumeData->getImageSampler(), "scalarFieldSampler");
+    computeData->setStaticImageViewArray(ensembleImageViews, "scalarFieldEnsembles");
+    computeData->setStaticBuffer(outputBuffer, "OutputBuffer");
+}
+
+void ReferenceEnsembleCombinePass::_render() {
+    renderer->dispatch(computeData, sgl::iceil(volumeData->getEnsembleMemberCount(), computeBlockSize), 1, 1);
 }

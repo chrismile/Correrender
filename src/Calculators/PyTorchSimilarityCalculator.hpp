@@ -29,6 +29,10 @@
 #ifndef CORRERENDER_PYTORCHSIMILARITYCALCULATOR_HPP
 #define CORRERENDER_PYTORCHSIMILARITYCALCULATOR_HPP
 
+#include <vector>
+#include <unordered_map>
+#include <Graphics/Vulkan/Render/Passes/Pass.hpp>
+
 #include "SimilarityCalculator.hpp"
 
 enum class PyTorchDevice {
@@ -42,6 +46,8 @@ const char* const PYTORCH_DEVICE_NAMES[] = {
 };
 
 struct ModuleWrapper;
+class EnsembleCombinePass;
+class ReferenceEnsembleCombinePass;
 
 /**
  * Calls a PyTorch model using TorchScript to compute the ensemble similarity between a reference point and the volume.
@@ -74,12 +80,13 @@ class PyTorchSimilarityCalculator : public EnsembleSimilarityCalculator {
 public:
     explicit PyTorchSimilarityCalculator(sgl::vk::Renderer* renderer);
     ~PyTorchSimilarityCalculator() override;
+    void setVolumeData(VolumeData* _volumeData, bool isNewData) override;
     std::string getOutputFieldName() override { return "Similarity Metric (Torch)"; }
     FilterDevice getFilterDevice() override;
     void calculateCpu(int timeStepIdx, int ensembleIdx, float* buffer) override;
     void calculateDevice(int timeStepIdx, int ensembleIdx, const DeviceCacheEntry& deviceCacheEntry) override;
 
-    bool loadModelFromFile(const std::string& modelPath);
+    bool loadModelFromFile(int idx, const std::string& modelPath);
     void setPyTorchDevice(PyTorchDevice pyTorchDeviceNew);
 
 protected:
@@ -87,29 +94,104 @@ protected:
     void renderGuiImpl(sgl::PropertyEditor& propertyEditor) override;
 
 private:
+    void openModelSelectionDialog();
     PyTorchDevice pyTorchDevice = PyTorchDevice::CPU;
-    std::shared_ptr<ModuleWrapper> wrapper;
-    std::string modelFilePath;
+    std::shared_ptr<ModuleWrapper> encoderWrapper, decoderWrapper;
+    std::string modelFilePathEncoder, modelFilePathDecoder;
+    int modelSelectionIndex = 0;
     std::string fileDialogDirectory;
+    bool isFirstContiguousWarning = true;
+
+    const int batchSize1D = 8192; // 1024
+    const int gpuBatchSize1D = 16384;
+    size_t cachedEnsembleSizeHost = 0;
+    size_t cachedEnsembleSizeDevice = 0;
 
     // Data for CPU rendering.
     std::vector<sgl::vk::BufferPtr> renderImageStagingBuffers;
-    sgl::vk::BufferPtr denoisedImageStagingBuffer;
-    sgl::vk::FencePtr renderFinishedFence;
-    sgl::vk::FencePtr denoiseFinishedFence;
-    float* renderedImageData = nullptr;
-    float* denoisedImageData = nullptr;
+    float* referenceInputValues = nullptr;
+    float* batchInputValues = nullptr;
 
 #ifdef SUPPORT_CUDA_INTEROP
     // Synchronization primitives.
-    sgl::vk::BufferPtr inputDataBufferVk, outputImageBufferVk;
-    sgl::vk::BufferCudaDriverApiExternalMemoryVkPtr inputDataBufferCu, outputImageBufferCu;
+    bool createBatchesWithVulkan = false;
+    size_t cachedNumSwapchainImages = 0;
+    sgl::vk::BufferCudaDriverApiExternalMemoryVkPtr referenceInputBufferCu, inputBufferCu;
     std::vector<sgl::vk::CommandBufferPtr> postRenderCommandBuffers;
-    std::vector<sgl::vk::SemaphoreVkCudaDriverApiInteropPtr> renderFinishedSemaphores;
-    std::vector<sgl::vk::SemaphoreVkCudaDriverApiInteropPtr> denoiseFinishedSemaphores;
+    sgl::vk::SemaphoreVkCudaDriverApiInteropPtr vulkanFinishedSemaphore, cudaFinishedSemaphore;
     uint64_t timelineValue = 0;
+    CUdeviceptr outputImageBufferCu{};
+    CUdeviceptr ensembleTextureArrayCu{};
+    std::vector<CUtexObject> cachedEnsembleTexturesCu;
+    CUmodule combineEnsemblesModuleCu{};
+    CUfunction combineEnsemblesFunctionCu{};
 #endif
-    //std::shared_ptr<FeatureCombinePass> featureCombinePass;
+    std::shared_ptr<ReferenceEnsembleCombinePass> referenceEnsembleCombinePass;
+    std::shared_ptr<EnsembleCombinePass> ensembleCombinePass;
+};
+
+class EnsembleCombinePass : public sgl::vk::ComputePass {
+public:
+    explicit EnsembleCombinePass(sgl::vk::Renderer* renderer);
+    void setVolumeData(VolumeData* _volumeData, bool isNewData);
+    void setEnsembleImageViews(const std::vector<sgl::vk::ImageViewPtr>& _ensembleImageViews);
+    void setOutputBuffer(const sgl::vk::BufferPtr& _outputBuffer);
+    inline void setBatchSize(int _batchSize) { batchSize = _batchSize; }
+
+protected:
+    void loadShader() override;
+    void createComputeData(sgl::vk::Renderer* renderer, sgl::vk::ComputePipelinePtr& computePipeline) override;
+    void _render() override;
+
+private:
+    VolumeData* volumeData = nullptr;
+    int cachedEnsembleMemberCount = 0;
+
+    const int computeBlockSize = 256;
+    int batchSize = 0;
+    struct UniformData {
+        uint32_t xs, ys, zs, es;
+        glm::vec3 boundingBoxMin;
+        float padding0;
+        glm::vec3 boundingBoxMax;
+        float padding1;
+    };
+    UniformData uniformData{};
+    sgl::vk::BufferPtr uniformBuffer;
+
+    std::vector<sgl::vk::ImageViewPtr> ensembleImageViews;
+    sgl::vk::BufferPtr outputBuffer;
+};
+
+class ReferenceEnsembleCombinePass : public sgl::vk::ComputePass {
+public:
+    explicit ReferenceEnsembleCombinePass(sgl::vk::Renderer* renderer);
+    void setVolumeData(VolumeData* _volumeData, bool isNewData);
+    void setEnsembleImageViews(const std::vector<sgl::vk::ImageViewPtr>& _ensembleImageViews);
+    void setOutputBuffer(const sgl::vk::BufferPtr& _outputBuffer);
+
+protected:
+    void loadShader() override;
+    void createComputeData(sgl::vk::Renderer* renderer, sgl::vk::ComputePipelinePtr& computePipeline) override;
+    void _render() override;
+
+private:
+    VolumeData* volumeData = nullptr;
+    int cachedEnsembleMemberCount = 0;
+
+    const int computeBlockSize = 256;
+    struct UniformData {
+        uint32_t xs, ys, zs, es;
+        glm::vec3 boundingBoxMin;
+        float padding0;
+        glm::vec3 boundingBoxMax;
+        float padding1;
+    };
+    UniformData uniformData{};
+    sgl::vk::BufferPtr uniformBuffer;
+
+    std::vector<sgl::vk::ImageViewPtr> ensembleImageViews;
+    sgl::vk::BufferPtr outputBuffer;
 };
 
 #endif //CORRERENDER_PYTORCHSIMILARITYCALCULATOR_HPP

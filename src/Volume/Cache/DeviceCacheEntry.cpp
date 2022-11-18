@@ -34,12 +34,18 @@ DeviceCacheEntryType::DeviceCacheEntryType(sgl::vk::ImagePtr vulkanImage, sgl::v
         : vulkanImage(std::move(vulkanImage)), vulkanSampler(std::move(vulkanSampler)) {
 }
 
+const sgl::vk::ImageViewPtr& DeviceCacheEntryType::getVulkanImageView() {
+    if (!vulkanImageView) {
+        vulkanImageView = std::make_shared<sgl::vk::ImageView>(vulkanImage, VK_IMAGE_VIEW_TYPE_3D);
+    }
+    return vulkanImageView;
+}
+
+
 const sgl::vk::TexturePtr& DeviceCacheEntryType::getVulkanTexture() {
     if (!vulkanTexture) {
-        sgl::vk::ImageViewPtr imageView = std::make_shared<sgl::vk::ImageView>(vulkanImage, VK_IMAGE_VIEW_TYPE_3D);
-        vulkanTexture = std::make_shared<sgl::vk::Texture>(imageView, vulkanSampler);
+        vulkanTexture = std::make_shared<sgl::vk::Texture>(getVulkanImageView(), vulkanSampler);
     }
-
     return vulkanTexture;
 }
 
@@ -49,7 +55,6 @@ CUtexObject DeviceCacheEntryType::getCudaTexture() {
         cudaTexture = std::make_shared<sgl::vk::TextureCudaExternalMemoryVk>(
                 vulkanImage, vulkanSampler->getImageSamplerSettings(), VK_IMAGE_VIEW_TYPE_3D);
     }
-
     return cudaTexture->getCudaTextureObject();
 }
 
@@ -58,7 +63,6 @@ const sgl::vk::ImageCudaExternalMemoryVkPtr& DeviceCacheEntryType::getImageCudaE
         cudaTexture = std::make_shared<sgl::vk::TextureCudaExternalMemoryVk>(
                 vulkanImage, vulkanSampler->getImageSamplerSettings(), VK_IMAGE_VIEW_TYPE_3D);
     }
-
     return cudaTexture->getImageCudaExternalMemory();
 }
 #endif

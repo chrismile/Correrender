@@ -54,6 +54,7 @@ class DeviceCacheEntryType {
 public:
     DeviceCacheEntryType(sgl::vk::ImagePtr vulkanImage, sgl::vk::ImageSamplerPtr vulkanSampler);
     inline const sgl::vk::ImagePtr& getVulkanImage() { return vulkanImage; }
+    const sgl::vk::ImageViewPtr& getVulkanImageView();
     const sgl::vk::TexturePtr& getVulkanTexture();
 #ifdef SUPPORT_CUDA_INTEROP
     CUtexObject getCudaTexture();
@@ -63,6 +64,9 @@ public:
 private:
     sgl::vk::ImagePtr vulkanImage;
     sgl::vk::ImageSamplerPtr vulkanSampler;
+
+    /// Optional, created when @see getVulkanImageView or @see getVulkanTexture are called.
+    sgl::vk::ImageViewPtr vulkanImageView;
 
     /// Optional, created when @see getVulkanTexture is called.
     sgl::vk::TexturePtr vulkanTexture;
