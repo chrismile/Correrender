@@ -171,7 +171,7 @@ if(WIN32)
 elseif(APPLE)
     add_executable(Correrender MACOSX_BUNDLE ${SOURCES})
 else()
-    add_executable(Correrender ${SOURCES})
+    add_executable(Correrender ${SOURCES} src/Calculators/ReferencePointSelectionRenderer.cpp src/Calculators/ReferencePointSelectionRenderer.hpp)
 endif()
 
 if(${USE_STATIC_STD_LIBRARIES})

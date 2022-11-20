@@ -81,19 +81,6 @@ PyTorchSimilarityCalculator::PyTorchSimilarityCalculator(sgl::vk::Renderer* rend
         : EnsembleSimilarityCalculator(renderer) {
     sgl::vk::Device* device = renderer->getDevice();
 
-    sgl::AppSettings::get()->getSettings().getValueOpt(
-            "pyTorchSimilarityCalculatorModelFilePathEncoder", modelFilePathEncoder);
-    sgl::AppSettings::get()->getSettings().getValueOpt(
-            "pyTorchSimilarityCalculatorModelFilePathDecoder", modelFilePathDecoder);
-    if (sgl::FileUtils::get()->exists(modelFilePathEncoder)
-            && !sgl::FileUtils::get()->isDirectory(modelFilePathEncoder)) {
-        loadModelFromFile(0, modelFilePathEncoder);
-    }
-    if (sgl::FileUtils::get()->exists(modelFilePathDecoder)
-            && !sgl::FileUtils::get()->isDirectory(modelFilePathDecoder)) {
-        loadModelFromFile(1, modelFilePathDecoder);
-    }
-
 #ifdef SUPPORT_CUDA_INTEROP
     // Support CUDA on NVIDIA GPUs using the proprietary driver.
     if (device->getDeviceDriverId() == VK_DRIVER_ID_NVIDIA_PROPRIETARY && torch::cuda::is_available()) {
@@ -116,7 +103,20 @@ PyTorchSimilarityCalculator::PyTorchSimilarityCalculator(sgl::vk::Renderer* rend
 #endif
 
     // TODO: Test
-    pyTorchDevice = PyTorchDevice::CPU;
+    //pyTorchDevice = PyTorchDevice::CPU;
+
+    sgl::AppSettings::get()->getSettings().getValueOpt(
+            "pyTorchSimilarityCalculatorModelFilePathEncoder", modelFilePathEncoder);
+    sgl::AppSettings::get()->getSettings().getValueOpt(
+            "pyTorchSimilarityCalculatorModelFilePathDecoder", modelFilePathDecoder);
+    if (sgl::FileUtils::get()->exists(modelFilePathEncoder)
+            && !sgl::FileUtils::get()->isDirectory(modelFilePathEncoder)) {
+        loadModelFromFile(0, modelFilePathEncoder);
+    }
+    if (sgl::FileUtils::get()->exists(modelFilePathDecoder)
+            && !sgl::FileUtils::get()->isDirectory(modelFilePathDecoder)) {
+        loadModelFromFile(1, modelFilePathDecoder);
+    }
 
     referenceEnsembleCombinePass = std::make_shared<ReferenceEnsembleCombinePass>(renderer);
     ensembleCombinePass = std::make_shared<EnsembleCombinePass>(renderer);
@@ -462,7 +462,7 @@ void PyTorchSimilarityCalculator::calculateDevice(
 
     torch::Tensor referenceInputTensor = torch::from_blob(
             (void*)referenceInputBufferCu->getCudaDevicePtr(), referenceInputSizes,
-            torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCPU));
+            torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCUDA));
     std::vector<torch::jit::IValue> referenceInputs;
     referenceInputs.emplace_back(referenceInputTensor);
     at::Tensor referenceEncodedTensor = encoderWrapper->module.forward(referenceInputs).toTensor();
@@ -484,14 +484,18 @@ void PyTorchSimilarityCalculator::calculateDevice(
         if (createBatchesWithVulkan) {
             ensembleCombinePass->buildIfNecessary();
             renderer->pushConstants(
-                    ensembleCombinePass->getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, 0, batchOffset);
+                    ensembleCombinePass->getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT,
+                    0, batchOffset);
             renderer->pushConstants(
-                    ensembleCombinePass->getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, sizeof(uint32_t), batchSize);
+                    ensembleCombinePass->getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT,
+                    sizeof(uint32_t), batchSize);
             ensembleCombinePass->render();
         } else {
+            CUdeviceptr outputBuffer = inputBufferCu->getCudaDevicePtr();
+            CUdeviceptr scalarFieldEnsembles = ensembleTextureArrayCu;
             void* kernelParameters[] = {
                     &xs, &ys, &zs, &es, &batchOffset, &batchSize,
-                    (void*)inputBufferCu->getCudaDevicePtr(), (void*)ensembleTextureArrayCu
+                    &outputBuffer, &scalarFieldEnsembles
             };
             sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuLaunchKernel(
                     combineEnsemblesFunctionCu,
@@ -506,7 +510,7 @@ void PyTorchSimilarityCalculator::calculateDevice(
 
         torch::Tensor inputTensor = torch::from_blob(
                 (void*)inputBufferCu->getCudaDevicePtr(), inputSizes,
-                torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCPU));
+                torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCUDA));
         encoderInputs.at(0) = inputTensor;
         at::Tensor encodedTensor = encoderWrapper->module.forward(encoderInputs).toTensor();
         decoderInputs.at(1) = encodedTensor;
@@ -547,6 +551,8 @@ void PyTorchSimilarityCalculator::setPyTorchDevice(PyTorchDevice pyTorchDeviceNe
         return;
     }
 
+    hasFilterDeviceChanged = true;
+    dirty = true;
     pyTorchDevice = pyTorchDeviceNew;
     if (encoderWrapper) {
         encoderWrapper->module.to(getTorchDeviceType(pyTorchDevice));

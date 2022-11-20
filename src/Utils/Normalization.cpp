@@ -28,6 +28,23 @@
 
 #include "Normalization.hpp"
 
+void normalizeVertexPosition(
+        glm::vec3& vertexPosition, const sgl::AABB3& aabb,
+        const glm::mat4* vertexTransformationMatrixPtr) {
+    glm::vec3 translation = -aabb.getCenter();
+    glm::vec3 scale3D = 0.5f / aabb.getDimensions();
+    float scale = std::min(scale3D.x, std::min(scale3D.y, scale3D.z));
+
+    glm::vec3& v = vertexPosition;
+    v = (v + translation) * scale;
+
+    if (vertexTransformationMatrixPtr != nullptr) {
+        glm::mat4 transformationMatrix = *vertexTransformationMatrixPtr;
+        glm::vec4 transformedVec = transformationMatrix * glm::vec4(v.x, v.y, v.z, 1.0f);
+        v = glm::vec3(transformedVec.x, transformedVec.y, transformedVec.z);
+    }
+}
+
 void normalizeVertexPositions(
         std::vector<glm::vec3>& vertexPositions, const sgl::AABB3& aabb,
         const glm::mat4* vertexTransformationMatrixPtr) {

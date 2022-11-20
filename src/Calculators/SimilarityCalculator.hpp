@@ -33,24 +33,30 @@
 #include <glm/vec3.hpp>
 #include "Calculator.hpp"
 
+class ReferencePointSelectionRenderer;
+
 class EnsembleSimilarityCalculator : public Calculator {
 public:
-    explicit EnsembleSimilarityCalculator(sgl::vk::Renderer* renderer) : Calculator(renderer) {}
+    explicit EnsembleSimilarityCalculator(sgl::vk::Renderer* renderer);
+    void setViewManager(ViewManager* _viewManager) override;
     void setVolumeData(VolumeData* _volumeData, bool isNewData) override;
     [[nodiscard]] bool getShouldRenderGui() const override { return true; }
     FieldType getOutputFieldType() override { return FieldType::SCALAR; }
     FilterDevice getFilterDevice() override { return FilterDevice::CPU; }
-    RendererPtr getCalculatorRenderer() override { return referencePointSelectionRenderer; }
+    [[nodiscard]] bool getHasFixedRange() const override { return false; }
+    RendererPtr getCalculatorRenderer() override { return calculatorRenderer; }
     void update(float dt) override;
 
 protected:
     void renderGuiImpl(sgl::PropertyEditor& propertyEditor) override;
 
+    ViewManager* viewManager;
     std::vector<std::string> scalarFieldNames;
     std::vector<size_t> scalarFieldIndexArray;
     int fieldIndex = 0, fieldIndexGui = 0;
     glm::ivec3 referencePointIndex{};
-    RendererPtr referencePointSelectionRenderer;
+    RendererPtr calculatorRenderer;
+    ReferencePointSelectionRenderer* referencePointSelectionRenderer;
 };
 
 /**

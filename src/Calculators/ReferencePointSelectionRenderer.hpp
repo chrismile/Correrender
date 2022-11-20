@@ -26,26 +26,21 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef CORRERENDER_ISOSURFACERASTERIZER_HPP
-#define CORRERENDER_ISOSURFACERASTERIZER_HPP
+#ifndef CORRERENDER_REFERENCEPOINTSELECTIONRENDERER_HPP
+#define CORRERENDER_REFERENCEPOINTSELECTIONRENDERER_HPP
 
 #include <Graphics/Vulkan/Render/Passes/Pass.hpp>
-#include "Renderer.hpp"
+#include "../Renderers/Renderer.hpp"
 
-class IsoSurfaceRasterPass;
+class ReferencePointSelectionRasterPass;
 
-enum class IsoSurfaceExtractionTechnique {
-    MARCHING_CUBES, SNAP_MC
-};
-const char* const ISO_SURFACE_EXTRACTION_TECHNIQUE_NAMES[] = {
-        "Marching Cubes", "SnapMC"
-};
-
-class IsoSurfaceRasterizer : public Renderer {
+class ReferencePointSelectionRenderer : public Renderer {
 public:
-    explicit IsoSurfaceRasterizer(ViewManager* viewManager);
+    explicit ReferencePointSelectionRenderer(ViewManager* viewManager);
     void initialize() override;
-    void setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) override;
+    void setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) override {}
+    void setVolumeDataPtr(VolumeData* _volumeData, bool isNewData);
+    void setReferencePosition(const glm::ivec3& referencePosition);
     void recreateSwapchainView(uint32_t viewIdx, uint32_t width, uint32_t height) override;
 
 protected:
@@ -55,42 +50,28 @@ protected:
     void renderGuiImpl(sgl::PropertyEditor& propertyEditor) override;
 
 private:
-    VolumeDataPtr volumeData;
-    std::string exportFilePath;
-    std::vector<std::shared_ptr<IsoSurfaceRasterPass>> isoSurfaceRasterPasses;
+    VolumeData* volumeData;
+    std::vector<std::shared_ptr<ReferencePointSelectionRasterPass>> referencePointSelectionRasterPasses;
 
-    void createIsoSurfaceData(
-            std::vector<uint32_t>& triangleIndices, std::vector<glm::vec3>& vertexPositions,
-            std::vector<glm::vec3>& vertexNormals);
+    glm::ivec3 referencePosition{};
+
     sgl::vk::BufferPtr indexBuffer;
     sgl::vk::BufferPtr vertexPositionBuffer;
     sgl::vk::BufferPtr vertexNormalBuffer;
-
-    // UI renderer settings.
-    int selectedFieldIdx = 0;
-    std::string selectedScalarFieldName;
-    std::pair<float, float> minMaxScalarFieldValue;
-    float isoValue = 0.5f;
-    float gammaSnapMC = 0.3f;
-    glm::vec4 isoSurfaceColor = glm::vec4(0.8f, 0.8f, 0.8f, 1.0f);
-    IsoSurfaceExtractionTechnique isoSurfaceExtractionTechnique = IsoSurfaceExtractionTechnique::SNAP_MC;
 };
 
-/**
- * Iso surface ray casting pass.
- */
-class IsoSurfaceRasterPass : public sgl::vk::RasterPass {
+class ReferencePointSelectionRasterPass : public sgl::vk::RasterPass {
 public:
-    explicit IsoSurfaceRasterPass(sgl::vk::Renderer* renderer, SceneData* camera);
+    explicit ReferencePointSelectionRasterPass(sgl::vk::Renderer* renderer, SceneData* camera);
 
     // Public interface.
-    void setVolumeData(VolumeDataPtr& _volumeData, bool isNewData);
-    void setSelectedScalarFieldName(const std::string& _scalarFieldName);
+    void setVolumeData(VolumeData* _volumeData, bool isNewData);
     void setRenderData(
             const sgl::vk::BufferPtr& _indexBuffer, const sgl::vk::BufferPtr& _vertexPositionBuffer,
             const sgl::vk::BufferPtr& _vertexNormalBuffer);
-    inline void setIsoValue(float _isoValue) { renderSettingsData.isoValue = _isoValue; }
-    inline void setIsoSurfaceColor(const glm::vec4& _color) { renderSettingsData.isoSurfaceColor = _color; }
+    void setReferencePosition(const glm::ivec3& referencePosition);
+    inline void setSphereRadius(float pointWidth) { uniformData.sphereRadius = pointWidth; }
+    inline void setSphereColor(const glm::vec4& color) { uniformData.sphereColor = color; }
     void recreateSwapchain(uint32_t width, uint32_t height) override;
 
 protected:
@@ -102,22 +83,27 @@ protected:
 private:
     SceneData* sceneData;
     sgl::CameraPtr* camera;
-    VolumeDataPtr volumeData;
-
-    // Renderer settings.
-    std::string selectedScalarFieldName;
-
-    struct RenderSettingsData {
-        glm::vec3 cameraPosition;
-        float isoValue;
-        glm::vec4 isoSurfaceColor;
-    };
-    RenderSettingsData renderSettingsData{};
-    sgl::vk::BufferPtr rendererUniformDataBuffer;
+    VolumeData* volumeData;
 
     sgl::vk::BufferPtr indexBuffer;
     sgl::vk::BufferPtr vertexPositionBuffer;
     sgl::vk::BufferPtr vertexNormalBuffer;
+
+    glm::ivec3 referencePosition{};
+
+    struct UniformData {
+        glm::vec3 cameraPosition;
+        float padding0;
+        glm::vec3 spherePosition;
+        float sphereRadius;
+        glm::vec4 sphereColor;
+        glm::vec3 backgroundColor;
+        float padding1;
+        glm::vec3 foregroundColor;
+        float padding2;
+    };
+    UniformData uniformData{};
+    sgl::vk::BufferPtr uniformDataBuffer;
 };
 
-#endif //CORRERENDER_ISOSURFACERASTERIZER_HPP
+#endif //CORRERENDER_REFERENCEPOINTSELECTIONRENDERER_HPP

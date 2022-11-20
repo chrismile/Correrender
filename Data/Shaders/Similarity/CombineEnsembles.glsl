@@ -47,20 +47,18 @@ layout (binding = 2) uniform sampler scalarFieldSampler;
 layout (binding = 3) uniform texture3D scalarFieldEnsembles[ENSEMBLE_MEMBER_COUNT];
 
 layout(push_constant) uniform PushConstants {
-    uint linearPointIdx;
+    uint batchOffset;
     uint batchSize;
 };
 
 void main() {
-    uint pointIdxWriteOffset = gl_GlobalInvocationID.x;
-    uint pointIdxReadOffset = gl_GlobalInvocationID.x + linearPointIdx;
+    uint globalThreadIdx = gl_GlobalInvocationID.x;
+    uint pointIdxWriteOffset = globalThreadIdx * es;
+    uint pointIdxReadOffset = globalThreadIdx + batchOffset;
     uint x = pointIdxReadOffset % xs;
     uint y = (pointIdxReadOffset / xs) % ys;
     uint z = pointIdxReadOffset / (xs * ys);
-    //if (x >= xs || y >= ys || z >= zs) {
-    //    return;
-    //}
-    if (linearPointIdx >= batchSize) {
+    if (globalThreadIdx.x >= batchSize) {
         return;
     }
     vec3 pointCoords = vec3(x, y, z) / vec3(xs - 1, ys - 1, zs - 1) * 2.0 - vec3(1.0);

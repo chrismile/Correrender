@@ -49,6 +49,12 @@ bool Calculator::getHasNameChanged() {
     return tmp;
 }
 
+bool Calculator::getHasFilterDeviceChanged() {
+    bool tmp = hasFilterDeviceChanged;
+    hasFilterDeviceChanged = false;
+    return tmp;
+}
+
 void Calculator::renderGui(sgl::PropertyEditor& propertyEditor) {
     std::string nodeName = "Calculator (" + getOutputFieldName() + ")###calculator" + std::to_string(calculatorId);
     if (propertyEditor.beginNode(nodeName)) {

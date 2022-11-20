@@ -45,7 +45,6 @@
 #include <Graphics/Vulkan/Render/Data.hpp>
 #include <Graphics/Vulkan/Render/Renderer.hpp>
 #include <ImGui/Widgets/PropertyEditor.hpp>
-#include <ImGui/Widgets/TransferFunctionWindow.hpp>
 #include <ImGui/imgui_custom.h>
 
 #ifdef SUPPORT_CUDA_INTEROP
@@ -391,6 +390,13 @@ bool VolumeData::getFieldExists(FieldType fieldType, const std::string& fieldNam
     return it != names.end();
 }
 
+bool VolumeData::getIsScalarFieldDivergent(const std::string& fieldName) const {
+    if (fieldName == "Helicity") {
+        return true;
+    }
+    return false;
+}
+
 bool VolumeData::setInputFiles(
         const std::vector<std::string>& _filePaths, DataSetInformation _dataSetInformation,
         glm::mat4* transformationMatrixPtr) {
@@ -483,6 +489,7 @@ void VolumeData::addCalculator(const CalculatorPtr& calculator) {
     }
     typeToFieldNamesMap[calculator->getOutputFieldType()].push_back(calculator->getOutputFieldName());
     calculator->setCalculatorId(calculatorId++);
+    calculator->setViewManager(viewManager);
     calculator->setVolumeData(this, true);
     calculator->setFileDialogInstance(fileDialogInstance);
 }
@@ -732,13 +739,30 @@ std::pair<float, float> VolumeData::getMinMaxScalarFieldValue(
         const std::string& fieldName, int timeStepIdx, int ensembleIdx) {
     FieldAccess access = createFieldAccessStruct(FieldType::SCALAR, fieldName, timeStepIdx, ensembleIdx);
 
+    auto itHost = calculatorsHost.find(fieldName);
+    if (itHost != calculatorsHost.end() && itHost->second->getHasFixedRange()) {
+        return itHost->second->getFixedRange();
+    }
+    auto itDevice = calculatorsHost.find(fieldName);
+    if (itDevice != calculatorsDevice.end() && itDevice->second->getHasFixedRange()) {
+        return itDevice->second->getFixedRange();
+    }
+
     if (fieldMinMaxCache->exists(access)) {
         return fieldMinMaxCache->get(access);
     }
 
     HostCacheEntry scalarValues = getFieldEntryCpu(FieldType::SCALAR, fieldName, timeStepIdx, ensembleIdx);
     auto minMaxVal = sgl::reduceFloatArrayMinMax(scalarValues.get(), getSlice3dEntryCount());
+
+    // Is this a divergent scalar field? If yes, the transfer function etc. should be centered at zero.
+    if (getIsScalarFieldDivergent(fieldName)) {
+        float maxAbs = std::max(std::abs(minMaxVal.first), std::abs(minMaxVal.second));
+        minMaxVal.first = -maxAbs;
+        minMaxVal.second = maxAbs;
+    }
     fieldMinMaxCache->push(access, minMaxVal);
+
     return minMaxVal;
 }
 
@@ -809,11 +833,57 @@ void VolumeData::renderGuiCalculators(sgl::PropertyEditor& propertyEditor) {
             dirty = true;
             reRender = true;
         }
+        if (calculator->getHasFilterDeviceChanged()) {
+            updateCalculatorFilterDevice(calculator);
+            dirty = true;
+            reRender = true;
+        }
         if (calculator->getIsDirty()) {
             updateCalculator(calculator);
             dirty = true;
             reRender = true;
         }
+    }
+}
+
+void VolumeData::renderViewCalculator(uint32_t viewIdx) {
+    for (const CalculatorPtr& calculator : calculators) {
+        auto calculatorRenderer = calculator->getCalculatorRenderer();
+        if (!calculatorRenderer) {
+            continue;
+        }
+        // TODO: Only render if calculator is used in this view.
+        calculatorRenderer->renderView(viewIdx);
+    }
+}
+
+void VolumeData::addView(uint32_t viewIdx) {
+    for (const CalculatorPtr& calculator : calculators) {
+        auto calculatorRenderer = calculator->getCalculatorRenderer();
+        if (!calculatorRenderer) {
+            continue;
+        }
+        calculatorRenderer->addView(viewIdx);
+    }
+}
+
+void VolumeData::removeView(uint32_t viewIdx) {
+    for (const CalculatorPtr& calculator : calculators) {
+        auto calculatorRenderer = calculator->getCalculatorRenderer();
+        if (!calculatorRenderer) {
+            continue;
+        }
+        calculatorRenderer->removeView(viewIdx);
+    }
+}
+
+void VolumeData::recreateSwapchainView(uint32_t viewIdx, uint32_t width, uint32_t height) {
+    for (const CalculatorPtr& calculator : calculators) {
+        auto calculatorRenderer = calculator->getCalculatorRenderer();
+        if (!calculatorRenderer) {
+            continue;
+        }
+        calculatorRenderer->recreateSwapchainView(viewIdx, width, height);
     }
 }
 
@@ -930,6 +1000,18 @@ void VolumeData::updateCalculatorName(const CalculatorPtr& calculator) {
     if (calculator->getOutputFieldType() == FieldType::SCALAR) {
         multiVarTransferFunctionWindow.updateAttributeName(fieldNameIdx, calculator->getOutputFieldName());
         colorLegendWidgets.at(fieldNameIdx).setAttributeDisplayName(calculator->getOutputFieldName());
+    }
+}
+
+void VolumeData::updateCalculatorFilterDevice(const CalculatorPtr& calculator) {
+    auto itHost = calculatorsHost.find(calculator->getOutputFieldName());
+    auto itDevice = calculatorsDevice.find(calculator->getOutputFieldName());
+    if (itHost != calculatorsHost.end()) {
+        calculatorsDevice.insert(std::make_pair(calculator->getOutputFieldName(), calculator));
+        calculatorsHost.erase(itHost);
+    } else if (itDevice != calculatorsDevice.end()) {
+        calculatorsHost.insert(std::make_pair(calculator->getOutputFieldName(), calculator));
+        calculatorsDevice.erase(itDevice);
     }
 }
 

@@ -30,14 +30,15 @@
 #include <stdint.h>
 
 extern "C" __global__ void combineEnsembles(
-        uint32_t xs, uint32_t ys, uint32_t zs, uint32_t es, uint32_t linearPointIdx, uint32_t batchSize,
+        uint32_t xs, uint32_t ys, uint32_t zs, uint32_t es, uint32_t batchOffset, uint32_t batchSize,
         float4* outputBuffer, cudaTextureObject_t* scalarFieldEnsembles) {
-    uint32_t pointIdxWriteOffset = blockIdx.x * blockDim.x + threadIdx.x;
-    uint32_t pointIdxReadOffset = pointIdxWriteOffset + linearPointIdx;
+    uint32_t globalThreadIdx = blockIdx.x * blockDim.x + threadIdx.x;
+    uint32_t pointIdxWriteOffset = globalThreadIdx * es;
+    uint32_t pointIdxReadOffset = globalThreadIdx + batchOffset;
     uint32_t x = pointIdxReadOffset % xs;
     uint32_t y = (pointIdxReadOffset / xs) % ys;
     uint32_t z = pointIdxReadOffset / (xs * ys);
-    if (linearPointIdx >= batchSize) {
+    if (globalThreadIdx >= batchSize) {
         return;
     }
     float3 pointCoords = make_float3(

@@ -69,6 +69,8 @@ void IsoSurfaceRasterizer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewD
         }
     }
 
+    exportFilePath = volumeData->getDataSetInformation;
+
     indexBuffer = {};
     vertexPositionBuffer = {};
     vertexNormalBuffer = {};
@@ -78,6 +80,38 @@ void IsoSurfaceRasterizer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewD
         isoSurfaceRasterPass->setRenderData(indexBuffer, vertexPositionBuffer, vertexNormalBuffer);
     }
 
+    std::vector<uint32_t> triangleIndices;
+    std::vector<glm::vec3> vertexPositions;
+    std::vector<glm::vec3> vertexNormals;
+    createIsoSurfaceData(triangleIndices, vertexPositions, vertexNormals);
+
+    if (triangleIndices.empty()) {
+        return;
+    }
+
+    sgl::vk::Device* device = renderer->getDevice();
+    indexBuffer = std::make_shared<sgl::vk::Buffer>(
+            device, sizeof(uint32_t) * triangleIndices.size(), triangleIndices.data(),
+            VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+            VMA_MEMORY_USAGE_GPU_ONLY);
+    vertexPositionBuffer = std::make_shared<sgl::vk::Buffer>(
+            device, sizeof(glm::vec3) * vertexPositions.size(), vertexPositions.data(),
+            VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+            VMA_MEMORY_USAGE_GPU_ONLY);
+    vertexNormalBuffer = std::make_shared<sgl::vk::Buffer>(
+            device, sizeof(glm::vec3) * vertexNormals.size(), vertexNormals.data(),
+            VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+            VMA_MEMORY_USAGE_GPU_ONLY);
+
+    for (auto& isoSurfaceRasterPass : isoSurfaceRasterPasses) {
+        isoSurfaceRasterPass->setRenderData(indexBuffer, vertexPositionBuffer, vertexNormalBuffer);
+        isoSurfaceRasterPass->setSelectedScalarFieldName(selectedScalarFieldName);
+    }
+}
+
+void IsoSurfaceRasterizer::createIsoSurfaceData(
+        std::vector<uint32_t>& triangleIndices, std::vector<glm::vec3>& vertexPositions,
+        std::vector<glm::vec3>& vertexNormals) {
     sgl::AABB3 gridAabb;
     //gridAabb.min = glm::vec3(0.0f, 0.0f, 0.0f);
     //gridAabb.max = glm::vec3(volumeData->getGridSizeX(), volumeData->getGridSizeY(), volumeData->getGridSizeZ());
@@ -106,37 +140,11 @@ void IsoSurfaceRasterizer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewD
                 isoValue, gammaSnapMC, isosurfaceVertexPositions, isosurfaceVertexNormals);
     }
 
-    std::vector<uint32_t> triangleIndices;
-    std::vector<glm::vec3> vertexPositions;
-    std::vector<glm::vec3> vertexNormals;
     sgl::computeSharedIndexRepresentation(
             isosurfaceVertexPositions, isosurfaceVertexNormals,
             triangleIndices, vertexPositions, vertexNormals);
     normalizeVertexPositions(vertexPositions, gridAabb, nullptr);
     //normalizeVertexNormals(vertexNormals, gridAabb, nullptr);
-
-    if (triangleIndices.empty()) {
-        return;
-    }
-
-    sgl::vk::Device* device = renderer->getDevice();
-    indexBuffer = std::make_shared<sgl::vk::Buffer>(
-            device, sizeof(uint32_t) * triangleIndices.size(), triangleIndices.data(),
-            VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-            VMA_MEMORY_USAGE_GPU_ONLY);
-    vertexPositionBuffer = std::make_shared<sgl::vk::Buffer>(
-            device, sizeof(glm::vec3) * vertexPositions.size(), vertexPositions.data(),
-            VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-            VMA_MEMORY_USAGE_GPU_ONLY);
-    vertexNormalBuffer = std::make_shared<sgl::vk::Buffer>(
-            device, sizeof(glm::vec3) * vertexNormals.size(), vertexNormals.data(),
-            VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-            VMA_MEMORY_USAGE_GPU_ONLY);
-
-    for (auto& isoSurfaceRasterPass : isoSurfaceRasterPasses) {
-        isoSurfaceRasterPass->setRenderData(indexBuffer, vertexPositionBuffer, vertexNormalBuffer);
-        isoSurfaceRasterPass->setSelectedScalarFieldName(selectedScalarFieldName);
-    }
 }
 
 void IsoSurfaceRasterizer::recreateSwapchainView(uint32_t viewIdx, uint32_t width, uint32_t height) {
@@ -201,6 +209,17 @@ void IsoSurfaceRasterizer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
             "Gamma (SnapMC)", &gammaSnapMC, 0.0f, 1.0f) == ImGui::EditMode::INPUT_FINISHED) {
         dirty = true;
         reRender = true;
+    }
+    if (propertyEditor.beginNode("Advanced Settings")) {
+        propertyEditor.addInputAction("File Path", exportFilePath);
+        if (propertyEditor.addButton("", "Export Mesh")) {
+            std::vector<uint32_t> triangleIndices;
+            std::vector<glm::vec3> vertexPositions;
+            std::vector<glm::vec3> vertexNormals;
+            createIsoSurfaceData(triangleIndices, vertexPositions, vertexNormals);
+            createIsoSurfaceData(triangleIndices, vertexPositions, vertexNormals);
+        }
+        propertyEditor.endNode();
     }
 }
 

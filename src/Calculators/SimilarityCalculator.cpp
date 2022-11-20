@@ -30,15 +30,28 @@
 #include <ImGui/imgui_custom.h>
 #include "Loaders/DataSet.hpp"
 #include "Volume/VolumeData.hpp"
+#include "ReferencePointSelectionRenderer.hpp"
 #include "SimilarityCalculator.hpp"
+
+EnsembleSimilarityCalculator::EnsembleSimilarityCalculator(sgl::vk::Renderer* renderer) : Calculator(renderer) {
+}
+
+void EnsembleSimilarityCalculator::setViewManager(ViewManager* _viewManager) {
+    viewManager = _viewManager;
+    referencePointSelectionRenderer = new ReferencePointSelectionRenderer(viewManager);
+    calculatorRenderer = RendererPtr(referencePointSelectionRenderer);
+    referencePointSelectionRenderer->initialize();
+}
 
 void EnsembleSimilarityCalculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
     Calculator::setVolumeData(_volumeData, isNewData);
+    referencePointSelectionRenderer->setVolumeDataPtr(volumeData, isNewData);
 
     if (isNewData) {
         referencePointIndex.x = volumeData->getGridSizeX() / 2;
         referencePointIndex.y = volumeData->getGridSizeY() / 2;
         referencePointIndex.z = volumeData->getGridSizeZ() / 2;
+        referencePointSelectionRenderer->setReferencePosition(referencePointIndex);
 
         fieldIndex = 0;
         fieldIndexGui = 0;
@@ -81,6 +94,7 @@ void EnsembleSimilarityCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEd
                     "Reference Point (Z)", &referencePointIndex[2], 0, volumeData->getGridSizeZ())
             == ImGui::EditMode::INPUT_FINISHED;
     if (inputFinished[0] || inputFinished[1] || inputFinished[2]) {
+        referencePointSelectionRenderer->setReferencePosition(referencePointIndex);
         dirty = true;
     }
 }

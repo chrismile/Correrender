@@ -637,6 +637,9 @@ void MainApp::resolutionChanged(sgl::EventPtr event) {
         for (auto& volumeRenderer : volumeRenderers) {
             volumeRenderer->recreateSwapchainView(0, viewportWidth, viewportHeight);
         }
+        if (volumeData) {
+            volumeData->recreateSwapchainView(0, viewportWidth, viewportHeight);
+        }
     }
 }
 
@@ -722,6 +725,9 @@ void MainApp::render() {
             sceneDepthTextureVk->getImageView()->clearDepthStencil(
                     1.0f, 0, rendererVk->getVkCommandBuffer());
 
+            if (volumeData) {
+                volumeData->renderViewCalculator(0);
+            }
             for (auto& volumeRenderer : volumeRenderers) {
                 volumeRenderer->renderView(0);
             }
@@ -914,7 +920,12 @@ void MainApp::renderGui() {
                         dataView->resize(int(sizeContent.x), int(sizeContent.y));
                         if (dataView->viewportWidth > 0 && dataView->viewportHeight > 0) {
                             for (auto& volumeRenderer : volumeRenderers) {
-                                volumeRenderer->recreateSwapchainView(viewIdx, dataView->viewportWidth, dataView->viewportHeight);
+                                volumeRenderer->recreateSwapchainView(
+                                        viewIdx, dataView->viewportWidth, dataView->viewportHeight);
+                            }
+                            if (volumeData) {
+                                volumeData->recreateSwapchainView(
+                                        viewIdx, dataView->viewportWidth, dataView->viewportHeight);
                             }
                         }
                         dataView->reRender = true;
@@ -934,6 +945,9 @@ void MainApp::renderGui() {
                             performanceMeasurer->startMeasure(recordingTimeLast);
                         }
 
+                        if (volumeData) {
+                            volumeData->renderViewCalculator(viewIdx);
+                        }
                         if (volumeData.get() != nullptr) {
                             for (auto& volumeRenderer : volumeRenderers) {
                                 volumeRenderer->renderView(viewIdx);
@@ -998,6 +1012,9 @@ void MainApp::renderGui() {
                     viewManager->removeView(i);
                     for (auto& volumeRenderer : volumeRenderers) {
                         volumeRenderer->removeView(viewIdx);
+                    }
+                    if (volumeData) {
+                        volumeData->removeView(viewIdx);
                     }
                     i--;
                 }
@@ -1183,8 +1200,12 @@ void MainApp::addNewDataView() {
     dataView->clearColor = clearColor;
     dataViews.push_back(dataView);
     viewManager->addView(&dataView->sceneData);
+    auto viewIdx = uint32_t(dataViews.size() - 1);
     for (auto& volumeRenderer : volumeRenderers) {
-        volumeRenderer->addView(uint32_t(dataViews.size() - 1));
+        volumeRenderer->addView(viewIdx);
+    }
+    if (volumeData) {
+        volumeData->addView(viewIdx);
     }
 }
 
@@ -1705,6 +1726,7 @@ void MainApp::loadVolumeDataSet(const std::vector<std::string>& fileNames) {
         return;
     }
     newVolumeData->setFileDialogInstance(fileDialogInstance);
+    newVolumeData->setViewManager(viewManager);
 
     bool dataLoaded = newVolumeData->setInputFiles(fileNames, selectedDataSetInformation, transformationMatrixPtr);
     sgl::ColorLegendWidget::resetStandardSize();
@@ -1715,6 +1737,14 @@ void MainApp::loadVolumeDataSet(const std::vector<std::string>& fileNames) {
         volumeData->recomputeHistogram();
         volumeData->setClearColor(clearColor);
         volumeData->setUseLinearRGB(useLinearRGB);
+        for (size_t viewIdx = 0; viewIdx < dataViews.size(); viewIdx++) {
+            volumeData->addView(viewIdx);
+            auto& viewSceneData = dataViews.at(viewIdx)->sceneData;
+            if (*viewSceneData.sceneTexture) {
+                volumeData->recreateSwapchainView(
+                        viewIdx, *viewSceneData.viewportWidth, *viewSceneData.viewportHeight);
+            }
+        }
         newDataLoaded = true;
         reRender = true;
         boundingBox = volumeData->getBoundingBoxRendering();

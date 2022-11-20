@@ -33,6 +33,10 @@
 #include <glm/glm.hpp>
 #include <Math/Geometry/AABB3.hpp>
 
+void normalizeVertexPosition(
+        glm::vec3& vertexPosition, const sgl::AABB3& aabb,
+        const glm::mat4* vertexTransformationMatrixPtr = nullptr);
+
 void normalizeVertexPositions(
         std::vector<glm::vec3>& vertexPositions, const sgl::AABB3& aabb,
         const glm::mat4* vertexTransformationMatrixPtr = nullptr);

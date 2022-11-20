@@ -47,6 +47,7 @@ class FileDialog;
 }
 typedef IGFD::FileDialog ImGuiFileDialog;
 
+class ViewManager;
 class VolumeData;
 class Renderer;
 typedef std::shared_ptr<Renderer> RendererPtr;
@@ -65,9 +66,11 @@ public:
     explicit Calculator(sgl::vk::Renderer* renderer) : renderer(renderer) {}
     virtual ~Calculator() = default;
     inline void setCalculatorId(size_t _calculatorId) { calculatorId = _calculatorId; }
+    virtual void setViewManager(ViewManager* _viewManager) {}
     virtual void setVolumeData(VolumeData* _volumeData, bool isNewData);
     bool getIsDirty();
     bool getHasNameChanged();
+    bool getHasFilterDeviceChanged();
     virtual void update(float dt) {}
     void renderGui(sgl::PropertyEditor& propertyEditor);
     virtual RendererPtr getCalculatorRenderer() { return {}; }
@@ -78,6 +81,8 @@ public:
     virtual FieldType getOutputFieldType() { return FieldType::SCALAR; }
     virtual std::string getOutputFieldName() = 0;
     virtual FilterDevice getFilterDevice() = 0;
+    [[nodiscard]] virtual bool getHasFixedRange() const { return false; }
+    [[nodiscard]] virtual std::pair<float, float> getFixedRange() const { return std::make_pair(-1.0f, 1.0f); }
 
     /// Writes the derived data to the output data of size VolumeData::xs*ys*zs.
     virtual void calculateCpu(int timeStepIdx, int ensembleIdx, float* buffer) {}
@@ -89,6 +94,7 @@ protected:
     sgl::vk::Renderer* renderer = nullptr;
     bool dirty = false; ///< Recompute the data?
     bool hasNameChanged = false;
+    bool hasFilterDeviceChanged = false;
     ImGuiFileDialog* fileDialogInstance = nullptr;
     size_t calculatorId = 0;
 };

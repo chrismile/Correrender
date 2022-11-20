@@ -63,6 +63,7 @@ class FileDialog;
 }
 typedef IGFD::FileDialog ImGuiFileDialog;
 
+class ViewManager;
 class VolumeLoader;
 class Renderer;
 class Calculator;
@@ -89,6 +90,7 @@ public:
      */
     void renderGui(sgl::PropertyEditor& propertyEditor);
     void renderGuiCalculators(sgl::PropertyEditor& propertyEditor);
+    void renderViewCalculator(uint32_t viewIdx);
     /**
      * For rendering secondary ImGui windows (e.g., for transfer function widgets).
      * @return true if the gather shader needs to be reloaded.
@@ -105,6 +107,10 @@ public:
     /// Whether to use linear RGB when rendering.
     virtual void setUseLinearRGB(bool useLinearRGB);
     inline sgl::MultiVarTransferFunctionWindow& getMultiVarTransferFunctionWindow() { return multiVarTransferFunctionWindow; }
+    inline void setViewManager(ViewManager* _viewManager) { viewManager = _viewManager; }
+    void addView(uint32_t viewIdx);
+    void removeView(uint32_t viewIdx);
+    void recreateSwapchainView(uint32_t viewIdx, uint32_t width, uint32_t height);
 
     void setTransposeAxes(const glm::ivec3& axes);
     void setGridSubsamplingFactor(int factor);
@@ -121,6 +127,7 @@ public:
     const std::vector<std::string>& getFieldNames(FieldType fieldType);
     const std::vector<std::string>& getFieldNamesBase(FieldType fieldType);
     [[nodiscard]] bool getFieldExists(FieldType fieldType, const std::string& fieldName) const;
+    [[nodiscard]] bool getIsScalarFieldDivergent(const std::string& fieldName) const;
     [[nodiscard]] inline int getGridSizeX() const { return xs; }
     [[nodiscard]] inline int getGridSizeY() const { return ys; }
     [[nodiscard]] inline int getGridSizeZ() const { return zs; }
@@ -137,6 +144,7 @@ public:
     [[nodiscard]] inline const sgl::AABB3& getBoundingBox() { return box; }
     [[nodiscard]] inline const sgl::AABB3& getBoundingBoxRendering() { return boxRendering; }
     inline const std::vector<std::string>& getFilePaths() { return filePaths; }
+    inline const DataSetInformation& getDataSetInformation() { return dataSetInformation; }
 
     virtual bool setInputFiles(
             const std::vector<std::string>& _filePaths, DataSetInformation _dataSetInformation,
@@ -203,6 +211,7 @@ protected:
     /// Cache system.
     sgl::vk::Renderer* renderer = nullptr;
     sgl::vk::Device* device = nullptr;
+    ViewManager* viewManager = nullptr;
     std::vector<std::string> filePaths;
     DataSetInformation dataSetInformation;
     std::unique_ptr<HostFieldCache> hostFieldCache;
@@ -232,6 +241,7 @@ protected:
 
     // Calculators for derived variables.
     void updateCalculatorName(const CalculatorPtr& calculator);
+    void updateCalculatorFilterDevice(const CalculatorPtr& calculator);
     void updateCalculator(const CalculatorPtr& calculator);
     std::vector<CalculatorPtr> calculators;
     std::unordered_map<std::string, CalculatorPtr> calculatorsHost;
