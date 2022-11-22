@@ -28,6 +28,7 @@
 
 #include "IsoSurfaceRasterizer.hpp"
 
+#include <Utils/AppSettings.hpp>
 #include <Utils/Mesh/IndexMesh.hpp>
 #include <Graphics/Vulkan/Buffers/Framebuffer.hpp>
 #include <Graphics/Vulkan/Render/Renderer.hpp>
@@ -40,13 +41,19 @@
 
 #include "Utils/Normalization.hpp"
 #include "Widgets/ViewManager.hpp"
+#include "Loaders/WriteMesh.hpp"
 #include "Volume/VolumeData.hpp"
 #include "RenderingModes.hpp"
 #include "IsoSurfaceRasterizer.hpp"
 
 IsoSurfaceRasterizer::IsoSurfaceRasterizer(ViewManager* viewManager)
         : Renderer(RENDERING_MODE_NAMES[int(RENDERING_MODE_ISOSURFACE_RASTERIZER)], viewManager) {
-    ;
+}
+
+IsoSurfaceRasterizer::~IsoSurfaceRasterizer() {
+    if (!selectedScalarFieldName.empty()) {
+        volumeData->releaseScalarField(this, selectedFieldIdx);
+    }
 }
 
 void IsoSurfaceRasterizer::initialize() {
@@ -55,6 +62,9 @@ void IsoSurfaceRasterizer::initialize() {
 
 void IsoSurfaceRasterizer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) {
     volumeData = _volumeData;
+    if (!selectedScalarFieldName.empty()) {
+        volumeData->releaseScalarField(this, oldSelectedFieldIdx);
+    }
     if (isNewData) {
         selectedFieldIdx = 0;
     }
@@ -68,8 +78,16 @@ void IsoSurfaceRasterizer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewD
             isoSurfaceRasterPass->setIsoValue(isoValue);
         }
     }
+    volumeData->acquireScalarField(this, selectedFieldIdx);
+    oldSelectedFieldIdx = selectedFieldIdx;
 
-    exportFilePath = volumeData->getDataSetInformation;
+    if (isNewData) {
+        std::string standardExportDirectory = sgl::AppSettings::get()->getDataDirectory() + "VolumeDataSets/trimesh";
+        exportFilePath = standardExportDirectory + "/" + volumeData->getDataSetInformation().name + ".obj";
+        if (!sgl::FileUtils::get()->directoryExists(standardExportDirectory)) {
+            sgl::FileUtils::get()->ensureDirectoryExists(standardExportDirectory);
+        }
+    }
 
     indexBuffer = {};
     vertexPositionBuffer = {};
@@ -140,9 +158,11 @@ void IsoSurfaceRasterizer::createIsoSurfaceData(
                 isoValue, gammaSnapMC, isosurfaceVertexPositions, isosurfaceVertexNormals);
     }
 
+    float step = std::min(volumeData->getDx(), std::min(volumeData->getDy(), volumeData->getDz()));
     sgl::computeSharedIndexRepresentation(
             isosurfaceVertexPositions, isosurfaceVertexNormals,
-            triangleIndices, vertexPositions, vertexNormals);
+            triangleIndices, vertexPositions, vertexNormals,
+            1e-5f * step);
     normalizeVertexPositions(vertexPositions, gridAabb, nullptr);
     //normalizeVertexNormals(vertexNormals, gridAabb, nullptr);
 }
@@ -211,13 +231,21 @@ void IsoSurfaceRasterizer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         reRender = true;
     }
     if (propertyEditor.beginNode("Advanced Settings")) {
-        propertyEditor.addInputAction("File Path", exportFilePath);
+        propertyEditor.addInputAction("File Path", &exportFilePath);
         if (propertyEditor.addButton("", "Export Mesh")) {
             std::vector<uint32_t> triangleIndices;
             std::vector<glm::vec3> vertexPositions;
             std::vector<glm::vec3> vertexNormals;
             createIsoSurfaceData(triangleIndices, vertexPositions, vertexNormals);
-            createIsoSurfaceData(triangleIndices, vertexPositions, vertexNormals);
+            std::string meshExtension = sgl::FileUtils::get()->getFileExtensionLower(exportFilePath);
+            if (meshExtension == "obj") {
+                saveMeshObj(exportFilePath, triangleIndices, vertexPositions, vertexNormals);
+            } else if (meshExtension == "stl") {
+                saveMeshStlBinary(exportFilePath, triangleIndices, vertexPositions, vertexNormals);
+            } else {
+                sgl::Logfile::get()->throwError(
+                        "Error in IsoSurfaceRasterizer::renderGuiImpl: Unknown triangle mesh file extension.");
+            }
         }
         propertyEditor.endNode();
     }

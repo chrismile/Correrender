@@ -186,6 +186,8 @@ public:
     void acquireTf(Renderer* renderer, int varIdx);
     void releaseTf(Renderer* renderer, int varIdx);
     void onTransferFunctionMapRebuilt();
+    void acquireScalarField(Renderer* renderer, int varIdx);
+    void releaseScalarField(Renderer* renderer, int varIdx);
 
     /// Sets data bindings used across renderers.
     virtual void setRenderDataBindings(const sgl::vk::RenderDataPtr& renderData);
@@ -227,12 +229,19 @@ protected:
     sgl::MultiVarTransferFunctionWindow multiVarTransferFunctionWindow;
 
     // Color legend widgets for different attributes.
-    bool getIsTransferFunctionVisible(uint32_t viewIdx, uint32_t tfIdx);
+    bool getIsTransferFunctionVisible(uint32_t viewIdx, uint32_t varIdx);
     void recomputeColorLegend();
     bool shallRenderColorLegendWidgets = true;
     std::vector<sgl::ColorLegendWidget> colorLegendWidgets;
     /// Keep track of transfer function use in renderers to display overlays in renderer.
     std::unordered_multimap<int, Renderer*> transferFunctionToRendererMap;
+
+    /*
+     * Keep track of which scalar fields are used in which view to only display auxiliary calculator renderers
+     * if they are used.
+     */
+    bool getIsScalarFieldUsedInView(uint32_t viewIdx, uint32_t varIdx);
+    std::unordered_multimap<int, Renderer*> scalarFieldToRendererMap;
 
     // File loaders.
     VolumeLoader* createVolumeLoaderByExtension(const std::string& fileExtension);

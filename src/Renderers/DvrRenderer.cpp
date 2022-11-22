@@ -42,6 +42,7 @@ DvrRenderer::DvrRenderer(ViewManager* viewManager)
 DvrRenderer::~DvrRenderer() {
     if (!selectedScalarFieldName.empty()) {
         volumeData->releaseTf(this, selectedFieldIdx);
+        volumeData->releaseScalarField(this, selectedFieldIdx);
     }
 }
 
@@ -53,6 +54,7 @@ void DvrRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) {
     volumeData = _volumeData;
     if (!selectedScalarFieldName.empty()) {
         volumeData->releaseTf(this, oldSelectedFieldIdx);
+        volumeData->releaseScalarField(this, oldSelectedFieldIdx);
     }
     if (isNewData) {
         selectedFieldIdx = 0;
@@ -60,6 +62,7 @@ void DvrRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) {
     const std::vector<std::string>& fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
     selectedScalarFieldName = fieldNames.at(selectedFieldIdx);
     volumeData->acquireTf(this, selectedFieldIdx);
+    volumeData->acquireScalarField(this, selectedFieldIdx);
     oldSelectedFieldIdx = selectedFieldIdx;
 
     for (auto& dvrPass : dvrPasses) {

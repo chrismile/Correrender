@@ -52,16 +52,22 @@ const sgl::vk::TexturePtr& DeviceCacheEntryType::getVulkanTexture() {
 #ifdef SUPPORT_CUDA_INTEROP
 CUtexObject DeviceCacheEntryType::getCudaTexture() {
     if (!cudaTexture) {
+        sgl::vk::TextureCudaExternalMemorySettings texCudaSettings{};
+        //texCudaSettings.useNormalizedCoordinates = true;
+        texCudaSettings.useNormalizedCoordinates = false;
         cudaTexture = std::make_shared<sgl::vk::TextureCudaExternalMemoryVk>(
-                vulkanImage, vulkanSampler->getImageSamplerSettings(), VK_IMAGE_VIEW_TYPE_3D);
+                vulkanImage, vulkanSampler->getImageSamplerSettings(), VK_IMAGE_VIEW_TYPE_3D, texCudaSettings);
     }
     return cudaTexture->getCudaTextureObject();
 }
 
 const sgl::vk::ImageCudaExternalMemoryVkPtr& DeviceCacheEntryType::getImageCudaExternalMemory() {
     if (!cudaTexture) {
+        sgl::vk::TextureCudaExternalMemorySettings texCudaSettings{};
+        //texCudaSettings.useNormalizedCoordinates = true;
+        texCudaSettings.useNormalizedCoordinates = false;
         cudaTexture = std::make_shared<sgl::vk::TextureCudaExternalMemoryVk>(
-                vulkanImage, vulkanSampler->getImageSamplerSettings(), VK_IMAGE_VIEW_TYPE_3D);
+                vulkanImage, vulkanSampler->getImageSamplerSettings(), VK_IMAGE_VIEW_TYPE_3D, texCudaSettings);
     }
     return cudaTexture->getImageCudaExternalMemory();
 }

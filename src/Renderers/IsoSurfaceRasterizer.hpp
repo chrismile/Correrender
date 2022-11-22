@@ -44,6 +44,7 @@ const char* const ISO_SURFACE_EXTRACTION_TECHNIQUE_NAMES[] = {
 class IsoSurfaceRasterizer : public Renderer {
 public:
     explicit IsoSurfaceRasterizer(ViewManager* viewManager);
+    ~IsoSurfaceRasterizer() override;
     void initialize() override;
     void setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) override;
     void recreateSwapchainView(uint32_t viewIdx, uint32_t width, uint32_t height) override;
@@ -67,7 +68,7 @@ private:
     sgl::vk::BufferPtr vertexNormalBuffer;
 
     // UI renderer settings.
-    int selectedFieldIdx = 0;
+    int selectedFieldIdx = 0, oldSelectedFieldIdx = 0;
     std::string selectedScalarFieldName;
     std::pair<float, float> minMaxScalarFieldValue;
     float isoValue = 0.5f;

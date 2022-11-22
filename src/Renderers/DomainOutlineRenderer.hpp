@@ -29,10 +29,66 @@
 #ifndef CORRERENDER_DOMAINOUTLINERENDERER_HPP
 #define CORRERENDER_DOMAINOUTLINERENDERER_HPP
 
+#include <Graphics/Vulkan/Render/Passes/Pass.hpp>
+#include "Renderer.hpp"
 
-class DomainOutlineRenderer {
+class DomainOutlineRasterPass;
 
+class DomainOutlineRenderer : public Renderer {
+public:
+    explicit DomainOutlineRenderer(ViewManager* viewManager);
+    ~DomainOutlineRenderer() override;
+    void initialize() override;
+    void setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) override;
+    void recreateSwapchainView(uint32_t viewIdx, uint32_t width, uint32_t height) override;
+
+protected:
+    void renderViewImpl(uint32_t viewIdx) override;
+    void addViewImpl(uint32_t viewIdx) override;
+    void removeViewImpl(uint32_t viewIdx) override;
+    void renderGuiImpl(sgl::PropertyEditor& propertyEditor) override;
+
+private:
+    VolumeDataPtr volumeData;
+    std::vector<std::shared_ptr<DomainOutlineRasterPass>> domainOutlineRasterPasses;
+
+    // UI renderer settings.
+    float lineWidth = 0.001f;
+
+    void recreateBuffers();
+    std::vector<uint32_t> triangleIndices;
+    std::vector<glm::vec3> vertexPositions;
+    sgl::vk::BufferPtr indexBuffer;
+    sgl::vk::BufferPtr vertexPositionBuffer;
 };
 
+class DomainOutlineRasterPass : public sgl::vk::RasterPass {
+public:
+    explicit DomainOutlineRasterPass(sgl::vk::Renderer* renderer, SceneData* camera);
+
+    // Public interface.
+    void setRenderData(
+            const sgl::vk::BufferPtr& _indexBuffer, const sgl::vk::BufferPtr& _vertexPositionBuffer);
+    void recreateSwapchain(uint32_t width, uint32_t height) override;
+
+protected:
+    void loadShader() override;
+    void setGraphicsPipelineInfo(sgl::vk::GraphicsPipelineInfo& pipelineInfo) override;
+    void createRasterData(sgl::vk::Renderer* renderer, sgl::vk::GraphicsPipelinePtr& graphicsPipeline) override;
+    void _render() override;
+
+private:
+    SceneData* sceneData;
+    sgl::CameraPtr* camera;
+
+    sgl::vk::BufferPtr indexBuffer;
+    sgl::vk::BufferPtr vertexPositionBuffer;
+
+    struct UniformData {
+        glm::vec4 objectColor;
+    };
+    UniformData uniformData{};
+    sgl::vk::BufferPtr uniformDataBuffer;
+};
 
 #endif //CORRERENDER_DOMAINOUTLINERENDERER_HPP

@@ -62,6 +62,7 @@ const char* const NAN_HANDLING_NAMES[] = {
 };
 
 class Renderer {
+    friend class VolumeData;
 public:
     Renderer(std::string windowName, ViewManager* viewManager);
     virtual void initialize();

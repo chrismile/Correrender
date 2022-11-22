@@ -36,9 +36,9 @@ layout(local_size_x = BLOCK_SIZE, local_size_y = 1, local_size_z = 1) in;
 layout (binding = 0) uniform UniformBuffer {
     uint xs, ys, zs, es;
     vec3 boundingBoxMin;
-    float padding0;
+    float minEnsembleVal;
     vec3 boundingBoxMax;
-    float padding1;
+    float maxEnsembleVal;
 };
 layout (binding = 1) writeonly buffer OutputBuffer {
     vec4 outputBuffer[];
@@ -65,6 +65,7 @@ void main() {
     for (uint e = 0; e < es; e++) {
         float ensembleValue = texelFetch(sampler3D(
                 scalarFieldEnsembles[nonuniformEXT(e)], scalarFieldSampler), ivec3(x, y, z), 0).r;
+        ensembleValue = (ensembleValue - minEnsembleVal) / (maxEnsembleVal - minEnsembleVal);
         outputBuffer[pointIdxWriteOffset + e] = vec4(ensembleValue, pointCoords.x, pointCoords.y, pointCoords.z);
     }
 }
@@ -80,9 +81,9 @@ layout(local_size_x = BLOCK_SIZE, local_size_y = 1, local_size_z = 1) in;
 layout (binding = 0) uniform UniformBuffer {
     uint xs, ys, zs, es;
     vec3 boundingBoxMin;
-    float padding0;
+    float minEnsembleVal;
     vec3 boundingBoxMax;
-    float padding1;
+    float maxEnsembleVal;
 };
 layout (binding = 1) writeonly buffer OutputBuffer {
     vec4 outputBuffer[];
@@ -102,5 +103,6 @@ void main() {
     vec3 pointCoords = vec3(referencePointIdx) / vec3(xs - 1, ys - 1, zs - 1) * 2.0 - vec3(1.0);
     float ensembleValue = texelFetch(sampler3D(
             scalarFieldEnsembles[nonuniformEXT(e)], scalarFieldSampler), ivec3(referencePointIdx), 0).r;
+    ensembleValue = (ensembleValue - minEnsembleVal) / (maxEnsembleVal - minEnsembleVal);
     outputBuffer[e] = vec4(ensembleValue, pointCoords.x, pointCoords.y, pointCoords.z);
 }

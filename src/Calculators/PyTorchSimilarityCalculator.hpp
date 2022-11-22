@@ -136,6 +136,7 @@ public:
     void setVolumeData(VolumeData* _volumeData, bool isNewData);
     void setEnsembleImageViews(const std::vector<sgl::vk::ImageViewPtr>& _ensembleImageViews);
     void setOutputBuffer(const sgl::vk::BufferPtr& _outputBuffer);
+    void setEnsembleMinMax(float minEnsembleVal, float maxEnsembleVal);
     inline void setBatchSize(int _batchSize) { batchSize = _batchSize; }
 
 protected:
@@ -152,9 +153,9 @@ private:
     struct UniformData {
         uint32_t xs, ys, zs, es;
         glm::vec3 boundingBoxMin;
-        float padding0;
+        float minEnsembleVal;
         glm::vec3 boundingBoxMax;
-        float padding1;
+        float maxEnsembleVal;
     };
     UniformData uniformData{};
     sgl::vk::BufferPtr uniformBuffer;
@@ -169,6 +170,7 @@ public:
     void setVolumeData(VolumeData* _volumeData, bool isNewData);
     void setEnsembleImageViews(const std::vector<sgl::vk::ImageViewPtr>& _ensembleImageViews);
     void setOutputBuffer(const sgl::vk::BufferPtr& _outputBuffer);
+    void setEnsembleMinMax(float minEnsembleVal, float maxEnsembleVal);
 
 protected:
     void loadShader() override;
@@ -183,9 +185,9 @@ private:
     struct UniformData {
         uint32_t xs, ys, zs, es;
         glm::vec3 boundingBoxMin;
-        float padding0;
+        float minEnsembleVal;
         glm::vec3 boundingBoxMax;
-        float padding1;
+        float maxEnsembleVal;
     };
     UniformData uniformData{};
     sgl::vk::BufferPtr uniformBuffer;

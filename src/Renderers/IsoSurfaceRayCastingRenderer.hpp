@@ -45,6 +45,7 @@ const char* const INTERSECTION_SOLVER_NAMES[] = {
 class IsoSurfaceRayCastingRenderer : public Renderer {
 public:
     explicit IsoSurfaceRayCastingRenderer(ViewManager* viewManager);
+    ~IsoSurfaceRayCastingRenderer() override;
     void initialize() override;
     void setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) override;
     void recreateSwapchainView(uint32_t viewIdx, uint32_t width, uint32_t height) override;
@@ -60,7 +61,7 @@ private:
     std::vector<std::shared_ptr<IsoSurfaceRayCastingPass>> isoSurfaceRayCastingPasses;
 
     // UI renderer settings.
-    int selectedFieldIdx = 0;
+    int selectedFieldIdx = 0, oldSelectedFieldIdx = 0;
     std::string selectedScalarFieldName;
     std::pair<float, float> minMaxScalarFieldValue;
     float isoValue = 0.5f;

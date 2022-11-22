@@ -70,6 +70,7 @@
 #include "Renderers/DvrRenderer.hpp"
 #include "Renderers/IsoSurfaceRayCastingRenderer.hpp"
 #include "Renderers/IsoSurfaceRasterizer.hpp"
+#include "Renderers/DomainOutlineRenderer.hpp"
 #include "Utils/AutomaticPerformanceMeasurer.hpp"
 
 #include "Widgets/ViewManager.hpp"
@@ -596,6 +597,8 @@ void MainApp::setRenderer(RenderingMode newRenderingMode, RendererPtr& newVolume
         newVolumeRenderer = std::make_shared<IsoSurfaceRayCastingRenderer>(viewManager);
     } else if (newRenderingMode == RENDERING_MODE_ISOSURFACE_RASTERIZER) {
         newVolumeRenderer = std::make_shared<IsoSurfaceRasterizer>(viewManager);
+    } else if (newRenderingMode == RENDERING_MODE_DOMAIN_OUTLINE_RENDERER) {
+        newVolumeRenderer = std::make_shared<DomainOutlineRenderer>(viewManager);
     } else {
         int idx = std::clamp(int(newRenderingMode), 0, IM_ARRAYSIZE(RENDERING_MODE_NAMES) - 1);
         std::string warningText =
@@ -1211,6 +1214,7 @@ void MainApp::addNewDataView() {
 
 void MainApp::initializeFirstDataView() {
     DataViewPtr dataView = dataViews.back();
+    addNewRenderer(RENDERING_MODE_DOMAIN_OUTLINE_RENDERER);
     addNewRenderer(RENDERING_MODE_DIRECT_VOLUME_RENDERING);
     prepareVisualizationPipeline();
 }

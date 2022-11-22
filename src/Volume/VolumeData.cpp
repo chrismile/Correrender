@@ -847,13 +847,15 @@ void VolumeData::renderGuiCalculators(sgl::PropertyEditor& propertyEditor) {
 }
 
 void VolumeData::renderViewCalculator(uint32_t viewIdx) {
+    uint32_t varIdx = typeToFieldNamesMapBase[FieldType::SCALAR].size();
     for (const CalculatorPtr& calculator : calculators) {
         auto calculatorRenderer = calculator->getCalculatorRenderer();
-        if (!calculatorRenderer) {
-            continue;
+        if (calculatorRenderer && getIsScalarFieldUsedInView(viewIdx, varIdx)) {
+            calculatorRenderer->renderViewImpl(viewIdx);
         }
-        // TODO: Only render if calculator is used in this view.
-        calculatorRenderer->renderView(viewIdx);
+        if (calculator->getOutputFieldType() == FieldType::SCALAR) {
+            varIdx++;
+        }
     }
 }
 
@@ -940,6 +942,34 @@ void VolumeData::releaseTf(Renderer* renderer, int varIdx) {
 
 bool VolumeData::getIsTransferFunctionVisible(uint32_t viewIdx, uint32_t varIdx) {
     auto iterRange = transferFunctionToRendererMap.equal_range(int(varIdx));
+    auto it = iterRange.first;
+    while (it != iterRange.second) {
+        if (it->second->isVisibleInView(viewIdx)) {
+            return true;
+        }
+        it++;
+    }
+    return false;
+}
+
+void VolumeData::acquireScalarField(Renderer* renderer, int varIdx) {
+    scalarFieldToRendererMap.insert(std::make_pair(varIdx, renderer));
+}
+
+void VolumeData::releaseScalarField(Renderer* renderer, int varIdx) {
+    auto iterRange = scalarFieldToRendererMap.equal_range(varIdx);
+    auto it = iterRange.first;
+    while (it != iterRange.second) {
+        if (it->second == renderer) {
+            scalarFieldToRendererMap.erase(it);
+            break;
+        }
+        it++;
+    }
+}
+
+bool VolumeData::getIsScalarFieldUsedInView(uint32_t viewIdx, uint32_t varIdx) {
+    auto iterRange = scalarFieldToRendererMap.equal_range(int(varIdx));
     auto it = iterRange.first;
     while (it != iterRange.second) {
         if (it->second->isVisibleInView(viewIdx)) {

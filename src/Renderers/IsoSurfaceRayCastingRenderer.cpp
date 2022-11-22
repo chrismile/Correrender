@@ -36,7 +36,12 @@
 
 IsoSurfaceRayCastingRenderer::IsoSurfaceRayCastingRenderer(ViewManager* viewManager)
         : Renderer(RENDERING_MODE_NAMES[int(RENDERING_MODE_ISOSURFACE_RAYCASTER)], viewManager) {
-    ;
+}
+
+IsoSurfaceRayCastingRenderer::~IsoSurfaceRayCastingRenderer() {
+    if (!selectedScalarFieldName.empty()) {
+        volumeData->releaseScalarField(this, selectedFieldIdx);
+    }
 }
 
 void IsoSurfaceRayCastingRenderer::initialize() {
@@ -45,6 +50,9 @@ void IsoSurfaceRayCastingRenderer::initialize() {
 
 void IsoSurfaceRayCastingRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) {
     volumeData = _volumeData;
+    if (!selectedScalarFieldName.empty()) {
+        volumeData->releaseScalarField(this, oldSelectedFieldIdx);
+    }
     if (isNewData) {
         selectedFieldIdx = 0;
     }
@@ -58,6 +66,8 @@ void IsoSurfaceRayCastingRenderer::setVolumeData(VolumeDataPtr& _volumeData, boo
             isoSurfaceRayCastingPass->setIsoValue(isoValue);
         }
     }
+    volumeData->acquireScalarField(this, selectedFieldIdx);
+    oldSelectedFieldIdx = selectedFieldIdx;
 
     for (auto& isoSurfaceRayCastingPass : isoSurfaceRayCastingPasses) {
         isoSurfaceRayCastingPass->setVolumeData(volumeData, isNewData);

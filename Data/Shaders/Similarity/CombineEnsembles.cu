@@ -29,8 +29,11 @@
 #include <cuda_runtime.h>
 #include <stdint.h>
 
+//#define USE_NORMALIZED_COORDINATES
+
 extern "C" __global__ void combineEnsembles(
         uint32_t xs, uint32_t ys, uint32_t zs, uint32_t es, uint32_t batchOffset, uint32_t batchSize,
+        float minEnsembleVal, float maxEnsembleVal,
         float4* outputBuffer, cudaTextureObject_t* scalarFieldEnsembles) {
     uint32_t globalThreadIdx = blockIdx.x * blockDim.x + threadIdx.x;
     uint32_t pointIdxWriteOffset = globalThreadIdx * es;
@@ -47,11 +50,16 @@ extern "C" __global__ void combineEnsembles(
             2.0f * float(z) / float(zs - 1) - 1.0f);
     for (uint32_t e = 0; e < es; e++) {
         //float ensembleValue = tex3Dfetch(scalarFieldEnsembles[e], make_int4(x, y, z, 0)).x;
+#ifdef USE_NORMALIZED_COORDINATES
         float ensembleValue = tex3D<float>(
                 scalarFieldEnsembles[e],
-                (float(x) + 0.5f) / float(xs - 1),
-                (float(y) + 0.5f) / float(ys - 1),
-                (float(z) + 0.5f) / float(zs - 1));
+                (float(x) + 0.5f) / float(xs),
+                (float(y) + 0.5f) / float(ys),
+                (float(z) + 0.5f) / float(zs));
+#else
+        float ensembleValue = tex3D<float>(scalarFieldEnsembles[e], float(x) + 0.5f, float(y) + 0.5f, float(z) + 0.5f);
+#endif
+        ensembleValue = (ensembleValue - minEnsembleVal) / (maxEnsembleVal - minEnsembleVal);
         outputBuffer[pointIdxWriteOffset + e] = make_float4(ensembleValue, pointCoords.x, pointCoords.y, pointCoords.z);
     }
 }

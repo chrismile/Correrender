@@ -348,7 +348,6 @@ void PyTorchSimilarityCalculator::calculateDevice(
         return;
     }
 
-    // TODO
     cudaStream_t stream = at::cuda::getCurrentCUDAStream();
 
     if (cachedEnsembleSizeDevice != size_t(es)) {
@@ -403,6 +402,8 @@ void PyTorchSimilarityCalculator::calculateDevice(
     }
     timelineValue++;
 
+    float minEnsembleVal = std::numeric_limits<float>::max();
+    float maxEnsembleVal = std::numeric_limits<float>::lowest();
     std::vector<VolumeData::DeviceCacheEntry> ensembleEntryFields;
     std::vector<sgl::vk::ImageViewPtr> ensembleImageViews;
     std::vector<CUtexObject> ensembleTexturesCu;
@@ -419,11 +420,17 @@ void PyTorchSimilarityCalculator::calculateDevice(
             deviceCacheEntry->getVulkanImage()->transitionImageLayout(
                     VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, renderer->getVkCommandBuffer());
         }
+        auto [minVal, maxVal] = volumeData->getMinMaxScalarFieldValue(
+                scalarFieldNames.at(fieldIndexGui), timeStepIdx, ensembleIdx);
+        minEnsembleVal = std::min(minEnsembleVal, minVal);
+        maxEnsembleVal = std::max(maxEnsembleVal, maxVal);
     }
 
     referenceEnsembleCombinePass->setEnsembleImageViews(ensembleImageViews);
+    referenceEnsembleCombinePass->setEnsembleMinMax(minEnsembleVal, maxEnsembleVal);
     if (createBatchesWithVulkan) {
         ensembleCombinePass->setEnsembleImageViews(ensembleImageViews);
+        ensembleCombinePass->setEnsembleMinMax(minEnsembleVal, maxEnsembleVal);
     } else {
         if (cachedEnsembleTexturesCu != ensembleTexturesCu) {
             cachedEnsembleTexturesCu = ensembleTexturesCu;
@@ -438,7 +445,7 @@ void PyTorchSimilarityCalculator::calculateDevice(
 
     referenceEnsembleCombinePass->buildIfNecessary();
     renderer->pushConstants(
-            referenceEnsembleCombinePass->getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, 0, &referencePointIndex);
+            referenceEnsembleCombinePass->getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, 0, referencePointIndex);
     referenceEnsembleCombinePass->render();
 
     sgl::vk::CommandBufferPtr commandBufferRender = renderer->getCommandBuffer();
@@ -494,7 +501,7 @@ void PyTorchSimilarityCalculator::calculateDevice(
             CUdeviceptr outputBuffer = inputBufferCu->getCudaDevicePtr();
             CUdeviceptr scalarFieldEnsembles = ensembleTextureArrayCu;
             void* kernelParameters[] = {
-                    &xs, &ys, &zs, &es, &batchOffset, &batchSize,
+                    &xs, &ys, &zs, &es, &batchOffset, &batchSize, &minEnsembleVal, &maxEnsembleVal,
                     &outputBuffer, &scalarFieldEnsembles
             };
             sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuLaunchKernel(
@@ -691,6 +698,16 @@ void EnsembleCombinePass::setOutputBuffer(const sgl::vk::BufferPtr& _outputBuffe
     }
 }
 
+void EnsembleCombinePass::setEnsembleMinMax(float minEnsembleVal, float maxEnsembleVal) {
+    uniformData.minEnsembleVal = minEnsembleVal;
+    uniformData.maxEnsembleVal = maxEnsembleVal;
+    uniformBuffer->updateData(
+            sizeof(UniformData), &uniformData, renderer->getVkCommandBuffer());
+    renderer->insertMemoryBarrier(
+            VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_UNIFORM_READ_BIT,
+            VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+}
+
 void EnsembleCombinePass::loadShader() {
     sgl::vk::ShaderManager->invalidateShaderCache();
     std::map<std::string, std::string> preprocessorDefines;
@@ -756,6 +773,16 @@ void ReferenceEnsembleCombinePass::setOutputBuffer(const sgl::vk::BufferPtr& _ou
     if (computeData) {
         computeData->setStaticBuffer(outputBuffer, "OutputBuffer");
     }
+}
+
+void ReferenceEnsembleCombinePass::setEnsembleMinMax(float minEnsembleVal, float maxEnsembleVal) {
+    uniformData.minEnsembleVal = minEnsembleVal;
+    uniformData.maxEnsembleVal = maxEnsembleVal;
+    uniformBuffer->updateData(
+            sizeof(UniformData), &uniformData, renderer->getVkCommandBuffer());
+    renderer->insertMemoryBarrier(
+            VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_UNIFORM_READ_BIT,
+            VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 }
 
 void ReferenceEnsembleCombinePass::loadShader() {

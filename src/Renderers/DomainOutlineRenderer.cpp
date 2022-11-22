@@ -26,4 +26,199 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <Graphics/Vulkan/Buffers/Framebuffer.hpp>
+#include <Graphics/Vulkan/Render/Renderer.hpp>
+#include <Graphics/Vulkan/Render/ComputePipeline.hpp>
+#include <ImGui/Widgets/PropertyEditor.hpp>
+#include "Widgets/ViewManager.hpp"
+#include "Volume/VolumeData.hpp"
+#include "RenderingModes.hpp"
 #include "DomainOutlineRenderer.hpp"
+
+DomainOutlineRenderer::DomainOutlineRenderer(ViewManager* viewManager)
+        : Renderer(RENDERING_MODE_NAMES[int(RENDERING_MODE_DOMAIN_OUTLINE_RENDERER)], viewManager) {
+}
+
+DomainOutlineRenderer::~DomainOutlineRenderer() {
+}
+
+void DomainOutlineRenderer::initialize() {
+    Renderer::initialize();
+
+    size_t numEdges = 12;
+
+    sgl::vk::Device* device = renderer->getDevice();
+    vertexPositionBuffer = std::make_shared<sgl::vk::Buffer>(
+            device, sizeof(glm::vec3) * numEdges * 8,
+            VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+            VMA_MEMORY_USAGE_GPU_ONLY);
+    indexBuffer = std::make_shared<sgl::vk::Buffer>(
+            device, sizeof(uint32_t) * numEdges * 6 * 6,
+            VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+            VMA_MEMORY_USAGE_GPU_ONLY);
+
+    triangleIndices.reserve(indexBuffer->getSizeInBytes() / sizeof(uint32_t));
+    vertexPositions.reserve(vertexPositionBuffer->getSizeInBytes() / sizeof(glm::vec3));
+}
+
+void DomainOutlineRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) {
+    volumeData = _volumeData;
+    recreateBuffers();
+}
+
+void DomainOutlineRenderer::recreateSwapchainView(uint32_t viewIdx, uint32_t width, uint32_t height) {
+    domainOutlineRasterPasses.at(viewIdx)->recreateSwapchain(width, height);
+}
+
+void DomainOutlineRenderer::renderViewImpl(uint32_t viewIdx) {
+    domainOutlineRasterPasses.at(viewIdx)->render();
+}
+
+void DomainOutlineRenderer::addViewImpl(uint32_t viewIdx) {
+    auto domainOutlineRasterPass = std::make_shared<DomainOutlineRasterPass>(
+            renderer, viewManager->getViewSceneData(viewIdx));
+    domainOutlineRasterPass->setRenderData(indexBuffer, vertexPositionBuffer);
+    domainOutlineRasterPasses.push_back(domainOutlineRasterPass);
+}
+
+void DomainOutlineRenderer::removeViewImpl(uint32_t viewIdx) {
+    domainOutlineRasterPasses.erase(domainOutlineRasterPasses.begin() + viewIdx);
+}
+
+void DomainOutlineRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
+    if (propertyEditor.addSliderFloat("Line Width", &lineWidth, 0.001f, 0.020f, "%.4f")) {
+        recreateBuffers();
+        reRender = true;
+    }
+}
+
+void addEdge(
+        const glm::vec3& lower, const glm::vec3& upper,
+        std::vector<uint32_t>& triangleIndices, std::vector<glm::vec3>& vertexPositions) {
+    uint32_t indexData[] = {
+            0, 1, 2, 1, 3, 2, // front
+            4, 6, 5, 5, 6, 7, // back
+            0, 2, 4, 4, 2, 6, // left
+            1, 5, 3, 5, 7, 3, // right
+            0, 4, 1, 1, 4, 5, // bottom
+            2, 3, 6, 3, 7, 6, // top
+    };
+    glm::vec3 vertexData[] = {
+            glm::vec3(0.0f, 0.0f, 0.0f),
+            glm::vec3(1.0f, 0.0f, 0.0f),
+            glm::vec3(0.0f, 1.0f, 0.0f),
+            glm::vec3(1.0f, 1.0f, 0.0f),
+            glm::vec3(0.0f, 0.0f, 1.0f),
+            glm::vec3(1.0f, 0.0f, 1.0f),
+            glm::vec3(0.0f, 1.0f, 1.0f),
+            glm::vec3(1.0f, 1.0f, 1.0f),
+    };
+
+    auto offset = uint32_t(vertexPositions.size());
+    for (int i = 0; i < IM_ARRAYSIZE(indexData); i++) {
+        triangleIndices.push_back(indexData[i] + offset);
+    }
+    for (auto pos : vertexData) {
+        pos = pos * (upper - lower) + lower;
+        vertexPositions.push_back(pos);
+    }
+}
+
+void DomainOutlineRenderer::recreateBuffers() {
+    triangleIndices.clear();
+    vertexPositions.clear();
+
+    sgl::AABB3 aabb = volumeData->getBoundingBoxRendering();
+    glm::vec3 min0 = aabb.min - glm::vec3(lineWidth / 2.0f);
+    glm::vec3 min1 = aabb.min + glm::vec3(lineWidth / 2.0f);
+    glm::vec3 max0 = aabb.max - glm::vec3(lineWidth / 2.0f);
+    glm::vec3 max1 = aabb.max + glm::vec3(lineWidth / 2.0f);
+    addEdge(glm::vec3(min0.x, min0.y, min0.z), glm::vec3(max1.x, min1.y, min1.z), triangleIndices, vertexPositions);
+    addEdge(glm::vec3(min0.x, min0.y, max0.z), glm::vec3(max1.x, min1.y, max1.z), triangleIndices, vertexPositions);
+    addEdge(glm::vec3(min0.x, min0.y, min1.z), glm::vec3(min1.x, min1.y, max0.z), triangleIndices, vertexPositions);
+    addEdge(glm::vec3(max0.x, min0.y, min1.z), glm::vec3(max1.x, min1.y, max0.z), triangleIndices, vertexPositions);
+    addEdge(glm::vec3(min0.x, max0.y, min0.z), glm::vec3(max1.x, max1.y, min1.z), triangleIndices, vertexPositions);
+    addEdge(glm::vec3(min0.x, max0.y, max0.z), glm::vec3(max1.x, max1.y, max1.z), triangleIndices, vertexPositions);
+    addEdge(glm::vec3(min0.x, max0.y, min1.z), glm::vec3(min1.x, max1.y, max0.z), triangleIndices, vertexPositions);
+    addEdge(glm::vec3(max0.x, max0.y, min1.z), glm::vec3(max1.x, max1.y, max0.z), triangleIndices, vertexPositions);
+    addEdge(glm::vec3(min0.x, min1.y, min0.z), glm::vec3(min1.x, max0.y, min1.z), triangleIndices, vertexPositions);
+    addEdge(glm::vec3(max0.x, min1.y, min0.z), glm::vec3(max1.x, max0.y, min1.z), triangleIndices, vertexPositions);
+    addEdge(glm::vec3(min0.x, min1.y, max0.z), glm::vec3(min1.x, max0.y, max1.z), triangleIndices, vertexPositions);
+    addEdge(glm::vec3(max0.x, min1.y, max0.z), glm::vec3(max1.x, max0.y, max1.z), triangleIndices, vertexPositions);
+
+    indexBuffer->uploadData(indexBuffer->getSizeInBytes(), triangleIndices.data());
+    vertexPositionBuffer->uploadData(vertexPositionBuffer->getSizeInBytes(), vertexPositions.data());
+}
+
+
+
+DomainOutlineRasterPass::DomainOutlineRasterPass(sgl::vk::Renderer* renderer, SceneData* sceneData)
+        : RasterPass(renderer), sceneData(sceneData), camera(&sceneData->camera) {
+    uniformDataBuffer = std::make_shared<sgl::vk::Buffer>(
+            device, sizeof(UniformData),
+            VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+}
+
+void DomainOutlineRasterPass::setRenderData(
+        const sgl::vk::BufferPtr& _indexBuffer, const sgl::vk::BufferPtr& _vertexPositionBuffer) {
+    indexBuffer = _indexBuffer;
+    vertexPositionBuffer = _vertexPositionBuffer;
+
+    setDataDirty();
+}
+
+void DomainOutlineRasterPass::loadShader() {
+    shaderStages = sgl::vk::ShaderManager->getShaderStages({"DomainOutline.Vertex", "DomainOutline.Fragment"});
+}
+
+void DomainOutlineRasterPass::setGraphicsPipelineInfo(sgl::vk::GraphicsPipelineInfo& pipelineInfo) {
+    pipelineInfo.setInputAssemblyTopology(sgl::vk::PrimitiveTopology::TRIANGLE_LIST);
+    pipelineInfo.setCullMode(sgl::vk::CullMode::CULL_BACK);
+    pipelineInfo.setVertexBufferBindingByLocationIndex("vertexPosition", sizeof(glm::vec3));
+}
+
+void DomainOutlineRasterPass::createRasterData(sgl::vk::Renderer* renderer, sgl::vk::GraphicsPipelinePtr& graphicsPipeline) {
+    rasterData = std::make_shared<sgl::vk::RasterData>(renderer, graphicsPipeline);
+    rasterData->setIndexBuffer(indexBuffer);
+    rasterData->setVertexBuffer(vertexPositionBuffer, "vertexPosition");
+    rasterData->setStaticBuffer(uniformDataBuffer, "UniformDataBuffer");
+}
+
+void DomainOutlineRasterPass::recreateSwapchain(uint32_t width, uint32_t height) {
+    framebuffer = std::make_shared<sgl::vk::Framebuffer>(device, width, height);
+
+    sgl::vk::AttachmentState attachmentState;
+    attachmentState.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+    attachmentState.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    attachmentState.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    framebuffer->setColorAttachment(
+            (*sceneData->sceneTexture)->getImageView(), 0, attachmentState,
+            sceneData->clearColor->getFloatColorRGBA());
+
+    sgl::vk::AttachmentState depthAttachmentState;
+    depthAttachmentState.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+    depthAttachmentState.initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    depthAttachmentState.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    framebuffer->setDepthStencilAttachment(
+            (*sceneData->sceneDepthTexture)->getImageView(), depthAttachmentState, 1.0f);
+
+    framebufferDirty = true;
+    dataDirty = true;
+}
+
+void DomainOutlineRasterPass::_render() {
+    glm::vec3 backgroundColor = sceneData->clearColor->getFloatColorRGB();
+    glm::vec3 foregroundColor = glm::vec3(1.0f) - backgroundColor;
+
+    uniformData.objectColor = glm::vec4(foregroundColor.x, foregroundColor.y, foregroundColor.z, 1.0f);
+    uniformDataBuffer->updateData(
+            sizeof(UniformData), &uniformData, renderer->getVkCommandBuffer());
+    renderer->insertMemoryBarrier(
+            VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_UNIFORM_READ_BIT,
+            VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+
+    sceneData->switchColorState(RenderTargetAccess::RASTERIZER);
+    sceneData->switchDepthState(RenderTargetAccess::RASTERIZER);
+
+    RasterPass::_render();
+}
