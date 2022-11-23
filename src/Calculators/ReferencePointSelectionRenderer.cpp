@@ -175,11 +175,16 @@ void ReferencePointSelectionRasterPass::setVolumeData(VolumeData* _volumeData, b
 void ReferencePointSelectionRasterPass::setReferencePosition(const glm::ivec3& _referencePosition) {
     referencePosition = _referencePosition;
     if (volumeData) {
-        sgl::AABB3 gridAabb;
-        gridAabb.min = glm::vec3(-0.5f, -0.5f, -0.5f);
+        sgl::AABB3 gridAabb = volumeData->getBoundingBoxRendering();
+        /*gridAabb.min = glm::vec3(-0.5f, -0.5f, -0.5f);
         gridAabb.max = glm::vec3(volumeData->getGridSizeX(), volumeData->getGridSizeY(), volumeData->getGridSizeZ()) - glm::vec3(0.5f, 0.5f, 0.5f);
+        gridAabb.min *= glm::vec3(volumeData->getDx(), volumeData->getDy(), volumeData->getDz());
+        gridAabb.max *= glm::vec3(volumeData->getDx(), volumeData->getDy(), volumeData->getDz());*/
         uniformData.spherePosition = glm::vec3(referencePosition);
-        normalizeVertexPosition(uniformData.spherePosition, gridAabb, nullptr);
+        uniformData.spherePosition /= glm::vec3(
+                volumeData->getGridSizeX() - 1, volumeData->getGridSizeY() - 1, volumeData->getGridSizeZ() - 1);
+        uniformData.spherePosition = uniformData.spherePosition * (gridAabb.max - gridAabb.min) + gridAabb.min;
+        //normalizeVertexPosition(uniformData.spherePosition, gridAabb, nullptr);
     }
 }
 

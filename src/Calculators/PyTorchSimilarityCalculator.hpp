@@ -103,7 +103,7 @@ private:
     bool isFirstContiguousWarning = true;
 
     const int batchSize1D = 8192; // 1024
-    const int gpuBatchSize1D = 16384;
+    const int gpuBatchSize1DBase = 16384;
     size_t cachedEnsembleSizeHost = 0;
     size_t cachedEnsembleSizeDevice = 0;
 

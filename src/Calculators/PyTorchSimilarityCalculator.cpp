@@ -120,7 +120,6 @@ PyTorchSimilarityCalculator::PyTorchSimilarityCalculator(sgl::vk::Renderer* rend
 
     referenceEnsembleCombinePass = std::make_shared<ReferenceEnsembleCombinePass>(renderer);
     ensembleCombinePass = std::make_shared<EnsembleCombinePass>(renderer);
-    ensembleCombinePass->setBatchSize(gpuBatchSize1D);
 }
 
 PyTorchSimilarityCalculator::~PyTorchSimilarityCalculator() {
@@ -329,6 +328,8 @@ void PyTorchSimilarityCalculator::calculateCpu(int timeStepIdx, int ensembleIdx,
 
 void PyTorchSimilarityCalculator::calculateDevice(
         int timeStepIdx, int ensembleIdx, const DeviceCacheEntry& deviceCacheEntry) {
+    torch::NoGradGuard noGradGuard{};
+
     int xs = volumeData->getGridSizeX();
     int ys = volumeData->getGridSizeY();
     int zs = volumeData->getGridSizeZ();
@@ -346,6 +347,20 @@ void PyTorchSimilarityCalculator::calculateDevice(
                 "Warning in PyTorchSimilarityCalculator::calculateCpu: Encoder or decoder module is not loaded.",
                 true);
         return;
+    }
+
+    int gpuBatchSize1D = gpuBatchSize1DBase;
+    if (es >= 100) {
+        gpuBatchSize1D /= 2;
+    }
+    if (es >= 200) {
+        gpuBatchSize1D /= 2;
+    }
+    if (es >= 400) {
+        gpuBatchSize1D /= 2;
+    }
+    if (es >= 800) {
+        gpuBatchSize1D /= 2;
     }
 
     cudaStream_t stream = at::cuda::getCurrentCUDAStream();
@@ -416,7 +431,7 @@ void PyTorchSimilarityCalculator::calculateDevice(
         ensembleEntryFields.push_back(ensembleEntryField);
         ensembleImageViews.push_back(ensembleEntryField->getVulkanImageView());
         ensembleTexturesCu.push_back(ensembleEntryField->getCudaTexture());
-        if (ensembleEntryField->getVulkanImage()->getVkImageLayout() != VK_IMAGE_LAYOUT_GENERAL) {
+        if (ensembleEntryField->getVulkanImage()->getVkImageLayout() != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
             deviceCacheEntry->getVulkanImage()->transitionImageLayout(
                     VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, renderer->getVkCommandBuffer());
         }
@@ -431,6 +446,7 @@ void PyTorchSimilarityCalculator::calculateDevice(
     if (createBatchesWithVulkan) {
         ensembleCombinePass->setEnsembleImageViews(ensembleImageViews);
         ensembleCombinePass->setEnsembleMinMax(minEnsembleVal, maxEnsembleVal);
+        ensembleCombinePass->setBatchSize(gpuBatchSize1D);
     } else {
         if (cachedEnsembleTexturesCu != ensembleTexturesCu) {
             cachedEnsembleTexturesCu = ensembleTexturesCu;
@@ -447,6 +463,9 @@ void PyTorchSimilarityCalculator::calculateDevice(
     renderer->pushConstants(
             referenceEnsembleCombinePass->getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, 0, referencePointIndex);
     referenceEnsembleCombinePass->render();
+    renderer->insertMemoryBarrier(
+            VK_ACCESS_SHADER_WRITE_BIT, 0,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
 
     sgl::vk::CommandBufferPtr commandBufferRender = renderer->getCommandBuffer();
     vulkanFinishedSemaphore->setSignalSemaphoreValue(timelineValue);
@@ -461,11 +480,7 @@ void PyTorchSimilarityCalculator::calculateDevice(
      */
     renderer->submitToQueue();
 
-#ifdef USE_TIMELINE_SEMAPHORES
     vulkanFinishedSemaphore->waitSemaphoreCuda(stream, timelineValue);
-#else
-    vulkanFinishedSemaphore->waitSemaphoreCuda(stream);
-#endif
 
     torch::Tensor referenceInputTensor = torch::from_blob(
             (void*)referenceInputBufferCu->getCudaDevicePtr(), referenceInputSizes,

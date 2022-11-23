@@ -90,13 +90,15 @@ void main() {
     float ribbonPosition = length(crossProdVn);
 
     vec4 fragmentColor = blinnPhongShadingSurface(sphereColor, fragmentPositionWorld, fragmentNormal);
-    float fragmentDepth = length(fragmentPositionWorld - cameraPosition);
+
+    /*float fragmentDepth = length(fragmentPositionWorld - cameraPosition);
     const float WHITE_THRESHOLD = 0.7;
     float EPSILON = clamp(fragmentDepth * 0.0005 / sphereRadius, 0.0, 0.49);
     float coverage = 1.0 - smoothstep(1.0 - 2.0*EPSILON, 1.0, ribbonPosition);
     vec4 colorOut = vec4(mix(fragmentColor.rgb, foregroundColor.rgb,
             smoothstep(WHITE_THRESHOLD - EPSILON, WHITE_THRESHOLD + EPSILON, ribbonPosition)),
             fragmentColor.a * coverage);
+    fragColor = colorOut;*/
 
-    fragColor = colorOut;
+    fragColor = fragmentColor;
 }

@@ -31,6 +31,8 @@
 
 #include <vector>
 #include <glm/vec3.hpp>
+#include <Graphics/Vulkan/Render/Passes/Pass.hpp>
+
 #include "Calculator.hpp"
 
 class ReferencePointSelectionRenderer;
@@ -59,14 +61,55 @@ protected:
     ReferencePointSelectionRenderer* referencePointSelectionRenderer;
 };
 
+
+class PccComputePass;
+
 /**
  * Pearson correlation coefficient (PCC) calculator.
  */
 class PccCalculator : public EnsembleSimilarityCalculator {
 public:
-    explicit PccCalculator(sgl::vk::Renderer* renderer) : EnsembleSimilarityCalculator(renderer) {}
+    explicit PccCalculator(sgl::vk::Renderer* renderer);
     std::string getOutputFieldName() override { return "Pearson Correlation"; }
+    void setVolumeData(VolumeData* _volumeData, bool isNewData) override;
+    FilterDevice getFilterDevice() override;
     void calculateCpu(int timeStepIdx, int ensembleIdx, float* buffer) override;
+    void calculateDevice(int timeStepIdx, int ensembleIdx, const DeviceCacheEntry& deviceCacheEntry) override;
+
+protected:
+    /// Renders the GUI. Returns whether re-rendering has become necessary due to the user's actions.
+    void renderGuiImpl(sgl::PropertyEditor& propertyEditor) override;
+
+private:
+    std::shared_ptr<PccComputePass> pccComputePass;
+    bool useGpu = true;
+};
+
+class PccComputePass : public sgl::vk::ComputePass {
+public:
+    explicit PccComputePass(sgl::vk::Renderer* renderer);
+    void setVolumeData(VolumeData* _volumeData, bool isNewData);
+    void setEnsembleImageViews(const std::vector<sgl::vk::ImageViewPtr>& _ensembleImageViews);
+    void setOutputImage(const sgl::vk::ImageViewPtr& _outputImage);
+
+protected:
+    void loadShader() override;
+    void createComputeData(sgl::vk::Renderer* renderer, sgl::vk::ComputePipelinePtr& computePipeline) override;
+    void _render() override;
+
+private:
+    VolumeData* volumeData = nullptr;
+    int cachedEnsembleMemberCount = 0;
+
+    const int computeBlockSizeX = 8, computeBlockSizeY = 8, computeBlockSizeZ = 4;
+    struct UniformData {
+        uint32_t xs, ys, zs, es;
+    };
+    UniformData uniformData{};
+    sgl::vk::BufferPtr uniformBuffer;
+
+    std::vector<sgl::vk::ImageViewPtr> ensembleImageViews;
+    sgl::vk::ImageViewPtr outputImage;
 };
 
 #endif //CORRERENDER_SIMILARITYCALCULATOR_HPP
