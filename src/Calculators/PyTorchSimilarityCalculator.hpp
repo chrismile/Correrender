@@ -86,10 +86,10 @@ public:
     void calculateCpu(int timeStepIdx, int ensembleIdx, float* buffer) override;
     void calculateDevice(int timeStepIdx, int ensembleIdx, const DeviceCacheEntry& deviceCacheEntry) override;
 
+protected:
     bool loadModelFromFile(int idx, const std::string& modelPath);
     void setPyTorchDevice(PyTorchDevice pyTorchDeviceNew);
 
-protected:
     /// Renders the GUI. Returns whether re-rendering has become necessary due to the user's actions.
     void renderGuiImpl(sgl::PropertyEditor& propertyEditor) override;
 

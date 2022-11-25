@@ -26,6 +26,9 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <chrono>
+#define TEST_INFERENCE_SPEED
+
 #include <json/json.h>
 #include <torch/script.h>
 #include <torch/cuda.h>
@@ -60,6 +63,7 @@
 
 struct ModuleWrapper {
     torch::jit::Module module;
+    torch::jit::Module frozenModule;
 };
 
 static torch::DeviceType getTorchDeviceType(PyTorchDevice pyTorchDevice) {
@@ -87,7 +91,7 @@ PyTorchSimilarityCalculator::PyTorchSimilarityCalculator(sgl::vk::Renderer* rend
         pyTorchDevice = PyTorchDevice::CUDA;
         if (!sgl::vk::getIsCudaDeviceApiFunctionTableInitialized()) {
             sgl::Logfile::get()->throwError(
-                    "Error in VolumetricPathTracingModuleRenderer::renderFrameCuda: "
+                    "Error in PyTorchSimilarityCalculator::PyTorchSimilarityCalculator: "
                     "sgl::vk::getIsCudaDeviceApiFunctionTableInitialized() returned false.");
         }
         uint8_t* moduleBuffer = nullptr;
@@ -187,6 +191,7 @@ bool PyTorchSimilarityCalculator::loadModelFromFile(int idx, const std::string& 
         // std::shared_ptr<torch::jit::script::Module>
         wrapper->module = torch::jit::load(modelPath, deviceType, extraFilesMap);
         wrapper->module.to(deviceType);
+        wrapper->module.eval();
     } catch (const c10::Error& e) {
         sgl::Logfile::get()->writeError("Error: Couldn't load the PyTorch module from \"" + modelPath + "\"!");
         sgl::Logfile::get()->writeError(std::string() + "What: " + e.what());
@@ -200,11 +205,15 @@ bool PyTorchSimilarityCalculator::loadModelFromFile(int idx, const std::string& 
         return false;
     }
 
+    wrapper->frozenModule = optimize_for_inference(wrapper->module);
+
     dirty = true;
     return true;
 }
 
 void PyTorchSimilarityCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float* buffer) {
+    torch::NoGradGuard noGradGuard{};
+
     int xs = volumeData->getGridSizeX();
     int ys = volumeData->getGridSizeY();
     int zs = volumeData->getGridSizeZ();
@@ -350,9 +359,6 @@ void PyTorchSimilarityCalculator::calculateDevice(
     }
 
     int gpuBatchSize1D = gpuBatchSize1DBase;
-    if (es >= 100) {
-        gpuBatchSize1D /= 2;
-    }
     if (es >= 200) {
         gpuBatchSize1D /= 2;
     }
@@ -417,6 +423,10 @@ void PyTorchSimilarityCalculator::calculateDevice(
     }
     timelineValue++;
 
+#ifdef TEST_INFERENCE_SPEED
+    auto startLoad = std::chrono::system_clock::now();
+#endif
+
     float minEnsembleVal = std::numeric_limits<float>::max();
     float maxEnsembleVal = std::numeric_limits<float>::lowest();
     std::vector<VolumeData::DeviceCacheEntry> ensembleEntryFields;
@@ -456,6 +466,16 @@ void PyTorchSimilarityCalculator::calculateDevice(
                     ensembleTextureArrayCu, ensembleTexturesCu.data(), sizeof(CUtexObject) * es), "Error in cuMemcpyHtoD: ");
         }
     }
+
+#ifdef TEST_INFERENCE_SPEED
+    auto endLoad = std::chrono::system_clock::now();
+    auto elapsedLoad = std::chrono::duration_cast<std::chrono::milliseconds>(endLoad - startLoad);
+    std::cout << "Elapsed time load: " << elapsedLoad.count() << "ms" << std::endl;
+#endif
+
+#ifdef TEST_INFERENCE_SPEED
+    auto startInference = std::chrono::system_clock::now();
+#endif
 
     std::vector<int64_t> referenceInputSizes = { 1, es, 4 };
 
@@ -559,6 +579,12 @@ void PyTorchSimilarityCalculator::calculateDevice(
     renderer->beginCommandBuffer();
     postRenderCommandBuffer->pushWaitSemaphore(
             cudaFinishedSemaphore, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
+
+#ifdef TEST_INFERENCE_SPEED
+    auto endInference = std::chrono::system_clock::now();
+    auto elapsedInference = std::chrono::duration_cast<std::chrono::milliseconds>(endInference - startInference);
+    std::cout << "Elapsed time inference: " << elapsedInference.count() << "ms" << std::endl;
+#endif
 }
 
 FilterDevice PyTorchSimilarityCalculator::PyTorchSimilarityCalculator::getFilterDevice() {
@@ -578,10 +604,12 @@ void PyTorchSimilarityCalculator::setPyTorchDevice(PyTorchDevice pyTorchDeviceNe
     pyTorchDevice = pyTorchDeviceNew;
     if (encoderWrapper) {
         encoderWrapper->module.to(getTorchDeviceType(pyTorchDevice));
+        encoderWrapper->frozenModule = optimize_for_inference(encoderWrapper->module);
     }
     if (decoderWrapper) {
         decoderWrapper->module.to(getTorchDeviceType(pyTorchDevice));
-    }
+        decoderWrapper->frozenModule = optimize_for_inference(decoderWrapper->module);
+   }
 }
 
 void PyTorchSimilarityCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
