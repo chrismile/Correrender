@@ -54,7 +54,7 @@ void main() {
     float meanX = 0;
     float meanY = 0;
     float invN = float(1) / n;
-    for (int e = 0; e < es; e++) {
+    for (uint e = 0; e < es; e++) {
         float x = texelFetch(sampler3D(scalarFieldEnsembles[nonuniformEXT(e)], scalarFieldSampler), referencePointIdx, 0).r;
         float y = texelFetch(sampler3D(scalarFieldEnsembles[nonuniformEXT(e)], scalarFieldSampler), currentPointIdx, 0).r;
         meanX += invN * x;
@@ -63,7 +63,7 @@ void main() {
     float varX = 0;
     float varY = 0;
     float invNm1 = float(1) / (n - float(1));
-    for (int e = 0; e < es; e++) {
+    for (uint e = 0; e < es; e++) {
         float x = texelFetch(sampler3D(scalarFieldEnsembles[nonuniformEXT(e)], scalarFieldSampler), referencePointIdx, 0).r;
         float y = texelFetch(sampler3D(scalarFieldEnsembles[nonuniformEXT(e)], scalarFieldSampler), currentPointIdx, 0).r;
         float diffX = x - meanX;
@@ -74,7 +74,7 @@ void main() {
     float stdDevX = sqrt(varX);
     float stdDevY = sqrt(varY);
     float pearsonCorrelation = 0;
-    for (int e = 0; e < es; e++) {
+    for (uint e = 0; e < es; e++) {
         float x = texelFetch(sampler3D(scalarFieldEnsembles[nonuniformEXT(e)], scalarFieldSampler), referencePointIdx, 0).r;
         float y = texelFetch(sampler3D(scalarFieldEnsembles[nonuniformEXT(e)], scalarFieldSampler), currentPointIdx, 0).r;
         pearsonCorrelation += invNm1 * ((x - meanX) / stdDevX) * ((y - meanY) / stdDevY);

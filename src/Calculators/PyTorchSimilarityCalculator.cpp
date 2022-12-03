@@ -408,6 +408,7 @@ void PyTorchSimilarityCalculator::calculateDevice(
     uint32_t frameIndex = swapchain ? swapchain->getImageIndex() : 0;
     size_t numSwapchainImages = swapchain ? swapchain->getNumImages() : 1;
     if (numSwapchainImages != cachedNumSwapchainImages) {
+        cachedNumSwapchainImages = numSwapchainImages;
         sgl::vk::Device* device = renderer->getDevice();
         timelineValue = 0;
         postRenderCommandBuffers.clear();

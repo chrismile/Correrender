@@ -26,51 +26,28 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef CORRERENDER_TINYCUDANNSIMILARITYCALCULATOR_HPP
-#define CORRERENDER_TINYCUDANNSIMILARITYCALCULATOR_HPP
+#ifndef CORRERENDER_QUICKMLPSIMILARITYCALCULATOR_HPP
+#define CORRERENDER_QUICKMLPSIMILARITYCALCULATOR_HPP
 
-#include <Graphics/Vulkan/Utils/InteropCuda.hpp>
-#include <Graphics/Vulkan/Render/CommandBuffer.hpp>
 #include "SimilarityCalculator.hpp"
 
-struct TinyCudaNNModuleWrapper;
-struct TinyCudaNNCacheWrapper;
+struct QuickMLPModuleWrapper;
 
-class TinyCudaNNSimilarityCalculator : public EnsembleSimilarityCalculator {
+class QuickMLPSimilarityCalculator : public EnsembleSimilarityCalculator {
 public:
-    explicit TinyCudaNNSimilarityCalculator(sgl::vk::Renderer* renderer);
-    ~TinyCudaNNSimilarityCalculator() override;
+    explicit QuickMLPSimilarityCalculator(sgl::vk::Renderer* renderer);
+    ~QuickMLPSimilarityCalculator() override;
     void setVolumeData(VolumeData* _volumeData, bool isNewData) override;
-    std::string getOutputFieldName() override { return "Similarity Metric (tiny-cuda-nn)"; }
+    std::string getOutputFieldName() override { return "Similarity Metric (QuickMLP)"; }
     FilterDevice getFilterDevice() override { return FilterDevice::CUDA; }
     void calculateDevice(int timeStepIdx, int ensembleIdx, const DeviceCacheEntry& deviceCacheEntry) override;
 
 protected:
     void loadModelFromFile(const std::string& modelPath);
 
-    /// Renders the GUI. Returns whether re-rendering has become necessary due to the user's actions.
-    void renderGuiImpl(sgl::PropertyEditor& propertyEditor) override;
-
 private:
     std::string modelFilePath;
-    std::shared_ptr<TinyCudaNNModuleWrapper> moduleWrapper;
-    std::shared_ptr<TinyCudaNNCacheWrapper> cacheWrapper;
-    std::string fileDialogDirectory;
-
-    const int gpuBatchSize1DBase = 16384;
-    size_t cachedEnsembleSizeDevice = 0;
-
-    size_t cachedNumSwapchainImages = 0;
-    sgl::vk::BufferCudaDriverApiExternalMemoryVkPtr referenceInputBufferCu, inputBufferCu;
-    std::vector<sgl::vk::CommandBufferPtr> postRenderCommandBuffers;
-    sgl::vk::SemaphoreVkCudaDriverApiInteropPtr vulkanFinishedSemaphore, cudaFinishedSemaphore;
-    uint64_t timelineValue = 0;
-    CUdeviceptr outputImageBufferCu{};
-    CUdeviceptr ensembleTextureArrayCu{};
-    std::vector<CUtexObject> cachedEnsembleTexturesCu;
-    CUmodule combineEnsemblesModuleCu{};
-    CUfunction combineEnsemblesFunctionCu{}, combineEnsemblesReferenceFunctionCu{};
-    CUstream stream{};
+    std::shared_ptr<QuickMLPModuleWrapper> encoderWrapper, decoderWrapper;
 };
 
-#endif //CORRERENDER_TINYCUDANNSIMILARITYCALCULATOR_HPP
+#endif //CORRERENDER_QUICKMLPSIMILARITYCALCULATOR_HPP

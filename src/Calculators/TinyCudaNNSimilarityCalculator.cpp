@@ -26,147 +26,79 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <tiny-cuda-nn/trainer.h>
-#include <tiny-cuda-nn/network_with_input_encoding.h>
-
 #include <Utils/AppSettings.hpp>
-#include <Utils/File/FileLoader.hpp>
-#include <Utils/File/Archive.hpp>
-#include <Graphics/Vulkan/Utils/InteropCuda.hpp>
-#include <Graphics/Vulkan/Render/Renderer.hpp>
+#include <Utils/File/FileUtils.hpp>
+
+#include <ImGui/ImGuiWrapper.hpp>
+#include <ImGui/Widgets/PropertyEditor.hpp>
+#include <ImGui/ImGuiFileDialog/ImGuiFileDialog.h>
 
 #include "TinyCudaNNSimilarityCalculator.hpp"
 
-using precision_t = tcnn::network_precision_t;
+// Code using ImGuiFileDialog.h needed to be moved to a separate .cpp file to avoid compile errors with nvcc.
 
-TinyCudaNNSimilarityCalculator::TinyCudaNNSimilarityCalculator(sgl::vk::Renderer* renderer)
-        : EnsembleSimilarityCalculator(renderer) {
-    sgl::vk::Device* device = renderer->getDevice();
-    if (device->getDeviceDriverId() != VK_DRIVER_ID_NVIDIA_PROPRIETARY
-            || !sgl::vk::getIsCudaDeviceApiFunctionTableInitialized()) {
-        sgl::Logfile::get()->throwError(
-                "Error in TinyCudaNNSimilarityCalculator::TinyCudaNNSimilarityCalculator: "
-                "sgl::vk::getIsCudaDeviceApiFunctionTableInitialized() returned false.");
+void TinyCudaNNSimilarityCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
+    EnsembleSimilarityCalculator::renderGuiImpl(propertyEditor);
+    if (IGFD_DisplayDialog(
+            fileDialogInstance,
+            "ChoosePyTorchModelFile", ImGuiWindowFlags_NoCollapse,
+            sgl::ImGuiWrapper::get()->getScaleDependentSize(1000, 580),
+            ImVec2(FLT_MAX, FLT_MAX))) {
+        if (IGFD_IsOk(fileDialogInstance)) {
+            std::string filePathName = IGFD_GetFilePathName(fileDialogInstance);
+            std::string filePath = IGFD_GetCurrentPath(fileDialogInstance);
+            std::string filter = IGFD_GetCurrentFilter(fileDialogInstance);
+            std::string userDatas;
+            if (IGFD_GetUserDatas(fileDialogInstance)) {
+                userDatas = std::string((const char*)IGFD_GetUserDatas(fileDialogInstance));
+            }
+            auto selection = IGFD_GetSelection(fileDialogInstance);
+
+            // Is this line data set or a volume data file for the scattering line tracer?
+            const char* currentPath = IGFD_GetCurrentPath(fileDialogInstance);
+            std::string filename = currentPath;
+            if (!filename.empty() && filename.back() != '/' && filename.back() != '\\') {
+                filename += "/";
+            }
+            filename += selection.table[0].fileName;
+            IGFD_Selection_DestroyContent(&selection);
+            if (currentPath) {
+                free((void*)currentPath);
+                currentPath = nullptr;
+            }
+
+            fileDialogDirectory = sgl::FileUtils::get()->getPathToFile(filename);
+
+            modelFilePath = filename;
+            loadModelFromFile(filename);
+            dirty = true;
+        }
+        IGFD_CloseDialog(fileDialogInstance);
     }
 
-    sgl::AppSettings::get()->getSettings().getValueOpt(
-            "tinyCudaNNSimilarityCalculatorModelFilePath", modelFilePath);
-}
-
-TinyCudaNNSimilarityCalculator::~TinyCudaNNSimilarityCalculator() {
-    sgl::AppSettings::get()->getSettings().addKeyValue(
-            "tinyCudaNNSimilarityCalculatorModelFilePath", modelFilePath);
-}
-
-void TinyCudaNNSimilarityCalculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
-    ;
-}
-
-static nlohmann::json loadJsonConfig(const std::string& configPath) {
-    uint8_t* buffer = nullptr;
-    size_t bufferSize = 0;
-    sgl::ArchiveFileLoadReturnType retVal = sgl::loadFileFromArchive(configPath, buffer, bufferSize, true);
-    if (retVal != sgl::ArchiveFileLoadReturnType::ARCHIVE_FILE_LOAD_SUCCESSFUL) {
-        sgl::Logfile::get()->writeError(
-                "Error in TinyCudaNNSimilarityCalculator::loadModelFromFile: Could not load data from model \""
-                + configPath + "\".");
-        return false;
+    propertyEditor.addInputAction("Model Path", &modelFilePath);
+    if (propertyEditor.addButton("", "Load")) {
+        loadModelFromFile(modelFilePath);
+        dirty = true;
     }
-    nlohmann::json config = nlohmann::json::parse(std::string(reinterpret_cast<char*>(buffer), bufferSize));
-    delete[] buffer;
-    return config;
-}
-
-const uint32_t TINY_CUDA_NN_PARAMS_FORMAT_FLOAT = 0;
-const uint32_t TINY_CUDA_NN_PARAMS_FORMAT_HALF = 1;
-struct TinyCudaNNDataHeader {
-    uint32_t format = 0;
-    uint32_t numParams = 0;
-};
-
-static nlohmann::json TinyCudaNNSimilarityCalculator::loadNetwork(const nlohmann::json& config, const std::string& modelPath) {
-    uint8_t* buffer = nullptr;
-    size_t bufferSize = 0;
-    sgl::ArchiveFileLoadReturnType retVal = sgl::loadFileFromArchive(modelPath, buffer, bufferSize, true);
-    if (retVal != sgl::ArchiveFileLoadReturnType::ARCHIVE_FILE_LOAD_SUCCESSFUL) {
-        sgl::Logfile::get()->writeError(
-                "Error in TinyCudaNNSimilarityCalculator::loadModelFromFile: Could not load data from model \""
-                + modelPath + "\".");
-        return false;
+    ImGui::SameLine();
+    std::string buttonText = "Open from Disk...";
+    if (ImGui::Button(buttonText.c_str())) {
+        if (fileDialogDirectory.empty() || !sgl::FileUtils::get()->directoryExists(fileDialogDirectory)) {
+            fileDialogDirectory = sgl::AppSettings::get()->getDataDirectory() + "tiny-cuda-nn/";
+            if (!sgl::FileUtils::get()->exists(fileDialogDirectory)) {
+                fileDialogDirectory = sgl::AppSettings::get()->getDataDirectory();
+            }
+        }
+        IGFD_OpenModal(
+                fileDialogInstance,
+                "ChooseTinyCudaNNModelFile", "Choose tiny-cuda-nn Model File",
+                ".*,.zip,.7z,.tar,.tar.zip,.tar.gz,.tar.bz2,.tar.xz,.tar.lzma,.tar.7z",
+                fileDialogDirectory.c_str(),
+                "", 1, nullptr,
+                ImGuiFileDialogFlags_ConfirmOverwrite);
     }
 
-    auto* header = reinterpret_cast<TinyCudaNNDataHeader*>(buffer);
-    uint8_t* paramsData = buffer + sizeof(TinyCudaNNDataHeader);
-
-    auto encodingOpts = config.value("encoding", nlohmann::json::object());
-    auto lossOpts = config.value("loss", nlohmann::json::object());
-    auto optimizerOpts = config.value("optimizer", nlohmann::json::object());
-    auto networkOpts = config.value("network", nlohmann::json::object());
-
-    int n_input_dims = 1;
-    int n_output_dims = 1;
-    std::shared_ptr<tcnn::Loss<precision_t>> loss{tcnn::create_loss<precision_t>(lossOpts)};
-    std::shared_ptr<tcnn::Optimizer<precision_t>> optimizer{tcnn::create_optimizer<precision_t>(optimizerOpts)};
-    std::shared_ptr<tcnn::NetworkWithInputEncoding<precision_t>> network = std::make_shared<tcnn::NetworkWithInputEncoding<precision_t>>(
-            n_input_dims, n_output_dims, encodingOpts, networkOpts);
-    auto trainer = std::make_shared<tcnn::Trainer<float, precision_t, precision_t>>(network, optimizer, loss);
-#ifdef TCNN_HALF_PRECISION
-    if (header->format == TINY_CUDA_NN_PARAMS_FORMAT_FLOAT) {
-        trainer->set_params_full_precision(reinterpret_cast<float*>(paramsData), header->numParams, false);
-    } else {
-        trainer->set_params(reinterpret_cast<precision_t*>(paramsData), 0, false);
-    }
-#else
-    if (header->format == TINY_CUDA_NN_PARAMS_FORMAT_FLOAT) {
-        trainer->set_params(reinterpret_cast<float*>(paramsData), 0, false);
-    } else {
-        sgl::Logfile::get()->throwError(
-                "Error in TinyCudaNNSimilarityCalculator::loadNetwork: Half precision build was disabled.");
-    }
-#endif
-
-    delete[] buffer;
-}
-
-void TinyCudaNNSimilarityCalculator::loadModelFromFile(const std::string& modelPath) {
-    uint8_t* buffer = nullptr;
-    size_t bufferSize = 0;
-    sgl::ArchiveFileLoadReturnType retVal = sgl::loadFileFromArchive(modelPath, buffer, bufferSize, true);
-    if (retVal != sgl::ArchiveFileLoadReturnType::ARCHIVE_FILE_LOAD_SUCCESSFUL) {
-        sgl::Logfile::get()->writeError(
-                "Error in TinyCudaNNSimilarityCalculator::loadModelFromFile: Could not load data from model \""
-                + modelPath + "\".");
-        return;
-    }
-}
-
-void TinyCudaNNSimilarityCalculator::calculateDevice(
-        int timeStepIdx, int ensembleIdx, const DeviceCacheEntry& deviceCacheEntry) {
-    int xs = 1, ys = 1, zs = 1, es = 1;
-
-    CUstream stream{};
-    sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamCreate(&stream, 0);
-
-	tcnn::GPUMemory<float> result(xs * ys * zs);
-    result.data();
-    sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyAsync(result.data(), inputPtr, sizeof(float) * xs * ys * zs, stream);
-
-    auto encoding_opts = config.value("encoding", nlohmann::json::object());
-    auto network_opts = config.value("network", nlohmann::json::object());
-
-
-    uint32_t numLayersInEncoder = batchSize;
-    uint32_t numLayersOutEncoder;
-    // numLayersInDecoder == numLayersOutEncoder when symmetrizer is sum operation.
-    uint32_t numLayersInDecoder;
-    auto networkOpts = config.value("network", nlohmann::json::object());
-
-    tcnn::GPUMatrix<float> prediction(batchSize, n_coords_padded);
-    tcnn::GPUMatrix<float> inference_batch(xs_and_ys.data(), batchSize, n_coords_padded);
-    std::shared_ptr<tcnn::NetworkWithInputEncoding<precision_t>> network = std::make_shared<tcnn::NetworkWithInputEncoding<precision_t>>(
-            n_input_dims, n_output_dims, encoding_opts, network_opts);
-    network->inference(stream, inference_batch, prediction);
-
-    sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(stream);
-    sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamDestroy(stream);
+    // TODO
+    propertyEditor.addText("Data type:", "Float");
 }

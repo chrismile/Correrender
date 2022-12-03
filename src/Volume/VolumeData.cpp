@@ -743,7 +743,7 @@ std::pair<float, float> VolumeData::getMinMaxScalarFieldValue(
     if (itHost != calculatorsHost.end() && itHost->second->getHasFixedRange()) {
         return itHost->second->getFixedRange();
     }
-    auto itDevice = calculatorsHost.find(fieldName);
+    auto itDevice = calculatorsDevice.find(fieldName);
     if (itDevice != calculatorsDevice.end() && itDevice->second->getHasFixedRange()) {
         return itDevice->second->getFixedRange();
     }
@@ -1007,14 +1007,18 @@ void VolumeData::updateCalculatorName(const CalculatorPtr& calculator) {
     std::string oldFieldName;
     for (auto it = calculatorsHost.begin(); it != calculatorsHost.end(); it++) {
         if (it->second == calculator) {
+            oldFieldName = it->first;
             calculatorsHost.erase(it);
             calculatorsHost.insert(std::make_pair(calculator->getOutputFieldName(), calculator));
+            break;
         }
     }
     for (auto it = calculatorsDevice.begin(); it != calculatorsDevice.end(); it++) {
         if (it->second == calculator) {
+            oldFieldName = it->first;
             calculatorsDevice.erase(it);
             calculatorsDevice.insert(std::make_pair(calculator->getOutputFieldName(), calculator));
+            break;
         }
     }
     auto& fieldNames = typeToFieldNamesMap[calculator->getOutputFieldType()];
