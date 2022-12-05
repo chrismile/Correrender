@@ -27,7 +27,6 @@
  */
 
 #include <chrono>
-#define TEST_INFERENCE_SPEED
 
 #include <json/json.h>
 #include <torch/script.h>
@@ -103,6 +102,7 @@ PyTorchSimilarityCalculator::PyTorchSimilarityCalculator(sgl::vk::Renderer* rend
                 &combineEnsemblesModuleCu, moduleBuffer), "Error in cuModuleLoadFatBinary: ");
         sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
                 &combineEnsemblesFunctionCu, combineEnsemblesModuleCu, "combineEnsembles"), "Error in cuModuleGetFunction: ");
+        delete[] moduleBuffer;
     }
 #endif
 

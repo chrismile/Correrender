@@ -29,48 +29,30 @@
 #ifndef CORRERENDER_TINYCUDANNSIMILARITYCALCULATOR_HPP
 #define CORRERENDER_TINYCUDANNSIMILARITYCALCULATOR_HPP
 
-#include <Graphics/Vulkan/Utils/InteropCuda.hpp>
-#include <Graphics/Vulkan/Render/CommandBuffer.hpp>
-#include "SimilarityCalculator.hpp"
+#include "DeepLearningCudaSimilarityCalculator.hpp"
 
 struct TinyCudaNNModuleWrapper;
 struct TinyCudaNNCacheWrapper;
 
-class TinyCudaNNSimilarityCalculator : public EnsembleSimilarityCalculator {
+class TinyCudaNNSimilarityCalculator : public DeepLearningCudaSimilarityCalculator {
 public:
     explicit TinyCudaNNSimilarityCalculator(sgl::vk::Renderer* renderer);
     ~TinyCudaNNSimilarityCalculator() override;
-    void setVolumeData(VolumeData* _volumeData, bool isNewData) override;
-    std::string getOutputFieldName() override { return "Similarity Metric (tiny-cuda-nn)"; }
-    FilterDevice getFilterDevice() override { return FilterDevice::CUDA; }
-    void calculateDevice(int timeStepIdx, int ensembleIdx, const DeviceCacheEntry& deviceCacheEntry) override;
 
 protected:
-    void loadModelFromFile(const std::string& modelPath);
+    void loadModelFromFile(const std::string& modelPath) override;
 
-    /// Renders the GUI. Returns whether re-rendering has become necessary due to the user's actions.
-    void renderGuiImpl(sgl::PropertyEditor& propertyEditor) override;
+    bool getIsModuleLoaded() { return moduleWrapper.get() != nullptr; }
+    void recreateCache(int batchSize) override;
+    CUdeviceptr getReferenceInputPointer() override;
+    CUdeviceptr getQueryInputPointer() override;
+    void runInferenceReference() override;
+    void runInferenceBatch(uint32_t batchOffset, uint32_t batchSize) override;
 
 private:
-    std::string modelFilePath;
+    uint32_t numLayersInEncoder = 0, numLayersOutEncoder = 0, numLayersInDecoder = 0, numLayersOutDecoder = 0;
     std::shared_ptr<TinyCudaNNModuleWrapper> moduleWrapper;
     std::shared_ptr<TinyCudaNNCacheWrapper> cacheWrapper;
-    std::string fileDialogDirectory;
-
-    const int gpuBatchSize1DBase = 16384;
-    size_t cachedEnsembleSizeDevice = 0;
-
-    size_t cachedNumSwapchainImages = 0;
-    sgl::vk::BufferCudaDriverApiExternalMemoryVkPtr referenceInputBufferCu, inputBufferCu;
-    std::vector<sgl::vk::CommandBufferPtr> postRenderCommandBuffers;
-    sgl::vk::SemaphoreVkCudaDriverApiInteropPtr vulkanFinishedSemaphore, cudaFinishedSemaphore;
-    uint64_t timelineValue = 0;
-    CUdeviceptr outputImageBufferCu{};
-    CUdeviceptr ensembleTextureArrayCu{};
-    std::vector<CUtexObject> cachedEnsembleTexturesCu;
-    CUmodule combineEnsemblesModuleCu{};
-    CUfunction combineEnsemblesFunctionCu{}, combineEnsemblesReferenceFunctionCu{};
-    CUstream stream{};
 };
 
 #endif //CORRERENDER_TINYCUDANNSIMILARITYCALCULATOR_HPP

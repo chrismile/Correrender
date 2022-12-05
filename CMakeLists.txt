@@ -454,6 +454,9 @@ if (${SUPPORT_QUICK_MLP})
     target_compile_definitions(Correrender PRIVATE SUPPORT_QUICK_MLP)
 endif()
 
+# For testing purposes.
+target_compile_definitions(Correrender PRIVATE TEST_INFERENCE_SPEED)
+
 if (SUPPORT_OPENEXR)
     if (${USE_OPENEXR_PKGCONFIG})
         if (OpenEXR_FOUND)

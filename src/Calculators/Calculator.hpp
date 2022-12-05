@@ -65,6 +65,7 @@ class Calculator {
 public:
     explicit Calculator(sgl::vk::Renderer* renderer) : renderer(renderer) {}
     virtual ~Calculator() = default;
+    virtual void initialize() {}
     inline void setCalculatorId(size_t _calculatorId) { calculatorId = _calculatorId; }
     virtual void setViewManager(ViewManager* _viewManager) {}
     virtual void setVolumeData(VolumeData* _volumeData, bool isNewData);

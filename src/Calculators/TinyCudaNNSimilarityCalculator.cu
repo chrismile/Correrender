@@ -30,74 +30,35 @@
 #include <tiny-cuda-nn/network_with_input_encoding.h>
 
 #include <Math/Math.hpp>
-#include <Utils/AppSettings.hpp>
 #include <Utils/File/FileLoader.hpp>
 #include <Utils/File/Archive.hpp>
 #include <Utils/File/FileUtils.hpp>
-#include <Graphics/Vulkan/Utils/Swapchain.hpp>
 #include <Graphics/Vulkan/Utils/InteropCuda.hpp>
-#include <Graphics/Vulkan/Render/Renderer.hpp>
 
 #include "Volume/VolumeData.hpp"
-#include "Volume/Cache/DeviceCacheEntry.hpp"
 #include "MutualInformation.cuh"
 #include "TinyCudaNNSimilarityCalculator.hpp"
-
-#if CUDA_VERSION < 11020
-#error CUDA >= 11.2 is required for timeline semaphore support.
-#endif
 
 using precision_t = tcnn::network_precision_t;
 
 struct TinyCudaNNModuleWrapper {
-    nlohmann::json config;
-    //torch::jit::Module module;
-    //torch::jit::Module frozenModule;
+    nlohmann::json configEncoder;
+    nlohmann::json configDecoder;
+    std::shared_ptr<tcnn::Network<float, precision_t>> networkEncoder;
+    std::shared_ptr<tcnn::Network<precision_t, precision_t>> networkDecoder;
 };
 
 struct TinyCudaNNCacheWrapper {
-    tcnn::GPUMemory<float> referenceInput;
-    tcnn::GPUMemory<float> referenceEncoded;
-    tcnn::GPUMemory<float> queryInput;
-    tcnn::GPUMemory<float> queryEncoded;
-    tcnn::GPUMemory<float> queryEncodedPermuted;
-    tcnn::GPUMemory<float> symmetrizedReferenceInput;
-    tcnn::GPUMemory<float> symmetrizedQueryInput;
-    tcnn::GPUMemory<float> referenceDecoded;
-    tcnn::GPUMemory<float> queryDecoded;
+    tcnn::GPUMatrix<float> referenceInput;
+    tcnn::GPUMatrix<precision_t> referenceEncoded;
+    tcnn::GPUMatrix<float> queryInput;
+    tcnn::GPUMatrix<precision_t> queryEncoded;
+    tcnn::GPUMatrix<precision_t> queryEncodedPermuted;
+    tcnn::GPUMatrix<precision_t> symmetrizedReferenceInput;
+    tcnn::GPUMatrix<precision_t> symmetrizedQueryInput;
+    tcnn::GPUMatrix<precision_t> referenceDecoded;
+    tcnn::GPUMatrix<precision_t> queryDecoded;
 };
-
-TinyCudaNNSimilarityCalculator::TinyCudaNNSimilarityCalculator(sgl::vk::Renderer* renderer)
-        : EnsembleSimilarityCalculator(renderer) {
-    sgl::vk::Device* device = renderer->getDevice();
-    if (device->getDeviceDriverId() != VK_DRIVER_ID_NVIDIA_PROPRIETARY
-            || !sgl::vk::getIsCudaDeviceApiFunctionTableInitialized()) {
-        sgl::Logfile::get()->throwError(
-                "Error in TinyCudaNNSimilarityCalculator::TinyCudaNNSimilarityCalculator: "
-                "sgl::vk::getIsCudaDeviceApiFunctionTableInitialized() returned false.");
-    }
-
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamCreate(
-            &stream, 0), "Error in cuStreamCreate: ");
-
-    sgl::AppSettings::get()->getSettings().getValueOpt(
-            "tinyCudaNNSimilarityCalculatorModelFilePath", modelFilePath);
-    if (sgl::FileUtils::get()->exists(modelFilePath) && !sgl::FileUtils::get()->isDirectory(modelFilePath)) {
-        loadModelFromFile(modelFilePath);
-    }
-}
-
-TinyCudaNNSimilarityCalculator::~TinyCudaNNSimilarityCalculator() {
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamDestroy(
-            stream), "Error in cuStreamDestroy: ");
-
-    sgl::AppSettings::get()->getSettings().addKeyValue(
-            "tinyCudaNNSimilarityCalculatorModelFilePath", modelFilePath);
-}
-
-void TinyCudaNNSimilarityCalculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
-    EnsembleSimilarityCalculator::setVolumeData(_volumeData, isNewData);
-}
 
 const uint32_t TINY_CUDA_NN_PARAMS_FORMAT_FLOAT = 0;
 const uint32_t TINY_CUDA_NN_PARAMS_FORMAT_HALF = 1;
@@ -106,22 +67,44 @@ struct TinyCudaNNDataHeader {
     uint32_t numParams = 0;
 };
 
-static nlohmann::json loadNetwork(const nlohmann::json& config, const sgl::ArchiveEntry& archiveEntry) {
-    /*auto* header = reinterpret_cast<TinyCudaNNDataHeader*>(buffer);
-    uint8_t* paramsData = buffer + sizeof(TinyCudaNNDataHeader);
+TinyCudaNNSimilarityCalculator::TinyCudaNNSimilarityCalculator(sgl::vk::Renderer* renderer)
+        : DeepLearningCudaSimilarityCalculator("tiny-cuda-nn", "tinyCudaNN", renderer) {
+}
 
+TinyCudaNNSimilarityCalculator::~TinyCudaNNSimilarityCalculator() {
+}
+
+template<class T, class PARAMS_T> static void loadNetwork(
+        std::shared_ptr<tcnn::Network<T, PARAMS_T>>& network, const std::string& modelPath,
+        const nlohmann::json& config, const sgl::ArchiveEntry& entry) {
+    auto* header = reinterpret_cast<TinyCudaNNDataHeader*>(entry.bufferData.get());
+    uint8_t* paramsData = entry.bufferData.get() + sizeof(TinyCudaNNDataHeader);
+
+    bool hasInputEncoding = config.find("encoding") != config.end();
     auto encodingOpts = config.value("encoding", nlohmann::json::object());
     auto lossOpts = config.value("loss", nlohmann::json::object());
     auto optimizerOpts = config.value("optimizer", nlohmann::json::object());
     auto networkOpts = config.value("network", nlohmann::json::object());
 
-    int n_input_dims = 1;
-    int n_output_dims = 1;
+    // TODO
+    uint32_t numInputDims = networkOpts["n_input_dims"];//es * 4;
+    uint32_t numOutputDims = networkOpts["n_output_dims"];//networkOpts.value("n_neurons", 64);
     std::shared_ptr<tcnn::Loss<precision_t>> loss{tcnn::create_loss<precision_t>(lossOpts)};
     std::shared_ptr<tcnn::Optimizer<precision_t>> optimizer{tcnn::create_optimizer<precision_t>(optimizerOpts)};
-    std::shared_ptr<tcnn::NetworkWithInputEncoding<precision_t>> network = std::make_shared<tcnn::NetworkWithInputEncoding<precision_t>>(
-            n_input_dims, n_output_dims, encodingOpts, networkOpts);
-    auto trainer = std::make_shared<tcnn::Trainer<float, precision_t, precision_t>>(network, optimizer, loss);
+    if (hasInputEncoding) {
+        std::shared_ptr<tcnn::NetworkWithInputEncoding<precision_t>> networkWithEnc =
+                std::make_shared<tcnn::NetworkWithInputEncoding<precision_t>>(
+                        numInputDims, numOutputDims, encodingOpts, networkOpts);
+        if constexpr (std::is_same<precision_t, float>::value) {
+            network = std::static_pointer_cast<tcnn::Network<float, PARAMS_T>>(networkWithEnc);
+        }
+    } else {
+        if constexpr (std::is_same<T, PARAMS_T>::value) {
+            network = std::shared_ptr<tcnn::Network<PARAMS_T, PARAMS_T>>(
+                    tcnn::create_network<PARAMS_T>(networkOpts));
+        }
+    }
+    auto trainer = std::make_shared<tcnn::Trainer<T, PARAMS_T, PARAMS_T>>(network, optimizer, loss);
 #ifdef TCNN_HALF_PRECISION
     if (header->format == TINY_CUDA_NN_PARAMS_FORMAT_FLOAT) {
         trainer->set_params_full_precision(reinterpret_cast<float*>(paramsData), header->numParams, false);
@@ -136,8 +119,6 @@ static nlohmann::json loadNetwork(const nlohmann::json& config, const sgl::Archi
                 "Error in TinyCudaNNSimilarityCalculator::loadNetwork: Half precision build was disabled.");
     }
 #endif
-
-    delete[] buffer;*/
 }
 
 void TinyCudaNNSimilarityCalculator::loadModelFromFile(const std::string& modelPath) {
@@ -172,216 +153,99 @@ void TinyCudaNNSimilarityCalculator::loadModelFromFile(const std::string& modelP
         return;
     }
 
-    //loadNetwork(const nlohmann::json& config, const sgl::ArchiveEntry& archiveEntry);
+    auto itNetworkEncoder = archiveFiles.find("network_encoder.bin");
+    auto itNetworkDecoder = archiveFiles.find("network_decoder.bin");
+    if (itNetworkEncoder == archiveFiles.end()) {
+        sgl::Logfile::get()->writeError(
+                "Error in TinyCudaNNSimilarityCalculator::loadModelFromFile: Missing network_encoder.bin in file \""
+                + modelPath + "\".");
+    }
+    if (itNetworkDecoder == archiveFiles.end()) {
+        sgl::Logfile::get()->writeError(
+                "Error in TinyCudaNNSimilarityCalculator::loadModelFromFile: Missing network_decoder.bin in file \""
+                + modelPath + "\".");
+    }
+    moduleWrapper->networkEncoder = {};
+    moduleWrapper->networkDecoder = {};
+    loadNetwork(moduleWrapper->networkEncoder, modelPath, moduleWrapper->configEncoder, itNetworkEncoder->second);
+    loadNetwork(moduleWrapper->networkDecoder, modelPath, moduleWrapper->configDecoder, itNetworkDecoder->second);
+
+    // numLayersInDecoder == numLayersOutEncoder when symmetrizer is sum operation.
+    // TODO
+    numLayersInEncoder = uint32_t(moduleWrapper->networkEncoder->input_width());
+    numLayersOutEncoder = uint32_t(moduleWrapper->networkEncoder->output_width());
+    numLayersInDecoder = uint32_t(moduleWrapper->networkDecoder->input_width());
+    numLayersOutDecoder = uint32_t(moduleWrapper->networkDecoder->output_width());
 }
 
-void TinyCudaNNSimilarityCalculator::calculateDevice(
-        int timeStepIdx, int ensembleIdx, const DeviceCacheEntry& deviceCacheEntry) {
-    int xs = volumeData->getGridSizeX();
-    int ys = volumeData->getGridSizeY();
-    int zs = volumeData->getGridSizeZ();
+void TinyCudaNNSimilarityCalculator::recreateCache(int batchSize) {
     int es = volumeData->getEnsembleMemberCount();
 
-    renderer->insertImageMemoryBarrier(
-            deviceCacheEntry->getVulkanImage(),
-            VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
-            VK_ACCESS_NONE_KHR, VK_ACCESS_TRANSFER_WRITE_BIT);
+    cacheWrapper->referenceInput = tcnn::GPUMatrix<float>(uint32_t(es) * 4, 1);
+    cacheWrapper->referenceEncoded = tcnn::GPUMatrix<precision_t>(numLayersOutEncoder, 1);
+    cacheWrapper->queryInput = tcnn::GPUMatrix<float>(uint32_t(es) * 4, batchSize);
+    cacheWrapper->queryEncoded = tcnn::GPUMatrix<precision_t>(numLayersOutEncoder, batchSize);
+    cacheWrapper->queryEncodedPermuted = tcnn::GPUMatrix<precision_t>(numLayersOutEncoder, batchSize);
+    cacheWrapper->symmetrizedReferenceInput = tcnn::GPUMatrix<precision_t>(numLayersInDecoder, batchSize);
+    cacheWrapper->symmetrizedQueryInput = tcnn::GPUMatrix<precision_t>(numLayersInDecoder, batchSize);
+    cacheWrapper->referenceDecoded = tcnn::GPUMatrix<precision_t>(numLayersOutDecoder, batchSize);
+    cacheWrapper->queryDecoded = tcnn::GPUMatrix<precision_t>(numLayersOutDecoder, batchSize);
+}
 
-    if (!moduleWrapper) {
-        deviceCacheEntry->getVulkanImage()->clearColor(glm::vec4(0.0f), renderer->getVkCommandBuffer());
-        sgl::Logfile::get()->writeWarning(
-                "Warning in TinyCudaNNSimilarityCalculator::calculateDevice: Network modules are not loaded.",
-                true);
-        return;
-    }
+CUdeviceptr TinyCudaNNSimilarityCalculator::getReferenceInputPointer()  {
+    return reinterpret_cast<CUdeviceptr>(cacheWrapper->referenceInput.data());
+}
 
-    int gpuBatchSize1D = gpuBatchSize1DBase;
+CUdeviceptr TinyCudaNNSimilarityCalculator::getQueryInputPointer()  {
+    return reinterpret_cast<CUdeviceptr>(cacheWrapper->queryInput.data());
+}
 
-    auto& referenceInput = cacheWrapper->referenceInput;
-    auto& referenceEncoded = cacheWrapper->referenceInput;
-    auto& queryInput = cacheWrapper->referenceInput;
-    auto& queryEncoded = cacheWrapper->referenceInput;
-    auto& queryEncodedPermuted = cacheWrapper->referenceInput;
-    auto& symmetrizedReferenceInput = cacheWrapper->referenceInput;
-    auto& symmetrizedQueryInput = cacheWrapper->referenceInput;
-    auto& referenceDecoded = cacheWrapper->referenceInput;
-    auto& queryDecoded = cacheWrapper->referenceInput;
+void TinyCudaNNSimilarityCalculator::runInferenceReference() {
+#ifdef TCNN_HALF_PRECISION
+    moduleWrapper->networkEncoder->inference_mixed_precision(
+            stream, cacheWrapper->referenceInput, cacheWrapper->referenceEncoded);
+#else
+    moduleWrapper->networkEncoder->inference(
+                stream, cacheWrapper->referenceInput, cacheWrapper->referenceEncoded);
+#endif
+}
 
-    if (cachedEnsembleSizeDevice != size_t(es)) {
-        if (outputImageBufferCu != 0) {
-            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
-                    outputImageBufferCu, stream), "Error in cuMemFreeAsync: ");
-        }
-        if (ensembleTextureArrayCu != 0) {
-            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
-                    ensembleTextureArrayCu, stream), "Error in cuMemFreeAsync: ");
-        }
-        cachedEnsembleSizeDevice = size_t(es);
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
-                &outputImageBufferCu, volumeData->getSlice3dSizeInBytes(FieldType::SCALAR), stream), "Error in cuMemAllocAsync: ");
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
-                &ensembleTextureArrayCu, es * sizeof(CUtexObject), stream), "Error in cuMemAllocAsync: ");
-
-        // TODO
-        size_t numLayersOutEncoder, numLayersInDecoder, numLayersOutDecoder;
-
-        referenceInput = tcnn::GPUMemory<float>(1, es * 4);
-        referenceEncoded = tcnn::GPUMemory<float>(1, numLayersOutEncoder);
-        queryInput = tcnn::GPUMemory<float>(gpuBatchSize1D, es * 4);
-        queryEncoded = tcnn::GPUMemory<float>(gpuBatchSize1D, numLayersOutEncoder);
-        queryEncodedPermuted = tcnn::GPUMemory<float>(gpuBatchSize1D, numLayersOutEncoder);
-        symmetrizedReferenceInput = tcnn::GPUMemory<float>(gpuBatchSize1D, numLayersInDecoder);
-        symmetrizedQueryInput = tcnn::GPUMemory<float>(gpuBatchSize1D, numLayersInDecoder);
-        referenceDecoded = tcnn::GPUMemory<float>(gpuBatchSize1D, numLayersOutDecoder);
-        queryDecoded = tcnn::GPUMemory<float>(gpuBatchSize1D, numLayersOutDecoder);
-    }
-
-    sgl::vk::Swapchain* swapchain = sgl::AppSettings::get()->getSwapchain();
-    uint32_t frameIndex = swapchain ? swapchain->getImageIndex() : 0;
-    size_t numSwapchainImages = swapchain ? swapchain->getNumImages() : 1;
-    if (numSwapchainImages != cachedNumSwapchainImages) {
-        cachedNumSwapchainImages = numSwapchainImages;
-        sgl::vk::Device* device = renderer->getDevice();
-        timelineValue = 0;
-        postRenderCommandBuffers.clear();
-        sgl::vk::CommandPoolType commandPoolType;
-        commandPoolType.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-        for (size_t frameIdx = 0; frameIdx < numSwapchainImages; frameIdx++) {
-            postRenderCommandBuffers.push_back(std::make_shared<sgl::vk::CommandBuffer>(device, commandPoolType));
-        }
-        vulkanFinishedSemaphore = std::make_shared<sgl::vk::SemaphoreVkCudaDriverApiInterop>(
-                device, 0, VK_SEMAPHORE_TYPE_TIMELINE, timelineValue);
-        cudaFinishedSemaphore = std::make_shared<sgl::vk::SemaphoreVkCudaDriverApiInterop>(
-                device, 0, VK_SEMAPHORE_TYPE_TIMELINE, timelineValue);
-    }
-    timelineValue++;
-
-#ifdef TEST_INFERENCE_SPEED
-    auto startLoad = std::chrono::system_clock::now();
+void TinyCudaNNSimilarityCalculator::runInferenceBatch(uint32_t batchOffset, uint32_t batchSize)  {
+#ifdef TCNN_HALF_PRECISION
+    moduleWrapper->networkEncoder->inference_mixed_precision(
+            stream, cacheWrapper->queryInput, cacheWrapper->queryEncoded);
+#else
+    moduleWrapper->networkEncoder->inference(
+                stream, cacheWrapper->queryInput, cacheWrapper->queryEncoded);
 #endif
 
-    float minEnsembleVal = std::numeric_limits<float>::max();
-    float maxEnsembleVal = std::numeric_limits<float>::lowest();
-    std::vector<VolumeData::DeviceCacheEntry> ensembleEntryFields;
-    std::vector<sgl::vk::ImageViewPtr> ensembleImageViews;
-    std::vector<CUtexObject> ensembleTexturesCu;
-    ensembleEntryFields.reserve(es);
-    ensembleImageViews.reserve(es);
-    ensembleTexturesCu.reserve(es);
-    for (ensembleIdx = 0; ensembleIdx < es; ensembleIdx++) {
-        VolumeData::DeviceCacheEntry ensembleEntryField = volumeData->getFieldEntryDevice(
-                FieldType::SCALAR, scalarFieldNames.at(fieldIndexGui), timeStepIdx, ensembleIdx);
-        ensembleEntryFields.push_back(ensembleEntryField);
-        ensembleImageViews.push_back(ensembleEntryField->getVulkanImageView());
-        ensembleTexturesCu.push_back(ensembleEntryField->getCudaTexture());
-        if (ensembleEntryField->getVulkanImage()->getVkImageLayout() != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
-            deviceCacheEntry->getVulkanImage()->transitionImageLayout(
-                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, renderer->getVkCommandBuffer());
-        }
-        auto [minVal, maxVal] = volumeData->getMinMaxScalarFieldValue(
-                scalarFieldNames.at(fieldIndexGui), timeStepIdx, ensembleIdx);
-        minEnsembleVal = std::min(minEnsembleVal, minVal);
-        maxEnsembleVal = std::max(maxEnsembleVal, maxVal);
-    }
+    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyAsync(
+            (CUdeviceptr)cacheWrapper->queryEncodedPermuted.data(),
+            (CUdeviceptr)cacheWrapper->queryEncoded.data(),
+            sizeof(float) * batchSize, stream), "Error in cuMemcpyAsync: ");
+    randomShuffleFisherYatesXorshift<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
+            cacheWrapper->queryEncodedPermuted.data(), numLayersOutEncoder);
 
-    if (cachedEnsembleTexturesCu != ensembleTexturesCu) {
-        cachedEnsembleTexturesCu = ensembleTexturesCu;
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
-                stream), "Error in cuStreamSynchronize: ");
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyHtoD(
-                ensembleTextureArrayCu, ensembleTexturesCu.data(), sizeof(CUtexObject) * es), "Error in cuMemcpyHtoD: ");
-    }
+    symmetrizer<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
+            cacheWrapper->referenceEncoded.data(), cacheWrapper->queryEncoded.data(),
+            cacheWrapper->symmetrizedReferenceInput.data(), numLayersOutEncoder);
+    symmetrizer<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
+            cacheWrapper->referenceEncoded.data(), cacheWrapper->queryEncodedPermuted.data(),
+            cacheWrapper->symmetrizedQueryInput.data(), numLayersOutEncoder);
 
-#ifdef TEST_INFERENCE_SPEED
-    auto endLoad = std::chrono::system_clock::now();
-    auto elapsedLoad = std::chrono::duration_cast<std::chrono::milliseconds>(endLoad - startLoad);
-    std::cout << "Elapsed time load: " << elapsedLoad.count() << "ms" << std::endl;
+#ifdef TCNN_HALF_PRECISION
+    moduleWrapper->networkDecoder->inference_mixed_precision(
+            stream, cacheWrapper->symmetrizedReferenceInput, cacheWrapper->referenceDecoded);
+    moduleWrapper->networkDecoder->inference_mixed_precision(
+            stream, cacheWrapper->symmetrizedQueryInput, cacheWrapper->queryDecoded);
+#else
+    moduleWrapper->networkDecoder->inference(
+            stream, cacheWrapper->symmetrizedReferenceInput, cacheWrapper->referenceDecoded);
+    moduleWrapper->networkDecoder->inference(
+            stream, cacheWrapper->symmetrizedQueryInput, cacheWrapper->queryDecoded);
 #endif
 
-#ifdef TEST_INFERENCE_SPEED
-    auto startInference = std::chrono::system_clock::now();
-#endif
-
-    std::vector<int64_t> referenceInputSizes = { 1, es, 4 };
-
-    sgl::vk::CommandBufferPtr commandBufferRender = renderer->getCommandBuffer();
-    vulkanFinishedSemaphore->setSignalSemaphoreValue(timelineValue);
-    commandBufferRender->pushSignalSemaphore(vulkanFinishedSemaphore);
-    renderer->endCommandBuffer();
-
-    renderer->submitToQueue();
-
-    vulkanFinishedSemaphore->waitSemaphoreCuda(stream, timelineValue);
-
-    //auto encoding_opts = config.value("encoding", nlohmann::json::object());
-    //auto network_opts = config.value("network", nlohmann::json::object());
-
-    uint32_t numLayersInEncoder;
-    uint32_t numLayersOutEncoder;
-    // numLayersInDecoder == numLayersOutEncoder when symmetrizer is sum operation.
-    uint32_t numLayersInDecoder, numLayersOutDecoder;
-    //auto networkOpts = config.value("network", nlohmann::json::object());
-
-    uint32_t numSliceEntries = uint32_t(xs) * uint32_t(ys) * uint32_t(zs);
-    uint32_t numBatches = sgl::uiceil(numSliceEntries, uint32_t(gpuBatchSize1D));
-    for (uint32_t batchIdx = 0; batchIdx < numBatches; batchIdx++) {
-        uint32_t batchOffset = batchIdx * gpuBatchSize1D;
-        uint32_t batchSize = std::min(uint32_t(gpuBatchSize1D), numSliceEntries - batchOffset);
-
-
-        CUdeviceptr outputBuffer = reinterpret_cast<CUdeviceptr>(queryInput.data());
-        CUdeviceptr scalarFieldEnsembles = ensembleTextureArrayCu;
-        void* kernelParameters[] = {
-                &xs, &ys, &zs, &es, &batchOffset, &batchSize, &minEnsembleVal, &maxEnsembleVal,
-                &outputBuffer, &scalarFieldEnsembles
-        };
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuLaunchKernel(
-                combineEnsemblesFunctionCu,
-                sgl::uiceil(batchSize, 256), 1, 1, //< Grid size.
-                256, 1, 1, //< Block size.
-                0, //< Dynamic shared memory size.
-                stream,
-                kernelParameters, //< Kernel parameters.
-                nullptr //< Extra (empty).
-        ), "Error in cuLaunchKernel: ");
-
-        // TODO: Support for inference_mixed_precision?
-        //network->inference(stream, queryInput, queryEncoded);
-
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyAsync(
-                (CUdeviceptr)queryEncodedPermuted.data(),
-                (CUdeviceptr)queryEncoded.data(),
-                sizeof(float) * batchSize, stream), "Error in cuMemcpyAsync: ");
-        randomShuffleFisherYatesXorshift<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
-                queryEncodedPermuted.data(), numLayersOutEncoder);
-
-        symmetrizer<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
-                referenceEncoded.data(), queryEncoded.data(), symmetrizedReferenceInput.data(), numLayersOutEncoder);
-        symmetrizer<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
-                referenceEncoded.data(), queryEncodedPermuted.data(), symmetrizedQueryInput.data(), numLayersOutEncoder);
-
-        //network->inference(stream, symmetrizedReferenceInput, referenceDecoded);
-        //network->inference(stream, symmetrizedQueryInput, queryDecoded);
-
-        float *miOutput = reinterpret_cast<float*>(outputImageBufferCu) + batchOffset;
-        combineDecoderOutput<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
-                referenceDecoded.data(), queryDecoded.data(), miOutput, numLayersOutDecoder);
-    }
-
-    deviceCacheEntry->getImageCudaExternalMemory()->memcpyCudaDtoA3DAsync(outputImageBufferCu, stream);
-
-    cudaFinishedSemaphore->signalSemaphoreCuda(stream, timelineValue);
-    cudaFinishedSemaphore->setWaitSemaphoreValue(timelineValue);
-    sgl::vk::CommandBufferPtr postRenderCommandBuffer = postRenderCommandBuffers.at(frameIndex);
-    renderer->pushCommandBuffer(postRenderCommandBuffer);
-    renderer->beginCommandBuffer();
-    postRenderCommandBuffer->pushWaitSemaphore(
-            cudaFinishedSemaphore, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
-
-#ifdef TEST_INFERENCE_SPEED
-    auto endInference = std::chrono::system_clock::now();
-    auto elapsedInference = std::chrono::duration_cast<std::chrono::milliseconds>(endInference - startInference);
-    std::cout << "Elapsed time inference: " << elapsedInference.count() << "ms" << std::endl;
-#endif
+    float *miOutput = reinterpret_cast<float*>(outputImageBufferCu) + batchOffset;
+    combineDecoderOutput<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
+            cacheWrapper->referenceDecoded.data(), cacheWrapper->queryDecoded.data(), miOutput, numLayersOutDecoder);
 }

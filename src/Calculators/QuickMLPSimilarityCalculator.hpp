@@ -29,25 +29,30 @@
 #ifndef CORRERENDER_QUICKMLPSIMILARITYCALCULATOR_HPP
 #define CORRERENDER_QUICKMLPSIMILARITYCALCULATOR_HPP
 
-#include "SimilarityCalculator.hpp"
+#include "DeepLearningCudaSimilarityCalculator.hpp"
 
 struct QuickMLPModuleWrapper;
+struct QuickMLPCacheWrapper;
 
-class QuickMLPSimilarityCalculator : public EnsembleSimilarityCalculator {
+class QuickMLPSimilarityCalculator : public DeepLearningCudaSimilarityCalculator {
 public:
     explicit QuickMLPSimilarityCalculator(sgl::vk::Renderer* renderer);
     ~QuickMLPSimilarityCalculator() override;
-    void setVolumeData(VolumeData* _volumeData, bool isNewData) override;
-    std::string getOutputFieldName() override { return "Similarity Metric (QuickMLP)"; }
-    FilterDevice getFilterDevice() override { return FilterDevice::CUDA; }
-    void calculateDevice(int timeStepIdx, int ensembleIdx, const DeviceCacheEntry& deviceCacheEntry) override;
 
 protected:
-    void loadModelFromFile(const std::string& modelPath);
+    void loadModelFromFile(const std::string& modelPath) override;
+
+    bool getIsModuleLoaded() { return moduleWrapper.get() != nullptr; }
+    void recreateCache(int batchSize) override;
+    CUdeviceptr getReferenceInputPointer() override;
+    CUdeviceptr getQueryInputPointer() override;
+    void runInferenceReference() override;
+    void runInferenceBatch(uint32_t batchOffset, uint32_t batchSize) override;
 
 private:
-    std::string modelFilePath;
-    std::shared_ptr<QuickMLPModuleWrapper> encoderWrapper, decoderWrapper;
+    uint32_t numLayersInEncoder = 0, numLayersOutEncoder = 0, numLayersInDecoder = 0, numLayersOutDecoder = 0;
+    std::shared_ptr<QuickMLPModuleWrapper> moduleWrapper;
+    std::shared_ptr<QuickMLPCacheWrapper> cacheWrapper;
 };
 
 #endif //CORRERENDER_QUICKMLPSIMILARITYCALCULATOR_HPP

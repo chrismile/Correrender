@@ -72,6 +72,12 @@
 #ifdef SUPPORT_PYTORCH
 #include "Calculators/PyTorchSimilarityCalculator.hpp"
 #endif
+#ifdef SUPPORT_TINY_CUDA_NN
+#include "Calculators/TinyCudaNNSimilarityCalculator.hpp"
+#endif
+#ifdef SUPPORT_QUICK_MLP
+#include "Calculators/QuickMLPSimilarityCalculator.hpp"
+#endif
 #include "Renderers/RenderingModes.hpp"
 #include "Renderers/Renderer.hpp"
 #include "VolumeData.hpp"
@@ -457,6 +463,15 @@ bool VolumeData::setInputFiles(
 #ifdef SUPPORT_PYTORCH
     addCalculator(std::make_shared<PyTorchSimilarityCalculator>(renderer));
 #endif
+    if (device->getDeviceDriverId() == VK_DRIVER_ID_NVIDIA_PROPRIETARY
+            && sgl::vk::getIsCudaDeviceApiFunctionTableInitialized()) {
+#ifdef SUPPORT_TINY_CUDA_NN
+        addCalculator(std::make_shared<TinyCudaNNSimilarityCalculator>(renderer));
+#endif
+#ifdef SUPPORT_QUICK_MLP
+        addCalculator(std::make_shared<QuickMLPSimilarityCalculator>(renderer));
+#endif
+    }
 
     const auto& scalarFieldNames = typeToFieldNamesMap[FieldType::SCALAR];
     multiVarTransferFunctionWindow.setRequestAttributeValuesCallback([this](
@@ -481,6 +496,7 @@ bool VolumeData::setInputFiles(
 }
 
 void VolumeData::addCalculator(const CalculatorPtr& calculator) {
+    calculator->initialize();
     calculators.push_back(calculator);
     if (calculator->getFilterDevice() == FilterDevice::CPU) {
         calculatorsHost.insert(std::make_pair(calculator->getOutputFieldName(), calculator));
