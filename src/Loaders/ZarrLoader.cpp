@@ -162,6 +162,7 @@ bool ZarrLoader::setInputFiles(
 
     std::vector<std::string> keys;
     f.keys(keys);
+    std::sort(keys.begin(), keys.end());
     datasets.resize(keys.size());
     for (size_t datasetIdx = 0; datasetIdx < keys.size(); datasetIdx++) {
         datasets.at(datasetIdx) = z5::openDataset(f, keys.at(datasetIdx));

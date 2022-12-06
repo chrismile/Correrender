@@ -119,6 +119,8 @@ template<class T, class PARAMS_T> static void loadNetwork(
                 "Error in TinyCudaNNSimilarityCalculator::loadNetwork: Half precision build was disabled.");
     }
 #endif
+
+    // TODO: Support trainer->serialize()
 }
 
 void TinyCudaNNSimilarityCalculator::loadModelFromFile(const std::string& modelPath) {
