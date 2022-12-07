@@ -58,6 +58,7 @@ protected:
     virtual CUdeviceptr getQueryInputPointer() = 0;
     virtual void runInferenceReference() = 0;
     virtual void runInferenceBatch(uint32_t batchOffset, uint32_t batchSize) = 0;
+    virtual uint32_t getInputChannelAlignment() { return 1; }
 
     /// Renders the GUI. Returns whether re-rendering has become necessary due to the user's actions.
     void renderGuiImpl(sgl::PropertyEditor& propertyEditor) override;
@@ -77,6 +78,7 @@ protected:
     std::vector<CUtexObject> cachedEnsembleTexturesCu;
     CUmodule combineEnsemblesModuleCu{};
     CUfunction combineEnsemblesFunctionCu{}, combineEnsemblesReferenceFunctionCu{};
+    CUfunction combineEnsemblesAlignedFunctionCu{}, combineEnsemblesReferenceAlignedFunctionCu{};
     CUstream stream{};
 
 private:

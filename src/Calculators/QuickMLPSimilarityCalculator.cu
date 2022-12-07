@@ -68,6 +68,7 @@ struct QuickMLPDataHeader {
 
 QuickMLPSimilarityCalculator::QuickMLPSimilarityCalculator(sgl::vk::Renderer* renderer)
         : DeepLearningCudaSimilarityCalculator("QuickMLP", "quickMLP", renderer) {
+    cacheWrapper = std::make_shared<QuickMLPCacheWrapper>();
 }
 
 QuickMLPSimilarityCalculator::~QuickMLPSimilarityCalculator() {
@@ -85,17 +86,17 @@ void loadNetwork(
     uint8_t* paramsDataHost = entry.bufferData.get() + sizeof(QuickMLPDataHeader);
     if (header->format == QUICK_MLP_PARAMS_FORMAT_FLOAT && precision != qmlp::Tensor::Precision::FLOAT
             || header->format == QUICK_MLP_PARAMS_FORMAT_HALF && precision != qmlp::Tensor::Precision::HALF) {
-        sgl::Logfile::get()->writeError(
+        sgl::Logfile::get()->throwError(
                 "Error in loadNetwork: Precision mismatch between QuickMLP JSON configuration and binary data for \""
                 + modelPath + "\".");
     }
     if (header->numParams != uint32_t(network->networkParameterCount())) {
-        sgl::Logfile::get()->writeError(
+        sgl::Logfile::get()->throwError(
                 "Error in loadNetwork: Mismatching network parameter count (" + std::to_string(header->numParams)
                 + " vs. " + std::to_string(network->networkParameterCount()) + ") for \"" + modelPath + "\".");
     }
     if (entry.bufferSize != uint32_t(qmlp::Tensor::BytesPerEntry[precision] * network->networkParameterCount())) {
-        sgl::Logfile::get()->writeError(
+        sgl::Logfile::get()->throwError(
                 "Error in loadNetwork: Mismatching parameter byte size (" + std::to_string(entry.bufferSize)
                 + " vs. " + std::to_string(qmlp::Tensor::BytesPerEntry[precision] * network->networkParameterCount())
                 + ") for \"" + modelPath + "\".");
@@ -109,6 +110,8 @@ void loadNetwork(
 }
 
 void QuickMLPSimilarityCalculator::loadModelFromFile(const std::string& modelPath) {
+    moduleWrapper = std::make_shared<QuickMLPModuleWrapper>();
+
     std::unordered_map<std::string, sgl::ArchiveEntry> archiveFiles;
     sgl::ArchiveFileLoadReturnType retVal = sgl::loadAllFilesFromArchive(modelPath, archiveFiles, true);
     if (retVal != sgl::ArchiveFileLoadReturnType::ARCHIVE_FILE_LOAD_SUCCESSFUL) {
@@ -145,11 +148,13 @@ void QuickMLPSimilarityCalculator::loadModelFromFile(const std::string& modelPat
         sgl::Logfile::get()->writeError(
                 "Error in QuickMLPSimilarityCalculator::loadModelFromFile: Missing network_encoder.bin in file \""
                 + modelPath + "\".");
+        return;
     }
     if (itNetworkDecoder == archiveFiles.end()) {
         sgl::Logfile::get()->writeError(
                 "Error in QuickMLPSimilarityCalculator::loadModelFromFile: Missing network_decoder.bin in file \""
                 + modelPath + "\".");
+        return;
     }
     moduleWrapper->networkEncoder = {};
     moduleWrapper->networkDecoder = {};
@@ -204,6 +209,8 @@ void QuickMLPSimilarityCalculator::runInferenceReference() {
 }
 
 void QuickMLPSimilarityCalculator::runInferenceBatch(uint32_t batchOffset, uint32_t batchSize) {
+    int es = volumeData->getEnsembleMemberCount();
+
     moduleWrapper->networkEncoder->inference(cacheWrapper->queryInput, cacheWrapper->queryEncoded, stream);
 
     sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyAsync(
@@ -240,10 +247,10 @@ void QuickMLPSimilarityCalculator::runInferenceBatch(uint32_t batchOffset, uint3
     if (moduleWrapper->networkEncoder->precisionOut() == qmlp::Tensor::Precision::FLOAT) {
         combineDecoderOutput<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
                 cacheWrapper->referenceDecoded.dataPtr<float>(), cacheWrapper->queryDecoded.dataPtr<float>(),
-                        miOutput, numLayersOutDecoder);
+                        miOutput, numLayersOutDecoder, 1);
     } else if (moduleWrapper->networkEncoder->precisionOut() == qmlp::Tensor::Precision::HALF) {
         combineDecoderOutput<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
                 cacheWrapper->referenceDecoded.dataPtr<half>(), cacheWrapper->queryDecoded.dataPtr<half>(),
-                miOutput, numLayersOutDecoder);
+                miOutput, numLayersOutDecoder, 1);
     }
 }

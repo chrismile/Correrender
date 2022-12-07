@@ -26,34 +26,12 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef CORRERENDER_TINYCUDANNSIMILARITYCALCULATOR_HPP
-#define CORRERENDER_TINYCUDANNSIMILARITYCALCULATOR_HPP
+#include "MutualInformation.cuh"
 
-#include "DeepLearningCudaSimilarityCalculator.hpp"
-
-struct TinyCudaNNModuleWrapper;
-struct TinyCudaNNCacheWrapper;
-
-class TinyCudaNNSimilarityCalculator : public DeepLearningCudaSimilarityCalculator {
-public:
-    explicit TinyCudaNNSimilarityCalculator(sgl::vk::Renderer* renderer);
-    ~TinyCudaNNSimilarityCalculator() override;
-
-protected:
-    void loadModelFromFile(const std::string& modelPath) override;
-
-    bool getIsModuleLoaded() { return moduleWrapper.get() != nullptr; }
-    void recreateCache(int batchSize) override;
-    CUdeviceptr getReferenceInputPointer() override;
-    CUdeviceptr getQueryInputPointer() override;
-    void runInferenceReference() override;
-    void runInferenceBatch(uint32_t batchOffset, uint32_t batchSize) override;
-    uint32_t getInputChannelAlignment() override { return 4; }
-
-private:
-    uint32_t numLayersInEncoder = 0, numLayersOutEncoder = 0, numLayersInDecoder = 0, numLayersOutDecoder = 0;
-    std::shared_ptr<TinyCudaNNModuleWrapper> moduleWrapper;
-    std::shared_ptr<TinyCudaNNCacheWrapper> cacheWrapper;
-};
-
-#endif //CORRERENDER_TINYCUDANNSIMILARITYCALCULATOR_HPP
+__global__ void convertFloatToHalfArray(
+        __half* __restrict__ halfValues, float* __restrict__ floatValues, uint32_t arraySize) {
+    uint32_t globalThreadIdx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (globalThreadIdx < arraySize) {
+        floatValues[globalThreadIdx] = float(halfValues[globalThreadIdx]);
+    }
+}

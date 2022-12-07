@@ -36,7 +36,10 @@
 
 #include <cuda_fp16.h>
 
-template<class T> __global__ void randomShuffleFisherYatesXorshift(T* valueArray, uint32_t numChannels) {
+__global__ void convertFloatToHalfArray(
+        __half* __restrict__ halfValues, float* __restrict__ floatValues, uint32_t arraySize);
+
+template<class T> __global__ void randomShuffleFisherYatesXorshift(T* __restrict__ valueArray, uint32_t numChannels) {
     uint32_t globalThreadIdx = blockIdx.x * blockDim.x + threadIdx.x;
     uint32_t seed = 17u * globalThreadIdx + 240167u;
 
@@ -79,27 +82,27 @@ template<class T> __global__ void symmetrizer(
 
 template<class T> __global__ void combineDecoderOutput(
         const T* __restrict__ referenceDecoded, const T* __restrict__ queryDecoded,
-        float* __restrict__ miValues, uint32_t numChannels) {
+        float* __restrict__ miValues, uint32_t numChannels, uint32_t paddingFactor) {
     uint32_t globalThreadIdx = blockIdx.x * blockDim.x + threadIdx.x;
     uint32_t readOffset = globalThreadIdx * numChannels;
 
     float meanReference = 0.0f;
     for (uint32_t c = 0; c < numChannels; c++) {
-        meanReference += float(referenceDecoded[readOffset + c]);
+        meanReference += float(referenceDecoded[(readOffset + c) * paddingFactor]);
     }
     meanReference /= float(numChannels);
 
     float queryMax = -FLT_MAX;
     for (uint32_t c = 0; c < numChannels; c++) {
-        queryMax = max(queryMax, float(queryDecoded[readOffset + c]));
+        queryMax = max(queryMax, float(queryDecoded[(readOffset + c) * paddingFactor]));
     }
 
     float queryExpSum = 0.0f;
     for (uint32_t c = 0; c < numChannels; c++) {
 #ifdef USE_FAST_CUDA_MATH
-        queryExpSum += __expf(float(queryDecoded[readOffset + c]) - queryExpSum);
+        queryExpSum += __expf(float(queryDecoded[(readOffset + c) * paddingFactor]) - queryExpSum);
 #else
-        queryExpSum += expf(float(queryDecoded[readOffset + c]) - queryExpSum);
+        queryExpSum += expf(float(queryDecoded[(readOffset + c) * paddingFactor]) - queryExpSum);
 #endif
     }
     float meanQuery = -logf(float(numChannels)) + logf(queryExpSum) + queryMax;

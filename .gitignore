@@ -84,6 +84,8 @@ Data/CameraPaths/*
 Data/Checkpoints/*
 Data/Screenshots/*
 Data/PyTorch/*
+Data/tiny-cuda-nn/*
+Data/QuickMLP/*
 Data/Videos/*
 Data/TransferFunctions/*
 Data/Texture/*

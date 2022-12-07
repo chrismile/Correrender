@@ -83,6 +83,10 @@ void DeepLearningCudaSimilarityCalculator::initialize() {
             &combineEnsemblesFunctionCu, combineEnsemblesModuleCu, "combineEnsembles"), "Error in cuModuleGetFunction: ");
     sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
             &combineEnsemblesReferenceFunctionCu, combineEnsemblesModuleCu, "combineEnsemblesReference"), "Error in cuModuleGetFunction: ");
+    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
+            &combineEnsemblesAlignedFunctionCu, combineEnsemblesModuleCu, "combineEnsemblesAligned"), "Error in cuModuleGetFunction: ");
+    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
+            &combineEnsemblesReferenceAlignedFunctionCu, combineEnsemblesModuleCu, "combineEnsemblesReferenceAligned"), "Error in cuModuleGetFunction: ");
     delete[] moduleBuffer;
 
     sgl::AppSettings::get()->getSettings().getValueOpt(modelFilePathSettingsKey.c_str(), modelFilePath);
@@ -289,14 +293,16 @@ void DeepLearningCudaSimilarityCalculator::calculateDevice(
 
     vulkanFinishedSemaphore->waitSemaphoreCuda(stream, timelineValue);
 
+    uint32_t alignmentVec4 = sgl::uiceil(getInputChannelAlignment(), 4);
+
     CUdeviceptr scalarFieldEnsembles = ensembleTextureArrayCu;
     CUdeviceptr outputBufferRef = getReferenceInputPointer();
     void* kernelParametersRef[] = {
             &xs, &ys, &zs, &es, &referencePointIndex.x, &minEnsembleVal, &maxEnsembleVal,
-            &outputBufferRef, &scalarFieldEnsembles
+            &outputBufferRef, &scalarFieldEnsembles, &alignmentVec4
     };
     sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuLaunchKernel(
-            combineEnsemblesReferenceFunctionCu,
+            alignmentVec4 == 1 ? combineEnsemblesReferenceFunctionCu : combineEnsemblesReferenceAlignedFunctionCu,
             sgl::uiceil(es, 256), 1, 1, //< Grid size.
             256, 1, 1, //< Block size.
             0, //< Dynamic shared memory size.
@@ -316,10 +322,10 @@ void DeepLearningCudaSimilarityCalculator::calculateDevice(
         CUdeviceptr outputBuffer = getQueryInputPointer();
         void* kernelParameters[] = {
                 &xs, &ys, &zs, &es, &batchOffset, &batchSize, &minEnsembleVal, &maxEnsembleVal,
-                &outputBuffer, &scalarFieldEnsembles
+                &outputBuffer, &scalarFieldEnsembles, &alignmentVec4
         };
         sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuLaunchKernel(
-                combineEnsemblesFunctionCu,
+                alignmentVec4 == 1 ? combineEnsemblesFunctionCu : combineEnsemblesAlignedFunctionCu,
                 sgl::uiceil(batchSize, 256), 1, 1, //< Grid size.
                 256, 1, 1, //< Block size.
                 0, //< Dynamic shared memory size.
