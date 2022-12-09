@@ -26,6 +26,10 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#ifdef TEST_INFERENCE_SPEED
+#include <cuda_profiler_api.h>
+#endif
+
 #include <tiny-cuda-nn/trainer.h>
 #include <tiny-cuda-nn/network_with_input_encoding.h>
 
@@ -38,6 +42,7 @@
 #include "Volume/VolumeData.hpp"
 #include "MutualInformation.cuh"
 #include "TinyCudaNNSimilarityCalculator.hpp"
+#include "tiny-cuda-nn/networks/fully_fused_mlp.h"
 
 using precision_t = tcnn::network_precision_t;
 
@@ -45,10 +50,13 @@ struct TinyCudaNNModuleWrapper {
     nlohmann::json configEncoder;
     nlohmann::json configDecoder;
     std::shared_ptr<tcnn::Network<float, precision_t>> networkEncoder;
+    std::shared_ptr<tcnn::Trainer<float, precision_t, precision_t>> trainerEncoder;
 #ifdef TCNN_HALF_PRECISION
     std::shared_ptr<tcnn::Network<precision_t, precision_t>> networkEncoderHalf;
+    std::shared_ptr<tcnn::Trainer<precision_t, precision_t, precision_t>> trainerEncoderHalf;
 #endif
     std::shared_ptr<tcnn::Network<precision_t, precision_t>> networkDecoder;
+    std::shared_ptr<tcnn::Trainer<precision_t, precision_t, precision_t>> trainerDecoder;
 };
 
 struct TinyCudaNNCacheWrapper {
@@ -85,8 +93,9 @@ TinyCudaNNSimilarityCalculator::~TinyCudaNNSimilarityCalculator() {
 }
 
 template<class T, class PARAMS_T> static void loadNetwork(
-        std::shared_ptr<tcnn::Network<T, PARAMS_T>>& network, const std::string& modelPath,
-        const nlohmann::json& config, const sgl::ArchiveEntry& entry) {
+        std::shared_ptr<tcnn::Network<T, PARAMS_T>>& network,
+        std::shared_ptr<tcnn::Trainer<T, PARAMS_T, PARAMS_T>>& trainer,
+        const std::string& modelPath, const nlohmann::json& config, const sgl::ArchiveEntry& entry) {
     auto* header = reinterpret_cast<TinyCudaNNDataHeader*>(entry.bufferData.get());
     uint8_t* paramsData = entry.bufferData.get() + sizeof(TinyCudaNNDataHeader);
     uint32_t numParams = header->numParams;
@@ -128,10 +137,11 @@ template<class T, class PARAMS_T> static void loadNetwork(
                     tcnn::create_network<PARAMS_T>(networkOpts));
         }
     }
-    auto trainer = std::make_shared<tcnn::Trainer<T, PARAMS_T, PARAMS_T>>(network, optimizer, loss);
+    //network->set_params();
+    trainer = std::make_shared<tcnn::Trainer<T, PARAMS_T, PARAMS_T>>(network, optimizer, loss);
 
     // Do we need padding because the output width is not a multiple of 16?
-    if (network->output_width() != network->padded_output_width()) {
+    if (network->output_width() != network->padded_output_width() && network->n_params() != numParams) {
         uint32_t numNeurons = networkOpts["n_neurons"];
         uint32_t paddingSize = numNeurons * (network->padded_output_width() - network->output_width());
         size_t numParamsOld = numParams;
@@ -163,7 +173,7 @@ template<class T, class PARAMS_T> static void loadNetwork(
     }
 #endif
 
-    if (network->output_width() != network->padded_output_width()) {
+    if (network->output_width() != network->padded_output_width() && network->n_params() != numParams) {
         delete[] paramsData;
     }
 
@@ -205,9 +215,9 @@ void TinyCudaNNSimilarityCalculator::loadModelFromFile(const std::string& modelP
     }
 
     // Set input/output layer configurations for both networks.
-    int es = volumeData->getEnsembleMemberCount();
     auto networkOpts = moduleWrapper->configEncoder.value("network", nlohmann::json::object());
-    moduleWrapper->configEncoder["network"]["n_input_dims"] = 4;
+    // mlp_fused_forward needs multiple of 16 for number of input layers.
+    moduleWrapper->configEncoder["network"]["n_input_dims"] = 16;
     moduleWrapper->configDecoder["network"]["n_output_dims"] = 1;
     if (networkOpts.find("n_output_dims") == networkOpts.end()) {
         moduleWrapper->configEncoder["network"]["n_output_dims"] = moduleWrapper->configEncoder["network"]["n_neurons"];
@@ -240,21 +250,29 @@ void TinyCudaNNSimilarityCalculator::loadModelFromFile(const std::string& modelP
         return;
     }
     moduleWrapper->networkEncoder = {};
+    moduleWrapper->trainerEncoder = {};
 #ifdef TCNN_HALF_PRECISION
-    std::shared_ptr<tcnn::Network<precision_t, precision_t>> networkEncoderHalf;
-#endif
     moduleWrapper->networkEncoderHalf = {};
+    moduleWrapper->trainerEncoderHalf = {};
+#endif
     moduleWrapper->networkDecoder = {};
+    moduleWrapper->trainerDecoder = {};
 #ifdef TCNN_HALF_PRECISION
     if (hasInputEncoding && !isInputEncodingIdentity) {
 #endif
-        loadNetwork(moduleWrapper->networkEncoder, modelPath, moduleWrapper->configEncoder, itNetworkEncoder->second);
+        loadNetwork(
+                moduleWrapper->networkEncoder, moduleWrapper->trainerEncoder, modelPath,
+                moduleWrapper->configEncoder, itNetworkEncoder->second);
 #ifdef TCNN_HALF_PRECISION
     } else {
-        loadNetwork(moduleWrapper->networkEncoderHalf, modelPath, moduleWrapper->configEncoder, itNetworkEncoder->second);
+        loadNetwork(
+                moduleWrapper->networkEncoderHalf, moduleWrapper->trainerEncoderHalf, modelPath,
+                moduleWrapper->configEncoder, itNetworkEncoder->second);
     }
 #endif
-    loadNetwork(moduleWrapper->networkDecoder, modelPath, moduleWrapper->configDecoder, itNetworkDecoder->second);
+    loadNetwork(
+            moduleWrapper->networkDecoder, moduleWrapper->trainerDecoder, modelPath,
+            moduleWrapper->configDecoder, itNetworkDecoder->second);
 
     // numLayersInDecoder == numLayersOutEncoder when symmetrizer is sum operation.
     // TODO
@@ -354,7 +372,7 @@ void TinyCudaNNSimilarityCalculator::runInferenceBatch(uint32_t batchOffset, uin
 #ifdef TCNN_HALF_PRECISION
     if (moduleWrapper->networkEncoderHalf) {
         uint32_t arraySize = cacheWrapper->queryInputHalf.n() * cacheWrapper->queryInputHalf.m();
-        convertFloatToHalfArray<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
+        convertFloatToHalfArray<<<sgl::uiceil(arraySize, 256), 256, 0, stream>>>(
                 cacheWrapper->queryInputHalf.data(), cacheWrapper->queryInput.data(), arraySize);
         moduleWrapper->networkEncoderHalf->inference_mixed_precision(
                 stream, cacheWrapper->queryInputHalf, cacheWrapper->queryEncoded);
@@ -367,19 +385,123 @@ void TinyCudaNNSimilarityCalculator::runInferenceBatch(uint32_t batchOffset, uin
                 stream, cacheWrapper->queryInput, cacheWrapper->queryEncoded);
 #endif
 
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyAsync(
+    /*int copySize = batchSize * 40;
+    int testSize = 160;
+    __half* dataHalf = new __half[copySize];
+    dataHalf[0] = 1000.0f;
+    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyDtoHAsync(
+            dataHalf, (CUdeviceptr)cacheWrapper->queryInputHalf.data(),
+            sizeof(__half) * copySize, stream), "Error in cuMemcpyDtoHAsync: ");
+    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
+            stream), "Error in cuStreamSynchronize: ");
+    std::cout << "queryInputHalf:" << std::endl;
+    for (int i = 0; i < testSize; i++) {
+        std::cout << float(dataHalf[i * numLayersInEncoder * uint32_t(es)]);
+        if (i != testSize - 1) {
+            std::cout << ", ";
+        }
+        if (i % 20 == 19 && i != 0) {
+            std::cout << std::endl;
+        }
+    }
+    std::cout << std::endl;
+    delete[] dataHalf;
+    dataHalf = new __half[copySize];
+    dataHalf[0] = 1000.0f;
+    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyDtoHAsync(
+            dataHalf, (CUdeviceptr)cacheWrapper->queryEncoded.data(),
+            sizeof(__half) * copySize, stream), "Error in cuMemcpyDtoHAsync: ");
+    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
+            stream), "Error in cuStreamSynchronize: ");
+    std::cout << "queryEncoded:" << std::endl;
+    for (int i = 0; i < testSize; i++) {
+        std::cout << float(dataHalf[i * numLayersOutEncoder * uint32_t(es)]);
+        if (i != testSize - 1) {
+            std::cout << ", ";
+        }
+        if (i % 20 == 19 && i != 0) {
+            std::cout << std::endl;
+        }
+    }
+    std::cout << std::endl;
+    std::cout << "queryEncoded(2):" << std::endl;
+    for (int i = 0; i < testSize; i++) {
+        std::cout << float(dataHalf[i * numLayersOutEncoder * uint32_t(es) + numLayersOutEncoder]);
+        if (i != testSize - 1) {
+            std::cout << ", ";
+        }
+        if (i % 20 == 19 && i != 0) {
+            std::cout << std::endl;
+        }
+    }
+    std::cout << std::endl;
+    delete[] dataHalf;*/
+
+    tcnn::FullyFusedMLP<precision_t, 128>* fmlp = (tcnn::FullyFusedMLP<precision_t, 128>*)moduleWrapper->networkEncoderHalf.get();
+    const auto& tensor = fmlp->weight_matrix_at(tcnn::WeightUsage::Inference, 1);
+
+    /*sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemsetD16Async(
+            (CUdeviceptr)tensor.data(), 0, 1, stream), "Error in cuMemsetD16Async: ");*/
+
+    /*sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyAsync(
             (CUdeviceptr)cacheWrapper->queryEncodedPermuted.data(),
             (CUdeviceptr)cacheWrapper->queryEncoded.data(),
-            sizeof(float) * batchSize, stream), "Error in cuMemcpyAsync: ");
-    randomShuffleFisherYatesXorshift<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
-            cacheWrapper->queryEncodedPermuted.data(), numLayersOutEncoder);
+            cacheWrapper->queryEncoded.n() * cacheWrapper->queryEncoded.m(),
+            stream), "Error in cuMemcpyAsync: ");*/
 
-    symmetrizer<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
+    uint32_t* permutationIndicesBuffer = reinterpret_cast<uint32_t*>(permutationIndicesBufferCu);
+    generateRandomPermutations<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
+            permutationIndicesBuffer, uint32_t(es));
+    randomShuffleFisherYates<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
+            cacheWrapper->queryEncodedPermuted.data(), cacheWrapper->queryEncoded.data(),
+            permutationIndicesBuffer, uint32_t(es), numLayersOutEncoder);
+
+    /*auto* dataUint32 = new uint32_t[batchSize * 20];
+    dataUint32[0] = 1000;
+    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyDtoHAsync(
+            dataUint32, (CUdeviceptr)permutationIndicesBuffer,
+            sizeof(uint32_t) * batchSize * 20, stream), "Error in cuMemcpyDtoHAsync: ");
+    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
+            stream), "Error in cuStreamSynchronize: ");
+    std::cout << "permutationIndicesBuffer:" << std::endl;
+    for (int i = 0; i < testSize; i++) {
+        std::cout << dataUint32[i];
+        if (i != testSize - 1) {
+            std::cout << ", ";
+        }
+        if (i % 20 == 19 && i != 0) {
+            std::cout << std::endl;
+        }
+    }
+    std::cout << std::endl;
+    delete[] dataUint32;
+
+    dataHalf = new __half[copySize];
+    dataHalf[0] = 1000.0f;
+    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyDtoHAsync(
+            dataHalf, (CUdeviceptr)cacheWrapper->queryEncodedPermuted.data(),
+            sizeof(__half) * copySize, stream), "Error in cuMemcpyDtoHAsync: ");
+    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
+            stream), "Error in cuStreamSynchronize: ");
+    std::cout << "queryEncodedPermuted:" << std::endl;
+    for (int i = 0; i < testSize; i++) {
+        std::cout << float(dataHalf[i * numLayersOutEncoder * uint32_t(es)]);
+        if (i != testSize - 1) {
+            std::cout << ", ";
+        }
+        if (i % 20 == 19 && i != 0) {
+            std::cout << std::endl;
+        }
+    }
+    std::cout << std::endl;
+    delete[] dataHalf;*/
+
+    symmetrizer<<<sgl::uiceil(batchSize * uint32_t(es), 256), 256, 0, stream>>>(
             cacheWrapper->referenceEncoded.data(), cacheWrapper->queryEncoded.data(),
-            cacheWrapper->symmetrizedReferenceInput.data(), numLayersOutEncoder);
-    symmetrizer<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
+            cacheWrapper->symmetrizedReferenceInput.data(), uint32_t(es), numLayersOutEncoder);
+    symmetrizer<<<sgl::uiceil(batchSize * uint32_t(es), 256), 256, 0, stream>>>(
             cacheWrapper->referenceEncoded.data(), cacheWrapper->queryEncodedPermuted.data(),
-            cacheWrapper->symmetrizedQueryInput.data(), numLayersOutEncoder);
+            cacheWrapper->symmetrizedQueryInput.data(), uint32_t(es), numLayersOutEncoder);
 
 #ifdef TCNN_HALF_PRECISION
     moduleWrapper->networkDecoder->inference_mixed_precision(
@@ -393,8 +515,79 @@ void TinyCudaNNSimilarityCalculator::runInferenceBatch(uint32_t batchOffset, uin
             stream, cacheWrapper->symmetrizedQueryInput, cacheWrapper->queryDecoded);
 #endif
 
-    float *miOutput = reinterpret_cast<float*>(outputImageBufferCu) + batchOffset;
+    /*dataHalf = new __half[copySize];
+    dataHalf[0] = 1000.0f;
+    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyDtoHAsync(
+            dataHalf, (CUdeviceptr)cacheWrapper->queryDecoded.data(),
+            sizeof(__half) * copySize, stream), "Error in cuMemcpyDtoHAsync: ");
+    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
+            stream), "Error in cuStreamSynchronize: ");
+    std::cout << "queryDecoded:" << std::endl;
+    for (int i = 0; i < testSize; i++) {
+        std::cout << float(dataHalf[i * numLayersOutDecoder * uint32_t(es)]);
+        if (i != testSize - 1) {
+            std::cout << ", ";
+        }
+        if (i % 20 == 19 && i != 0) {
+            std::cout << std::endl;
+        }
+    }
+    std::cout << std::endl;
+    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyDtoHAsync(
+            dataHalf, (CUdeviceptr)cacheWrapper->referenceDecoded.data(),
+            sizeof(__half) * copySize, stream), "Error in cuMemcpyDtoHAsync: ");
+    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
+            stream), "Error in cuStreamSynchronize: ");
+    std::cout << "referenceDecoded:" << std::endl;
+    for (int i = 0; i < testSize; i++) {
+        std::cout << float(dataHalf[i * numLayersOutDecoder * uint32_t(es)]);
+        if (i != testSize - 1) {
+            std::cout << ", ";
+        }
+        if (i % 20 == 19 && i != 0) {
+            std::cout << std::endl;
+        }
+    }
+    std::cout << std::endl;
+    delete[] dataHalf;*/
+
+    float* miOutput = reinterpret_cast<float*>(outputImageBufferCu) + batchOffset;
     combineDecoderOutput<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
             cacheWrapper->referenceDecoded.data(), cacheWrapper->queryDecoded.data(), miOutput,
             uint32_t(es), numLayersOutDecoder);
+
+    /*copySize = batchSize;
+    float* data = new float[copySize];
+    data[0] = 1000.0f;
+    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyDtoHAsync(
+            data, (CUdeviceptr)miOutput,
+            sizeof(float) * copySize, stream), "Error in cuMemcpyDtoHAsync: ");
+    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
+            stream), "Error in cuStreamSynchronize: ");
+    std::cout << "miOutput:" << std::endl;
+    for (int i = 0; i < testSize; i++) {
+        std::cout << data[i];
+        if (i != testSize - 1) {
+            std::cout << ", ";
+        }
+        if (i % 20 == 19 && i != 0) {
+            std::cout << std::endl;
+        }
+    }
+    std::cout << std::endl;
+    delete[] data;
+
+    std::cout << std::endl << "END" << std::endl << std::endl;*/
+}
+
+void TinyCudaNNSimilarityCalculator::callbackBeginCompute() {
+#ifdef TEST_INFERENCE_SPEED
+    cudaProfilerStart();
+#endif
+}
+
+void TinyCudaNNSimilarityCalculator::callbackEndCompute() {
+#ifdef TEST_INFERENCE_SPEED
+    cudaProfilerStop();
+#endif
 }

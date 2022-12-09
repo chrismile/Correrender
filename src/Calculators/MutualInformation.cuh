@@ -37,44 +37,36 @@
 #include <cuda_fp16.h>
 
 __global__ void convertFloatToHalfArray(
-        __half* __restrict__ halfValues, float* __restrict__ floatValues, uint32_t arraySize);
+        __half* __restrict__ halfValues, const float* __restrict__ floatValues, uint32_t arraySize);
 
-template<class T> __global__ void randomShuffleFisherYatesXorshift(T* __restrict__ valueArray, uint32_t numChannels) {
+__global__ void generateRandomPermutations(uint32_t* permutationIndicesBuffer, uint32_t es);
+
+template<class T> __global__ void randomShuffleFisherYates(
+        T* __restrict__ outputArray, const T* __restrict__ inputArray,
+        const uint32_t* __restrict__ permutationIndicesBuffer, uint32_t es, uint32_t numChannels) {
     uint32_t globalThreadIdx = blockIdx.x * blockDim.x + threadIdx.x;
-    uint32_t seed = 17u * globalThreadIdx + 240167u;
+    uint32_t offset = globalThreadIdx * es * numChannels;
+    const uint32_t* permutationIndices = permutationIndicesBuffer + globalThreadIdx * es;
 
-    // Use Xorshift random numbers with period 2^96-1.
-    uint3 rngState;
-    rngState.x = 123456789ul ^ seed;
-    rngState.y = 362436069ul ^ seed;
-    rngState.z = 521288629ul ^ seed;
-
-    T tmp;
-    for (uint32_t i = numChannels - 1; i > 0; i--) {
-        rngState.x ^= rngState.x << 16;
-        rngState.x ^= rngState.x >> 5;
-        rngState.x ^= rngState.x << 1;
-
-        uint32_t t = rngState.x;
-        rngState.x = rngState.y;
-        rngState.y = rngState.z;
-        rngState.z = t ^ rngState.x ^ rngState.y;
-
-        uint32_t j = rngState.z % (i + 1);
-        tmp = valueArray[i];
-        valueArray[i] = valueArray[j];
-        valueArray[j] = tmp;
+    for (uint32_t memberIdx = 0; memberIdx < es; memberIdx++) {
+        uint32_t shuffledIdx = permutationIndices[memberIdx];
+        uint32_t offsetMemberRead = offset + shuffledIdx * numChannels;
+        uint32_t offsetMemberWrite = offset + memberIdx * numChannels;
+        for (uint32_t channelIdx = 0; channelIdx < numChannels; channelIdx++) {
+            outputArray[offsetMemberWrite + channelIdx] = inputArray[offsetMemberRead + channelIdx];
+        }
     }
 }
 
 template<class T> __global__ void symmetrizer(
-        const T* __restrict__ referenceValues, const T* __restrict__ queryValues,
-        T* __restrict__ outputValues, uint32_t numChannels) {
+        const T* __restrict__ referenceValues, const T* __restrict__ queryValues, T* __restrict__ outputValues,
+        uint32_t es, uint32_t numChannels) {
     uint32_t globalThreadIdx = blockIdx.x * blockDim.x + threadIdx.x;
     uint32_t readOffset = globalThreadIdx * numChannels;
+    uint32_t readOffsetRef = (globalThreadIdx % es) * numChannels;
 
     for (uint32_t c = 0; c < numChannels; c++) {
-        outputValues[readOffset + c] = referenceValues[c] + queryValues[readOffset + c];
+        outputValues[readOffset + c] = referenceValues[readOffsetRef + c] + queryValues[readOffset + c];
     }
 }
 
@@ -100,13 +92,14 @@ template<class T> __global__ void combineDecoderOutput(
     float queryExpSum = 0.0f;
     for (uint32_t c = 0; c < numChannels; c++) {
 #ifdef USE_FAST_CUDA_MATH
-        queryExpSum += __expf(float(queryDecoded[(readOffset + c) * paddingFactor]) - queryExpSum);
+        queryExpSum += __expf(float(queryDecoded[(readOffset + c) * paddingFactor]) - queryMax);
 #else
-        queryExpSum += expf(float(queryDecoded[(readOffset + c) * paddingFactor]) - queryExpSum);
+        queryExpSum += expf(float(queryDecoded[(readOffset + c) * paddingFactor]) - queryMax);
 #endif
     }
     float meanQuery = -logf(float(numChannels)) + logf(queryExpSum) + queryMax;
 
+    //miValues[globalThreadIdx] = float(referenceDecoded[(readOffset + 0) * paddingFactor]);
     miValues[globalThreadIdx] = meanReference - meanQuery;
 }
 

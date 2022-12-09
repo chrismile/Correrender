@@ -42,13 +42,15 @@ public:
 protected:
     void loadModelFromFile(const std::string& modelPath) override;
 
-    bool getIsModuleLoaded() { return moduleWrapper.get() != nullptr; }
+    void callbackBeginCompute() override;
+    void callbackEndCompute() override;
+    bool getIsModuleLoaded() override { return moduleWrapper.get() != nullptr; }
     void recreateCache(int batchSize) override;
     CUdeviceptr getReferenceInputPointer() override;
     CUdeviceptr getQueryInputPointer() override;
     void runInferenceReference() override;
     void runInferenceBatch(uint32_t batchOffset, uint32_t batchSize) override;
-    uint32_t getInputChannelAlignment() override { return 4; }
+    uint32_t getInputChannelAlignment() override { return 16; }
 
 private:
     uint32_t numLayersInEncoder = 0, numLayersOutEncoder = 0, numLayersInDecoder = 0, numLayersOutDecoder = 0;

@@ -213,29 +213,35 @@ void QuickMLPSimilarityCalculator::runInferenceBatch(uint32_t batchOffset, uint3
 
     moduleWrapper->networkEncoder->inference(cacheWrapper->queryInput, cacheWrapper->queryEncoded, stream);
 
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyAsync(
+    /*sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyAsync(
             (CUdeviceptr)cacheWrapper->queryEncodedPermuted.rawPtr(),
             (CUdeviceptr)cacheWrapper->queryEncoded.rawPtr(),
-            sizeof(float) * batchSize, stream), "Error in cuMemcpyAsync: ");
+            sizeof(float) * batchSize, stream), "Error in cuMemcpyAsync: ");*/
+
+    uint32_t* permutationIndicesBuffer = reinterpret_cast<uint32_t*>(permutationIndicesBufferCu);
+    generateRandomPermutations<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
+            permutationIndicesBuffer, uint32_t(es));
 
     if (moduleWrapper->networkEncoder->precisionOut() == qmlp::Tensor::Precision::FLOAT) {
-        randomShuffleFisherYatesXorshift<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
-                cacheWrapper->queryEncodedPermuted.dataPtr<float>(), numLayersOutEncoder);
-        symmetrizer<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
+        randomShuffleFisherYates<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
+                cacheWrapper->queryEncodedPermuted.dataPtr<float>(), cacheWrapper->queryEncoded.dataPtr<float>(),
+                permutationIndicesBuffer, uint32_t(es), numLayersOutEncoder);
+        symmetrizer<<<sgl::uiceil(batchSize * uint32_t(es), 256), 256, 0, stream>>>(
                 cacheWrapper->referenceEncoded.dataPtr<float>(), cacheWrapper->queryEncoded.dataPtr<float>(),
-                cacheWrapper->symmetrizedReferenceInput.dataPtr<float>(), numLayersOutEncoder);
-        symmetrizer<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
+                cacheWrapper->symmetrizedReferenceInput.dataPtr<float>(), uint32_t(es), numLayersOutEncoder);
+        symmetrizer<<<sgl::uiceil(batchSize * uint32_t(es), 256), 256, 0, stream>>>(
                 cacheWrapper->referenceEncoded.dataPtr<float>(), cacheWrapper->queryEncodedPermuted.dataPtr<float>(),
-                cacheWrapper->symmetrizedQueryInput.dataPtr<float>(), numLayersOutEncoder);
+                cacheWrapper->symmetrizedQueryInput.dataPtr<float>(), uint32_t(es), numLayersOutEncoder);
     } else if (moduleWrapper->networkEncoder->precisionOut() == qmlp::Tensor::Precision::HALF) {
-        randomShuffleFisherYatesXorshift<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
-                cacheWrapper->queryEncodedPermuted.dataPtr<half>(), numLayersOutEncoder);
-        symmetrizer<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
+        randomShuffleFisherYates<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
+                cacheWrapper->queryEncodedPermuted.dataPtr<half>(), cacheWrapper->queryEncoded.dataPtr<half>(),
+                permutationIndicesBuffer, uint32_t(es), numLayersOutEncoder);
+        symmetrizer<<<sgl::uiceil(batchSize * uint32_t(es), 256), 256, 0, stream>>>(
                 cacheWrapper->referenceEncoded.dataPtr<half>(), cacheWrapper->queryEncoded.dataPtr<half>(),
-                cacheWrapper->symmetrizedReferenceInput.dataPtr<half>(), numLayersOutEncoder);
-        symmetrizer<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
+                cacheWrapper->symmetrizedReferenceInput.dataPtr<half>(), uint32_t(es), numLayersOutEncoder);
+        symmetrizer<<<sgl::uiceil(batchSize * uint32_t(es), 256), 256, 0, stream>>>(
                 cacheWrapper->referenceEncoded.dataPtr<half>(), cacheWrapper->queryEncodedPermuted.dataPtr<half>(),
-                cacheWrapper->symmetrizedQueryInput.dataPtr<half>(), numLayersOutEncoder);
+                cacheWrapper->symmetrizedQueryInput.dataPtr<half>(), uint32_t(es), numLayersOutEncoder);
     }
 
     moduleWrapper->networkDecoder->inference(
@@ -243,7 +249,7 @@ void QuickMLPSimilarityCalculator::runInferenceBatch(uint32_t batchOffset, uint3
     moduleWrapper->networkDecoder->inference(
             cacheWrapper->symmetrizedQueryInput, cacheWrapper->queryDecoded, stream);
 
-    float *miOutput = reinterpret_cast<float*>(outputImageBufferCu) + batchOffset;
+    float* miOutput = reinterpret_cast<float*>(outputImageBufferCu) + batchOffset;
     if (moduleWrapper->networkEncoder->precisionOut() == qmlp::Tensor::Precision::FLOAT) {
         combineDecoderOutput<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
                 cacheWrapper->referenceDecoded.dataPtr<float>(), cacheWrapper->queryDecoded.dataPtr<float>(),

@@ -627,6 +627,10 @@ void PccCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float* buffer
     int zs = volumeData->getGridSizeZ();
     int es = volumeData->getEnsembleMemberCount();
 
+#ifdef TEST_INFERENCE_SPEED
+    auto startLoad = std::chrono::system_clock::now();
+#endif
+
     std::vector<VolumeData::HostCacheEntry> ensembleEntryFields;
     std::vector<float*> ensembleFields;
     ensembleEntryFields.reserve(es);
@@ -663,6 +667,17 @@ void PccCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float* buffer
         }
         std::cout << std::endl;
     }
+
+
+#ifdef TEST_INFERENCE_SPEED
+    auto endLoad = std::chrono::system_clock::now();
+    auto elapsedLoad = std::chrono::duration_cast<std::chrono::milliseconds>(endLoad - startLoad);
+    std::cout << "Elapsed time load: " << elapsedLoad.count() << "ms" << std::endl;
+#endif
+
+#ifdef TEST_INFERENCE_SPEED
+    auto startInference = std::chrono::system_clock::now();
+#endif
 
     float* referenceRanks = nullptr;
     if (correlationMeasureType == CorrelationMeasureType::SPEARMAN) {
@@ -925,6 +940,12 @@ void PccCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float* buffer
         delete[] referenceRanks;
     }
     delete[] referenceValues;
+
+#ifdef TEST_INFERENCE_SPEED
+    auto endInference = std::chrono::system_clock::now();
+    auto elapsedInference = std::chrono::duration_cast<std::chrono::milliseconds>(endInference - startInference);
+    std::cout << "Elapsed time inference: " << elapsedInference.count() << "ms" << std::endl;
+#endif
 }
 
 void PccCalculator::calculateDevice(int timeStepIdx, int ensembleIdx, const DeviceCacheEntry& deviceCacheEntry) {
@@ -932,6 +953,10 @@ void PccCalculator::calculateDevice(int timeStepIdx, int ensembleIdx, const Devi
     renderer->getDevice()->waitIdle();
 
     int es = volumeData->getEnsembleMemberCount();
+
+#ifdef TEST_INFERENCE_SPEED
+    auto startLoad = std::chrono::system_clock::now();
+#endif
 
     std::vector<VolumeData::DeviceCacheEntry> ensembleEntryFields;
     std::vector<sgl::vk::ImageViewPtr> ensembleImageViews;
@@ -951,6 +976,16 @@ void PccCalculator::calculateDevice(int timeStepIdx, int ensembleIdx, const Devi
         }
     }
 
+#ifdef TEST_INFERENCE_SPEED
+    auto endLoad = std::chrono::system_clock::now();
+    auto elapsedLoad = std::chrono::duration_cast<std::chrono::milliseconds>(endLoad - startLoad);
+    std::cout << "Elapsed time load: " << elapsedLoad.count() << "ms" << std::endl;
+#endif
+
+#ifdef TEST_INFERENCE_SPEED
+    auto startInference = std::chrono::system_clock::now();
+#endif
+
     pccComputePass->setOutputImage(deviceCacheEntry->getVulkanImageView());
     pccComputePass->setEnsembleImageViews(ensembleImageViews);
 
@@ -963,6 +998,13 @@ void PccCalculator::calculateDevice(int timeStepIdx, int ensembleIdx, const Devi
     pccComputePass->buildIfNecessary();
     pccComputePass->setReferencePoint(referencePointIndex);
     pccComputePass->render();
+
+#ifdef TEST_INFERENCE_SPEED
+    renderer->syncWithCpu();
+    auto endInference = std::chrono::system_clock::now();
+    auto elapsedInference = std::chrono::duration_cast<std::chrono::milliseconds>(endInference - startInference);
+    std::cout << "Elapsed time inference: " << elapsedInference.count() << "ms" << std::endl;
+#endif
 }
 
 

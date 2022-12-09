@@ -52,6 +52,8 @@ protected:
     virtual void loadModelFromFile(const std::string& modelPath) = 0;
 
     // Inference steps to be implemented by subclasses.
+    virtual void callbackBeginCompute() {}
+    virtual void callbackEndCompute() {}
     virtual bool getIsModuleLoaded() = 0;
     virtual void recreateCache(int batchSize) = 0;
     virtual CUdeviceptr getReferenceInputPointer() = 0;
@@ -73,6 +75,7 @@ protected:
     std::vector<sgl::vk::CommandBufferPtr> postRenderCommandBuffers;
     sgl::vk::SemaphoreVkCudaDriverApiInteropPtr vulkanFinishedSemaphore, cudaFinishedSemaphore;
     uint64_t timelineValue = 0;
+    CUdeviceptr permutationIndicesBufferCu{};
     CUdeviceptr outputImageBufferCu{};
     CUdeviceptr ensembleTextureArrayCu{};
     std::vector<CUtexObject> cachedEnsembleTexturesCu;

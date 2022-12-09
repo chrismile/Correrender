@@ -98,6 +98,10 @@ void DeepLearningCudaSimilarityCalculator::initialize() {
 DeepLearningCudaSimilarityCalculator::~DeepLearningCudaSimilarityCalculator() {
     sgl::AppSettings::get()->getSettings().addKeyValue(modelFilePathSettingsKey.c_str(), modelFilePath);
 
+    if (permutationIndicesBufferCu != 0) {
+        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFree(
+                permutationIndicesBufferCu), "Error in cuMemFree: ");
+    }
     if (outputImageBufferCu != 0) {
         sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFree(
                 outputImageBufferCu), "Error in cuMemFree: ");
@@ -200,8 +204,21 @@ void DeepLearningCudaSimilarityCalculator::calculateDevice(
     }
 
     int gpuBatchSize1D = gpuBatchSize1DBase;
+    if (es >= 200) {
+        gpuBatchSize1D /= 2;
+    }
+    if (es >= 400) {
+        gpuBatchSize1D /= 2;
+    }
+    if (es >= 800) {
+        gpuBatchSize1D /= 2;
+    }
 
     if (cachedEnsembleSizeDevice != size_t(es)) {
+        if (permutationIndicesBufferCu != 0) {
+            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
+                    permutationIndicesBufferCu, stream), "Error in cuMemFreeAsync: ");
+        }
         if (outputImageBufferCu != 0) {
             sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
                     outputImageBufferCu, stream), "Error in cuMemFreeAsync: ");
@@ -211,6 +228,8 @@ void DeepLearningCudaSimilarityCalculator::calculateDevice(
                     ensembleTextureArrayCu, stream), "Error in cuMemFreeAsync: ");
         }
         cachedEnsembleSizeDevice = size_t(es);
+        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
+                &permutationIndicesBufferCu, gpuBatchSize1D * es * sizeof(uint32_t), stream), "Error in cuMemAllocAsync: ");
         sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
                 &outputImageBufferCu, volumeData->getSlice3dSizeInBytes(FieldType::SCALAR), stream), "Error in cuMemAllocAsync: ");
         sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
@@ -295,6 +314,8 @@ void DeepLearningCudaSimilarityCalculator::calculateDevice(
 
     uint32_t alignmentVec4 = sgl::uiceil(getInputChannelAlignment(), 4);
 
+    callbackBeginCompute();
+
     CUdeviceptr scalarFieldEnsembles = ensembleTextureArrayCu;
     CUdeviceptr outputBufferRef = getReferenceInputPointer();
     void* kernelParametersRef[] = {
@@ -347,7 +368,10 @@ void DeepLearningCudaSimilarityCalculator::calculateDevice(
     postRenderCommandBuffer->pushWaitSemaphore(
             cudaFinishedSemaphore, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
 
+    callbackEndCompute();
+
 #ifdef TEST_INFERENCE_SPEED
+    renderer->syncWithCpu();
     auto endInference = std::chrono::system_clock::now();
     auto elapsedInference = std::chrono::duration_cast<std::chrono::milliseconds>(endInference - startInference);
     std::cout << "Elapsed time inference: " << elapsedInference.count() << "ms" << std::endl;
