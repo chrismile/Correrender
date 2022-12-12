@@ -58,7 +58,7 @@ template<class T> __global__ void randomShuffleFisherYates(
     }
 }
 
-template<class T> __global__ void symmetrizer(
+template<class T> __global__ void symmetrizerBE(
         const T* __restrict__ referenceValues, const T* __restrict__ queryValues, T* __restrict__ outputValues,
         uint32_t es, uint32_t numChannels) {
     uint32_t globalThreadIdx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -68,6 +68,29 @@ template<class T> __global__ void symmetrizer(
     for (uint32_t c = 0; c < numChannels; c++) {
         outputValues[readOffset + c] = referenceValues[readOffsetRef + c] + queryValues[readOffset + c];
     }
+}
+
+template<class T> __global__ void symmetrizer(
+        const T* __restrict__ referenceValues, const T* __restrict__ queryValues, T* __restrict__ outputValues,
+        uint32_t es, uint32_t numChannels) {
+    uint32_t globalThreadIdx = blockIdx.x * blockDim.x + threadIdx.x;
+    uint32_t readOffset = globalThreadIdx;
+    uint32_t readOffsetRef = globalThreadIdx % (es * numChannels);
+    outputValues[readOffset] = referenceValues[readOffsetRef] + queryValues[readOffset];
+}
+
+template<class T> __global__ void symmetrizerPermuted(
+        const T* __restrict__ referenceValues, const T* __restrict__ queryValues, T* __restrict__ outputValues,
+        const uint32_t* __restrict__ permutationIndicesBuffer, uint32_t es, uint32_t numChannels) {
+    uint32_t globalThreadIdx = blockIdx.x * blockDim.x + threadIdx.x;
+    uint32_t channelIdx = globalThreadIdx % numChannels;
+    uint32_t ensembleIdx = (globalThreadIdx / numChannels) % es;
+    uint32_t batchIdx = globalThreadIdx / (numChannels * es);
+    uint32_t ensembleMemberPermuted = permutationIndicesBuffer[ensembleIdx];
+    uint32_t writeOffset = globalThreadIdx;
+    uint32_t readOffset = channelIdx + (ensembleMemberPermuted + batchIdx * es) * numChannels;
+    uint32_t readOffsetRef = globalThreadIdx % (es * numChannels);
+    outputValues[writeOffset] = referenceValues[readOffsetRef] + queryValues[readOffset];
 }
 
 //#define USE_FAST_CUDA_MATH

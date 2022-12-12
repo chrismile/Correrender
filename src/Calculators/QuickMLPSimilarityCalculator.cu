@@ -223,25 +223,27 @@ void QuickMLPSimilarityCalculator::runInferenceBatch(uint32_t batchOffset, uint3
             permutationIndicesBuffer, uint32_t(es));
 
     if (moduleWrapper->networkEncoder->precisionOut() == qmlp::Tensor::Precision::FLOAT) {
-        randomShuffleFisherYates<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
-                cacheWrapper->queryEncodedPermuted.dataPtr<float>(), cacheWrapper->queryEncoded.dataPtr<float>(),
-                permutationIndicesBuffer, uint32_t(es), numLayersOutEncoder);
-        symmetrizer<<<sgl::uiceil(batchSize * uint32_t(es), 256), 256, 0, stream>>>(
+        //randomShuffleFisherYates<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
+        //        cacheWrapper->queryEncodedPermuted.dataPtr<float>(), cacheWrapper->queryEncoded.dataPtr<float>(),
+        //        permutationIndicesBuffer, uint32_t(es), numLayersOutEncoder);
+        symmetrizer<<<sgl::uiceil(batchSize * uint32_t(es) * numLayersOutEncoder, 256), 256, 0, stream>>>(
                 cacheWrapper->referenceEncoded.dataPtr<float>(), cacheWrapper->queryEncoded.dataPtr<float>(),
                 cacheWrapper->symmetrizedReferenceInput.dataPtr<float>(), uint32_t(es), numLayersOutEncoder);
-        symmetrizer<<<sgl::uiceil(batchSize * uint32_t(es), 256), 256, 0, stream>>>(
-                cacheWrapper->referenceEncoded.dataPtr<float>(), cacheWrapper->queryEncodedPermuted.dataPtr<float>(),
-                cacheWrapper->symmetrizedQueryInput.dataPtr<float>(), uint32_t(es), numLayersOutEncoder);
+        symmetrizerPermuted<<<sgl::uiceil(batchSize * uint32_t(es) * numLayersOutEncoder, 256), 256, 0, stream>>>(
+                cacheWrapper->referenceEncoded.dataPtr<float>(), cacheWrapper->queryEncoded.dataPtr<float>(),
+                cacheWrapper->symmetrizedQueryInput.dataPtr<float>(), permutationIndicesBuffer,
+                uint32_t(es), numLayersOutEncoder);
     } else if (moduleWrapper->networkEncoder->precisionOut() == qmlp::Tensor::Precision::HALF) {
-        randomShuffleFisherYates<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
-                cacheWrapper->queryEncodedPermuted.dataPtr<half>(), cacheWrapper->queryEncoded.dataPtr<half>(),
-                permutationIndicesBuffer, uint32_t(es), numLayersOutEncoder);
-        symmetrizer<<<sgl::uiceil(batchSize * uint32_t(es), 256), 256, 0, stream>>>(
+        //randomShuffleFisherYates<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
+        //        cacheWrapper->queryEncodedPermuted.dataPtr<half>(), cacheWrapper->queryEncoded.dataPtr<half>(),
+        //        permutationIndicesBuffer, uint32_t(es), numLayersOutEncoder);
+        symmetrizer<<<sgl::uiceil(batchSize * uint32_t(es) * numLayersOutEncoder, 256), 256, 0, stream>>>(
                 cacheWrapper->referenceEncoded.dataPtr<half>(), cacheWrapper->queryEncoded.dataPtr<half>(),
                 cacheWrapper->symmetrizedReferenceInput.dataPtr<half>(), uint32_t(es), numLayersOutEncoder);
-        symmetrizer<<<sgl::uiceil(batchSize * uint32_t(es), 256), 256, 0, stream>>>(
-                cacheWrapper->referenceEncoded.dataPtr<half>(), cacheWrapper->queryEncodedPermuted.dataPtr<half>(),
-                cacheWrapper->symmetrizedQueryInput.dataPtr<half>(), uint32_t(es), numLayersOutEncoder);
+        symmetrizerPermuted<<<sgl::uiceil(batchSize * uint32_t(es) * numLayersOutEncoder, 256), 256, 0, stream>>>(
+                cacheWrapper->referenceEncoded.dataPtr<half>(), cacheWrapper->queryEncoded.dataPtr<half>(),
+                cacheWrapper->symmetrizedQueryInput.dataPtr<half>(), permutationIndicesBuffer,
+                uint32_t(es), numLayersOutEncoder);
     }
 
     moduleWrapper->networkDecoder->inference(

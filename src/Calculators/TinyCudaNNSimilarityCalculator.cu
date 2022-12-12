@@ -452,9 +452,9 @@ void TinyCudaNNSimilarityCalculator::runInferenceBatch(uint32_t batchOffset, uin
     uint32_t* permutationIndicesBuffer = reinterpret_cast<uint32_t*>(permutationIndicesBufferCu);
     generateRandomPermutations<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
             permutationIndicesBuffer, uint32_t(es));
-    randomShuffleFisherYates<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
-            cacheWrapper->queryEncodedPermuted.data(), cacheWrapper->queryEncoded.data(),
-            permutationIndicesBuffer, uint32_t(es), numLayersOutEncoder);
+    //randomShuffleFisherYates<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
+    //        cacheWrapper->queryEncodedPermuted.data(), cacheWrapper->queryEncoded.data(),
+    //        permutationIndicesBuffer, uint32_t(es), numLayersOutEncoder);
 
     /*auto* dataUint32 = new uint32_t[batchSize * 20];
     dataUint32[0] = 1000;
@@ -496,12 +496,16 @@ void TinyCudaNNSimilarityCalculator::runInferenceBatch(uint32_t batchOffset, uin
     std::cout << std::endl;
     delete[] dataHalf;*/
 
-    symmetrizer<<<sgl::uiceil(batchSize * uint32_t(es), 256), 256, 0, stream>>>(
+    symmetrizer<<<sgl::uiceil(batchSize * uint32_t(es) * numLayersOutEncoder, 256), 256, 0, stream>>>(
             cacheWrapper->referenceEncoded.data(), cacheWrapper->queryEncoded.data(),
             cacheWrapper->symmetrizedReferenceInput.data(), uint32_t(es), numLayersOutEncoder);
-    symmetrizer<<<sgl::uiceil(batchSize * uint32_t(es), 256), 256, 0, stream>>>(
-            cacheWrapper->referenceEncoded.data(), cacheWrapper->queryEncodedPermuted.data(),
-            cacheWrapper->symmetrizedQueryInput.data(), uint32_t(es), numLayersOutEncoder);
+    //symmetrizer<<<sgl::uiceil(batchSize * uint32_t(es) * numLayersOutEncoder, 256), 256, 0, stream>>>(
+    //        cacheWrapper->referenceEncoded.data(), cacheWrapper->queryEncodedPermuted.data(),
+    //        cacheWrapper->symmetrizedQueryInput.data(), uint32_t(es), numLayersOutEncoder);
+    symmetrizerPermuted<<<sgl::uiceil(batchSize * uint32_t(es) * numLayersOutEncoder, 256), 256, 0, stream>>>(
+            cacheWrapper->referenceEncoded.data(), cacheWrapper->queryEncoded.data(),
+            cacheWrapper->symmetrizedQueryInput.data(), permutationIndicesBuffer,
+            uint32_t(es), numLayersOutEncoder);
 
 #ifdef TCNN_HALF_PRECISION
     moduleWrapper->networkDecoder->inference_mixed_precision(
