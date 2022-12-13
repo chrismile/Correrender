@@ -179,7 +179,7 @@ float averageDigamma() {
 #version 450 core
 #extension GL_EXT_control_flow_attributes : require
 #extension GL_EXT_nonuniform_qualifier : require
-#extension GL_EXT_debug_printf : enable
+//#extension GL_EXT_debug_printf : enable
 
 layout(local_size_x = BLOCK_SIZE_X, local_size_y = BLOCK_SIZE_Y, local_size_z = BLOCK_SIZE_Z) in;
 

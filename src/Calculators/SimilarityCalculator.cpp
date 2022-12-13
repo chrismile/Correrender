@@ -79,6 +79,10 @@ void EnsembleSimilarityCalculator::setVolumeData(VolumeData* _volumeData, bool i
 
 void EnsembleSimilarityCalculator::update(float dt) {
     // TODO: Use mouse for selection of reference point.
+
+    if (continuousRecompute) {
+        dirty = true;
+    }
 }
 
 void EnsembleSimilarityCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
@@ -151,6 +155,12 @@ void PccCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
             "#Bins", &numBins, 2, 100) == ImGui::EditMode::INPUT_FINISHED) {
         dirty = true;
     }
+
+#ifdef SHOW_DEBUG_OPTIONS
+    if (propertyEditor.addCheckbox("Continuous Recompute", &continuousRecompute)) {
+        dirty = true;
+    }
+#endif
 }
 
 template<class T>

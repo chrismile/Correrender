@@ -60,6 +60,7 @@ protected:
     glm::ivec3 referencePointIndex{};
     RendererPtr calculatorRenderer;
     ReferencePointSelectionRenderer* referencePointSelectionRenderer;
+    bool continuousRecompute = false; ///< Debug option.
 };
 
 

@@ -176,39 +176,13 @@ else()
     list(REMOVE_ITEM CUDA_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/Calculators/QuickMLPSimilarityCalculator.cu)
 endif()
 
-find_package(Imath CONFIG QUIET)
-if (NOT TARGET Imath::Imath)
-    find_package(IlmBase CONFIG QUIET)
-endif()
-find_package(OpenEXR CONFIG QUIET)
-if (NOT OpenEXR_FOUND AND NOT Imath_FOUND AND UNIX AND NOT APPLE)
-    set(USE_OPENEXR_PKGCONFIG TRUE)
-    pkg_check_modules(OpenEXR OpenEXR QUIET)
-    pkg_check_modules(IlmBase IlmBase QUIET)
-else()
-    set(USE_OPENEXR_PKGCONFIG FALSE)
-endif()
-if (OpenEXR_FOUND AND (Imath_FOUND OR IlmBase_FOUND))
-    if (${OpenEXR_VERSION} VERSION_LESS "2.3.0")
-        MESSAGE(STATUS "Found OpenEXR version ${OpenEXR_VERSION} is too old. Please upgrade to version >= 2.3.0.")
-    else()
-        MESSAGE(STATUS "Found OpenEXR ${OpenEXR_VERSION}. Enabling OpenEXR image loading support.")
-        set(SUPPORT_OPENEXR true)
-    endif()
-else()
-    MESSAGE(STATUS "OpenEXR not found. Disabling OpenEXR image loading support.")
-endif()
-if (NOT SUPPORT_OPENEXR)
-    list(REMOVE_ITEM SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/Renderers/Scattering/PathTracer/OpenExrLoader.cpp)
-endif()
-
 
 if(WIN32)
     add_executable(Correrender WIN32 ${SOURCES} ${CUDA_SOURCES} ${CMAKE_CURRENT_SOURCE_DIR}/CMake/winres.rc)
 elseif(APPLE)
     add_executable(Correrender MACOSX_BUNDLE ${SOURCES} ${CUDA_SOURCES})
 else()
-    add_executable(Correrender ${SOURCES} ${CUDA_SOURCES} src/Calculators/ReferencePointSelectionRenderer.cpp src/Calculators/ReferencePointSelectionRenderer.hpp)
+    add_executable(Correrender ${SOURCES} ${CUDA_SOURCES})
 endif()
 
 if(${USE_STATIC_STD_LIBRARIES})
@@ -456,32 +430,7 @@ endif()
 
 # For testing purposes.
 target_compile_definitions(Correrender PRIVATE TEST_INFERENCE_SPEED)
-
-if (SUPPORT_OPENEXR)
-    if (${USE_OPENEXR_PKGCONFIG})
-        if (OpenEXR_FOUND)
-            target_link_libraries(Correrender PRIVATE ${OpenEXR_LIBRARIES})
-        endif()
-        if (IlmBase_FOUND)
-            target_link_libraries(Correrender PRIVATE ${IlmBase_LIBRARIES})
-        endif()
-    else()
-        target_link_libraries(
-                Correrender PRIVATE
-                # For OpenEXR/Imath 3.x:
-                $<$<TARGET_EXISTS:OpenEXR::OpenEXR>:OpenEXR::OpenEXR>
-                $<$<TARGET_EXISTS:Imath::Imath>:Imath::Imath>
-                $<$<TARGET_EXISTS:Imath::Half>:Imath::Half>
-                # For OpenEXR 2.4/2.5:
-                $<$<TARGET_EXISTS:OpenEXR::IlmImf>:OpenEXR::IlmImf>
-                $<$<TARGET_EXISTS:IlmBase::Imath>:IlmBase::Imath>
-                $<$<TARGET_EXISTS:IlmBase::Half>:IlmBase::Half>
-                $<$<TARGET_EXISTS:IlmBase::IlmThread>:IlmBase::IlmThread>
-                $<$<TARGET_EXISTS:IlmBase::Iex>:IlmBase::Iex>
-        )
-    endif()
-    target_compile_definitions(Correrender PRIVATE SUPPORT_OPENEXR)
-endif()
+target_compile_definitions(Correrender PRIVATE SHOW_DEBUG_OPTIONS)
 
 
 if (${USE_TBB})

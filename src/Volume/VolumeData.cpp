@@ -783,6 +783,9 @@ std::pair<float, float> VolumeData::getMinMaxScalarFieldValue(
 }
 
 void VolumeData::update(float dtFrame) {
+    for (CalculatorPtr& calculator : calculators) {
+        calculator->update(dtFrame);
+    }
     multiVarTransferFunctionWindow.update(dt);
     hostFieldCache->updateEvictionWaitList();
     deviceFieldCache->updateEvictionWaitList();
