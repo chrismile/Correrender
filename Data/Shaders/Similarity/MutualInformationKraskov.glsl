@@ -192,6 +192,9 @@ layout (binding = 3) uniform texture3D scalarFieldEnsembles[ENSEMBLE_MEMBER_COUN
 
 layout(push_constant) uniform PushConstants {
     ivec3 referencePointIdx;
+    int padding0;
+    uvec3 batchOffset;
+    uint padding1;
 };
 
 
@@ -446,7 +449,7 @@ float getRandomFloatNorm(inout uvec3 rngState) {
 #endif
 
 void main() {
-    ivec3 currentPointIdx = ivec3(gl_GlobalInvocationID.xyz);
+    ivec3 currentPointIdx = ivec3(gl_GlobalInvocationID.xyz + batchOffset);
     if (gl_GlobalInvocationID.x >= xs || gl_GlobalInvocationID.y >= ys || gl_GlobalInvocationID.z >= zs) {
         return;
     }

@@ -124,6 +124,7 @@ private:
     int cachedEnsembleMemberCount = 0;
     CorrelationMeasureType correlationMeasureType = CorrelationMeasureType::PEARSON;
 
+    const uint32_t batchEnsembleCountThreshold = 10;
     const int computeBlockSizeX = 8, computeBlockSizeY = 8, computeBlockSizeZ = 4;
     struct UniformData {
         uint32_t xs, ys, zs, es;

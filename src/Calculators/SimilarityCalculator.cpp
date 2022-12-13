@@ -1129,11 +1129,56 @@ void PccComputePass::_render() {
                 VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                 spearmanReferenceRankComputePass->getReferenceRankBuffer());
     }
-    renderer->dispatch(
-            computeData,
-            sgl::iceil(volumeData->getGridSizeX(), computeBlockSizeX),
-            sgl::iceil(volumeData->getGridSizeY(), computeBlockSizeY),
-            sgl::iceil(volumeData->getGridSizeZ(), computeBlockSizeZ));
+
+    uint32_t batchCount = 1;
+    bool needsBatchedRendering = false;
+    if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV) {
+        if (volumeData->getEnsembleMemberCount() > int(batchEnsembleCountThreshold)) {
+            needsBatchedRendering = true;
+            batchCount = sgl::uiceil(uint32_t(volumeData->getEnsembleMemberCount()), batchEnsembleCountThreshold);
+        }
+    }
+
+    if (needsBatchedRendering) {
+        auto blockSizeX = uint32_t(computeBlockSizeX);
+        //auto blockSizeY = uint32_t(computeBlockSizeY);
+        //auto blockSizeZ = uint32_t(computeBlockSizeZ);
+        /*auto batchSizeX =
+                sgl::uiceil(uint32_t(volumeData->getGridSizeX()), batchCount * blockSizeX) * blockSizeX;
+        auto batchSizeY = uint32_t(volumeData->getGridSizeY());
+        auto batchSizeZ = uint32_t(volumeData->getGridSizeZ());
+        batchCount = sgl::uiceil(uint32_t(volumeData->getGridSizeX()), batchSizeX);*/
+        auto batchSizeX = 2 * blockSizeX;
+        auto batchSizeY = uint32_t(volumeData->getGridSizeY());
+        auto batchSizeZ = uint32_t(volumeData->getGridSizeZ());
+        batchCount = sgl::uiceil(uint32_t(volumeData->getGridSizeX()), batchSizeX);
+        for (uint32_t batchIdx = 0; batchIdx < batchCount; batchIdx++) {
+            if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV) {
+                renderer->pushConstants(
+                        getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, sizeof(glm::uvec4),
+                        glm::uvec3(batchSizeX * batchIdx, 0, 0));
+            }
+            if (batchIdx == batchCount - 1) {
+                batchSizeX = uint32_t(volumeData->getGridSizeX()) - batchSizeX * batchIdx;
+            }
+            renderer->dispatch(
+                    computeData,
+                    sgl::uiceil(batchSizeX, uint32_t(computeBlockSizeX)),
+                    sgl::uiceil(batchSizeY, uint32_t(computeBlockSizeY)),
+                    sgl::uiceil(batchSizeZ, uint32_t(computeBlockSizeZ)));
+            renderer->syncWithCpu();
+        }
+    } else {
+        if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV) {
+            renderer->pushConstants(
+                    getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, sizeof(glm::uvec4), glm::uvec3(0));
+        }
+        renderer->dispatch(
+                computeData,
+                sgl::iceil(volumeData->getGridSizeX(), computeBlockSizeX),
+                sgl::iceil(volumeData->getGridSizeY(), computeBlockSizeY),
+                sgl::iceil(volumeData->getGridSizeZ(), computeBlockSizeZ));
+    }
 }
 
 
