@@ -56,6 +56,7 @@ protected:
     virtual void callbackEndCompute() {}
     virtual bool getIsModuleLoaded() = 0;
     virtual void recreateCache(int batchSize) = 0;
+    virtual bool getCacheNeedsRecreate() { return cacheNeedsRecreate; }
     virtual CUdeviceptr getReferenceInputPointer() = 0;
     virtual CUdeviceptr getQueryInputPointer() = 0;
     virtual void runInferenceReference() = 0;
@@ -70,6 +71,7 @@ protected:
 
     const int gpuBatchSize1DBase = 16384;
     size_t cachedEnsembleSizeDevice = 0;
+    bool cacheNeedsRecreate = false;
 
     size_t cachedNumSwapchainImages = 0;
     std::vector<sgl::vk::CommandBufferPtr> postRenderCommandBuffers;

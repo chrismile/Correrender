@@ -288,6 +288,7 @@ void TinyCudaNNSimilarityCalculator::loadModelFromFile(const std::string& modelP
     numLayersInDecoder = uint32_t(moduleWrapper->networkDecoder->input_width());
     numLayersOutDecoder = uint32_t(moduleWrapper->networkDecoder->padded_output_width());
     //moduleWrapper->networkDecoder->channelsIn():
+    cacheNeedsRecreate = true;
 }
 
 void TinyCudaNNSimilarityCalculator::recreateCache(int batchSize) {

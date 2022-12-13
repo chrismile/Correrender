@@ -101,6 +101,7 @@ private:
     CorrelationMeasureType correlationMeasureType = CorrelationMeasureType::PEARSON;
     bool useGpu = true;
     int numBins = 40; ///< For CorrelationMeasureType::MUTUAL_INFORMATION_BINNED.
+    int k = 3; ///< For CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV.
 };
 
 class SpearmanReferenceRankComputePass;
@@ -113,6 +114,7 @@ public:
     void setOutputImage(const sgl::vk::ImageViewPtr& _outputImage);
     void setReferencePoint(const glm::ivec3& referencePointIndex);
     void setCorrelationMeasureType(CorrelationMeasureType _correlationMeasureType);
+    void setKraskovNumNeighbors(int _k);
 
 protected:
     void loadShader() override;
@@ -138,6 +140,9 @@ private:
     // For Spearman correlation.
     std::shared_ptr<SpearmanReferenceRankComputePass> spearmanReferenceRankComputePass;
     sgl::vk::BufferPtr referenceRankBuffer;
+
+    // For Kraskov mutual information (MI) estimator.
+    int k = 3;
 };
 
 class SpearmanReferenceRankComputePass : public sgl::vk::ComputePass {

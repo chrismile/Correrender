@@ -120,6 +120,7 @@ void EnsembleSimilarityCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEd
 PccCalculator::PccCalculator(sgl::vk::Renderer* renderer) : EnsembleSimilarityCalculator(renderer) {
     pccComputePass = std::make_shared<PccComputePass>(renderer);
     pccComputePass->setCorrelationMeasureType(correlationMeasureType);
+    pccComputePass->setKraskovNumNeighbors(k);
 }
 
 void PccCalculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
@@ -153,6 +154,11 @@ void PccCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
     }
     if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED && propertyEditor.addSliderIntEdit(
             "#Bins", &numBins, 2, 100) == ImGui::EditMode::INPUT_FINISHED) {
+        dirty = true;
+    }
+    if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV && propertyEditor.addSliderIntEdit(
+            "#Neighbors", &k, 1, 20) == ImGui::EditMode::INPUT_FINISHED) {
+        pccComputePass->setKraskovNumNeighbors(k);
         dirty = true;
     }
 
@@ -588,8 +594,8 @@ Real averageDigamma(const float* values, int es, const std::vector<Real>& distan
  * - https://github.com/gregversteeg/NPEET/blob/master/npeet/entropy_estimators.py
  */
 template<class Real>
-float computeMutualInformationKraskov(const float* referenceValues, const float* queryValues, int es) {
-    const int k = 3;
+float computeMutualInformationKraskov(
+        const float* referenceValues, const float* queryValues, int k, int es) {
     const int base = 2;
 
 #ifdef KRASKOV_USE_RANDOM_NOISE
@@ -907,7 +913,7 @@ void PccCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float* buffer
             for (auto gridPointIdx = r.begin(); gridPointIdx != r.end(); gridPointIdx++) {
 #else
 #if _OPENMP >= 200805
-        #pragma omp parallel shared(numGridPoints, es, referenceValues, ensembleFields, buffer) default(none) \
+        #pragma omp parallel shared(numGridPoints, es, k, referenceValues, ensembleFields, buffer) default(none) \
         shared(minEnsembleVal, maxEnsembleVal)
         {
             auto* gridPointValues = new float[es];
@@ -934,7 +940,8 @@ void PccCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float* buffer
                     continue;
                 }
 
-                float mutualInformation = computeMutualInformationKraskov<double>(referenceValues, gridPointValues, es);
+                float mutualInformation = computeMutualInformationKraskov<double>(
+                        referenceValues, gridPointValues, k, es);
                 buffer[gridPointIdx] = mutualInformation;
             }
             delete[] gridPointValues;
@@ -1083,6 +1090,13 @@ void PccComputePass::setCorrelationMeasureType(CorrelationMeasureType _correlati
     }
 }
 
+void PccComputePass::setKraskovNumNeighbors(int _k) {
+    if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV && k != _k) {
+        setShaderDirty();
+    }
+    k = _k;
+}
+
 void PccComputePass::loadShader() {
     sgl::vk::ShaderManager->invalidateShaderCache();
     std::map<std::string, std::string> preprocessorDefines;
@@ -1097,6 +1111,7 @@ void PccComputePass::loadShader() {
                 "MAX_STACK_SIZE_BUILD", std::to_string(2 * maxBinaryTreeLevels)));
         preprocessorDefines.insert(std::make_pair(
                 "MAX_STACK_SIZE_KN", std::to_string(maxBinaryTreeLevels)));
+        preprocessorDefines.insert(std::make_pair("k", std::to_string(k)));
     }
     std::string shaderName;
     if (correlationMeasureType == CorrelationMeasureType::PEARSON) {

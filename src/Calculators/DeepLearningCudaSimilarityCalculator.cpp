@@ -235,7 +235,12 @@ void DeepLearningCudaSimilarityCalculator::calculateDevice(
         sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
                 &ensembleTextureArrayCu, es * sizeof(CUtexObject), stream), "Error in cuMemAllocAsync: ");
 
+        cacheNeedsRecreate = true;
+    }
+
+    if (cacheNeedsRecreate) {
         recreateCache(gpuBatchSize1D);
+        cacheNeedsRecreate = false;
     }
 
     sgl::vk::Swapchain* swapchain = sgl::AppSettings::get()->getSwapchain();

@@ -211,7 +211,7 @@ layout(push_constant) uniform PushConstants {
  * - MAX_STACK_SIZE_KN: uint32_t(ceil(log(ENSEMBLE_MEMBER_COUNT + 1))); 10 for 1000 ensemble members.
  */
 
-const uint k = 3;
+//const uint k = 3; //< Set via define.
 const uint base = 2;
 
 float referenceValues[ENSEMBLE_MEMBER_COUNT];
