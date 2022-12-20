@@ -84,22 +84,30 @@ void loadNetwork(
 
     auto* header = reinterpret_cast<QuickMLPDataHeader*>(entry.bufferData.get());
     uint8_t* paramsDataHost = entry.bufferData.get() + sizeof(QuickMLPDataHeader);
-    if (header->format == QUICK_MLP_PARAMS_FORMAT_FLOAT && precision != qmlp::Tensor::Precision::FLOAT
-            || header->format == QUICK_MLP_PARAMS_FORMAT_HALF && precision != qmlp::Tensor::Precision::HALF) {
-        sgl::Logfile::get()->throwError(
-                "Error in loadNetwork: Precision mismatch between QuickMLP JSON configuration and binary data for \""
-                + modelPath + "\".");
-    }
     if (header->numParams != uint32_t(network->networkParameterCount())) {
         sgl::Logfile::get()->throwError(
                 "Error in loadNetwork: Mismatching network parameter count (" + std::to_string(header->numParams)
                 + " vs. " + std::to_string(network->networkParameterCount()) + ") for \"" + modelPath + "\".");
     }
-    if (entry.bufferSize != uint32_t(qmlp::Tensor::BytesPerEntry[precision] * network->networkParameterCount())) {
+    if (header->format == QUICK_MLP_PARAMS_FORMAT_FLOAT && precision == qmlp::Tensor::Precision::HALF) {
+        float* dataOld = reinterpret_cast<float*>(paramsDataHost);
+        half* dataNew = new half[header->numParams];
+        for (uint32_t i = 0; i < header->numParams; i++) {
+            dataNew[i] = half(dataOld[i]);
+        }
+        paramsDataHost = reinterpret_cast<uint8_t*>(dataNew);
+    } else if (header->format == QUICK_MLP_PARAMS_FORMAT_HALF && precision == qmlp::Tensor::Precision::FLOAT) {
+        half* dataOld = reinterpret_cast<half*>(paramsDataHost);
+        float* dataNew = new float[header->numParams];
+        for (uint32_t i = 0; i < header->numParams; i++) {
+            dataNew[i] = float(dataOld[i]);
+        }
+        paramsDataHost = reinterpret_cast<uint8_t*>(dataNew);
+    } else if (header->format == QUICK_MLP_PARAMS_FORMAT_FLOAT && precision != qmlp::Tensor::Precision::FLOAT
+            || header->format == QUICK_MLP_PARAMS_FORMAT_HALF && precision != qmlp::Tensor::Precision::HALF) {
         sgl::Logfile::get()->throwError(
-                "Error in loadNetwork: Mismatching parameter byte size (" + std::to_string(entry.bufferSize)
-                + " vs. " + std::to_string(qmlp::Tensor::BytesPerEntry[precision] * network->networkParameterCount())
-                + ") for \"" + modelPath + "\".");
+                "Error in loadNetwork: Precision mismatch between QuickMLP JSON configuration and binary data for \""
+                + modelPath + "\".");
     }
 
     qmlp::Tensor parameters(precision, { network->networkParameterCount() });
@@ -107,6 +115,11 @@ void loadNetwork(
             reinterpret_cast<CUdeviceptr>(parameters.rawPtr()), paramsDataHost,
             qmlp::Tensor::BytesPerEntry[precision] * network->networkParameterCount()), "Error in cuMemcpyHtoD: ");
     network->setNetworkParameter(parameters, qmlp::Tensor::INFERENCE);
+
+    if (header->format == QUICK_MLP_PARAMS_FORMAT_FLOAT && precision == qmlp::Tensor::Precision::HALF
+            || header->format == QUICK_MLP_PARAMS_FORMAT_HALF && precision == qmlp::Tensor::Precision::FLOAT) {
+        delete[] paramsDataHost;
+    }
 }
 
 void QuickMLPSimilarityCalculator::loadModelFromFile(const std::string& modelPath) {
@@ -176,24 +189,27 @@ void QuickMLPSimilarityCalculator::recreateCache(int batchSize) {
                 "Encoder input precision is expected to be float.");
     }
 
+    // Network needs multiple of 16 for number of input layers.
+    //int numInputLayers = 16;
+
     cacheWrapper->referenceInput = qmlp::Tensor(
-            moduleWrapper->networkEncoder->precisionIn(), { 1, es * 4 });
+            moduleWrapper->networkEncoder->precisionIn(), { es, int(numLayersInEncoder) });
     cacheWrapper->referenceEncoded = qmlp::Tensor(
-            moduleWrapper->networkEncoder->precisionOut(), { 1, int(numLayersOutEncoder) });
+            moduleWrapper->networkEncoder->precisionOut(), { es, int(numLayersOutEncoder) });
     cacheWrapper->queryInput = qmlp::Tensor(
-            moduleWrapper->networkEncoder->precisionIn(), { int(batchSize), int(es * 4) });
+            moduleWrapper->networkEncoder->precisionIn(), { es * int(batchSize), int(numLayersInEncoder) });
     cacheWrapper->queryEncoded = qmlp::Tensor(
-            moduleWrapper->networkEncoder->precisionOut(), { int(batchSize), int(numLayersOutEncoder) });
+            moduleWrapper->networkEncoder->precisionOut(), { es * int(batchSize), int(numLayersOutEncoder) });
     cacheWrapper->queryEncodedPermuted = qmlp::Tensor(
-            moduleWrapper->networkEncoder->precisionOut(), { int(batchSize), int(numLayersOutEncoder) });
+            moduleWrapper->networkEncoder->precisionOut(), { es * int(batchSize), int(numLayersOutEncoder) });
     cacheWrapper->symmetrizedReferenceInput = qmlp::Tensor(
-            moduleWrapper->networkDecoder->precisionIn(), { int(batchSize), int(numLayersInDecoder) });
+            moduleWrapper->networkDecoder->precisionIn(), { es * int(batchSize), int(numLayersInDecoder) });
     cacheWrapper->symmetrizedQueryInput = qmlp::Tensor(
-            moduleWrapper->networkDecoder->precisionIn(), { int(batchSize), int(numLayersInDecoder) });
+            moduleWrapper->networkDecoder->precisionIn(), { es * int(batchSize), int(numLayersInDecoder) });
     cacheWrapper->referenceDecoded = qmlp::Tensor(
-            moduleWrapper->networkDecoder->precisionOut(), { int(batchSize), int(numLayersOutDecoder) });
+            moduleWrapper->networkDecoder->precisionOut(), { es * int(batchSize), int(numLayersOutDecoder) });
     cacheWrapper->queryDecoded = qmlp::Tensor(
-            moduleWrapper->networkDecoder->precisionOut(), { int(batchSize), int(numLayersOutDecoder) });
+            moduleWrapper->networkDecoder->precisionOut(), { es * int(batchSize), int(numLayersOutDecoder) });
 }
 
 CUdeviceptr QuickMLPSimilarityCalculator::getReferenceInputPointer() {
@@ -255,10 +271,10 @@ void QuickMLPSimilarityCalculator::runInferenceBatch(uint32_t batchOffset, uint3
     if (moduleWrapper->networkEncoder->precisionOut() == qmlp::Tensor::Precision::FLOAT) {
         combineDecoderOutput<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
                 cacheWrapper->referenceDecoded.dataPtr<float>(), cacheWrapper->queryDecoded.dataPtr<float>(),
-                        miOutput, numLayersOutDecoder, 1);
+                miOutput, uint32_t(es), numLayersOutDecoder);
     } else if (moduleWrapper->networkEncoder->precisionOut() == qmlp::Tensor::Precision::HALF) {
         combineDecoderOutput<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
                 cacheWrapper->referenceDecoded.dataPtr<half>(), cacheWrapper->queryDecoded.dataPtr<half>(),
-                miOutput, numLayersOutDecoder, 1);
+                miOutput, uint32_t(es), numLayersOutDecoder);
     }
 }

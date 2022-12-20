@@ -41,6 +41,11 @@
 #include <zmq.h>
 #endif
 
+#ifdef SUPPORT_QUICK_MLP
+#include <ckl/kernel_loader.h>
+#include <qmlp/qmlp.h>
+#endif
+
 #include <Utils/Timer.hpp>
 #include <Utils/AppSettings.hpp>
 #include <Utils/Dialog.hpp>
@@ -392,6 +397,11 @@ MainApp::~MainApp() {
     viewManager = nullptr;
 
     IGFD_Destroy(fileDialogInstance);
+
+#ifdef SUPPORT_QUICK_MLP
+    qmlp::QuickMLP::DeleteInstance();
+    ckl::KernelLoader::DeleteInstance();
+#endif
 
 #ifdef SUPPORT_CUDA_INTEROP
     if (sgl::vk::getIsCudaDeviceApiFunctionTableInitialized()) {
@@ -816,6 +826,7 @@ void MainApp::renderGui() {
                     || boost::ends_with(filenameLower, ".raw")) {
                 selectedDataSetIndex = 0;
                 customDataSetFileName = filename;
+                dataSetType = DataSetType::VOLUME;
                 loadVolumeDataSet(getSelectedDataSetFilenames());
             } else {
                 sgl::Logfile::get()->writeError(

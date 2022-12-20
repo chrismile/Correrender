@@ -48,6 +48,7 @@ protected:
     CUdeviceptr getQueryInputPointer() override;
     void runInferenceReference() override;
     void runInferenceBatch(uint32_t batchOffset, uint32_t batchSize) override;
+    uint32_t getInputChannelAlignment() override { return 16; }
 
 private:
     uint32_t numLayersInEncoder = 0, numLayersOutEncoder = 0, numLayersInDecoder = 0, numLayersOutDecoder = 0;

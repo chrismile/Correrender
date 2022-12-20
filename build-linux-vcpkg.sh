@@ -33,6 +33,11 @@ PROJECTPATH="$SCRIPTPATH"
 pushd $SCRIPTPATH > /dev/null
 
 debug=false
+link_dynamic=false
+params_link=()
+if [ $link_dynamic = true ]; then
+    params_link+=(-DVCPKG_TARGET_TRIPLET=x64-linux-dynamic)
+fi
 build_dir_debug=".build_debug"
 build_dir_release=".build_release"
 if [ $debug = true ]; then
@@ -53,6 +58,12 @@ do
     if [ ${!i} = "--custom-glslang" ]; then
         custom_glslang=true
     fi
+    if [ ${!i} = "--link-static" ]; then
+        link_dynamic=false
+    fi
+    if [ ${!i} = "--link-dynamic" ]; then
+        link_dynamic=true
+    fi
 done
 
 is_installed_apt() {
@@ -70,15 +81,6 @@ is_installed_pacman() {
         return 0
     else
         return 1
-    fi
-}
-
-is_installed_yay() {
-    local pkg_name="$1"
-    if yay -Ss $pkg_name > /dev/null | grep -q 'instal'; then
-        return 1
-    else
-        return 0
     fi
 }
 
@@ -104,58 +106,25 @@ if command -v apt &> /dev/null; then
     if ! command -v cmake &> /dev/null || ! command -v git &> /dev/null || ! command -v curl &> /dev/null \
             || ! command -v pkg-config &> /dev/null || ! command -v g++ &> /dev/null \
             || ! command -v patchelf &> /dev/null; then
-        echo "------------------------"
-        echo "installing build essentials"
-        echo "------------------------"
         sudo apt install -y cmake git curl pkg-config build-essential patchelf
     fi
 
-    # Dependencies of sgl and the application.
-    if ! is_installed_apt "libglm-dev" || ! is_installed_apt "libsdl2-dev" || ! is_installed_apt "libsdl2-image-dev" \
-            || ! is_installed_apt "libpng-dev" || ! is_installed_apt "libboost-filesystem-dev" \
-            || ! is_installed_apt "libtinyxml2-dev" || ! is_installed_apt "libarchive-dev" \
-            || ! is_installed_apt "libglew-dev" || ! is_installed_apt "opencl-c-headers" \
-            || ! is_installed_apt "ocl-icd-opencl-dev" \
-            || ! is_installed_apt "libjsoncpp-dev" || ! is_installed_apt "nlohmann-json3-dev" \
-            || ! is_installed_apt "python3-dev" || ! is_installed_apt "python3-numpy" \
-            || ! is_installed_apt "libblosc-dev" || ! is_installed_apt "libnetcdf-dev" \
-            || ! is_installed_apt "libeccodes-dev" || ! is_installed_apt "libeccodes-tools" \
-            || ! is_installed_apt "libopenjp2-7-dev"; then
-        echo "------------------------"
-        echo "installing dependencies "
-        echo "------------------------"
-        sudo apt install -y libglm-dev libsdl2-dev libsdl2-image-dev libpng-dev libboost-filesystem-dev libtinyxml2-dev \
-        libarchive-dev libglew-dev opencl-c-headers ocl-icd-opencl-dev libjsoncpp-dev nlohmann-json3-dev python3-dev \
-        python3-numpy libnetcdf-dev libblosc-dev libeccodes-dev libeccodes-tools libopenjp2-7-dev
+    # Dependencies of vcpkg GLEW and SDL2[x11, wayland] ports.
+    if ! is_installed_apt "libxmu-dev" || ! is_installed_apt "libxi-dev" || ! is_installed_apt "libgl-dev"; then
+        sudo apt install libgl-dev libxmu-dev libxi-dev libx11-dev libxft-dev libxext-dev \
+        libwayland-dev libxkbcommon-dev libegl1-mesa-dev
     fi
 elif command -v pacman &> /dev/null; then
     if ! command -v cmake &> /dev/null || ! command -v git &> /dev/null || ! command -v curl &> /dev/null \
             || ! command -v pkg-config &> /dev/null || ! command -v g++ &> /dev/null \
             || ! command -v patchelf &> /dev/null; then
-        echo "------------------------"
-        echo "installing build essentials"
-        echo "------------------------"
         sudo pacman -S cmake git curl pkgconf base-devel patchelf
     fi
 
-    # Dependencies of sgl and the application.
-    if ! is_installed_pacman "boost" || ! is_installed_pacman "libarchive" \
-            || ! is_installed_pacman "glm" || ! is_installed_pacman "tinyxml2" \
-            || ! is_installed_pacman "sdl2" || ! is_installed_pacman "sdl2_image" \
-            || ! is_installed_pacman "glew" || ! is_installed_pacman "vulkan-devel" \
-            || ! is_installed_pacman "shaderc" || ! is_installed_pacman "opencl-headers" \
-            || ! is_installed_pacman "ocl-icd" \
-            || ! is_installed_pacman "python3" || ! is_installed_pacman "python-numpy" \
-            || ! is_installed_pacman "nlohmann-json" || ! is_installed_pacman "jsoncpp" \
-            || ! is_installed_pacman "blosc" || ! is_installed_pacman "netcdf"; then
-        echo "------------------------"
-        echo "installing dependencies "
-        echo "------------------------"
-        sudo pacman -S boost libarchive glm tinyxml2 sdl2 sdl2_image glew vulkan-devel shaderc opencl-headers ocl-icd \
-        python3 python-numpy nlohmann-json jsoncpp blosc netcdf
-    fi
-    if command -v yay &> /dev/null && ! is_installed_yay "eccodes"; then
-        yay -S eccodes
+    # Dependencies of vcpkg GLEW and Python ports.
+    if ! is_installed_pacman "libgl" || ! is_installed_pacman "vulkan-devel" || ! is_installed_pacman "shaderc" \
+            || ! is_installed_pacman "openssl"; then
+        sudo pacman -S libgl vulkan-devel shaderc openssl
     fi
 elif command -v yum &> /dev/null; then
     if ! command -v cmake &> /dev/null || ! command -v git &> /dev/null || ! command -v curl &> /dev/null \
@@ -167,23 +136,11 @@ elif command -v yum &> /dev/null; then
         sudo yum install -y cmake git curl pkgconf gcc gcc-c++ patchelf
     fi
 
-    # Dependencies of sgl and the application.
-    if ! is_installed_rpm "boost-devel" || ! is_installed_rpm "libarchive-devel" \
-            || ! is_installed_rpm "glm-devel" || ! is_installed_rpm "tinyxml2-devel" \
-            || ! is_installed_rpm "SDL2-devel" || ! is_installed_rpm "SDL2_image-devel" \
-            || ! is_installed_rpm "libpng-devel" || ! is_installed_rpm "glew-devel" \
-            || ! is_installed_rpm "vulkan-headers" || ! is_installed_rpm "libshaderc-devel" \
-            || ! is_installed_rpm "opencl-headers" || ! is_installed_rpm "ocl-icd" \
-            || ! is_installed_rpm "python3-devel" || ! is_installed_rpm "python3-numpy" \
-            || ! is_installed_rpm "json-devel" || ! is_installed_rpm "jsoncpp-devel" \
-            || ! is_installed_rpm "blosc-devel" || ! is_installed_rpm "netcdf-devel" \
-            || ! is_installed_rpm "eccodes-devel"; then
-        echo "------------------------"
-        echo "installing dependencies "
-        echo "------------------------"
-        sudo yum install -y boost-devel libarchive-devel glm-devel tinyxml2-devel SDL2-devel SDL2_image-devel \
-        libpng-devel glew-devel vulkan-headers libshaderc-devel opencl-headers ocl-icd python3-devel python3-numpy \
-        json-devel jsoncpp-devel blosc-devel netcdf-devel eccodes-devel
+    # Dependencies of vcpkg openssl, GLEW, SDL2 and python3 ports.
+    if ! is_installed_rpm "perl" || ! is_installed_rpm "libstdc++-devel" || ! is_installed_rpm "libstdc++-static" \
+            || ! is_installed_rpm "glew-devel" || ! is_installed_rpm "libXext-devel" \
+            || ! is_installed_rpm "vulkan-devel" || ! is_installed_rpm "libshaderc-devel"; then
+        sudo yum install -y perl libstdc++-devel libstdc++-static glew-devel vulkan-headers libshaderc-devel libXext-devel
     fi
 else
     echo "Warning: Unsupported system package manager detected." >&2
@@ -277,7 +234,24 @@ if [[ ! -v VULKAN_SDK ]]; then
     fi
 fi
 
+if [ ! -d "./vcpkg" ]; then
+    echo "------------------------"
+    echo "   fetching vcpkg       "
+    echo "------------------------"
+    if [[ ! -v VULKAN_SDK ]]; then
+        echo "The environment variable VULKAN_SDK is not set but is required in the installation process."
+        exit 1
+    fi
+    git clone --depth 1 https://github.com/Microsoft/vcpkg.git
+    vcpkg/bootstrap-vcpkg.sh -disableMetrics
+    vcpkg/vcpkg install
+fi
+
 params_sgl=()
+
+if [ $link_dynamic = false ]; then
+    params_sgl+=(-DBUILD_STATIC_LIBRARY=On)
+fi
 
 if $custom_glslang; then
     if [ ! -d "./glslang" ]; then
@@ -310,7 +284,7 @@ if [ ! -d "./sgl" ]; then
 fi
 
 if [ -f "./sgl/$build_dir/CMakeCache.txt" ]; then
-    if grep -q vcpkg_installed "./sgl/$build_dir/CMakeCache.txt"; then
+    if ! grep -q vcpkg_installed "./sgl/$build_dir/CMakeCache.txt"; then
         echo "Removing old sgl build cache..."
         if [ -d "./sgl/$build_dir_debug" ]; then
             rm -rf "./sgl/$build_dir_debug"
@@ -336,20 +310,30 @@ if [ ! -d "./sgl/install" ]; then
     pushd "$build_dir_debug" >/dev/null
     cmake .. \
          -DCMAKE_BUILD_TYPE=Debug \
+         -DCMAKE_TOOLCHAIN_FILE="../../vcpkg/scripts/buildsystems/vcpkg.cmake" \
          -DCMAKE_INSTALL_PREFIX="../install" \
-         "${params_sgl[@]}"
-    make -j $(nproc)
-    make install
+         -DUSE_STATIC_STD_LIBRARIES=On "${params_link[@]}" "${params_sgl[@]}"
     popd >/dev/null
 
     pushd $build_dir_release >/dev/null
     cmake .. \
         -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_TOOLCHAIN_FILE="../../vcpkg/scripts/buildsystems/vcpkg.cmake" \
         -DCMAKE_INSTALL_PREFIX="../install" \
-        "${params_sgl[@]}"
-    make -j $(nproc)
-    make install
+        -DUSE_STATIC_STD_LIBRARIES=On "${params_link[@]}" "${params_sgl[@]}"
     popd >/dev/null
+
+    cmake --build $build_dir_debug --parallel $(nproc)
+    cmake --build $build_dir_debug --target install
+    if [ $link_dynamic = true ]; then
+        cp $build_dir_debug/libsgld.so install/lib/libsgld.so
+    fi
+
+    cmake --build $build_dir_release --parallel $(nproc)
+    cmake --build $build_dir_release --target install
+    if [ $link_dynamic = true ]; then
+        cp $build_dir_release/libsgl.so install/lib/libsgl.so
+    fi
 
     popd >/dev/null
 fi
@@ -460,7 +444,7 @@ else
 fi
 
 if [ -f "./$build_dir/CMakeCache.txt" ]; then
-    if grep -q vcpkg_installed "./$build_dir/CMakeCache.txt"; then
+    if ! grep -q vcpkg_installed "./$build_dir/CMakeCache.txt"; then
         echo "Removing old application build cache..."
         if [ -d "./$build_dir_debug" ]; then
             rm -rf "./$build_dir_debug"
@@ -481,17 +465,18 @@ echo "      generating        "
 echo "------------------------"
 pushd $build_dir >/dev/null
 cmake .. \
-    -DCMAKE_BUILD_TYPE=$cmake_config \
-    -Dsgl_DIR="$PROJECTPATH/third_party/sgl/install/lib/cmake/sgl/" \
-    "${params[@]}"
+      -DCMAKE_TOOLCHAIN_FILE="$PROJECTPATH/third_party/vcpkg/scripts/buildsystems/vcpkg.cmake" \
+      -DPYTHONHOME="./python3" \
+      -DCMAKE_BUILD_TYPE=$cmake_config \
+      -Dsgl_DIR="$PROJECTPATH/third_party/sgl/install/lib/cmake/sgl/" \
+      -DUSE_STATIC_STD_LIBRARIES=On "${params_link[@]}" "${params[@]}"
+Python3_VERSION=$(cat pythonversion.txt)
 popd >/dev/null
 
 echo "------------------------"
 echo "      compiling         "
 echo "------------------------"
-pushd "$build_dir" >/dev/null
-make -j $(nproc)
-popd >/dev/null
+cmake --build $build_dir --parallel $(nproc)
 
 echo "------------------------"
 echo "   copying new files    "
@@ -507,7 +492,25 @@ library_blacklist=(
     "libOpenGL" "libGLdispatch" "libGL.so" "libGLX.so"
     "libwayland" "libffi." "libX" "libxcb" "libxkbcommon"
     "ld-linux" "libdl." "libutil." "libm." "libc." "libpthread." "libbsd." "librt."
+    # We build with libstdc++.so and libgcc_s.so statically. If we were to ship them, libraries opened with dlopen will
+    # use our, potentially older, versions. Then, we will get errors like "version `GLIBCXX_3.4.29' not found" when
+    # the Vulkan loader attempts to load a Vulkan driver that was built with a never version of libstdc++.so.
+    # I tried to solve this by using "patchelf --replace-needed" to directly link to the patch version of libstdc++.so,
+    # but that made no difference whatsoever for dlopen.
+    "libstdc++.so" "libgcc_s.so"
 )
+# Get name of libstdc++.so.* and path to it.
+#for library in $ldd_output
+#do
+#  if [[ $library != "/"* ]]; then
+#      continue
+#  fi
+#  if [[ "$(basename $library)" == "libstdc++.so"* ]]; then
+#      libstdcpp_so_path="$library"
+#      libstdcpp_so_filename_original="$(basename "$library")"
+#      libstdcpp_so_filename_resolved="$(basename "$(readlink -f "$library")")"
+#  fi
+#done
 for library in $ldd_output
 do
     if [[ $library != "/"* ]]; then
@@ -523,14 +526,33 @@ do
     if [ $is_blacklisted = true ]; then
         continue
     fi
-    # TODO: Add blacklist entries for pulseaudio and dependencies.
-    #cp "$library" "$destination_dir/bin"
-    #patchelf --set-rpath '$ORIGIN' "$destination_dir/bin/$(basename "$library")"
+    #if [[ "$(basename $library)" == "libstdc++.so"* ]]; then
+    #    cp "$(readlink -f "$library")" "$destination_dir/bin"
+    #    patchelf --set-rpath '$ORIGIN' "$destination_dir/bin/$(basename "$(readlink -f "$library")")"
+    #else
+    #    cp "$library" "$destination_dir/bin"
+    #    patchelf --replace-needed "$libstdcpp_so_filename_original" "$libstdcpp_so_filename_resolved" "$destination_dir/bin/$(basename "$library")"
+    #    patchelf --set-rpath '$ORIGIN' "$destination_dir/bin/$(basename "$library")"
+    #fi
+    cp "$library" "$destination_dir/bin"
+    patchelf --set-rpath '$ORIGIN' "$destination_dir/bin/$(basename "$library")"
 done
+#patchelf --replace-needed "$libstdcpp_so_filename_original" "$libstdcpp_so_filename_resolved" "$destination_dir/bin/Correrender"
 patchelf --set-rpath '$ORIGIN' "$destination_dir/bin/Correrender"
 
+# Install numpy if not done in a previous script run.
+python_lib_dir="vcpkg_installed/$(ls --ignore=vcpkg vcpkg_installed)/lib/$Python3_VERSION"
+if [ ! -d "$python_lib_dir/site-packages/numpy" ]; then
+    python_bin="vcpkg_installed/$(ls --ignore=vcpkg vcpkg_installed)/tools/python3/$Python3_VERSION"
+    "$python_bin" -m ensurepip --upgrade
+    "$python_bin" -m pip install -U numpy
+fi
+
 # Copy python3 to the destination directory.
-# TODO
+[ -d $destination_dir/bin/python3 ]     || mkdir $destination_dir/bin/python3
+[ -d $destination_dir/bin/python3/lib ] || mkdir $destination_dir/bin/python3/lib
+rsync -a "$python_lib_dir" $destination_dir/bin/python3/lib
+#rsync -a "$(eval echo "vcpkg_installed/$(ls --ignore=vcpkg vcpkg_installed)/lib/python*")" $destination_dir/python3/lib
 
 # Copy the docs to the destination directory.
 cp "README.md" "$destination_dir"
@@ -545,7 +567,7 @@ if [ ! -d "$destination_dir/docs" ]; then
 fi
 
 # Create a run script.
-printf "#!/bin/bash\npushd \"\$(dirname \"\$0\")/bin\" >/dev/null\n./Correrender\npopd\n" > "$destination_dir/run.sh"
+printf "#!/bin/bash\npushd \"\$(dirname \"\$0\")/bin\" >/dev/null\n./Correrender\npopd >/dev/null\n" > "$destination_dir/run.sh"
 chmod +x "$destination_dir/run.sh"
 
 
@@ -559,4 +581,5 @@ if [[ -z "${LD_LIBRARY_PATH+x}" ]]; then
 elif [[ ! "${LD_LIBRARY_PATH}" == *"${PROJECTPATH}/third_party/sgl/install/lib"* ]]; then
     export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:${PROJECTPATH}/third_party/sgl/install/lib"
 fi
+export PYTHONHOME="../Shipping/bin/python3"
 ./Correrender

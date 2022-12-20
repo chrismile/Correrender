@@ -415,15 +415,13 @@ float computeMutualInformationBinned(
     }
 
     // Compute the 2D joint histogram.
-    for (int idx0 = 0; idx0 < es; idx0++) {
-        Real val0 = referenceValues[idx0];
-        for (int idx1 = 0; idx1 < es; idx1++) {
-            Real val1 = queryValues[idx1];
-            if (!std::isnan(val0) && !std::isnan(val1)) {
-                int binIdx0 = std::clamp(int(val0 * Real(numBins)), 0, numBins - 1);
-                int binIdx1 = std::clamp(int(val1 * Real(numBins)), 0, numBins - 1);
-                histogram2d[binIdx0 * numBins + binIdx1] += 1;
-            }
+    for (int idx = 0; idx < es; idx++) {
+        Real val0 = referenceValues[idx];
+        Real val1 = queryValues[idx];
+        if (!std::isnan(val0) && !std::isnan(val1)) {
+            int binIdx0 = std::clamp(int(val0 * Real(numBins)), 0, numBins - 1);
+            int binIdx1 = std::clamp(int(val1 * Real(numBins)), 0, numBins - 1);
+            histogram2d[binIdx0 * numBins + binIdx1] += 1;
         }
     }
 

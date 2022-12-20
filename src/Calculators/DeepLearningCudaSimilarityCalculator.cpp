@@ -164,7 +164,7 @@ void DeepLearningCudaSimilarityCalculator::renderGuiImpl(sgl::PropertyEditor& pr
     std::string buttonText = "Open from Disk...";
     if (ImGui::Button(buttonText.c_str())) {
         if (fileDialogDirectory.empty() || !sgl::FileUtils::get()->directoryExists(fileDialogDirectory)) {
-            fileDialogDirectory = sgl::AppSettings::get()->getDataDirectory() + "tiny-cuda-nn/";
+            fileDialogDirectory = sgl::AppSettings::get()->getDataDirectory() + implName + "/";
             if (!sgl::FileUtils::get()->exists(fileDialogDirectory)) {
                 fileDialogDirectory = sgl::AppSettings::get()->getDataDirectory();
             }

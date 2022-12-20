@@ -214,25 +214,25 @@ void TinyCudaNNSimilarityCalculator::loadModelFromFile(const std::string& modelP
         return;
     }
 
-    // Set input/output layer configurations for both networks.
-    auto networkOpts = moduleWrapper->configEncoder.value("network", nlohmann::json::object());
-    // mlp_fused_forward needs multiple of 16 for number of input layers.
-    moduleWrapper->configEncoder["network"]["n_input_dims"] = 16;
-    moduleWrapper->configDecoder["network"]["n_output_dims"] = 1;
-    if (networkOpts.find("n_output_dims") == networkOpts.end()) {
-        moduleWrapper->configEncoder["network"]["n_output_dims"] = moduleWrapper->configEncoder["network"]["n_neurons"];
-        moduleWrapper->configDecoder["network"]["n_input_dims"] = moduleWrapper->configEncoder["network"]["n_neurons"];
-    }
-
     bool hasInputEncoding = moduleWrapper->configEncoder.find("encoding") != moduleWrapper->configEncoder.end();
     bool isInputEncodingIdentity = false;
     auto encodingOpts = moduleWrapper->configEncoder.value("encoding", nlohmann::json::object());
     if (hasInputEncoding) {
         if (encodingOpts.value("otype", "Identity") == "Identity"
-            && encodingOpts.value("scale", 1.0f) == 1.0f
-            && encodingOpts.value("offset", 0.0f) == 0.0f) {
+                && encodingOpts.value("scale", 1.0f) == 1.0f
+                && encodingOpts.value("offset", 0.0f) == 0.0f) {
             isInputEncodingIdentity = true;
         }
+    }
+
+    // Set input/output layer configurations for both networks.
+    auto networkOpts = moduleWrapper->configEncoder.value("network", nlohmann::json::object());
+    // mlp_fused_forward needs multiple of 16 for number of input layers.
+    moduleWrapper->configEncoder["network"]["n_input_dims"] = isInputEncodingIdentity ? 16 : 4;
+    moduleWrapper->configDecoder["network"]["n_output_dims"] = 1;
+    if (networkOpts.find("n_output_dims") == networkOpts.end()) {
+        moduleWrapper->configEncoder["network"]["n_output_dims"] = moduleWrapper->configEncoder["network"]["n_neurons"];
+        moduleWrapper->configDecoder["network"]["n_input_dims"] = moduleWrapper->configEncoder["network"]["n_neurons"];
     }
 
     auto itNetworkEncoder = archiveFiles.find("network_encoder.bin");
@@ -438,10 +438,10 @@ void TinyCudaNNSimilarityCalculator::runInferenceBatch(uint32_t batchOffset, uin
     std::cout << std::endl;
     delete[] dataHalf;*/
 
-    tcnn::FullyFusedMLP<precision_t, 128>* fmlp = (tcnn::FullyFusedMLP<precision_t, 128>*)moduleWrapper->networkEncoderHalf.get();
+    /*tcnn::FullyFusedMLP<precision_t, 128>* fmlp = (tcnn::FullyFusedMLP<precision_t, 128>*)moduleWrapper->networkEncoderHalf.get();
     const auto& tensor = fmlp->weight_matrix_at(tcnn::WeightUsage::Inference, 1);
 
-    /*sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemsetD16Async(
+    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemsetD16Async(
             (CUdeviceptr)tensor.data(), 0, 1, stream), "Error in cuMemsetD16Async: ");*/
 
     /*sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyAsync(
