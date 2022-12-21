@@ -65,6 +65,7 @@ typedef IGFD::FileDialog ImGuiFileDialog;
 
 class ViewManager;
 class VolumeLoader;
+class VolumeWriter;
 class Renderer;
 class Calculator;
 typedef std::shared_ptr<Calculator> CalculatorPtr;
@@ -149,6 +150,8 @@ public:
     virtual bool setInputFiles(
             const std::vector<std::string>& _filePaths, DataSetInformation _dataSetInformation,
             glm::mat4* transformationMatrixPtr);
+
+    virtual bool saveFieldToFile(const std::string& filePath, FieldType fieldType, int fieldIndex);
 
     /**
      * Only has to be called by the main thread once after loading is finished.
@@ -245,8 +248,12 @@ protected:
 
     // File loaders.
     VolumeLoader* createVolumeLoaderByExtension(const std::string& fileExtension);
-    std::map<std::string, std::function<VolumeLoader*()>> factories;
+    std::map<std::string, std::function<VolumeLoader*()>> factoriesLoader;
     std::vector<VolumeLoader*> volumeLoaders;
+
+    // File writers.
+    VolumeWriter* createVolumeWriterByExtension(const std::string& fileExtension);
+    std::map<std::string, std::function<VolumeWriter*()>> factoriesWriter;
 
     // Calculators for derived variables.
     void updateCalculatorName(const CalculatorPtr& calculator);

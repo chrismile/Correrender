@@ -120,7 +120,9 @@ void EnsembleSimilarityCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEd
 PccCalculator::PccCalculator(sgl::vk::Renderer* renderer) : EnsembleSimilarityCalculator(renderer) {
     pccComputePass = std::make_shared<PccComputePass>(renderer);
     pccComputePass->setCorrelationMeasureType(correlationMeasureType);
+    pccComputePass->setNumBins(numBins);
     pccComputePass->setKraskovNumNeighbors(k);
+    pccComputePass->setKraskovEstimatorIndex(kraskovEstimatorIndex);
 }
 
 void PccCalculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
@@ -140,25 +142,29 @@ void PccCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         hasNameChanged = true;
         dirty = true;
         pccComputePass->setCorrelationMeasureType(correlationMeasureType);
-        if (useGpu && (correlationMeasureType == CorrelationMeasureType::KENDALL
-                || correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED)) {
+        if (useGpu && (correlationMeasureType == CorrelationMeasureType::KENDALL)) {
             hasFilterDeviceChanged = true;
             useGpu = false;
         }
     }
-    if (correlationMeasureType != CorrelationMeasureType::KENDALL
-            && correlationMeasureType != CorrelationMeasureType::MUTUAL_INFORMATION_BINNED
-            && propertyEditor.addCheckbox("Use GPU", &useGpu)) {
+    if (correlationMeasureType != CorrelationMeasureType::KENDALL && propertyEditor.addCheckbox("Use GPU", &useGpu)) {
         hasFilterDeviceChanged = true;
         dirty = true;
     }
     if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED && propertyEditor.addSliderIntEdit(
-            "#Bins", &numBins, 2, 100) == ImGui::EditMode::INPUT_FINISHED) {
+            "#Bins", &numBins, 10, 100) == ImGui::EditMode::INPUT_FINISHED) {
+        pccComputePass->setNumBins(numBins);
         dirty = true;
     }
     if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV && propertyEditor.addSliderIntEdit(
             "#Neighbors", &k, 1, 20) == ImGui::EditMode::INPUT_FINISHED) {
         pccComputePass->setKraskovNumNeighbors(k);
+        dirty = true;
+    }
+    if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV && propertyEditor.addSliderIntEdit(
+            "Kraskov Estimator", &kraskovEstimatorIndex, 1, 2) == ImGui::EditMode::INPUT_FINISHED) {
+        kraskovEstimatorIndex = std::clamp(kraskovEstimatorIndex, 1, 2);
+        pccComputePass->setKraskovEstimatorIndex(kraskovEstimatorIndex);
         dirty = true;
     }
 
@@ -439,7 +445,7 @@ float computeMutualInformationBinned(
     }
 
     // Regularize.
-    const Real REG_FACTOR = 1e-7;
+    /*const Real REG_FACTOR = 1e-7;
     for (int binIdx0 = 0; binIdx0 < numBins; binIdx0++) {
         for (int binIdx1 = 0; binIdx1 < numBins; binIdx1++) {
             histogram2d[binIdx0 * numBins + binIdx1] += REG_FACTOR;
@@ -457,7 +463,7 @@ float computeMutualInformationBinned(
         for (int binIdx1 = 0; binIdx1 < numBins; binIdx1++) {
             histogram2d[binIdx0 * numBins + binIdx1] /= totalSum2d;
         }
-    }
+    }*/
 
     // Marginalization of joint distribution.
     for (int binIdx0 = 0; binIdx0 < numBins; binIdx0++) {
@@ -474,18 +480,25 @@ float computeMutualInformationBinned(
      * and the joint entropy $H(x, y) = -\sum_i \sum_j p_{xy}(i, j) \log p_{xy}(i, j)$
      * b) $MI = \sum_i \sum_j p_{xy}(i, j) \log \frac{p_{xy}(i, j)}{p_x(i) p_y(j)}$
      */
-    const Real EPSILON = Real(1) / Real(numBins * numBins) * 1e-3;
+    const Real EPSILON_1D = Real(0.5) / Real(es);
+    const Real EPSILON_2D = Real(0.5) / Real(es * es);
     Real mi = 0.0;
     for (int binIdx = 0; binIdx < numBins; binIdx++) {
         Real p_x = histogram0[binIdx];
         Real p_y = histogram1[binIdx];
-        mi -= p_x * std::log(std::max(p_x, EPSILON));
-        mi -= p_y * std::log(std::max(p_y, EPSILON));
+        if (p_x > EPSILON_1D) {
+            mi -= p_x * std::log(p_x);
+        }
+        if (p_y > EPSILON_1D) {
+            mi -= p_y * std::log(p_y);
+        }
     }
     for (int binIdx0 = 0; binIdx0 < numBins; binIdx0++) {
         for (int binIdx1 = 0; binIdx1 < numBins; binIdx1++) {
             Real p_xy = histogram2d[binIdx0 * numBins + binIdx1];
-            mi += p_xy * std::log(std::max(p_xy, EPSILON));
+            if (p_xy > EPSILON_2D) {
+                mi += p_xy * std::log(p_xy);
+            }
         }
     }
 
@@ -503,7 +516,7 @@ const double default_epsilon<double>::value = 1e-15;
 const float default_epsilon<float>::noise = 1e-5f;
 const double default_epsilon<double>::noise = 1e-10;
 
-template<class Real>
+template<class Real, bool includeCenter = true>
 Real averageDigamma(const float* values, int es, const std::vector<Real>& distanceVec, bool isRef) {
 #ifdef KRASKOV_USE_RANDOM_NOISE
     sgl::XorshiftRandomGenerator gen(isRef ? 617406168ul : 864730169ul);
@@ -563,7 +576,11 @@ Real averageDigamma(const float* values, int es, const std::vector<Real>& distan
         int endRange = upper - 1;
 
         int numPoints = endRange + 1 - startRange;
-        meanDigammaValue += factor * Real(boost::math::digamma(numPoints));
+        if constexpr(includeCenter) {
+            meanDigammaValue += factor * Real(boost::math::digamma(numPoints));
+        } else {
+            meanDigammaValue += factor * Real(boost::math::digamma(numPoints - 1));
+        }
     }
 #else
     sgl::KdTreed<Real, 1, sgl::DistanceMeasure::CHEBYSHEV> kdTree1d;
@@ -635,6 +652,58 @@ float computeMutualInformationKraskov(
     return float(mi);
 }
 
+/**
+ * Second estimator by Kraskov et al. (see above).
+ */
+template<class Real>
+float computeMutualInformationKraskov2(
+        const float* referenceValues, const float* queryValues, int k, int es) {
+    const int base = 2;
+
+#ifdef KRASKOV_USE_RANDOM_NOISE
+    sgl::XorshiftRandomGenerator genRef(617406168ul);
+    sgl::XorshiftRandomGenerator genQuery(864730169ul);
+#endif
+
+    sgl::KdTreed<Real, 2, sgl::DistanceMeasure::CHEBYSHEV> kdTree2d;
+    std::vector<glm::vec<2, Real>> points;
+    points.reserve(es);
+    for (int e = 0; e < es; e++) {
+#ifdef KRASKOV_USE_RANDOM_NOISE
+        points.emplace_back(
+                referenceValues[e] + genRef.getRandomFloatBetween(0.0f, 1.0f) * default_epsilon<Real>::noise,
+                queryValues[e] + genQuery.getRandomFloatBetween(0.0f, 1.0f) * default_epsilon<Real>::noise);
+#else
+        points.emplace_back(referenceValues[e], queryValues[e]);
+#endif
+    }
+    kdTree2d.build(points);
+
+    std::vector<Real> kthNeighborDistancesRef;
+    kthNeighborDistancesRef.reserve(es);
+    std::vector<Real> kthNeighborDistancesQuery;
+    kthNeighborDistancesQuery.reserve(es);
+    std::vector<Real> nearestNeighborDistances;
+    nearestNeighborDistances.reserve(k + 1);
+    std::vector<glm::vec<2, Real>> nearestNeighbors;
+    nearestNeighbors.reserve(k + 1);
+    for (int e = 0; e < es; e++) {
+        nearestNeighborDistances.clear();
+        kdTree2d.findKNearestNeighbors(points.at(e), k + 1, nearestNeighbors, nearestNeighborDistances);
+        kthNeighborDistancesRef.emplace_back(std::abs(points.at(e).x - nearestNeighbors.back().x));
+        kthNeighborDistancesQuery.emplace_back(std::abs(points.at(e).y - nearestNeighbors.back().y));
+    }
+
+    FLT_MAX;
+    auto a = averageDigamma<Real, false>(referenceValues, es, kthNeighborDistancesRef, true);
+    auto b = averageDigamma<Real, false>(queryValues, es, kthNeighborDistancesQuery, false);
+    auto c = Real(boost::math::digamma(k)) - Real(1) / Real(k);
+    auto d = Real(boost::math::digamma(es));
+
+    Real mi = (-a - b + c + d) / Real(std::log(base));
+    return float(mi);
+}
+
 void PccCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float* buffer) {
     int xs = volumeData->getGridSizeX();
     int ys = volumeData->getGridSizeY();
@@ -675,11 +744,7 @@ void PccCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float* buffer
         }
         for (int e = 0; e < es; e++) {
             referenceValues[e] = (referenceValues[e] - minEnsembleVal) / (maxEnsembleVal - minEnsembleVal);
-            float val0 = referenceValues[e];
-            int binIdx0 = std::clamp(int(val0 * float(numBins)), 0, numBins - 1);
-            std::cout << binIdx0 << ", ";
         }
-        std::cout << std::endl;
     }
 
 
@@ -938,8 +1003,14 @@ void PccCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float* buffer
                     continue;
                 }
 
-                float mutualInformation = computeMutualInformationKraskov<double>(
-                        referenceValues, gridPointValues, k, es);
+                float mutualInformation;
+                if (kraskovEstimatorIndex == 1) {
+                    mutualInformation = computeMutualInformationKraskov<double>(
+                            referenceValues, gridPointValues, k, es);
+                } else {
+                    mutualInformation = computeMutualInformationKraskov2<double>(
+                            referenceValues, gridPointValues, k, es);
+                }
                 buffer[gridPointIdx] = mutualInformation;
             }
             delete[] gridPointValues;
@@ -1012,6 +1083,21 @@ void PccCalculator::calculateDevice(int timeStepIdx, int ensembleIdx, const Devi
 
     pccComputePass->buildIfNecessary();
     pccComputePass->setReferencePoint(referencePointIndex);
+    if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
+        float minEnsembleVal = std::numeric_limits<float>::max();
+        float maxEnsembleVal = std::numeric_limits<float>::lowest();
+        if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
+            for (ensembleIdx = 0; ensembleIdx < es; ensembleIdx++) {
+                auto [minVal, maxVal] = volumeData->getMinMaxScalarFieldValue(
+                        scalarFieldNames.at(fieldIndexGui), timeStepIdx, ensembleIdx);
+                minEnsembleVal = std::min(minEnsembleVal, minVal);
+                maxEnsembleVal = std::max(maxEnsembleVal, maxVal);
+            }
+        }
+        renderer->pushConstants(
+                pccComputePass->getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, sizeof(glm::vec4),
+                glm::vec2(minEnsembleVal, maxEnsembleVal));
+    }
     pccComputePass->render();
 
 #ifdef TEST_INFERENCE_SPEED
@@ -1071,6 +1157,7 @@ void PccComputePass::setOutputImage(const sgl::vk::ImageViewPtr& _outputImage) {
 
 void PccComputePass::setReferencePoint(const glm::ivec3& referencePointIndex) {
     if (correlationMeasureType == CorrelationMeasureType::PEARSON
+            || correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED
             || correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV) {
         renderer->pushConstants(getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, 0, referencePointIndex);
     } else if (correlationMeasureType == CorrelationMeasureType::SPEARMAN) {
@@ -1088,11 +1175,26 @@ void PccComputePass::setCorrelationMeasureType(CorrelationMeasureType _correlati
     }
 }
 
+void PccComputePass::setNumBins(int _numBins) {
+    if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED && numBins != _numBins) {
+        setShaderDirty();
+    }
+    numBins = _numBins;
+}
+
 void PccComputePass::setKraskovNumNeighbors(int _k) {
     if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV && k != _k) {
         setShaderDirty();
     }
     k = _k;
+}
+
+void PccComputePass::setKraskovEstimatorIndex(int _kraskovEstimatorIndex) {
+    if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV
+            && kraskovEstimatorIndex != _kraskovEstimatorIndex) {
+        setShaderDirty();
+    }
+    kraskovEstimatorIndex = _kraskovEstimatorIndex;
 }
 
 void PccComputePass::loadShader() {
@@ -1103,19 +1205,24 @@ void PccComputePass::loadShader() {
     preprocessorDefines.insert(std::make_pair("BLOCK_SIZE_Z", std::to_string(computeBlockSizeZ)));
     preprocessorDefines.insert(std::make_pair(
             "ENSEMBLE_MEMBER_COUNT", std::to_string(volumeData->getEnsembleMemberCount())));
-    if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV) {
+    if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
+        preprocessorDefines.insert(std::make_pair("numBins", std::to_string(numBins)));
+    } else if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV) {
         auto maxBinaryTreeLevels = uint32_t(std::ceil(std::log2(volumeData->getEnsembleMemberCount() + 1)));
         preprocessorDefines.insert(std::make_pair(
                 "MAX_STACK_SIZE_BUILD", std::to_string(2 * maxBinaryTreeLevels)));
         preprocessorDefines.insert(std::make_pair(
                 "MAX_STACK_SIZE_KN", std::to_string(maxBinaryTreeLevels)));
         preprocessorDefines.insert(std::make_pair("k", std::to_string(k)));
+        preprocessorDefines.insert(std::make_pair("KRASKOV_ESTIMATOR_INDEX", std::to_string(kraskovEstimatorIndex)));
     }
     std::string shaderName;
     if (correlationMeasureType == CorrelationMeasureType::PEARSON) {
         shaderName = "PearsonCorrelation.Compute";
     } else if (correlationMeasureType == CorrelationMeasureType::SPEARMAN) {
         shaderName = "SpearmanRankCorrelation.Compute";
+    } else if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
+        shaderName = "MutualInformationBinned.Compute";
     } else if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV) {
         shaderName = "MutualInformationKraskov.Compute";
     }

@@ -818,6 +818,7 @@ void MainApp::renderGui() {
                     || boost::ends_with(filenameLower, ".am")
                     || boost::ends_with(filenameLower, ".bin")
                     || boost::ends_with(filenameLower, ".field")
+                    || boost::ends_with(filenameLower, ".cvol")
 #ifdef USE_ECCODES
                     || boost::ends_with(filenameLower, ".grib")
                     || boost::ends_with(filenameLower, ".grb")
@@ -831,6 +832,57 @@ void MainApp::renderGui() {
             } else {
                 sgl::Logfile::get()->writeError(
                         "The selected file name has an unknown extension \""
+                        + sgl::FileUtils::get()->getFileExtension(filenameLower) + "\".");
+            }
+        }
+        IGFD_CloseDialog(fileDialogInstance);
+    }
+
+    if (IGFD_DisplayDialog(
+            fileDialogInstance,
+            "ChooseExportFieldFile", ImGuiWindowFlags_NoCollapse,
+            sgl::ImGuiWrapper::get()->getScaleDependentSize(1000, 580),
+            ImVec2(FLT_MAX, FLT_MAX))) {
+        if (IGFD_IsOk(fileDialogInstance)) {
+            std::string filePathName = IGFD_GetFilePathName(fileDialogInstance);
+            std::string filePath = IGFD_GetCurrentPath(fileDialogInstance);
+            std::string filter = IGFD_GetCurrentFilter(fileDialogInstance);
+            std::string userDatas;
+            if (IGFD_GetUserDatas(fileDialogInstance)) {
+                userDatas = std::string((const char*)IGFD_GetUserDatas(fileDialogInstance));
+            }
+            auto selection = IGFD_GetSelection(fileDialogInstance);
+
+            const char* currentPath = IGFD_GetCurrentPath(fileDialogInstance);
+            std::string filename = currentPath;
+            if (!filename.empty() && filename.back() != '/' && filename.back() != '\\') {
+                filename += "/";
+            }
+            std::string currentFileName;
+            if (filter == ".*") {
+                currentFileName = IGFD_GetCurrentFileNameRaw(fileDialogInstance);
+            } else {
+                currentFileName = IGFD_GetCurrentFileName(fileDialogInstance);
+            }
+            if (selection.count != 0 && selection.table[0].fileName == currentFileName) {
+                filename += selection.table[0].fileName;
+            } else {
+                filename += currentFileName;
+            }
+            IGFD_Selection_DestroyContent(&selection);
+            if (currentPath) {
+                free((void*)currentPath);
+                currentPath = nullptr;
+            }
+
+            exportFieldFileDialogDirectory = sgl::FileUtils::get()->getPathToFile(filename);
+
+            std::string filenameLower = boost::to_lower_copy(filename);
+            if (boost::ends_with(filenameLower, ".nc") || boost::ends_with(filenameLower, ".cvol")) {
+                volumeData->saveFieldToFile(filename, FieldType::SCALAR, selectedFieldIndexExport);
+            } else {
+                sgl::Logfile::get()->writeError(
+                        "The selected file name has an unsupported extension \""
                         + sgl::FileUtils::get()->getFileExtension(filenameLower) + "\".");
             }
         }
@@ -1244,13 +1296,30 @@ void MainApp::openFileDialog() {
     IGFD_OpenModal(
             fileDialogInstance,
             "ChooseDataSetFile", "Choose a File",
-            ".*,.vtk,.vti,.vts,.nc,.zarr,.am,.bin,.field,.grib,.grb,.dat,.raw",
+            ".*,.vtk,.vti,.vts,.nc,.zarr,.am,.bin,.field,.cvol,.grib,.grb,.dat,.raw",
             fileDialogDirectory.c_str(),
+            "", 1, nullptr,
+            ImGuiFileDialogFlags_None);
+}
+
+void MainApp::openExportFieldFileDialog() {
+    if (exportFieldFileDialogDirectory.empty() || !sgl::FileUtils::get()->directoryExists(exportFieldFileDialogDirectory)) {
+        exportFieldFileDialogDirectory = sgl::AppSettings::get()->getDataDirectory() + "VolumeDataSets/";
+        if (!sgl::FileUtils::get()->exists(exportFieldFileDialogDirectory)) {
+            exportFieldFileDialogDirectory = sgl::AppSettings::get()->getDataDirectory();
+        }
+    }
+    IGFD_OpenModal(
+            fileDialogInstance,
+            "ChooseExportFieldFile", "Choose a File",
+            ".*,.nc,.cvol",
+            exportFieldFileDialogDirectory.c_str(),
             "", 1, nullptr,
             ImGuiFileDialogFlags_ConfirmOverwrite);
 }
 
 void MainApp::renderGuiMenuBar() {
+    bool openExportFieldDialog = false;
     if (ImGui::BeginMainMenuBar()) {
         if (ImGui::BeginMenu("File")) {
             if (ImGui::MenuItem("Open Dataset...", "CTRL+O")) {
@@ -1340,6 +1409,9 @@ void MainApp::renderGuiMenuBar() {
         }
 
         if (ImGui::BeginMenu("Tools")) {
+            if (volumeData && ImGui::MenuItem("Export Field...")) {
+                openExportFieldDialog = true;
+            }
             if (ImGui::MenuItem("Print Camera State")) {
                 std::cout << "Position: (" << camera->getPosition().x << ", " << camera->getPosition().y
                           << ", " << camera->getPosition().z << ")" << std::endl;
@@ -1370,6 +1442,25 @@ void MainApp::renderGuiMenuBar() {
         }*/
 
         ImGui::EndMainMenuBar();
+    }
+
+    if (openExportFieldDialog) {
+        ImGui::OpenPopup("Export Field");
+    }
+
+    if (ImGui::BeginPopupModal("Export Field", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        auto fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
+        ImGui::Combo("Field Name", &selectedFieldIndexExport, fieldNames.data(), int(fieldNames.size()));
+        if (ImGui::Button("OK", ImVec2(120, 0))) {
+            ImGui::CloseCurrentPopup();
+            openExportFieldFileDialog();
+        }
+        ImGui::SetItemDefaultFocus();
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel", ImVec2(120, 0))) {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
     }
 }
 
@@ -1766,6 +1857,7 @@ void MainApp::loadVolumeDataSet(const std::vector<std::string>& fileNames) {
         newDataLoaded = true;
         reRender = true;
         boundingBox = volumeData->getBoundingBoxRendering();
+        selectedFieldIndexExport = 0;
 
         std::string meshDescriptorName = fileNames.front();
         if (fileNames.size() > 1) {

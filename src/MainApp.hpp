@@ -130,6 +130,10 @@ private:
     ImGuiFileDialog* fileDialogInstance = nullptr;
     std::string fileDialogDirectory;
     std::vector<sgl::dialog::MsgBoxHandlePtr> nonBlockingMsgBoxHandles;
+    // For volume export dialog.
+    void openExportFieldFileDialog();
+    int selectedFieldIndexExport = 0;
+    std::string exportFieldFileDialogDirectory;
 
     // For making performance measurements.
     AutomaticPerformanceMeasurer* performanceMeasurer = nullptr;

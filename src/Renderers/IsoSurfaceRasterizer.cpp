@@ -41,7 +41,7 @@
 
 #include "Utils/Normalization.hpp"
 #include "Widgets/ViewManager.hpp"
-#include "Loaders/WriteMesh.hpp"
+#include "Export/WriteMesh.hpp"
 #include "Volume/VolumeData.hpp"
 #include "RenderingModes.hpp"
 #include "IsoSurfaceRasterizer.hpp"

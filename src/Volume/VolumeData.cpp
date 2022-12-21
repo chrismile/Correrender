@@ -56,6 +56,7 @@
 #include "Loaders/AmiraMeshLoader.hpp"
 #include "Loaders/DatRawFileLoader.hpp"
 #include "Loaders/FieldFileLoader.hpp"
+#include "Loaders/CvolLoader.hpp"
 #ifdef USE_ECCODES
 #include "Loaders/GribLoader.hpp"
 #endif
@@ -66,6 +67,10 @@
 #ifdef USE_ZARR
 #include "Loaders/ZarrLoader.hpp"
 #endif
+
+#include "Export/NetCdfWriter.hpp"
+#include "Export/CvolWriter.hpp"
+
 #include "Calculators/Calculator.hpp"
 #include "Calculators/VelocityCalculator.hpp"
 #include "Calculators/SimilarityCalculator.hpp"
@@ -88,10 +93,27 @@ static std::pair<std::vector<std::string>, std::function<VolumeLoader*()>> regis
 }
 
 VolumeLoader* VolumeData::createVolumeLoaderByExtension(const std::string& fileExtension) {
-    auto it = factories.find(fileExtension);
-    if (it == factories.end()) {
+    auto it = factoriesLoader.find(fileExtension);
+    if (it == factoriesLoader.end()) {
         sgl::Logfile::get()->throwError(
                 "Error in VolumeData::createVolumeLoaderByExtension: Unsupported file extension '."
+                + fileExtension + "'.");
+        return nullptr;
+    } else {
+        return it->second();
+    }
+}
+
+template <typename T>
+static std::pair<std::vector<std::string>, std::function<VolumeWriter*()>> registerVolumeWriter() {
+    return { T::getSupportedExtensions(), []() { return new T{}; }};
+}
+
+VolumeWriter* VolumeData::createVolumeWriterByExtension(const std::string& fileExtension) {
+    auto it = factoriesWriter.find(fileExtension);
+    if (it == factoriesWriter.end()) {
+        sgl::Logfile::get()->throwError(
+                "Error in VolumeData::createVolumeWriterByExtension: Unsupported file extension '."
                 + fileExtension + "'.");
         return nullptr;
     } else {
@@ -111,10 +133,11 @@ VolumeData::VolumeData(sgl::vk::Renderer* renderer) : renderer(renderer), multiV
     typeToFieldNamesMapBase.insert(std::make_pair(FieldType::VECTOR, std::vector<std::string>()));
 
     // Create the list of volume loaders.
-    std::map<std::vector<std::string>, std::function<VolumeLoader*()>> factoriesMap = {
+    std::map<std::vector<std::string>, std::function<VolumeLoader*()>> factoriesLoaderMap = {
             registerVolumeLoader<AmiraMeshLoader>(),
             registerVolumeLoader<DatRawFileLoader>(),
             registerVolumeLoader<FieldFileLoader>(),
+            registerVolumeLoader<CvolLoader>(),
 #ifdef USE_ECCODES
             registerVolumeLoader<GribLoader>(),
 #endif
@@ -126,9 +149,20 @@ VolumeData::VolumeData(sgl::vk::Renderer* renderer) : renderer(renderer), multiV
             registerVolumeLoader<ZarrLoader>(),
 #endif
     };
-    for (auto& factory : factoriesMap) {
+    for (auto& factory : factoriesLoaderMap) {
         for (const std::string& extension : factory.first) {
-            factories.insert(std::make_pair(extension, factory.second));
+            factoriesLoader.insert(std::make_pair(extension, factory.second));
+        }
+    }
+
+    // Create the list of volume writers.
+    std::map<std::vector<std::string>, std::function<VolumeWriter*()>> factoriesWriterMap = {
+            registerVolumeWriter<NetCdfWriter>(),
+            registerVolumeWriter<CvolWriter>(),
+    };
+    for (auto& factory : factoriesWriterMap) {
+        for (const std::string& extension : factory.first) {
+            factoriesWriter.insert(std::make_pair(extension, factory.second));
         }
     }
 
@@ -1088,4 +1122,23 @@ void VolumeData::updateCalculator(const CalculatorPtr& calculator) {
 
 void VolumeData::setFileDialogInstance(ImGuiFileDialog* _fileDialogInstance) {
     this->fileDialogInstance = _fileDialogInstance;
+}
+
+bool VolumeData::saveFieldToFile(const std::string& filePath, FieldType fieldType, int fieldIndex) {
+    std::string filenameLower = boost::to_lower_copy(filePath);
+    if (fieldType != FieldType::SCALAR) {
+        sgl::Logfile::get()->writeError(
+                "Error in VolumeData::saveFieldToFile: Currently, only the export of scalar fields is supported.");
+        return false;
+    }
+
+    auto fieldData = getFieldEntryCpu(fieldType, typeToFieldNamesMap[fieldType].at(fieldIndex));
+    std::string fileExtension = sgl::FileUtils::get()->getFileExtensionLower(filePath);
+    VolumeWriter* volumeWriter = createVolumeWriterByExtension(fileExtension);
+    volumeWriter->writeFieldToFile(
+            filePath, this, fieldType, typeToFieldNamesMap[fieldType].at(fieldIndex),
+            currentTimeStepIdx, currentEnsembleIdx);
+    delete volumeWriter;
+
+    return false;
 }

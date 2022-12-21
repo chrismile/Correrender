@@ -116,11 +116,11 @@ bool FieldFileLoader::setInputFiles(
             || (fileHeader.fieldType == 1 && numBytesData == gridNumCellsTotal * sizeof(uint16_t) * 4);
 
     std::unordered_map<FieldType, std::vector<std::string>> fieldNameMap;
-    fieldNameMap[FieldType::VECTOR].push_back("Velocity");
-    fieldNameMap[FieldType::VECTOR].push_back("Vorticity");
-    fieldNameMap[FieldType::SCALAR].push_back("Velocity Magnitude");
-    fieldNameMap[FieldType::SCALAR].push_back("Vorticity Magnitude");
-    fieldNameMap[FieldType::SCALAR].push_back("Helicity");
+    fieldNameMap[FieldType::VECTOR].emplace_back("Velocity");
+    fieldNameMap[FieldType::VECTOR].emplace_back("Vorticity");
+    fieldNameMap[FieldType::SCALAR].emplace_back("Velocity Magnitude");
+    fieldNameMap[FieldType::SCALAR].emplace_back("Vorticity Magnitude");
+    fieldNameMap[FieldType::SCALAR].emplace_back("Helicity");
     if (hasScalarAttributeField) {
         // Make an educated guess about the type of the attribute.
         if (filenameRawLower.find("borromean") != std::string::npos
