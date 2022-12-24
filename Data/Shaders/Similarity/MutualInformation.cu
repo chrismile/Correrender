@@ -186,5 +186,5 @@ template<class T> __global__ void combineDecoderOutput(
     float meanQuery = -logf(float(numChannels)) + logf(queryExpSum) + queryMax;
 
     //miValues[globalThreadIdx] = float(referenceDecoded[(readOffset + 0) * paddingFactor]);
-    miValues[globalThreadIdx] = meanReference - meanQuery;
+    miValues[globalThreadIdx] = fmaxf(meanReference - meanQuery, 0.0f);
 }

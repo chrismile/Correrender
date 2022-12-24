@@ -217,6 +217,7 @@ public:
      * @return True if a point on the mesh was hit.
      */
     bool pickPointScreen(SceneData* sceneData, int globalX, int globalY, glm::vec3& firstHit, glm::vec3& lastHit) const;
+    bool pickPointScreenAtZ(SceneData* sceneData, int globalX, int globalY, int z, glm::vec3& hit) const;
 
     /**
      * Picks a point on the simulation domain boundary mesh using screen coordinates
@@ -229,6 +230,8 @@ public:
      */
     bool pickPointWorld(
             const glm::vec3& cameraPosition, const glm::vec3& rayDirection, glm::vec3& firstHit, glm::vec3& lastHit) const;
+    bool pickPointWorldAtZ(
+            const glm::vec3& cameraPosition, const glm::vec3& rayDirection, int z, glm::vec3& hit) const;
 
 protected:
     /// Size in x, y, z, time and ensemble dimensions.
@@ -306,11 +309,15 @@ private:
     FieldAccess createFieldAccessStruct(
             FieldType fieldType, const std::string& fieldName, int& timeStepIdx, int& ensembleIdx) const;
 
+    static glm::vec3 screenPosToRayDir(SceneData* sceneData, int globalX, int globalY);
     static bool _rayBoxIntersection(
             const glm::vec3& rayOrigin, const glm::vec3& rayDirection, const glm::vec3& lower, const glm::vec3& upper,
             float& tNear, float& tFar);
     static bool _rayBoxPlaneIntersection(
             float rayOriginX, float rayDirectionX, float lowerX, float upperX, float& tNear, float& tFar);
+    static bool _rayZPlaneIntersection(
+            const glm::vec3& rayOrigin, const glm::vec3& rayDirection, float z, glm::vec2 lowerXY, glm::vec2 upperXY,
+            float& tHit);
 };
 
 typedef std::shared_ptr<VolumeData> VolumeDataPtr;

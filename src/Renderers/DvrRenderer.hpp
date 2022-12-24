@@ -39,6 +39,7 @@ public:
     explicit DvrRenderer(ViewManager* viewManager);
     ~DvrRenderer() override;
     void initialize() override;
+    [[nodiscard]] bool getIsOpaqueRenderer() const override { return false; }
     void setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) override;
     void onFieldRemoved(FieldType fieldType, int fieldIdx) override;
     void recreateSwapchainView(uint32_t viewIdx, uint32_t width, uint32_t height) override;

@@ -587,7 +587,18 @@ void MainApp::scheduleRecreateSceneFramebuffer() {
 void MainApp::addNewRenderer(RenderingMode renderingMode) {
     RendererPtr volumeRenderer;
     setRenderer(renderingMode, volumeRenderer);
-    volumeRenderers.push_back(volumeRenderer);
+
+    // Opaque surface renderers are always added before transparent renderers.
+    bool isOpaqueRenderer = renderingMode != RenderingMode::RENDERING_MODE_DIRECT_VOLUME_RENDERING;
+    if (isOpaqueRenderer) {
+        auto it = volumeRenderers.begin();
+        while (it != volumeRenderers.end() && it->get()->getIsOpaqueRenderer()) {
+            ++it;
+        }
+        volumeRenderers.insert(it, volumeRenderer);
+    } else {
+        volumeRenderers.push_back(volumeRenderer);
+    }
 }
 
 void MainApp::setRenderer(RenderingMode newRenderingMode, RendererPtr& newVolumeRenderer) {

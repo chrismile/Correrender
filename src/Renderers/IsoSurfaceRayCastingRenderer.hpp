@@ -47,6 +47,7 @@ public:
     explicit IsoSurfaceRayCastingRenderer(ViewManager* viewManager);
     ~IsoSurfaceRayCastingRenderer() override;
     void initialize() override;
+    [[nodiscard]] bool getIsOpaqueRenderer() const override { return isoSurfaceColor.a > 0.9999f; }
     void setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) override;
     void onFieldRemoved(FieldType fieldType, int fieldIdx) override;
     void recreateSwapchainView(uint32_t viewIdx, uint32_t width, uint32_t height) override;

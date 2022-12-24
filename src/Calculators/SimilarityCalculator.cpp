@@ -107,13 +107,30 @@ void EnsembleSimilarityCalculator::update(float dt) {
                     ImVec2 mousePosGlobal = ImGui::GetMousePos();
                     //int mouseGlobalX = sgl::Mouse->getX();
                     //int mouseGlobalY = sgl::Mouse->getY();
-                    bool rayHasHitMesh = volumeData->pickPointScreen(
-                            sceneData, int(mousePosGlobal.x), int(mousePosGlobal.y), firstHit, lastHit);
-                    if (rayHasHitMesh) {
-                        focusPoint = firstHit;
-                        hitLookingDirection = glm::normalize(firstHit - sceneData->camera->getPosition());
-                        hasHitInformation = true;
-                        setReferencePointFromFocusPoint();
+                    bool rayHasHitMesh;
+                    if (fixPickingZPlane) {
+                        glm::vec3 centerHit;
+                        rayHasHitMesh = volumeData->pickPointScreenAtZ(
+                                sceneData, int(mousePosGlobal.x), int(mousePosGlobal.y),
+                                volumeData->getGridSizeZ() / 2, centerHit);
+                        if (rayHasHitMesh) {
+                            auto aabb = volumeData->getBoundingBoxRendering();
+                            focusPoint = centerHit;
+                            firstHit = glm::vec3(centerHit.x, centerHit.y, aabb.max.z);
+                            lastHit = glm::vec3(centerHit.x, centerHit.y, aabb.min.z);
+                            hitLookingDirection = glm::vec3(0.0f, 0.0f, -glm::sign(sceneData->camera->getPosition().z));
+                            hasHitInformation = true;
+                            setReferencePointFromFocusPoint();
+                        }
+                    } else {
+                        rayHasHitMesh = volumeData->pickPointScreen(
+                                sceneData, int(mousePosGlobal.x), int(mousePosGlobal.y), firstHit, lastHit);
+                        if (rayHasHitMesh) {
+                            focusPoint = firstHit;
+                            hitLookingDirection = glm::normalize(firstHit - sceneData->camera->getPosition());
+                            hasHitInformation = true;
+                            setReferencePointFromFocusPoint();
+                        }
                     }
                 }
 
@@ -191,6 +208,8 @@ void EnsembleSimilarityCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEd
         referencePointSelectionRenderer->setReferencePosition(referencePointIndex);
         dirty = true;
     }
+
+    propertyEditor.addCheckbox("Fix Picking Z", &fixPickingZPlane);
 }
 
 
@@ -721,14 +740,13 @@ float computeMutualInformationKraskov(
         kthNeighborDistances.emplace_back(nearestNeighborDistances.back());
     }
 
-    FLT_MAX;
     auto a = averageDigamma<Real>(referenceValues, es, kthNeighborDistances, true);
     auto b = averageDigamma<Real>(queryValues, es, kthNeighborDistances, false);
     auto c = Real(boost::math::digamma(k));
     auto d = Real(boost::math::digamma(es));
 
     Real mi = (-a - b + c + d) / Real(std::log(base));
-    return float(mi);
+    return std::max(float(mi), 0.0f);
 }
 
 /**
@@ -773,14 +791,13 @@ float computeMutualInformationKraskov2(
         kthNeighborDistancesQuery.emplace_back(std::abs(points.at(e).y - nearestNeighbors.back().y));
     }
 
-    FLT_MAX;
     auto a = averageDigamma<Real, false>(referenceValues, es, kthNeighborDistancesRef, true);
     auto b = averageDigamma<Real, false>(queryValues, es, kthNeighborDistancesQuery, false);
     auto c = Real(boost::math::digamma(k)) - Real(1) / Real(k);
     auto d = Real(boost::math::digamma(es));
 
     Real mi = (-a - b + c + d) / Real(std::log(base));
-    return float(mi);
+    return std::max(float(mi), 0.0f);
 }
 
 void PccCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float* buffer) {

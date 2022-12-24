@@ -531,5 +531,5 @@ void main() {
     //    debugPrintfEXT("mi %f", mi);
     //}
 
-    imageStore(outputImage, currentPointIdx, vec4(isnan(nanValue) ? nanValue : mi));
+    imageStore(outputImage, currentPointIdx, vec4(isnan(nanValue) ? nanValue : max(mi, 0.0)));
 }

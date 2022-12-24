@@ -65,6 +65,7 @@ protected:
 
     // Focus point picking/moving information.
     void setReferencePointFromFocusPoint();
+    bool fixPickingZPlane = true;
     bool hasHitInformation = false;
     glm::vec3 focusPoint;
     glm::vec3 firstHit, lastHit;

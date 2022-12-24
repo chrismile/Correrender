@@ -1404,8 +1404,7 @@ bool VolumeData::saveFieldToFile(const std::string& filePath, FieldType fieldTyp
     return false;
 }
 
-bool VolumeData::pickPointScreen(
-        SceneData* sceneData, int globalX, int globalY, glm::vec3& firstHit, glm::vec3& lastHit) const {
+glm::vec3 VolumeData::screenPosToRayDir(SceneData* sceneData, int globalX, int globalY) {
     sgl::CameraPtr camera = sceneData->camera;
     uint32_t viewportWidth = *sceneData->viewportWidth;
     uint32_t viewportHeight = *sceneData->viewportHeight;
@@ -1419,8 +1418,19 @@ bool VolumeData::pickPointScreen(
     rayDirCameraSpace.y = (2.0f * (float(viewportHeight - y - 1) + 0.5f) / float(viewportHeight) - 1.0f) * scale;
     glm::vec4 rayDirectionVec4 = inverseViewMatrix * glm::vec4(rayDirCameraSpace, -1.0, 0.0);
     glm::vec3 rayDirection = normalize(glm::vec3(rayDirectionVec4.x, rayDirectionVec4.y, rayDirectionVec4.z));
+    return rayDirection;
+}
 
-    return pickPointWorld(camera->getPosition(), rayDirection, firstHit, lastHit);
+bool VolumeData::pickPointScreen(
+        SceneData* sceneData, int globalX, int globalY, glm::vec3& firstHit, glm::vec3& lastHit) const {
+    glm::vec3 rayDirection = screenPosToRayDir(sceneData, globalX, globalY);
+    return pickPointWorld(sceneData->camera->getPosition(), rayDirection, firstHit, lastHit);
+}
+
+bool VolumeData::pickPointScreenAtZ(
+        SceneData* sceneData, int globalX, int globalY, int z, glm::vec3& hit) const {
+    glm::vec3 rayDirection = screenPosToRayDir(sceneData, globalX, globalY);
+    return pickPointWorldAtZ(sceneData->camera->getPosition(), rayDirection, z, hit);
 }
 
 bool VolumeData::pickPointWorld(
@@ -1435,13 +1445,29 @@ bool VolumeData::pickPointWorld(
     return false;
 }
 
+bool VolumeData::pickPointWorldAtZ(
+        const glm::vec3& cameraPosition, const glm::vec3& rayDirection, int z, glm::vec3& hit) const {
+    glm::vec3 rayOrigin = cameraPosition;
+    float tHit;
+    if (_rayZPlaneIntersection(
+            rayOrigin, rayDirection,
+            float(z) / float(zs - 1) * (boxRendering.max.z - boxRendering.min.z) + boxRendering.min.z,
+            glm::vec2(boxRendering.min.x, boxRendering.min.y),
+            glm::vec2(boxRendering.max.x, boxRendering.max.y),
+            tHit)) {
+        hit = rayOrigin + tHit * rayDirection;
+        return true;
+    }
+    return false;
+}
+
 /**
  * Helper function for StreamlineTracingGrid::rayBoxIntersection (see below).
  */
 bool VolumeData::_rayBoxPlaneIntersection(
         float rayOriginX, float rayDirectionX, float lowerX, float upperX, float& tNear, float& tFar) {
     if (std::abs(rayDirectionX) < 0.00001f) {
-        // Ray is parallel to the x planes
+        // Ray is parallel to the x planes.
         if (rayOriginX < lowerX || rayOriginX > upperX) {
             return false;
         }
@@ -1450,26 +1476,26 @@ bool VolumeData::_rayBoxPlaneIntersection(
         float t0 = (lowerX - rayOriginX) / rayDirectionX;
         float t1 = (upperX - rayOriginX) / rayDirectionX;
         if (t0 > t1) {
-            // Since t0 intersection with near plane
+            // Since t0 intersection with near plane.
             float tmp = t0;
             t0 = t1;
             t1 = tmp;
         }
 
         if (t0 > tNear) {
-            // We want the largest tNear
+            // We want the largest tNear.
             tNear = t0;
         }
         if (t1 < tFar) {
-            // We want the smallest tFar
+            // We want the smallest tFar.
             tFar = t1;
         }
         if (tNear > tFar) {
-            // Box is missed
+            // Box is missed.
             return false;
         }
         if (tFar < 0) {
-            // Box is behind ray
+            // Box is behind ray.
             return false;
         }
     }
@@ -1496,5 +1522,21 @@ bool VolumeData::_rayBoxIntersection(
         }
     }
 
+    return true;
+}
+
+bool VolumeData::_rayZPlaneIntersection(
+        const glm::vec3& rayOrigin, const glm::vec3& rayDirection, float z, glm::vec2 lowerXY, glm::vec2 upperXY,
+        float& tHit) {
+    if (std::abs(rayDirection.z) < 1e-5f) {
+        // Plane and ray are parallel.
+        return false;
+    } else {
+        tHit = (z - rayOrigin.z) / rayDirection.z;
+        glm::vec3 hitPos = rayOrigin + tHit * rayDirection;
+        if (hitPos.x >= lowerXY.x && hitPos.y >= lowerXY.y && hitPos.x <= upperXY.x && hitPos.y <= upperXY.y) {
+            return true;
+        }
+    }
     return true;
 }
