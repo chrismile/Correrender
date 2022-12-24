@@ -36,6 +36,14 @@
 #include "Volume/VolumeData.hpp"
 #include "VelocityCalculator.hpp"
 
+VelocityCalculator::VelocityCalculator(sgl::vk::Renderer* renderer) : Calculator(renderer) {
+}
+
+void VelocityCalculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
+    Calculator::setVolumeData(_volumeData, isNewData);
+    calculatorConstructorUseCount = volumeData->getNewCalculatorUseCount(CalculatorType::VELOCITY);
+}
+
 void VelocityCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float* buffer) {
     bool uLowerCaseVariableExists = volumeData->getFieldExists(FieldType::SCALAR, "u");
     bool vLowerCaseVariableExists = volumeData->getFieldExists(FieldType::SCALAR, "v");
@@ -92,12 +100,30 @@ void VelocityCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float* b
 #endif
 }
 
+VectorMagnitudeCalculator::VectorMagnitudeCalculator(sgl::vk::Renderer* renderer, const std::string& vectorFieldName)
+        : Calculator(renderer), vectorFieldName(vectorFieldName),
+          magnitudeFieldName(vectorFieldName + " Magnitude") {
+}
+
+void VectorMagnitudeCalculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
+    Calculator::setVolumeData(_volumeData, isNewData);
+    calculatorConstructorUseCount = volumeData->getNewCalculatorUseCount(CalculatorType::VECTOR_MAGNITUDE);
+}
+
 void VectorMagnitudeCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float* buffer) {
     VolumeData::HostCacheEntry entryVectorField = volumeData->getFieldEntryCpu(
             FieldType::VECTOR, vectorFieldName, timeStepIdx, ensembleIdx);
     computeVectorMagnitudeField(
             entryVectorField.get(), buffer,
             volumeData->getGridSizeX(), volumeData->getGridSizeY(), volumeData->getGridSizeZ());
+}
+
+VorticityCalculator::VorticityCalculator(sgl::vk::Renderer* renderer) : Calculator(renderer) {
+}
+
+void VorticityCalculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
+    Calculator::setVolumeData(_volumeData, isNewData);
+    calculatorConstructorUseCount = volumeData->getNewCalculatorUseCount(CalculatorType::VORTICITY);
 }
 
 void VorticityCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float* buffer) {
@@ -107,6 +133,14 @@ void VorticityCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float* 
             entryVelocity.get(), buffer,
             volumeData->getGridSizeX(), volumeData->getGridSizeY(), volumeData->getGridSizeZ(),
             volumeData->getDx(), volumeData->getDy(), volumeData->getDz());
+}
+
+HelicityCalculator::HelicityCalculator(sgl::vk::Renderer* renderer) : Calculator(renderer) {
+}
+
+void HelicityCalculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
+    Calculator::setVolumeData(_volumeData, isNewData);
+    calculatorConstructorUseCount = volumeData->getNewCalculatorUseCount(CalculatorType::HELICITY);
 }
 
 void HelicityCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float* buffer) {

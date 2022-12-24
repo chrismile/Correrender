@@ -108,6 +108,8 @@ private:
     bool isFirstFrame = true;
 
     /// Scene data (e.g., camera, main framebuffer, ...).
+    int32_t viewportPositionX = 0;
+    int32_t viewportPositionY = 0;
     uint32_t viewportWidth = 0;
     uint32_t viewportHeight = 0;
     SceneData sceneData;

@@ -63,12 +63,14 @@ class FileDialog;
 }
 typedef IGFD::FileDialog ImGuiFileDialog;
 
+class SceneData;
 class ViewManager;
 class VolumeLoader;
 class VolumeWriter;
 class Renderer;
 class Calculator;
 typedef std::shared_ptr<Calculator> CalculatorPtr;
+enum class CalculatorType : uint32_t;
 
 class VolumeData {
 public:
@@ -91,6 +93,7 @@ public:
      */
     void renderGui(sgl::PropertyEditor& propertyEditor);
     void renderGuiCalculators(sgl::PropertyEditor& propertyEditor);
+    void renderGuiNewCalculators();
     void renderViewCalculator(uint32_t viewIdx);
     /**
      * For rendering secondary ImGui windows (e.g., for transfer function widgets).
@@ -191,11 +194,41 @@ public:
     void onTransferFunctionMapRebuilt();
     void acquireScalarField(Renderer* renderer, int varIdx);
     void releaseScalarField(Renderer* renderer, int varIdx);
+    void acquireScalarField(Calculator* calculator, int varIdx);
+    void releaseScalarField(Calculator* calculator, int varIdx);
+    bool getIsScalarFieldUsedInView(uint32_t viewIdx, uint32_t varIdx, Calculator* calculator = nullptr);
+    uint32_t getVarIdxForCalculator(Calculator* calculator);
 
     /// Sets data bindings used across renderers.
     virtual void setRenderDataBindings(const sgl::vk::RenderDataPtr& renderData);
     virtual void getPreprocessorDefines(std::map<std::string, std::string>& preprocessorDefines);
     [[nodiscard]] inline const sgl::vk::ImageSamplerPtr& getImageSampler() const { return imageSampler; }
+
+    // Tracks use count of calculator classes.
+    size_t getNewCalculatorUseCount(CalculatorType calculatorType);
+
+    /**
+     * Picks a point on the simulation domain boundary mesh using screen coordinates
+     * (assuming origin at upper left corner of viewport).
+     * @param globalX The x position on the screen (usually the mouse position).
+     * @param globalY The y position on the screen (usually the mouse position).
+     * @param firstHit The first hit point on the boundary mesh (closest to the camera) is stored in this variable.
+     * @param lastHit The last hit point on the boundary mesh (furthest away from the camera) is stored in this variable.
+     * @return True if a point on the mesh was hit.
+     */
+    bool pickPointScreen(SceneData* sceneData, int globalX, int globalY, glm::vec3& firstHit, glm::vec3& lastHit) const;
+
+    /**
+     * Picks a point on the simulation domain boundary mesh using screen coordinates
+     * (assuming origin at upper left corner of viewport).
+     * @param globalX The x position on the screen (usually the mouse position).
+     * @param globalY The y position on the screen (usually the mouse position).
+     * @param firstHit The first hit point on the boundary mesh (closest to the camera) is stored in this variable.
+     * @param lastHit The last hit point on the boundary mesh (furthest away from the camera) is stored in this variable.
+     * @return True if a point on the mesh was hit.
+     */
+    bool pickPointWorld(
+            const glm::vec3& cameraPosition, const glm::vec3& rayDirection, glm::vec3& firstHit, glm::vec3& lastHit) const;
 
 protected:
     /// Size in x, y, z, time and ensemble dimensions.
@@ -243,8 +276,9 @@ protected:
      * Keep track of which scalar fields are used in which view to only display auxiliary calculator renderers
      * if they are used.
      */
-    bool getIsScalarFieldUsedInView(uint32_t viewIdx, uint32_t varIdx);
     std::unordered_multimap<int, Renderer*> scalarFieldToRendererMap;
+    std::unordered_multimap<Calculator*, Calculator*> calculatorUseMapRefToParent;
+    std::unordered_multimap<Calculator*, Calculator*> calculatorUseMapParentToRef;
 
     // File loaders.
     VolumeLoader* createVolumeLoaderByExtension(const std::string& fileExtension);
@@ -259,15 +293,24 @@ protected:
     void updateCalculatorName(const CalculatorPtr& calculator);
     void updateCalculatorFilterDevice(const CalculatorPtr& calculator);
     void updateCalculator(const CalculatorPtr& calculator);
+    void removeCalculator(const CalculatorPtr& calculator, int calculatorIdx);
     std::vector<CalculatorPtr> calculators;
     std::unordered_map<std::string, CalculatorPtr> calculatorsHost;
     std::unordered_map<std::string, CalculatorPtr> calculatorsDevice;
     size_t calculatorId = 0;
     sgl::vk::BufferPtr stagingBuffer; ///< For transferring calculator output from the GPU to the CPU.
+    std::map<std::string, std::function<Calculator*()>> factoriesCalculator;
+    std::unordered_map<CalculatorType, size_t> calculatorTypeUseCounts;
 
 private:
     FieldAccess createFieldAccessStruct(
             FieldType fieldType, const std::string& fieldName, int& timeStepIdx, int& ensembleIdx) const;
+
+    static bool _rayBoxIntersection(
+            const glm::vec3& rayOrigin, const glm::vec3& rayDirection, const glm::vec3& lower, const glm::vec3& upper,
+            float& tNear, float& tFar);
+    static bool _rayBoxPlaneIntersection(
+            float rayOriginX, float rayDirectionX, float lowerX, float upperX, float& tNear, float& tFar);
 };
 
 typedef std::shared_ptr<VolumeData> VolumeDataPtr;

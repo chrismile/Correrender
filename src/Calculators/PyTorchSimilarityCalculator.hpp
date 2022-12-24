@@ -81,7 +81,13 @@ public:
     explicit PyTorchSimilarityCalculator(sgl::vk::Renderer* renderer);
     ~PyTorchSimilarityCalculator() override;
     void setVolumeData(VolumeData* _volumeData, bool isNewData) override;
-    std::string getOutputFieldName() override { return "Similarity Metric (Torch)"; }
+    std::string getOutputFieldName() override {
+        std::string outputFieldName = "Similarity Torch";
+        if (calculatorConstructorUseCount > 1) {
+            outputFieldName += " (" + std::to_string(calculatorConstructorUseCount) + ")";
+        }
+        return outputFieldName;
+    }
     FilterDevice getFilterDevice() override;
     void calculateCpu(int timeStepIdx, int ensembleIdx, float* buffer) override;
     void calculateDevice(int timeStepIdx, int ensembleIdx, const DeviceCacheEntry& deviceCacheEntry) override;

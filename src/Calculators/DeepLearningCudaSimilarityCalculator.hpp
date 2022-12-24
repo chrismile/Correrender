@@ -44,7 +44,13 @@ public:
             const std::string& implName, const std::string& implNameKey, sgl::vk::Renderer* renderer);
     void initialize() override;
     ~DeepLearningCudaSimilarityCalculator() override;
-    std::string getOutputFieldName() override { return "Similarity Metric (" + implName + ")"; }
+    std::string getOutputFieldName() override {
+        std::string outputFieldName = "Similarity " + implName;
+        if (calculatorConstructorUseCount > 1) {
+            outputFieldName += " (" + std::to_string(calculatorConstructorUseCount) + ")";
+        }
+        return outputFieldName;
+    }
     FilterDevice getFilterDevice() override { return FilterDevice::CUDA; }
     void calculateDevice(int timeStepIdx, int ensembleIdx, const DeviceCacheEntry& deviceCacheEntry) override;
 

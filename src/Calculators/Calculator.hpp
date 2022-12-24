@@ -54,12 +54,16 @@ typedef std::shared_ptr<Renderer> RendererPtr;
 class DeviceCacheEntryType;
 typedef std::shared_ptr<DeviceCacheEntryType> DeviceCacheEntry;
 
+enum class CalculatorType : uint32_t {
+    VELOCITY, VECTOR_MAGNITUDE, VORTICITY, HELICITY, BINARY_OPERATOR, CORRELATION, TORCH, TINY_CUDA_NN, QUICK_MLP
+};
+
 enum class FilterDevice {
     CPU, VULKAN, CUDA
 };
 
 /**
- * Derives new fields from existing fields. Called 'Calculator', e.g., in ParaView.
+ * Derives new fields from existing fields.
  */
 class Calculator {
 public:
@@ -67,11 +71,16 @@ public:
     virtual ~Calculator() = default;
     virtual void initialize() {}
     inline void setCalculatorId(size_t _calculatorId) { calculatorId = _calculatorId; }
+    [[nodiscard]] inline size_t getCalculatorId() const { return calculatorId; }
     virtual void setViewManager(ViewManager* _viewManager) {}
     virtual void setVolumeData(VolumeData* _volumeData, bool isNewData);
+    virtual void onFieldRemoved(FieldType fieldType, int fieldIdx) {}
+    void setIsDirty() { dirty = true; }
     bool getIsDirty();
+    bool getIsDirtyDontReset();
     bool getHasNameChanged();
     bool getHasFilterDeviceChanged();
+    bool getShallRemoveCalculator();
     virtual void update(float dt) {}
     void renderGui(sgl::PropertyEditor& propertyEditor);
     virtual RendererPtr getCalculatorRenderer() { return {}; }
@@ -96,8 +105,10 @@ protected:
     bool dirty = false; ///< Recompute the data?
     bool hasNameChanged = false;
     bool hasFilterDeviceChanged = false;
+    bool shallRemoveCalculator = false;
     ImGuiFileDialog* fileDialogInstance = nullptr;
     size_t calculatorId = 0;
+    size_t calculatorConstructorUseCount = 0;
 };
 
 typedef std::shared_ptr<Calculator> CalculatorPtr;

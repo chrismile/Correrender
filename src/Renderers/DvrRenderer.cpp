@@ -56,10 +56,10 @@ void DvrRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) {
         volumeData->releaseTf(this, oldSelectedFieldIdx);
         volumeData->releaseScalarField(this, oldSelectedFieldIdx);
     }
+    const std::vector<std::string>& fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
     if (isNewData) {
         selectedFieldIdx = 0;
     }
-    const std::vector<std::string>& fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
     selectedScalarFieldName = fieldNames.at(selectedFieldIdx);
     volumeData->acquireTf(this, selectedFieldIdx);
     volumeData->acquireScalarField(this, selectedFieldIdx);
@@ -69,6 +69,22 @@ void DvrRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) {
         dvrPass->setVolumeData(volumeData, isNewData);
         dvrPass->setSelectedScalarField(selectedFieldIdx, selectedScalarFieldName);
         dvrPass->setStepSize(stepSize);
+    }
+}
+
+void DvrRenderer::onFieldRemoved(FieldType fieldType, int fieldIdx) {
+    if (fieldType == FieldType::SCALAR) {
+        if (selectedFieldIdx == fieldIdx) {
+            selectedFieldIdx = 0;
+        } else if (selectedFieldIdx > fieldIdx) {
+            selectedFieldIdx--;
+        }
+        if (oldSelectedFieldIdx == fieldIdx) {
+            oldSelectedFieldIdx = -1;
+            selectedScalarFieldName.clear();
+        } else if (oldSelectedFieldIdx > fieldIdx) {
+            oldSelectedFieldIdx--;
+        }
     }
 }
 
@@ -99,7 +115,9 @@ void DvrRenderer::removeViewImpl(uint32_t viewIdx) {
 void DvrRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
     if (volumeData) {
         const std::vector<std::string>& fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
-        if (propertyEditor.addCombo("Scalar Field", &selectedFieldIdx, fieldNames.data(), int(fieldNames.size()))) {
+        int selectedFieldIdxGui = selectedFieldIdx;
+        if (propertyEditor.addCombo("Scalar Field", &selectedFieldIdxGui, fieldNames.data(), int(fieldNames.size()))) {
+            selectedFieldIdx = selectedFieldIdxGui;
             selectedScalarFieldName = fieldNames.at(selectedFieldIdx);
             for (auto& dvrPass : dvrPasses) {
                 dvrPass->setSelectedScalarField(selectedFieldIdx, selectedScalarFieldName);
@@ -222,6 +240,11 @@ void DvrPass::_render() {
     sceneData->switchColorState(RenderTargetAccess::COMPUTE);
     if (sceneData->useDepthBuffer) {
         sceneData->switchDepthState(RenderTargetAccess::COMPUTE);
+    }
+
+    auto scalarField = computeData->getImageView("scalarField")->getImage();
+    if (scalarField->getVkImageLayout() != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+        scalarField->transitionImageLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, renderer->getVkCommandBuffer());
     }
 
     int width = int(sceneImageView->getImage()->getImageSettings().width);

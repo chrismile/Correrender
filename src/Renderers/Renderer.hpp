@@ -52,6 +52,7 @@ typedef IGFD::FileDialog ImGuiFileDialog;
 class ViewManager;
 class VolumeData;
 typedef std::shared_ptr<VolumeData> VolumeDataPtr;
+enum class FieldType : uint32_t;
 
 // How should NaN values be handled in the transfer function?
 enum class NaNHandling {
@@ -93,6 +94,7 @@ public:
     virtual void onTransferFunctionMapRebuilt() {}
 
     virtual void setVolumeData(VolumeDataPtr& volumeData, bool isNewData) = 0;
+    virtual void onFieldRemoved(FieldType fieldType, int fieldIdx) {}
 
     bool isVisibleInView(uint32_t viewIdx);
     virtual void renderView(uint32_t viewIdx) final;

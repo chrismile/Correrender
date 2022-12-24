@@ -127,6 +127,8 @@ PyTorchSimilarityCalculator::PyTorchSimilarityCalculator(sgl::vk::Renderer* rend
 }
 
 PyTorchSimilarityCalculator::~PyTorchSimilarityCalculator() {
+    calculatorConstructorUseCount = volumeData->getNewCalculatorUseCount(CalculatorType::TORCH);
+
     sgl::AppSettings::get()->getSettings().addKeyValue(
             "pyTorchSimilarityCalculatorModelFilePathEncoder", modelFilePathEncoder);
     sgl::AppSettings::get()->getSettings().addKeyValue(

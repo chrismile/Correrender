@@ -42,6 +42,7 @@ public:
     explicit EnsembleSimilarityCalculator(sgl::vk::Renderer* renderer);
     void setViewManager(ViewManager* _viewManager) override;
     void setVolumeData(VolumeData* _volumeData, bool isNewData) override;
+    void onFieldRemoved(FieldType fieldType, int fieldIdx) override;
     [[nodiscard]] virtual bool getIsRealtime() const { return false; }
     [[nodiscard]] bool getShouldRenderGui() const override { return true; }
     FieldType getOutputFieldType() override { return FieldType::SCALAR; }
@@ -53,14 +54,21 @@ public:
 protected:
     void renderGuiImpl(sgl::PropertyEditor& propertyEditor) override;
 
-    ViewManager* viewManager;
+    ViewManager* viewManager = nullptr;
     std::vector<std::string> scalarFieldNames;
     std::vector<size_t> scalarFieldIndexArray;
     int fieldIndex = 0, fieldIndexGui = 0;
     glm::ivec3 referencePointIndex{};
     RendererPtr calculatorRenderer;
-    ReferencePointSelectionRenderer* referencePointSelectionRenderer;
+    ReferencePointSelectionRenderer* referencePointSelectionRenderer = nullptr;
     bool continuousRecompute = false; ///< Debug option.
+
+    // Focus point picking/moving information.
+    void setReferencePointFromFocusPoint();
+    bool hasHitInformation = false;
+    glm::vec3 focusPoint;
+    glm::vec3 firstHit, lastHit;
+    glm::vec3 hitLookingDirection;
 };
 
 
@@ -80,7 +88,14 @@ class PccCalculator : public EnsembleSimilarityCalculator {
 public:
     explicit PccCalculator(sgl::vk::Renderer* renderer);
     std::string getOutputFieldName() override {
-        return std::string(CORRELATION_MEASURE_TYPE_NAMES[int(correlationMeasureType)]) + " Correlation";
+        std::string outputFieldName = CORRELATION_MEASURE_TYPE_NAMES[int(correlationMeasureType)];
+        if (int(correlationMeasureType) <= int(CorrelationMeasureType::KENDALL)) {
+            outputFieldName += " Correlation";
+        }
+        if (calculatorConstructorUseCount > 1) {
+            outputFieldName += " (" + std::to_string(calculatorConstructorUseCount) + ")";
+        }
+        return outputFieldName;
     }
     void setVolumeData(VolumeData* _volumeData, bool isNewData) override;
     [[nodiscard]] bool getIsRealtime() const override { return useGpu; }

@@ -38,6 +38,7 @@ class TinyCudaNNSimilarityCalculator : public DeepLearningCudaSimilarityCalculat
 public:
     explicit TinyCudaNNSimilarityCalculator(sgl::vk::Renderer* renderer);
     ~TinyCudaNNSimilarityCalculator() override;
+    void setVolumeData(VolumeData* _volumeData, bool isNewData) override;
 
 protected:
     void loadModelFromFile(const std::string& modelPath) override;

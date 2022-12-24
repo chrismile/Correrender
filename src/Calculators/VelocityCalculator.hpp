@@ -33,7 +33,8 @@
 
 class VelocityCalculator : public Calculator {
 public:
-    explicit VelocityCalculator(sgl::vk::Renderer* renderer) : Calculator(renderer) {}
+    explicit VelocityCalculator(sgl::vk::Renderer* renderer);
+    void setVolumeData(VolumeData* _volumeData, bool isNewData) override;
     FieldType getOutputFieldType() override { return FieldType::VECTOR; }
     std::string getOutputFieldName() override { return "Velocity"; }
     FilterDevice getFilterDevice() override { return FilterDevice::CPU; }
@@ -42,9 +43,8 @@ public:
 
 class VectorMagnitudeCalculator : public Calculator {
 public:
-    explicit VectorMagnitudeCalculator(sgl::vk::Renderer* renderer, const std::string& vectorFieldName)
-            : Calculator(renderer), vectorFieldName(vectorFieldName),
-            magnitudeFieldName(vectorFieldName + " Magnitude") {}
+    explicit VectorMagnitudeCalculator(sgl::vk::Renderer* renderer, const std::string& vectorFieldName);
+    void setVolumeData(VolumeData* _volumeData, bool isNewData) override;
     FieldType getOutputFieldType() override { return FieldType::SCALAR; }
     std::string getOutputFieldName() override { return magnitudeFieldName; }
     FilterDevice getFilterDevice() override { return FilterDevice::CPU; }
@@ -56,7 +56,8 @@ private:
 
 class VorticityCalculator : public Calculator {
 public:
-    explicit VorticityCalculator(sgl::vk::Renderer* renderer) : Calculator(renderer) {}
+    explicit VorticityCalculator(sgl::vk::Renderer* renderer);
+    void setVolumeData(VolumeData* _volumeData, bool isNewData) override;
     FieldType getOutputFieldType() override { return FieldType::VECTOR; }
     std::string getOutputFieldName() override { return "Vorticity"; }
     FilterDevice getFilterDevice() override { return FilterDevice::CPU; }
@@ -65,7 +66,8 @@ public:
 
 class HelicityCalculator : public Calculator {
 public:
-    explicit HelicityCalculator(sgl::vk::Renderer* renderer) : Calculator(renderer) {}
+    explicit HelicityCalculator(sgl::vk::Renderer* renderer);
+    void setVolumeData(VolumeData* _volumeData, bool isNewData) override;
     FieldType getOutputFieldType() override { return FieldType::SCALAR; }
     std::string getOutputFieldName() override { return "Helicity"; }
     FilterDevice getFilterDevice() override { return FilterDevice::CPU; }

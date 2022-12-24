@@ -38,6 +38,7 @@ class QuickMLPSimilarityCalculator : public DeepLearningCudaSimilarityCalculator
 public:
     explicit QuickMLPSimilarityCalculator(sgl::vk::Renderer* renderer);
     ~QuickMLPSimilarityCalculator() override;
+    void setVolumeData(VolumeData* _volumeData, bool isNewData) override;
 
 protected:
     void loadModelFromFile(const std::string& modelPath) override;

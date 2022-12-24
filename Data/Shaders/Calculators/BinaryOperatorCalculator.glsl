@@ -26,11 +26,59 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef CORRERENDER_FIELDTYPE_HPP
-#define CORRERENDER_FIELDTYPE_HPP
+-- Compute
 
-enum class FieldType : uint32_t {
-    SCALAR, VECTOR
+#version 450 core
+
+layout(local_size_x = BLOCK_SIZE_X, local_size_y = BLOCK_SIZE_Y, local_size_z = BLOCK_SIZE_Z) in;
+
+layout (binding = 0) uniform UniformBuffer {
+    uint xs, ys, zs, es;
 };
 
-#endif //CORRERENDER_FIELDTYPE_HPP
+layout (binding = 1, r32f) uniform readonly image3D inputImage0;
+layout (binding = 2, r32f) uniform readonly image3D inputImage1;
+layout (binding = 3, r32f) uniform writeonly image3D outputImage;
+
+void main() {
+    ivec3 currentPointIdx = ivec3(gl_GlobalInvocationID.xyz);
+    if (gl_GlobalInvocationID.x >= xs || gl_GlobalInvocationID.y >= ys || gl_GlobalInvocationID.z >= zs) {
+        return;
+    }
+
+    float val0 = imageLoad(inputImage0, currentPointIdx).x;
+    float val1 = imageLoad(inputImage1, currentPointIdx).x;
+    float outputValue = binaryOperator(val0, val1);
+
+    imageStore(outputImage, currentPointIdx, vec4(outputValue));
+}
+
+-- Sum
+
+#define binaryOperator(x, y) ((x) + (y))
+#import ".Compute"
+
+-- Difference
+
+#define binaryOperator(x, y) ((x) - (y))
+#import ".Compute"
+
+-- AbsoluteDifference
+
+#define binaryOperator(x, y) (abs((x) - (y)))
+#import ".Compute"
+
+-- Product
+
+#define binaryOperator(x, y) ((x) * (y))
+#import ".Compute"
+
+-- Maximum
+
+#define binaryOperator(x, y) (max((x), (y)))
+#import ".Compute"
+
+-- Minimum
+
+#define binaryOperator(x, y) (min((x), (y)))
+#import ".Compute"

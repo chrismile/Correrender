@@ -66,12 +66,17 @@ struct QuickMLPDataHeader {
     uint32_t numParams = 0;
 };
 
+
 QuickMLPSimilarityCalculator::QuickMLPSimilarityCalculator(sgl::vk::Renderer* renderer)
         : DeepLearningCudaSimilarityCalculator("QuickMLP", "quickMLP", renderer) {
     cacheWrapper = std::make_shared<QuickMLPCacheWrapper>();
 }
 
-QuickMLPSimilarityCalculator::~QuickMLPSimilarityCalculator() {
+QuickMLPSimilarityCalculator::~QuickMLPSimilarityCalculator() = default;
+
+void QuickMLPSimilarityCalculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
+    DeepLearningCudaSimilarityCalculator::setVolumeData(_volumeData, isNewData);
+    calculatorConstructorUseCount = volumeData->getNewCalculatorUseCount(CalculatorType::QUICK_MLP);
 }
 
 void loadNetwork(

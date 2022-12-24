@@ -46,6 +46,8 @@ DataView::DataView(SceneData* parentSceneData)
 
     sceneData.sceneTexture = &sceneTextureVk;
     sceneData.sceneDepthTexture = &sceneDepthTextureVk;
+    sceneData.viewportPositionX = &viewportPositionX;
+    sceneData.viewportPositionY = &viewportPositionY;
     sceneData.viewportWidth = &viewportWidth;
     sceneData.viewportHeight = &viewportHeight;
 

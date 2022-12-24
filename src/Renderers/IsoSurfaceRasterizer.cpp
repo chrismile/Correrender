@@ -63,12 +63,13 @@ void IsoSurfaceRasterizer::initialize() {
 void IsoSurfaceRasterizer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) {
     volumeData = _volumeData;
     if (!selectedScalarFieldName.empty()) {
+        volumeData->releaseTf(this, oldSelectedFieldIdx);
         volumeData->releaseScalarField(this, oldSelectedFieldIdx);
     }
+    const std::vector<std::string>& fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
     if (isNewData) {
         selectedFieldIdx = 0;
     }
-    const std::vector<std::string>& fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
     std::string oldSelectedScalarFieldName = selectedScalarFieldName;
     selectedScalarFieldName = fieldNames.at(selectedFieldIdx);
     minMaxScalarFieldValue = volumeData->getMinMaxScalarFieldValue(selectedScalarFieldName);
@@ -124,6 +125,22 @@ void IsoSurfaceRasterizer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewD
     for (auto& isoSurfaceRasterPass : isoSurfaceRasterPasses) {
         isoSurfaceRasterPass->setRenderData(indexBuffer, vertexPositionBuffer, vertexNormalBuffer);
         isoSurfaceRasterPass->setSelectedScalarFieldName(selectedScalarFieldName);
+    }
+}
+
+void IsoSurfaceRasterizer::onFieldRemoved(FieldType fieldType, int fieldIdx) {
+    if (fieldType == FieldType::SCALAR) {
+        if (selectedFieldIdx == fieldIdx) {
+            selectedFieldIdx = 0;
+        } else if (selectedFieldIdx > fieldIdx) {
+            selectedFieldIdx--;
+        }
+        if (oldSelectedFieldIdx == fieldIdx) {
+            oldSelectedFieldIdx = -1;
+            selectedScalarFieldName.clear();
+        } else if (oldSelectedFieldIdx > fieldIdx) {
+            oldSelectedFieldIdx--;
+        }
     }
 }
 
@@ -196,7 +213,9 @@ void IsoSurfaceRasterizer::removeViewImpl(uint32_t viewIdx) {
 void IsoSurfaceRasterizer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
     if (volumeData) {
         const std::vector<std::string>& fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
-        if (propertyEditor.addCombo("Scalar Field", &selectedFieldIdx, fieldNames.data(), int(fieldNames.size()))) {
+        int selectedFieldIdxGui = selectedFieldIdx;
+        if (propertyEditor.addCombo("Scalar Field", &selectedFieldIdxGui, fieldNames.data(), int(fieldNames.size()))) {
+            selectedFieldIdx = selectedFieldIdxGui;
             selectedScalarFieldName = fieldNames.at(selectedFieldIdx);
             minMaxScalarFieldValue = volumeData->getMinMaxScalarFieldValue(selectedScalarFieldName);
             isoValue = (minMaxScalarFieldValue.first + minMaxScalarFieldValue.second) / 2.0f;

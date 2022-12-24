@@ -89,7 +89,11 @@ TinyCudaNNSimilarityCalculator::TinyCudaNNSimilarityCalculator(sgl::vk::Renderer
     cacheWrapper = std::make_shared<TinyCudaNNCacheWrapper>();
 }
 
-TinyCudaNNSimilarityCalculator::~TinyCudaNNSimilarityCalculator() {
+TinyCudaNNSimilarityCalculator::~TinyCudaNNSimilarityCalculator() = default;
+
+void TinyCudaNNSimilarityCalculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
+    DeepLearningCudaSimilarityCalculator::setVolumeData(_volumeData, isNewData);
+    calculatorConstructorUseCount = volumeData->getNewCalculatorUseCount(CalculatorType::TINY_CUDA_NN);
 }
 
 template<class T, class PARAMS_T> static void loadNetwork(

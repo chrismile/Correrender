@@ -89,13 +89,14 @@ enum class RenderTargetAccess {
 struct SceneData {
     SceneData(
             sgl::vk::Renderer** renderer, sgl::vk::TexturePtr* sceneTexture, sgl::vk::TexturePtr* sceneDepthTexture,
-            uint32_t* viewportWidth, uint32_t* viewportHeight,
+            int32_t* viewportPositionX, int32_t* viewportPositionY, uint32_t* viewportWidth, uint32_t* viewportHeight,
             sgl::CameraPtr camera, sgl::Color* clearColor, bool* screenshotTransparentBackground,
             AutomaticPerformanceMeasurer** performanceMeasurer,
             bool* continuousRendering, bool* recordingMode, bool* useCameraFlight,
             float* MOVE_SPEED, float* MOUSE_ROT_SPEED,
             std::vector<sgl::dialog::MsgBoxHandlePtr>* nonBlockingMsgBoxHandles)
             : renderer(renderer), sceneTexture(sceneTexture), sceneDepthTexture(sceneDepthTexture),
+              viewportPositionX(viewportPositionX), viewportPositionY(viewportPositionY),
               viewportWidth(viewportWidth), viewportHeight(viewportHeight),
               camera(std::move(camera)), clearColor(clearColor),
               screenshotTransparentBackground(screenshotTransparentBackground),
@@ -108,6 +109,8 @@ struct SceneData {
     sgl::vk::Renderer** renderer;
     sgl::vk::TexturePtr* sceneTexture;
     sgl::vk::TexturePtr* sceneDepthTexture;
+    int32_t* viewportPositionX;
+    int32_t* viewportPositionY;
     uint32_t* viewportWidth;
     uint32_t* viewportHeight;
 

@@ -98,7 +98,7 @@ void signalHandler(int signum) {
 MainApp::MainApp()
         : sceneData(
                 &rendererVk, &sceneTextureVk, &sceneDepthTextureVk,
-                &viewportWidth, &viewportHeight, camera,
+                &viewportPositionX, &viewportPositionY, &viewportWidth, &viewportHeight, camera,
                 &clearColor, &screenshotTransparentBackground,
                 &performanceMeasurer, &continuousRendering, &recording,
                 &useCameraFlight, &MOVE_SPEED, &MOUSE_ROT_SPEED,
@@ -976,6 +976,9 @@ void MainApp::renderGui() {
                     sgl::ImGuiWrapper::get()->setWindowViewport(i, ImGui::GetWindowViewport());
                     sgl::ImGuiWrapper::get()->setWindowPosAndSize(i, ImGui::GetWindowPos(), ImGui::GetWindowSize());
 
+                    ImVec2 cursorPos = ImGui::GetCursorScreenPos();
+                    dataView->viewportPositionX = int32_t(cursorPos.x);
+                    dataView->viewportPositionY = int32_t(cursorPos.y);
                     ImVec2 sizeContent = ImGui::GetContentRegionAvail();
                     if (useFixedSizeViewport) {
                         sizeContent = ImVec2(float(fixedViewportSize.x), float(fixedViewportSize.y));
@@ -1382,6 +1385,10 @@ void MainApp::renderGuiMenuBar() {
                     initializeFirstDataView();
                 }
             }
+            if (volumeData && ImGui::BeginMenu("New Calculator...")) {
+                volumeData->renderGuiNewCalculators();
+                ImGui::EndMenu();
+            }
             ImGui::Separator();
             for (int i = 0; i < int(dataViews.size()); i++) {
                 DataViewPtr& dataView = dataViews.at(i);
@@ -1517,15 +1524,16 @@ void MainApp::renderGuiPropertyEditorCustomNodes() {
     }
     for (int i = 0; i < int(volumeRenderers.size()); i++) {
         auto& volumeRenderer = volumeRenderers.at(i);
-        bool removeView = false;
+        bool removeRenderer = false;
         std::string windowName =
                 volumeRenderer->getWindowName() + "###renderer_" + std::to_string(volumeRenderer->getCreationId());
         bool beginNode = propertyEditor.beginNode(windowName);
         ImGui::SameLine();
         float indentWidth = ImGui::GetContentRegionAvail().x;
         ImGui::Indent(indentWidth);
-        if (ImGui::Button("X")) {
-            removeView = true;
+        std::string buttonName = "X###x_renderer" + std::to_string(i);
+        if (ImGui::Button(buttonName.c_str())) {
+            removeRenderer = true;
         }
         ImGui::Unindent(indentWidth);
         if (beginNode) {
@@ -1547,7 +1555,7 @@ void MainApp::renderGuiPropertyEditorCustomNodes() {
             volumeRenderer->renderGui(propertyEditor);
             propertyEditor.endNode();
         }
-        if (removeView) {
+        if (removeRenderer) {
             reRender = true;
             volumeRenderers.erase(volumeRenderers.begin() + i);
             i--;
@@ -1673,6 +1681,8 @@ void MainApp::update(float dt) {
         cameraPath.resetTime();
     }*/
 #endif
+
+    viewManager->setMouseHoverWindowIndex(mouseHoverWindowIndex);
 
     if (volumeData) {
         volumeData->update(dt);

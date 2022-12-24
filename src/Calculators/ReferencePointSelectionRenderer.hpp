@@ -83,7 +83,7 @@ protected:
 private:
     SceneData* sceneData;
     sgl::CameraPtr* camera;
-    VolumeData* volumeData;
+    VolumeData* volumeData = nullptr;
 
     sgl::vk::BufferPtr indexBuffer;
     sgl::vk::BufferPtr vertexPositionBuffer;

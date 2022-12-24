@@ -36,9 +36,12 @@
 #include <Graphics/Vulkan/Render/ComputePipeline.hpp>
 #include <ImGui/Widgets/PropertyEditor.hpp>
 #include <ImGui/imgui_custom.h>
+#include <Input/Mouse.hpp>
+#include <Input/Keyboard.hpp>
 
 #include "Loaders/DataSet.hpp"
 #include "Volume/VolumeData.hpp"
+#include "Widgets/ViewManager.hpp"
 #include "ReferencePointSelectionRenderer.hpp"
 #include "SimilarityCalculator.hpp"
 
@@ -56,6 +59,17 @@ void EnsembleSimilarityCalculator::setVolumeData(VolumeData* _volumeData, bool i
     Calculator::setVolumeData(_volumeData, isNewData);
     referencePointSelectionRenderer->setVolumeDataPtr(volumeData, isNewData);
 
+    scalarFieldNames = {};
+    scalarFieldIndexArray = {};
+
+    std::vector<std::string> scalarFieldNamesNew = volumeData->getFieldNames(FieldType::SCALAR);
+    for (size_t i = 0; i < scalarFieldNamesNew.size(); i++) {
+        if (scalarFieldNamesNew.at(i) != getOutputFieldName()) {
+            scalarFieldNames.push_back(scalarFieldNamesNew.at(i));
+            scalarFieldIndexArray.push_back(i);
+        }
+    }
+
     if (isNewData) {
         referencePointIndex.x = volumeData->getGridSizeX() / 2;
         referencePointIndex.y = volumeData->getGridSizeY() / 2;
@@ -64,23 +78,88 @@ void EnsembleSimilarityCalculator::setVolumeData(VolumeData* _volumeData, bool i
 
         fieldIndex = 0;
         fieldIndexGui = 0;
-        scalarFieldNames = {};
-        scalarFieldIndexArray = {};
+        volumeData->acquireScalarField(this, fieldIndex);
+    }
+}
 
-        std::vector<std::string> scalarFieldNamesNew = volumeData->getFieldNames(FieldType::SCALAR);
-        for (size_t i = 0; i < scalarFieldNamesNew.size(); i++) {
-            if (scalarFieldNamesNew.at(i) != getOutputFieldName()) {
-                scalarFieldNames.push_back(scalarFieldNamesNew.at(i));
-                scalarFieldIndexArray.push_back(i);
-            }
+void EnsembleSimilarityCalculator::onFieldRemoved(FieldType fieldType, int fieldIdx) {
+    if (fieldType == FieldType::SCALAR) {
+        if (fieldIndex == fieldIdx) {
+            fieldIndex = 0;
+            volumeData->acquireScalarField(this, fieldIndex);
+            dirty = true;
+        } else if (fieldIndex > fieldIdx) {
+            fieldIndex--;
         }
+        fieldIndexGui = fieldIndex;
     }
 }
 
 void EnsembleSimilarityCalculator::update(float dt) {
-    // TODO: Use mouse for selection of reference point.
+    // Use mouse for selection of reference point.
+    int mouseHoverWindowIndex = viewManager->getMouseHoverWindowIndex();
+    if (mouseHoverWindowIndex >= 0) {
+        SceneData* sceneData = viewManager->getViewSceneData(uint32_t(mouseHoverWindowIndex));
+        uint32_t varIdx = volumeData->getVarIdxForCalculator(this);
+        if (volumeData->getIsScalarFieldUsedInView(uint32_t(mouseHoverWindowIndex), varIdx, this)) {
+            if (sgl::Keyboard->getModifier() & KMOD_CTRL) {
+                if (sgl::Mouse->buttonPressed(1) || (sgl::Mouse->isButtonDown(1) && sgl::Mouse->mouseMoved())) {
+                    ImVec2 mousePosGlobal = ImGui::GetMousePos();
+                    //int mouseGlobalX = sgl::Mouse->getX();
+                    //int mouseGlobalY = sgl::Mouse->getY();
+                    bool rayHasHitMesh = volumeData->pickPointScreen(
+                            sceneData, int(mousePosGlobal.x), int(mousePosGlobal.y), firstHit, lastHit);
+                    if (rayHasHitMesh) {
+                        focusPoint = firstHit;
+                        hitLookingDirection = glm::normalize(firstHit - sceneData->camera->getPosition());
+                        hasHitInformation = true;
+                        setReferencePointFromFocusPoint();
+                    }
+                }
+
+                if (sgl::Mouse->getScrollWheel() > 0.1f || sgl::Mouse->getScrollWheel() < -0.1f) {
+                    if (!hasHitInformation) {
+                        glm::mat4 inverseViewMatrix = glm::inverse(sceneData->camera->getViewMatrix());
+                        glm::vec3 lookingDirection = glm::vec3(
+                                -inverseViewMatrix[2].x, -inverseViewMatrix[2].y, -inverseViewMatrix[2].z);
+
+                        float moveAmount = sgl::Mouse->getScrollWheel() * dt * 0.5f;
+                        glm::vec3 moveDirection = focusPoint - sceneData->camera->getPosition();
+                        moveDirection *= float(sgl::sign(glm::dot(lookingDirection, moveDirection)));
+                        if (glm::length(moveDirection) < 1e-4) {
+                            moveDirection = lookingDirection;
+                        }
+                        moveDirection = glm::normalize(moveDirection);
+                        focusPoint = focusPoint + moveAmount * moveDirection;
+                    } else {
+                        float moveAmount = sgl::Mouse->getScrollWheel() * dt;
+                        glm::vec3 newFocusPoint = focusPoint + moveAmount * hitLookingDirection;
+                        float t = glm::dot(newFocusPoint - firstHit, hitLookingDirection);
+                        t = glm::clamp(t, 0.0f, glm::length(lastHit - firstHit));
+                        focusPoint = firstHit + t * hitLookingDirection;
+                    }
+                    setReferencePointFromFocusPoint();
+                }
+            }
+        }
+    }
 
     if (continuousRecompute) {
+        dirty = true;
+    }
+}
+
+void EnsembleSimilarityCalculator::setReferencePointFromFocusPoint() {
+    glm::ivec3 newReferencePointIndex = glm::ivec3(glm::round(focusPoint));
+    if (referencePointIndex != newReferencePointIndex) {
+        glm::ivec3 maxCoord(
+                volumeData->getGridSizeX() - 1, volumeData->getGridSizeY() - 1, volumeData->getGridSizeZ() - 1);
+        sgl::AABB3 gridAabb = volumeData->getBoundingBoxRendering();
+        glm::vec3 position = (focusPoint - gridAabb.min) / (gridAabb.max - gridAabb.min);
+        position *= glm::vec3(maxCoord);
+        referencePointIndex = glm::ivec3(glm::round(position));
+        referencePointIndex = glm::clamp(referencePointIndex, glm::ivec3(0), maxCoord);
+        referencePointSelectionRenderer->setReferencePosition(referencePointIndex);
         dirty = true;
     }
 }
@@ -92,7 +171,6 @@ void EnsembleSimilarityCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEd
         dirty = true;
     }
 
-    // TODO: Replace with referencePointSelectionRenderer.
     bool isRealtime = getIsRealtime();
     ImGui::EditMode editModes[3];
     editModes[0] =
@@ -127,6 +205,7 @@ PccCalculator::PccCalculator(sgl::vk::Renderer* renderer) : EnsembleSimilarityCa
 
 void PccCalculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
     EnsembleSimilarityCalculator::setVolumeData(_volumeData, isNewData);
+    calculatorConstructorUseCount = volumeData->getNewCalculatorUseCount(CalculatorType::CORRELATION);
     pccComputePass->setVolumeData(volumeData, isNewData);
 }
 
@@ -1057,7 +1136,7 @@ void PccCalculator::calculateDevice(int timeStepIdx, int ensembleIdx, const Devi
         ensembleImageViews.push_back(ensembleEntryField->getVulkanImageView());
         ensembleTexturesCu.push_back(ensembleEntryField->getCudaTexture());
         if (ensembleEntryField->getVulkanImage()->getVkImageLayout() != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
-            deviceCacheEntry->getVulkanImage()->transitionImageLayout(
+            ensembleEntryField->getVulkanImage()->transitionImageLayout(
                     VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, renderer->getVkCommandBuffer());
         }
     }

@@ -43,6 +43,10 @@ bool Calculator::getIsDirty() {
     return tmp;
 }
 
+bool Calculator::getIsDirtyDontReset() {
+    return dirty;
+}
+
 bool Calculator::getHasNameChanged() {
     bool tmp = hasNameChanged;
     hasNameChanged = false;
@@ -55,9 +59,22 @@ bool Calculator::getHasFilterDeviceChanged() {
     return tmp;
 }
 
+bool Calculator::getShallRemoveCalculator() {
+    return shallRemoveCalculator;
+}
+
 void Calculator::renderGui(sgl::PropertyEditor& propertyEditor) {
     std::string nodeName = "Calculator (" + getOutputFieldName() + ")###calculator" + std::to_string(calculatorId);
-    if (propertyEditor.beginNode(nodeName)) {
+    bool beginNode = propertyEditor.beginNode(nodeName);
+    ImGui::SameLine();
+    float indentWidth = ImGui::GetContentRegionAvail().x;
+    ImGui::Indent(indentWidth);
+    std::string buttonName = "X###x_calculator" + std::to_string(calculatorId);
+    if (ImGui::Button(buttonName.c_str())) {
+        shallRemoveCalculator = true;
+    }
+    ImGui::Unindent(indentWidth);
+    if (beginNode) {
         const auto& calculatorRenderer = getCalculatorRenderer();
         renderGuiImpl(propertyEditor);
         if (calculatorRenderer) {

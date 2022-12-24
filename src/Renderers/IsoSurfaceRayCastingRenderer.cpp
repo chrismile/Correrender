@@ -51,12 +51,13 @@ void IsoSurfaceRayCastingRenderer::initialize() {
 void IsoSurfaceRayCastingRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) {
     volumeData = _volumeData;
     if (!selectedScalarFieldName.empty()) {
+        volumeData->releaseTf(this, oldSelectedFieldIdx);
         volumeData->releaseScalarField(this, oldSelectedFieldIdx);
     }
+    const std::vector<std::string>& fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
     if (isNewData) {
         selectedFieldIdx = 0;
     }
-    const std::vector<std::string>& fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
     std::string oldSelectedScalarFieldName = selectedScalarFieldName;
     selectedScalarFieldName = fieldNames.at(selectedFieldIdx);
     minMaxScalarFieldValue = volumeData->getMinMaxScalarFieldValue(selectedScalarFieldName);
@@ -72,6 +73,22 @@ void IsoSurfaceRayCastingRenderer::setVolumeData(VolumeDataPtr& _volumeData, boo
     for (auto& isoSurfaceRayCastingPass : isoSurfaceRayCastingPasses) {
         isoSurfaceRayCastingPass->setVolumeData(volumeData, isNewData);
         isoSurfaceRayCastingPass->setSelectedScalarFieldName(selectedScalarFieldName);
+    }
+}
+
+void IsoSurfaceRayCastingRenderer::onFieldRemoved(FieldType fieldType, int fieldIdx) {
+    if (fieldType == FieldType::SCALAR) {
+        if (selectedFieldIdx == fieldIdx) {
+            selectedFieldIdx = 0;
+        } else if (selectedFieldIdx > fieldIdx) {
+            selectedFieldIdx--;
+        }
+        if (oldSelectedFieldIdx == fieldIdx) {
+            oldSelectedFieldIdx = -1;
+            selectedScalarFieldName.clear();
+        } else if (oldSelectedFieldIdx > fieldIdx) {
+            oldSelectedFieldIdx--;
+        }
     }
 }
 
@@ -104,7 +121,9 @@ void IsoSurfaceRayCastingRenderer::removeViewImpl(uint32_t viewIdx) {
 void IsoSurfaceRayCastingRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
     if (volumeData) {
         const std::vector<std::string>& fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
-        if (propertyEditor.addCombo("Scalar Field", &selectedFieldIdx, fieldNames.data(), int(fieldNames.size()))) {
+        int selectedFieldIdxGui = selectedFieldIdx;
+        if (propertyEditor.addCombo("Scalar Field", &selectedFieldIdxGui, fieldNames.data(), int(fieldNames.size()))) {
+            selectedFieldIdx = selectedFieldIdxGui;
             selectedScalarFieldName = fieldNames.at(selectedFieldIdx);
             minMaxScalarFieldValue = volumeData->getMinMaxScalarFieldValue(selectedScalarFieldName);
             isoValue = (minMaxScalarFieldValue.first + minMaxScalarFieldValue.second) / 2.0f;
@@ -247,6 +266,11 @@ void IsoSurfaceRayCastingPass::_render() {
     sceneData->switchColorState(RenderTargetAccess::COMPUTE);
     if (sceneData->useDepthBuffer) {
         sceneData->switchDepthState(RenderTargetAccess::COMPUTE);
+    }
+
+    auto scalarField = computeData->getImageView("scalarField")->getImage();
+    if (scalarField->getVkImageLayout() != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+        scalarField->transitionImageLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, renderer->getVkCommandBuffer());
     }
 
     int width = int(sceneImageView->getImage()->getImageSettings().width);

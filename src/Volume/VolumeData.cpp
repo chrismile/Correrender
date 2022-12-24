@@ -26,8 +26,9 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <cstring>
+#include <queue>
 #include <utility>
+#include <cstring>
 
 #include <boost/algorithm/string/case_conv.hpp>
 
@@ -73,6 +74,7 @@
 
 #include "Calculators/Calculator.hpp"
 #include "Calculators/VelocityCalculator.hpp"
+#include "Calculators/BinaryOperatorCalculator.hpp"
 #include "Calculators/SimilarityCalculator.hpp"
 #ifdef SUPPORT_PYTORCH
 #include "Calculators/PyTorchSimilarityCalculator.hpp"
@@ -85,6 +87,8 @@
 #endif
 #include "Renderers/RenderingModes.hpp"
 #include "Renderers/Renderer.hpp"
+#include "Renderers/SceneData.hpp"
+#include "Widgets/ViewManager.hpp"
 #include "VolumeData.hpp"
 
 template <typename T>
@@ -164,6 +168,27 @@ VolumeData::VolumeData(sgl::vk::Renderer* renderer) : renderer(renderer), multiV
         for (const std::string& extension : factory.first) {
             factoriesWriter.insert(std::make_pair(extension, factory.second));
         }
+    }
+
+    // Create the list of calculators.
+    factoriesCalculator.insert(std::make_pair(
+            "Binary Operator", [renderer]() { return new BinaryOperatorCalculator(renderer); }));
+    factoriesCalculator.insert(std::make_pair(
+            "Correlation Calculator", [renderer]() { return new PccCalculator(renderer); }));
+#ifdef SUPPORT_PYTORCH
+    factoriesCalculator.insert(std::make_pair(
+            "PyTorch Similarity Calculator", [renderer]() { return new PyTorchSimilarityCalculator(renderer); }));
+#endif
+    if (device->getDeviceDriverId() == VK_DRIVER_ID_NVIDIA_PROPRIETARY
+            && sgl::vk::getIsCudaDeviceApiFunctionTableInitialized()) {
+#ifdef SUPPORT_TINY_CUDA_NN
+        factoriesCalculator.insert(std::make_pair(
+                "tiny-cuda-nn Similarity Calculator", [renderer]() { return new TinyCudaNNSimilarityCalculator(renderer); }));
+#endif
+#ifdef SUPPORT_QUICK_MLP
+        factoriesCalculator.insert(std::make_pair(
+                "QuickMLP Similarity Calculator", [renderer]() { return new QuickMLPSimilarityCalculator(renderer); }));
+#endif
     }
 
     sgl::vk::ImageSamplerSettings samplerSettings{};
@@ -531,6 +556,10 @@ bool VolumeData::setInputFiles(
 
 void VolumeData::addCalculator(const CalculatorPtr& calculator) {
     calculator->initialize();
+    calculator->setCalculatorId(calculatorId++);
+    calculator->setViewManager(viewManager);
+    calculator->setFileDialogInstance(fileDialogInstance);
+    calculator->setVolumeData(this, true);
     calculators.push_back(calculator);
     if (calculator->getFilterDevice() == FilterDevice::CPU) {
         calculatorsHost.insert(std::make_pair(calculator->getOutputFieldName(), calculator));
@@ -538,10 +567,30 @@ void VolumeData::addCalculator(const CalculatorPtr& calculator) {
         calculatorsDevice.insert(std::make_pair(calculator->getOutputFieldName(), calculator));
     }
     typeToFieldNamesMap[calculator->getOutputFieldType()].push_back(calculator->getOutputFieldName());
-    calculator->setCalculatorId(calculatorId++);
-    calculator->setViewManager(viewManager);
-    calculator->setVolumeData(this, true);
-    calculator->setFileDialogInstance(fileDialogInstance);
+
+    if (!colorLegendWidgets.empty() && calculator->getOutputFieldType() == FieldType::SCALAR) {
+        multiVarTransferFunctionWindow.addAttributeName(calculator->getOutputFieldName());
+        colorLegendWidgets.emplace_back();
+        colorLegendWidgets.back().setAttributeDisplayName(calculator->getOutputFieldName());
+        std::vector<sgl::Color16> transferFunctionColorMap =
+                multiVarTransferFunctionWindow.getTransferFunctionMap_sRGB(int(colorLegendWidgets.size()) - 1);
+        colorLegendWidgets.back().setTransferFunctionColorMap(transferFunctionColorMap);
+        for (auto& entry : scalarFieldToRendererMap) {
+            entry.second->dirty = true;
+        }
+        for (size_t viewIdx = 0; viewIdx < viewManager->getNumViews(); viewIdx++) {
+            auto calculatorRenderer = calculator->getCalculatorRenderer();
+            if (!calculatorRenderer) {
+                continue;
+            }
+            calculatorRenderer->addView(viewIdx);
+            SceneData* viewSceneData = viewManager->getViewSceneData(viewIdx);
+            if (*viewSceneData->sceneTexture) {
+                calculatorRenderer->recreateSwapchainView(
+                        viewIdx, *viewSceneData->viewportWidth, *viewSceneData->viewportHeight);
+            }
+        }
+    }
 }
 
 FieldAccess VolumeData::createFieldAccessStruct(
@@ -876,11 +925,43 @@ void VolumeData::renderGui(sgl::PropertyEditor& propertyEditor) {
 }
 
 void VolumeData::renderGuiCalculators(sgl::PropertyEditor& propertyEditor) {
-    for (const CalculatorPtr& calculator : calculators) {
+    std::queue<Calculator*> dirtyCalculators;
+    for (auto& calculator : calculators) {
         if (!calculator->getShouldRenderGui()) {
             continue;
         }
         calculator->renderGui(propertyEditor);
+        if (calculator->getIsDirtyDontReset()) {
+            dirtyCalculators.push(calculator.get());
+        }
+    }
+    while (!dirtyCalculators.empty()) {
+        Calculator* calculator = dirtyCalculators.front();
+        dirtyCalculators.pop();
+        auto iterRange = calculatorUseMapRefToParent.equal_range(calculator);
+        auto it = iterRange.first;
+        while (it != iterRange.second) {
+            Calculator* calculatorRef = it->second;
+            if (!calculatorRef->getIsDirtyDontReset()) {
+                calculatorRef->setIsDirty();
+                dirtyCalculators.push(calculatorRef);
+            }
+            it++;
+        }
+    }
+
+    for (int calculatorIdx = 0; calculatorIdx < int(calculators.size()); calculatorIdx++) {
+        CalculatorPtr calculator = calculators.at(calculatorIdx);
+        if (!calculator->getShouldRenderGui()) {
+            continue;
+        }
+        if (calculator->getShallRemoveCalculator()) {
+            removeCalculator(calculator, calculatorIdx);
+            calculatorIdx--;
+            dirty = true;
+            reRender = true;
+            continue;
+        }
         if (calculator->getHasNameChanged()) {
             updateCalculatorName(calculator);
             dirty = true;
@@ -899,11 +980,19 @@ void VolumeData::renderGuiCalculators(sgl::PropertyEditor& propertyEditor) {
     }
 }
 
+void VolumeData::renderGuiNewCalculators() {
+    for (auto& factory : factoriesCalculator) {
+        if (ImGui::MenuItem(factory.first.c_str())) {
+            addCalculator(CalculatorPtr(factory.second()));
+        }
+    }
+}
+
 void VolumeData::renderViewCalculator(uint32_t viewIdx) {
     uint32_t varIdx = typeToFieldNamesMapBase[FieldType::SCALAR].size();
     for (const CalculatorPtr& calculator : calculators) {
         auto calculatorRenderer = calculator->getCalculatorRenderer();
-        if (calculatorRenderer && getIsScalarFieldUsedInView(viewIdx, varIdx)) {
+        if (calculatorRenderer && getIsScalarFieldUsedInView(viewIdx, varIdx, calculator.get())) {
             calculatorRenderer->renderViewImpl(viewIdx);
         }
         if (calculator->getOutputFieldType() == FieldType::SCALAR) {
@@ -1021,16 +1110,100 @@ void VolumeData::releaseScalarField(Renderer* renderer, int varIdx) {
     }
 }
 
-bool VolumeData::getIsScalarFieldUsedInView(uint32_t viewIdx, uint32_t varIdx) {
-    auto iterRange = scalarFieldToRendererMap.equal_range(int(varIdx));
+void VolumeData::acquireScalarField(Calculator* calculator, int varIdx) {
+    if (varIdx >= int(typeToFieldNamesMapBase[calculator->getOutputFieldType()].size())) {
+        std::string calculatorRefName = typeToFieldNamesMap[calculator->getOutputFieldType()][varIdx];
+        for (CalculatorPtr& calculatorRef : calculators) {
+            if (calculatorRef->getOutputFieldName() == calculatorRefName) {
+                calculatorUseMapRefToParent.insert(std::make_pair(calculatorRef.get(), calculator));
+                calculatorUseMapParentToRef.insert(std::make_pair(calculator, calculatorRef.get()));
+                break;
+            }
+        }
+    }
+}
+
+void VolumeData::releaseScalarField(Calculator* calculator, int varIdx) {
+    if (varIdx < int(typeToFieldNamesMapBase[calculator->getOutputFieldType()].size())) {
+        return;
+    }
+
+    std::string calculatorRefName = typeToFieldNamesMap[calculator->getOutputFieldType()][varIdx];
+    CalculatorPtr calculatorRef;
+    for (CalculatorPtr& calcIt : calculators) {
+        if (calcIt->getOutputFieldName() == calculatorRefName) {
+            calculatorRef = calcIt;
+            break;
+        }
+    }
+
+    auto iterRangeParentToRef = calculatorUseMapParentToRef.equal_range(calculator);
+    auto itParentToRef = iterRangeParentToRef.first;
+    while (itParentToRef != iterRangeParentToRef.second) {
+        if (itParentToRef->second == calculatorRef.get()) {
+            calculatorUseMapParentToRef.erase(itParentToRef);
+            break;
+        }
+        itParentToRef++;
+    }
+
+    auto iterRange = calculatorUseMapRefToParent.equal_range(calculatorRef.get());
     auto it = iterRange.first;
     while (it != iterRange.second) {
-        if (it->second->isVisibleInView(viewIdx)) {
-            return true;
+        if (it->second == calculator) {
+            calculatorUseMapRefToParent.erase(it);
+            break;
         }
         it++;
     }
+}
+
+bool VolumeData::getIsScalarFieldUsedInView(uint32_t viewIdx, uint32_t varIdx, Calculator* calculator) {
+    auto iterRange = scalarFieldToRendererMap.equal_range(int(varIdx));
+    auto itRend = iterRange.first;
+    while (itRend != iterRange.second) {
+        if (itRend->second->isVisibleInView(viewIdx)) {
+            return true;
+        }
+        itRend++;
+    }
+
+    auto fieldBaseCount = int(typeToFieldNamesMapBase[calculator->getOutputFieldType()].size());
+    auto fieldCount = int(typeToFieldNamesMap[calculator->getOutputFieldType()].size());
+    auto& fieldNames = typeToFieldNamesMap[calculator->getOutputFieldType()];
+    if (int(varIdx) >= fieldBaseCount) {
+        auto iterRangeToRef = calculatorUseMapRefToParent.equal_range(calculator);
+        auto it = iterRangeToRef.first;
+        while (it != iterRangeToRef.second) {
+            for (int varIdxNew = fieldBaseCount; varIdxNew < fieldCount; varIdxNew++) {
+                if (it->second->getOutputFieldName() == fieldNames.at(varIdxNew)) {
+                    bool isScalarFieldUsed = getIsScalarFieldUsedInView(viewIdx, varIdxNew, it->second);
+                    if (isScalarFieldUsed) {
+                        return true;
+                    }
+                }
+            }
+            std::string calculatorRefName = typeToFieldNamesMap[calculator->getOutputFieldType()][varIdx];
+            it++;
+        }
+    }
+
     return false;
+}
+
+uint32_t VolumeData::getVarIdxForCalculator(Calculator* calculator) {
+    recomputeColorLegend();
+    uint32_t varIdx = typeToFieldNamesMapBase[calculator->getOutputFieldType()].size();
+    for (CalculatorPtr& calculatorIt : calculators) {
+        if (calculatorIt.get() == calculator) {
+            return varIdx;
+        }
+        if (calculatorIt->getOutputFieldType() == calculator->getOutputFieldType()) {
+            varIdx++;
+        }
+    }
+    sgl::Logfile::get()->throwError("Error in VolumeData::getVarIdxForCalculator: Encountered unknown calculator.");
+    return varIdx;
 }
 
 void VolumeData::onTransferFunctionMapRebuilt() {
@@ -1054,6 +1227,10 @@ void VolumeData::setClearColor(const sgl::Color& clearColor) {
 
 void VolumeData::setUseLinearRGB(bool useLinearRGB) {
     multiVarTransferFunctionWindow.setUseLinearRGB(useLinearRGB);
+}
+
+size_t VolumeData::getNewCalculatorUseCount(CalculatorType calculatorType) {
+    return ++calculatorTypeUseCounts[calculatorType];
 }
 
 void VolumeData::updateCalculatorName(const CalculatorPtr& calculator) {
@@ -1116,7 +1293,91 @@ void VolumeData::updateCalculator(const CalculatorPtr& calculator) {
             }
             fieldNameIdx++;
         }
+        if (fieldNameIdx == int(fieldNames.size())) {
+            sgl::Logfile::get()->throwError(
+                    "Error in VolumeData::updateCalculator: Invalid field name \""
+                    + calculator->getOutputFieldName() + "\".");
+        }
         multiVarTransferFunctionWindow.setAttributeDataDirty(fieldNameIdx);
+    }
+}
+
+void VolumeData::removeCalculator(const CalculatorPtr& calculator, int calculatorIdx) {
+    for (auto it = calculatorsHost.begin(); it != calculatorsHost.end(); it++) {
+        if (it->second == calculator) {
+            calculatorsHost.erase(it);
+            break;
+        }
+    }
+    for (auto it = calculatorsDevice.begin(); it != calculatorsDevice.end(); it++) {
+        if (it->second == calculator) {
+            calculatorsDevice.erase(it);
+            break;
+        }
+    }
+    auto& fieldNames = typeToFieldNamesMap[calculator->getOutputFieldType()];
+    int fieldNameIdx = 0;
+    for (auto& fieldName : fieldNames) {
+        if (fieldName == calculator->getOutputFieldName()) {
+            fieldName = calculator->getOutputFieldName();
+            break;
+        }
+        fieldNameIdx++;
+    }
+    if (fieldNameIdx == int(fieldNames.size())) {
+        sgl::Logfile::get()->throwError(
+                "Error in VolumeData::removeCalculator: Invalid field name \""
+                + calculator->getOutputFieldName() + "\".");
+    }
+
+    calculators.erase(calculators.begin() + calculatorIdx);
+    fieldNames.erase(fieldNames.begin() + fieldNameIdx);
+
+    auto oldCalculatorUseMapRefToParent = calculatorUseMapRefToParent;
+    calculatorUseMapRefToParent.clear();
+    for (auto& entry : oldCalculatorUseMapRefToParent) {
+        if (entry.first != calculator.get() && entry.second != calculator.get()) {
+            calculatorUseMapRefToParent.insert(entry);
+        }
+    }
+
+    auto oldCalculatorUseMapParentToRef = calculatorUseMapParentToRef;
+    calculatorUseMapParentToRef.clear();
+    for (auto& entry : oldCalculatorUseMapParentToRef) {
+        if (entry.first != calculator.get() && entry.second != calculator.get()) {
+            calculatorUseMapParentToRef.insert(entry);
+        }
+    }
+
+    if (calculator->getOutputFieldType() == FieldType::SCALAR) {
+        multiVarTransferFunctionWindow.removeAttribute(fieldNameIdx);
+        colorLegendWidgets.erase(colorLegendWidgets.begin() + fieldNameIdx);
+
+        auto oldScalarFieldToRendererMap = scalarFieldToRendererMap;
+        scalarFieldToRendererMap.clear();
+        for (auto& entry : oldScalarFieldToRendererMap) {
+            entry.second->dirty = true;
+            entry.second->onFieldRemoved(calculator->getOutputFieldType(), fieldNameIdx);
+            if (entry.first < fieldNameIdx) {
+                scalarFieldToRendererMap.insert(entry);
+            } else if (entry.first > fieldNameIdx) {
+                scalarFieldToRendererMap.insert(std::make_pair(entry.first - 1, entry.second));
+            }
+        }
+
+        auto oldTransferFunctionToRendererMap = transferFunctionToRendererMap;
+        transferFunctionToRendererMap.clear();
+        for (auto& entry : oldTransferFunctionToRendererMap) {
+            if (entry.first < fieldNameIdx) {
+                transferFunctionToRendererMap.insert(entry);
+            } else if (entry.first > fieldNameIdx) {
+                transferFunctionToRendererMap.insert(std::make_pair(entry.first - 1, entry.second));
+            }
+        }
+
+        for (auto& calculatorIt : calculators) {
+            calculatorIt->onFieldRemoved(calculator->getOutputFieldType(), fieldNameIdx);
+        }
     }
 }
 
@@ -1141,4 +1402,99 @@ bool VolumeData::saveFieldToFile(const std::string& filePath, FieldType fieldTyp
     delete volumeWriter;
 
     return false;
+}
+
+bool VolumeData::pickPointScreen(
+        SceneData* sceneData, int globalX, int globalY, glm::vec3& firstHit, glm::vec3& lastHit) const {
+    sgl::CameraPtr camera = sceneData->camera;
+    uint32_t viewportWidth = *sceneData->viewportWidth;
+    uint32_t viewportHeight = *sceneData->viewportHeight;
+    int x = globalX - *sceneData->viewportPositionX;
+    int y = globalY - *sceneData->viewportPositionY;
+
+    glm::mat4 inverseViewMatrix = glm::inverse(camera->getViewMatrix());
+    float scale = std::tan(camera->getFOVy() * 0.5f);
+    glm::vec2 rayDirCameraSpace;
+    rayDirCameraSpace.x = (2.0f * (float(x) + 0.5f) / float(viewportWidth) - 1.0f) * camera->getAspectRatio() * scale;
+    rayDirCameraSpace.y = (2.0f * (float(viewportHeight - y - 1) + 0.5f) / float(viewportHeight) - 1.0f) * scale;
+    glm::vec4 rayDirectionVec4 = inverseViewMatrix * glm::vec4(rayDirCameraSpace, -1.0, 0.0);
+    glm::vec3 rayDirection = normalize(glm::vec3(rayDirectionVec4.x, rayDirectionVec4.y, rayDirectionVec4.z));
+
+    return pickPointWorld(camera->getPosition(), rayDirection, firstHit, lastHit);
+}
+
+bool VolumeData::pickPointWorld(
+        const glm::vec3& cameraPosition, const glm::vec3& rayDirection, glm::vec3& firstHit, glm::vec3& lastHit) const {
+    glm::vec3 rayOrigin = cameraPosition;
+    float tNear, tFar;
+    if (_rayBoxIntersection(rayOrigin, rayDirection, boxRendering.min, boxRendering.max, tNear, tFar)) {
+        firstHit = rayOrigin + tNear * rayDirection;
+        lastHit = rayOrigin + tFar * rayDirection;
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Helper function for StreamlineTracingGrid::rayBoxIntersection (see below).
+ */
+bool VolumeData::_rayBoxPlaneIntersection(
+        float rayOriginX, float rayDirectionX, float lowerX, float upperX, float& tNear, float& tFar) {
+    if (std::abs(rayDirectionX) < 0.00001f) {
+        // Ray is parallel to the x planes
+        if (rayOriginX < lowerX || rayOriginX > upperX) {
+            return false;
+        }
+    } else {
+        // Not parallel to the x planes. Compute the intersection distance to the planes.
+        float t0 = (lowerX - rayOriginX) / rayDirectionX;
+        float t1 = (upperX - rayOriginX) / rayDirectionX;
+        if (t0 > t1) {
+            // Since t0 intersection with near plane
+            float tmp = t0;
+            t0 = t1;
+            t1 = tmp;
+        }
+
+        if (t0 > tNear) {
+            // We want the largest tNear
+            tNear = t0;
+        }
+        if (t1 < tFar) {
+            // We want the smallest tFar
+            tFar = t1;
+        }
+        if (tNear > tFar) {
+            // Box is missed
+            return false;
+        }
+        if (tFar < 0) {
+            // Box is behind ray
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
+ * Implementation of ray-box intersection (idea from A. Glassner et al., "An Introduction to Ray Tracing").
+ * For more details see: https://www.siggraph.org//education/materials/HyperGraph/raytrace/rtinter3.htm
+ */
+bool VolumeData::_rayBoxIntersection(
+        const glm::vec3& rayOrigin, const glm::vec3& rayDirection, const glm::vec3& lower, const glm::vec3& upper,
+        float& tNear, float& tFar) {
+#ifdef TRACY_PROFILE_TRACING
+    ZoneScoped;
+#endif
+
+    tNear = std::numeric_limits<float>::lowest();
+    tFar = std::numeric_limits<float>::max();
+    for (int i = 0; i < 3; i++) {
+        if (!_rayBoxPlaneIntersection(
+                rayOrigin[i], rayDirection[i], lower[i], upper[i], tNear, tFar)) {
+            return false;
+        }
+    }
+
+    return true;
 }
