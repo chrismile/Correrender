@@ -76,6 +76,7 @@
 #include "Renderers/IsoSurfaceRayCastingRenderer.hpp"
 #include "Renderers/IsoSurfaceRasterizer.hpp"
 #include "Renderers/DomainOutlineRenderer.hpp"
+#include "Renderers/SliceRenderer.hpp"
 #include "Utils/AutomaticPerformanceMeasurer.hpp"
 
 #include "Widgets/ViewManager.hpp"
@@ -620,6 +621,8 @@ void MainApp::setRenderer(RenderingMode newRenderingMode, RendererPtr& newVolume
         newVolumeRenderer = std::make_shared<IsoSurfaceRasterizer>(viewManager);
     } else if (newRenderingMode == RENDERING_MODE_DOMAIN_OUTLINE_RENDERER) {
         newVolumeRenderer = std::make_shared<DomainOutlineRenderer>(viewManager);
+    } else if (newRenderingMode == RENDERING_MODE_SLICE_RENDERER) {
+        newVolumeRenderer = std::make_shared<SliceRenderer>(viewManager);
     } else {
         int idx = std::clamp(int(newRenderingMode), 0, IM_ARRAYSIZE(RENDERING_MODE_NAMES) - 1);
         std::string warningText =

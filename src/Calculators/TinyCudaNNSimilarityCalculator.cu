@@ -218,8 +218,8 @@ void TinyCudaNNSimilarityCalculator::loadModelFromFile(const std::string& modelP
         return;
     }
 
+    isInputEncodingIdentity = false;
     bool hasInputEncoding = moduleWrapper->configEncoder.find("encoding") != moduleWrapper->configEncoder.end();
-    bool isInputEncodingIdentity = false;
     auto encodingOpts = moduleWrapper->configEncoder.value("encoding", nlohmann::json::object());
     if (hasInputEncoding) {
         if (encodingOpts.value("otype", "Identity") == "Identity"
@@ -325,7 +325,7 @@ void TinyCudaNNSimilarityCalculator::recreateCache(int batchSize) {
     cacheWrapper->queryDecoded = tcnn::GPUMatrix<precision_t>();
 
     // mlp_fused_forward needs multiple of 16 for number of input layers.
-    uint32_t numInputLayers = 16;
+    uint32_t numInputLayers = isInputEncodingIdentity ? 16 : 4;
     uint32_t referenceInputBatchSize =
             sgl::uiceil(uint32_t(es), tcnn::batch_size_granularity) * tcnn::batch_size_granularity;
 #ifdef TCNN_HALF_PRECISION

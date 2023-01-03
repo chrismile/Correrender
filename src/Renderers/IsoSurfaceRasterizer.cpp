@@ -26,8 +26,6 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "IsoSurfaceRasterizer.hpp"
-
 #include <Utils/AppSettings.hpp>
 #include <Utils/Mesh/IndexMesh.hpp>
 #include <Graphics/Vulkan/Buffers/Framebuffer.hpp>

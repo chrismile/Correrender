@@ -45,16 +45,17 @@ protected:
 
     void callbackBeginCompute() override;
     void callbackEndCompute() override;
-    bool getIsModuleLoaded() override { return moduleWrapper.get() != nullptr; }
+    bool getIsModuleLoaded() override { return moduleWrapper != nullptr; }
     void recreateCache(int batchSize) override;
     CUdeviceptr getReferenceInputPointer() override;
     CUdeviceptr getQueryInputPointer() override;
     void runInferenceReference() override;
     void runInferenceBatch(uint32_t batchOffset, uint32_t batchSize) override;
-    uint32_t getInputChannelAlignment() override { return 16; }
+    uint32_t getInputChannelAlignment() override { return isInputEncodingIdentity ? 16 : 4; }
 
 private:
     uint32_t numLayersInEncoder = 0, numLayersOutEncoder = 0, numLayersInDecoder = 0, numLayersOutDecoder = 0;
+    bool isInputEncodingIdentity = false;
     std::shared_ptr<TinyCudaNNModuleWrapper> moduleWrapper;
     std::shared_ptr<TinyCudaNNCacheWrapper> cacheWrapper;
 };

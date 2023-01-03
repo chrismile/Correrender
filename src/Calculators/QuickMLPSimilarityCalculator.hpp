@@ -43,7 +43,7 @@ public:
 protected:
     void loadModelFromFile(const std::string& modelPath) override;
 
-    bool getIsModuleLoaded() { return moduleWrapper.get() != nullptr; }
+    bool getIsModuleLoaded() override { return moduleWrapper != nullptr; }
     void recreateCache(int batchSize) override;
     CUdeviceptr getReferenceInputPointer() override;
     CUdeviceptr getQueryInputPointer() override;
