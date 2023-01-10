@@ -35,6 +35,7 @@
 #include <Math/Math.hpp>
 #include <Graphics/Vulkan/Render/Renderer.hpp>
 #include <ImGui/Widgets/PropertyEditor.hpp>
+#include <ImGui/imgui_custom.h>
 #include <iostream>
 
 #include "Loaders/DataSet.hpp"
@@ -43,6 +44,8 @@
 
 NoiseReductionCalculator::NoiseReductionCalculator(sgl::vk::Renderer* renderer) : Calculator(renderer) {
     smoothingComputePass = std::make_shared<SmoothingComputePass>(renderer);
+    smoothingComputePass->setSigma(sigma);
+    smoothingComputePass->setKernelSize(kernelSize);
 }
 
 std::string NoiseReductionCalculator::getOutputFieldName() {
@@ -100,11 +103,9 @@ void NoiseReductionCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, fl
             FieldType::SCALAR, scalarFieldNames.at(scalarFieldIndex), timeStepIdx, ensembleIdx);
     float* scalarField = entryScalarField.get();
 
-    int kernelSize = 3;
-    int kernelSizeHalf = 1;
-    float sigma = 1.0f;
+    int kernelSizeHalf = kernelSize / 2;
 
-    auto* kernelBuffer = new float[kernelSize * kernelSize * kernelSize];
+    auto* kernelWeights = new float[kernelSize * kernelSize * kernelSize];
     for (int zi = 0; zi < kernelSize; zi++) {
         for (int yi = 0; yi < kernelSize; yi++) {
             for (int xi = 0; xi < kernelSize; xi++) {
@@ -114,7 +115,7 @@ void NoiseReductionCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, fl
                 float value =
                         1.0f / (sgl::TWO_PI * sigma * sigma)
                         * std::exp(-float(x * x + y * y + z * z) / (2.0f * sigma * sigma));
-                kernelBuffer[IDXK(xi, yi, zi)] = value;
+                kernelWeights[IDXK(xi, yi, zi)] = value;
             }
         }
     }
@@ -123,7 +124,7 @@ void NoiseReductionCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, fl
     tbb::parallel_for(tbb::blocked_range<int>(0, zs), [&](auto const& r) {
         for (auto z = r.begin(); z != r.end(); z++) {
 #else
-#pragma omp parallel for shared(xs, ys, zs, kernelSizeHalf, kernelSize, kernelBuffer, scalarField, buffer) default(none)
+#pragma omp parallel for shared(xs, ys, zs, kernelSizeHalf, kernelSize, kernelWeights, scalarField, buffer) default(none)
     for (int z = 0; z < zs; z++) {
 #endif
         for (int y = 0; y < ys; y++) {
@@ -141,7 +142,7 @@ void NoiseReductionCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, fl
                                 value = scalarField[IDXS(xr, yr, zr)];
                             }
                             if (!std::isnan(value)) {
-                                float weight = kernelBuffer[IDXK(xi, yi, zi)];
+                                float weight = kernelWeights[IDXK(xi, yi, zi)];
                                 weightSum += weight;
                                 sum += value * weight;
                             }
@@ -160,7 +161,7 @@ void NoiseReductionCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, fl
     });
 #endif
 
-    delete[] kernelBuffer;
+    delete[] kernelWeights;
 }
 
 void NoiseReductionCalculator::calculateDevice(int timeStepIdx, int ensembleIdx, const DeviceCacheEntry& deviceCacheEntry) {
@@ -187,6 +188,17 @@ void NoiseReductionCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEditor
         scalarFieldIndex = int(scalarFieldIndexArray.at(scalarFieldIndexGui));
         volumeData->acquireScalarField(this, scalarFieldIndex);
         dirty = true;
+    }
+
+    if (noiseReductionType == NoiseReductionType::GAUSSIAN_BLUR) {
+        if (propertyEditor.addSliderFloatEdit("Std. Dev.", &sigma, 0.25f, 8.0f) == ImGui::EditMode::INPUT_FINISHED) {
+            smoothingComputePass->setSigma(sigma);
+            dirty = true;
+        }
+        if (propertyEditor.addSliderIntEdit("Kernel Size", &kernelSize, 1, 7) == ImGui::EditMode::INPUT_FINISHED) {
+            smoothingComputePass->setKernelSize(kernelSize);
+            dirty = true;
+        }
     }
 
     /*if (propertyEditor.addCombo(
@@ -223,13 +235,56 @@ void SmoothingComputePass::setInputOutputImages(
     }
 }
 
+void SmoothingComputePass::setSigma(float _sigma) {
+    if (sigma != _sigma) {
+        sigma = _sigma;
+        kernelDirty = true;
+    }
+}
+
+void SmoothingComputePass::setKernelSize(int _kernelSize) {
+    if (kernelSize != _kernelSize) {
+        kernelSize = _kernelSize;
+        kernelBuffer = std::make_shared<sgl::vk::Buffer>(
+                device, sizeof(float) * kernelSize * kernelSize * kernelSize,
+                VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                VMA_MEMORY_USAGE_GPU_ONLY);
+        setShaderDirty();
+        kernelDirty = true;
+    }
+}
+
+void SmoothingComputePass::createKernel() {
+    auto* kernelWeights = new float[kernelSize * kernelSize * kernelSize];
+    int kernelSizeHalf = kernelSize / 2;
+    for (int zi = 0; zi < kernelSize; zi++) {
+        for (int yi = 0; yi < kernelSize; yi++) {
+            for (int xi = 0; xi < kernelSize; xi++) {
+                int x = xi - kernelSizeHalf;
+                int y = yi - kernelSizeHalf;
+                int z = zi - kernelSizeHalf;
+                float value =
+                        1.0f / (sgl::TWO_PI * sigma * sigma)
+                        * std::exp(-float(x * x + y * y + z * z) / (2.0f * sigma * sigma));
+                kernelWeights[IDXK(xi, yi, zi)] = value;
+            }
+        }
+    }
+    kernelBuffer->updateData(
+            sizeof(float) * kernelSize * kernelSize * kernelSize, kernelWeights,
+            renderer->getVkCommandBuffer());
+    delete[] kernelWeights;
+    kernelDirty = false;
+}
+
 void SmoothingComputePass::loadShader() {
     sgl::vk::ShaderManager->invalidateShaderCache();
     std::map<std::string, std::string> preprocessorDefines;
     preprocessorDefines.insert(std::make_pair("BLOCK_SIZE_X", std::to_string(computeBlockSizeX)));
     preprocessorDefines.insert(std::make_pair("BLOCK_SIZE_Y", std::to_string(computeBlockSizeY)));
     preprocessorDefines.insert(std::make_pair("BLOCK_SIZE_Z", std::to_string(computeBlockSizeZ)));
-    std::string shaderName = "GaussianBlur.Compute";
+    preprocessorDefines.insert(std::make_pair("KERNEL_SIZE", std::to_string(kernelSize)));
+    std::string shaderName = "GaussianBlur3D.Compute";
     shaderStages = sgl::vk::ShaderManager->getShaderStages({ shaderName }, preprocessorDefines);
 }
 
@@ -237,15 +292,20 @@ void SmoothingComputePass::createComputeData(
         sgl::vk::Renderer* renderer, sgl::vk::ComputePipelinePtr& computePipeline) {
     computeData = std::make_shared<sgl::vk::ComputeData>(renderer, computePipeline);
     computeData->setStaticBuffer(uniformBuffer, "UniformBuffer");
+    computeData->setStaticBuffer(kernelBuffer, "KernelBuffer");
     computeData->setStaticImageView(inputImage, "inputImage");
     computeData->setStaticImageView(outputImage, "outputImage");
 }
 
 void SmoothingComputePass::_render() {
-    uniformData.xs = outputImage->getImage()->getImageSettings().width;
-    uniformData.ys = outputImage->getImage()->getImageSettings().height;
-    uniformData.zs = outputImage->getImage()->getImageSettings().depth;
-    uniformData.es = 0;
+    if (kernelDirty) {
+        createKernel();
+    }
+
+    uniformData.xs = int(outputImage->getImage()->getImageSettings().width);
+    uniformData.ys = int(outputImage->getImage()->getImageSettings().height);
+    uniformData.zs = int(outputImage->getImage()->getImageSettings().depth);
+    uniformData.nanValue = std::numeric_limits<float>::quiet_NaN();
     uniformBuffer->updateData(
             sizeof(UniformData), &uniformData, renderer->getVkCommandBuffer());
     renderer->insertMemoryBarrier(

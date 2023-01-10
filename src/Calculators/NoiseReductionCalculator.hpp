@@ -52,7 +52,7 @@ public:
     [[nodiscard]] bool getShouldRenderGui() const override { return true; }
     FieldType getOutputFieldType() override { return FieldType::SCALAR; }
     std::string getOutputFieldName() override;
-    FilterDevice getFilterDevice() override { return FilterDevice::CPU; }
+    FilterDevice getFilterDevice() override { return FilterDevice::VULKAN; }
     void calculateCpu(int timeStepIdx, int ensembleIdx, float* buffer) override;
     void calculateDevice(int timeStepIdx, int ensembleIdx, const DeviceCacheEntry& deviceCacheEntry) override;
 
@@ -65,6 +65,8 @@ private:
     int scalarFieldIndex = 0;
     int scalarFieldIndexGui = 0;
     NoiseReductionType noiseReductionType = NoiseReductionType::GAUSSIAN_BLUR;
+    float sigma = 1.0f;
+    int kernelSize = 3;
     std::shared_ptr<SmoothingComputePass> smoothingComputePass;
 };
 
@@ -74,19 +76,27 @@ public:
     void setInputOutputImages(
             const sgl::vk::ImageViewPtr& _inputImage,
             const sgl::vk::ImageViewPtr& _outputImage);
+    void setSigma(float _sigma);
+    void setKernelSize(int _kernelSize);
 
 protected:
     void loadShader() override;
     void createComputeData(sgl::vk::Renderer* renderer, sgl::vk::ComputePipelinePtr& computePipeline) override;
     void _render() override;
+    void createKernel();
 
 private:
     const uint32_t computeBlockSizeX = 8, computeBlockSizeY = 8, computeBlockSizeZ = 4;
     struct UniformData {
-        uint32_t xs, ys, zs, es;
+        int32_t xs, ys, zs;
+        float nanValue;
     };
     UniformData uniformData{};
     sgl::vk::BufferPtr uniformBuffer;
+    sgl::vk::BufferPtr kernelBuffer;
+    float sigma = 1.0f;
+    int kernelSize = -1;
+    bool kernelDirty = true;
 
     sgl::vk::ImageViewPtr inputImage, outputImage;
 };
