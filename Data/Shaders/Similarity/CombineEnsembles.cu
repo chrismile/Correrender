@@ -33,6 +33,18 @@ typedef unsigned uint32_t;
 
 //#define USE_NORMALIZED_COORDINATES
 
+extern "C" __global__ void memcpyFloatClampToZero(
+        float* outputBuffer, const float* inputBuffer, uint32_t numElements) {
+    uint32_t globalThreadIdx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (globalThreadIdx < numElements) {
+        float value = inputBuffer[globalThreadIdx];
+        if (value < 0.0f) {
+            value = 0.0f;
+        }
+        outputBuffer[globalThreadIdx] = value;
+    }
+}
+
 extern "C" __global__ void combineEnsembles(
         uint32_t xs, uint32_t ys, uint32_t zs, uint32_t es, uint32_t batchOffset, uint32_t batchSize,
         float minEnsembleVal, float maxEnsembleVal,

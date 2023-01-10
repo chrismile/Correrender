@@ -43,7 +43,7 @@ __global__ void convertFloatToHalfArray(
     }
 }
 
-#define USE_XORSHIFT
+//#define USE_XORSHIFT
 #define ROUNDS_TEA 16
 
 /**
@@ -51,7 +51,7 @@ __global__ void convertFloatToHalfArray(
  * "GPU Random Numbers via the Tiny Encryption Algorithm". Fahad Zafar, Marc Olano, Aaron Curtis. 2010. HPG '10.
  * @param v0 The seed value.
  * @param v1 The sequence number.
- * @return
+ * @return A random unsigned integer value.
  */
 inline __device__ uint32_t encryptTea(uint32_t v0, uint32_t v1) {
     uint32_t sum = 0;

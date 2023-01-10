@@ -88,6 +88,11 @@ struct DataSetInformation {
     bool useNormalizedVelocity = false;
     bool useNormalizedVorticity = false;
 
+    // Standard selection for time and attribute in UI.
+    std::string standardScalarFieldName;
+    int standardScalarFieldIdx = 0;
+    int standardTimeStepIdx = 0;
+
     /*inline bool operator==(const DataSetInformation& rhs) const {
         return
                 this->date == rhs.date && this->time == rhs.time && this->scale == rhs.scale && this->axes == rhs.axes

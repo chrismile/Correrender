@@ -102,6 +102,8 @@ PyTorchSimilarityCalculator::PyTorchSimilarityCalculator(sgl::vk::Renderer* rend
                 &combineEnsemblesModuleCu, moduleBuffer), "Error in cuModuleLoadFatBinary: ");
         sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
                 &combineEnsemblesFunctionCu, combineEnsemblesModuleCu, "combineEnsembles"), "Error in cuModuleGetFunction: ");
+        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
+                &memcpyFloatClampToZeroFunctionCu, combineEnsemblesModuleCu, "memcpyFloatClampToZero"), "Error in cuModuleGetFunction: ");
         delete[] moduleBuffer;
     }
 #endif
@@ -306,6 +308,9 @@ void PyTorchSimilarityCalculator::calculateCpu(int timeStepIdx, int ensembleIdx,
             uint32_t x = pointIdxReadOffset % uint32_t(xs);
             uint32_t y = (pointIdxReadOffset / uint32_t(xs)) % uint32_t(ys);
             uint32_t z = pointIdxReadOffset / uint32_t(xs * ys);
+            //if (int(x) == referencePointIndex.x && int(y) == referencePointIndex.y && int(z) == referencePointIndex.z) {
+            //    std::cout << "HERE" << std::endl;
+            //}
             glm::vec3 pointNorm = glm::vec3(x, y, z) / glm::vec3(xs - 1, ys - 1, zs - 1) * 2.0f - glm::vec3(1.0f);
             for (uint32_t e = 0; e < ues; e++) {
                 batchInputValues[pointIdxWriteOffset + e * 4] =
@@ -334,6 +339,14 @@ void PyTorchSimilarityCalculator::calculateCpu(int timeStepIdx, int ensembleIdx,
             similarityMetricTensor = similarityMetricTensor.contiguous();
         }
         memcpy(buffer + batchOffset, similarityMetricTensor.data_ptr(), sizeof(float) * batchSize);
+
+        // Clamp values to zero.
+        float* bufferFlt = buffer + batchOffset;
+        for (uint32_t i = 0; i < batchSize; i++) {
+            if (bufferFlt[i] < 0.0f) {
+                bufferFlt[i] = 0.0f;
+            }
+        }
     }
 }
 
@@ -567,10 +580,23 @@ void PyTorchSimilarityCalculator::calculateDevice(
             }
             similarityMetricTensor = similarityMetricTensor.contiguous();
         }
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyAsync(
-                outputImageBufferCu + batchOffset * sizeof(float),
-                (CUdeviceptr)similarityMetricTensor.data_ptr(),
-                sizeof(float) * batchSize, stream), "Error in cuMemcpyAsync: ");
+        //sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyAsync(
+        //        outputImageBufferCu + batchOffset * sizeof(float),
+        //        (CUdeviceptr)similarityMetricTensor.data_ptr(),
+        //        sizeof(float) * batchSize, stream), "Error in cuMemcpyAsync: ");
+
+        CUdeviceptr outputBuffer = outputImageBufferCu + batchOffset * sizeof(float);
+        auto inputBuffer = (CUdeviceptr)similarityMetricTensor.data_ptr();
+        void* kernelParametersCopy[] = { &outputBuffer, &inputBuffer, &batchSize };
+        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuLaunchKernel(
+                memcpyFloatClampToZeroFunctionCu,
+                sgl::uiceil(batchSize, 256), 1, 1, //< Grid size.
+                256, 1, 1, //< Block size.
+                0, //< Dynamic shared memory size.
+                stream,
+                kernelParametersCopy, //< Kernel parameters.
+                nullptr //< Extra (empty).
+        ), "Error in cuLaunchKernel: ");
     }
 
     deviceCacheEntry->getImageCudaExternalMemory()->memcpyCudaDtoA3DAsync(outputImageBufferCu, stream);

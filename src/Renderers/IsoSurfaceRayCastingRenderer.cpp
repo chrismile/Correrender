@@ -56,7 +56,7 @@ void IsoSurfaceRayCastingRenderer::setVolumeData(VolumeDataPtr& _volumeData, boo
     }
     const std::vector<std::string>& fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
     if (isNewData) {
-        selectedFieldIdx = 0;
+        selectedFieldIdx = volumeData->getStandardScalarFieldIdx();
     }
     std::string oldSelectedScalarFieldName = selectedScalarFieldName;
     selectedScalarFieldName = fieldNames.at(selectedFieldIdx);

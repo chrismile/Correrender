@@ -76,8 +76,8 @@ void EnsembleSimilarityCalculator::setVolumeData(VolumeData* _volumeData, bool i
         referencePointIndex.z = volumeData->getGridSizeZ() / 2;
         referencePointSelectionRenderer->setReferencePosition(referencePointIndex);
 
-        fieldIndex = 0;
-        fieldIndexGui = 0;
+        fieldIndex = volumeData->getStandardScalarFieldIdx();
+        fieldIndexGui = volumeData->getStandardScalarFieldIdx();
         volumeData->acquireScalarField(this, fieldIndex);
     }
 }
@@ -701,6 +701,47 @@ Real averageDigamma(const float* values, int es, const std::vector<Real>& distan
     return meanDigammaValue;
 }
 
+/*template<class Real>
+void findKNearestNeighborDistances1D(
+        int es, const std::vector<Real>& valueArray, const std::vector<Real>& sortedArray, std::vector<Real>& distanceVec) {
+    for (int e = 0; e < es; e++) {
+        Real currentValue = valueArray[e];
+
+        Real kthDist = distanceVec[e] - default_epsilon<Real>::value;
+        Real searchValueLower = currentValue - kthDist;
+        Real searchValueUpper = currentValue + kthDist;
+        int lower = 0;
+        int upper = es;
+        int middle = 0;
+        // Binary search.
+        while (lower < upper) {
+            middle = (lower + upper) / 2;
+            Real middleValue = sortedArray[middle];
+            if (middleValue < searchValueLower) {
+                lower = middle + 1;
+            } else {
+                upper = middle;
+            }
+        }
+
+        int startRange = upper;
+        lower = startRange;
+        upper = es;
+
+        // Binary search.
+        while (lower < upper) {
+            middle = (lower + upper) / 2;
+            Real middleValue = sortedArray[middle];
+            if (middleValue < searchValueUpper) {
+                lower = middle + 1;
+            } else {
+                upper = middle;
+            }
+        }
+        int endRange = upper - 1;
+    }
+}*/
+
 /**
  * For more details, please refer to:
  * - https://journals.aps.org/pre/abstract/10.1103/PhysRevE.69.066138
@@ -762,6 +803,7 @@ float computeMutualInformationKraskov2(
     sgl::XorshiftRandomGenerator genQuery(864730169ul);
 #endif
 
+    // CASE (A).
     sgl::KdTreed<Real, 2, sgl::DistanceMeasure::CHEBYSHEV> kdTree2d;
     std::vector<glm::vec<2, Real>> points;
     points.reserve(es);
@@ -787,14 +829,65 @@ float computeMutualInformationKraskov2(
     for (int e = 0; e < es; e++) {
         nearestNeighborDistances.clear();
         kdTree2d.findKNearestNeighbors(points.at(e), k + 1, nearestNeighbors, nearestNeighborDistances);
-        kthNeighborDistancesRef.emplace_back(std::abs(points.at(e).x - nearestNeighbors.back().x));
-        kthNeighborDistancesQuery.emplace_back(std::abs(points.at(e).y - nearestNeighbors.back().y));
+        Real distX = std::numeric_limits<Real>::lowest();
+        Real distY = std::numeric_limits<Real>::lowest();
+        for (size_t i = 0; i < nearestNeighbors.size(); i++) {
+            Real ex = std::abs(points.at(e).x - nearestNeighbors.at(i).x);
+            Real ey = std::abs(points.at(e).y - nearestNeighbors.at(i).y);
+            distX = std::max(distX, ex);
+            distY = std::max(distY, ey);
+        }
+        kthNeighborDistancesRef.emplace_back(distX);
+        kthNeighborDistancesQuery.emplace_back(distY);
+        //kthNeighborDistancesRef.emplace_back(std::abs(points.at(e).x - nearestNeighbors.back().x));
+        //kthNeighborDistancesQuery.emplace_back(std::abs(points.at(e).y - nearestNeighbors.back().y));
     }
 
     auto a = averageDigamma<Real, false>(referenceValues, es, kthNeighborDistancesRef, true);
     auto b = averageDigamma<Real, false>(queryValues, es, kthNeighborDistancesQuery, false);
     auto c = Real(boost::math::digamma(k)) - Real(1) / Real(k);
     auto d = Real(boost::math::digamma(es));
+
+    // CASE (B).
+    /*sgl::KdTreed<Real, 1, sgl::DistanceMeasure::CHEBYSHEV> kdTreeX;
+    sgl::KdTreed<Real, 1, sgl::DistanceMeasure::CHEBYSHEV> kdTreeY;
+    std::vector<glm::vec<1, Real>> X;
+    X.reserve(es);
+    std::vector<glm::vec<1, Real>> Y;
+    Y.reserve(es);
+    for (int e = 0; e < es; e++) {
+#ifdef KRASKOV_USE_RANDOM_NOISE
+        X.emplace_back(referenceValues[e] + genRef.getRandomFloatBetween(0.0f, 1.0f) * default_epsilon<Real>::noise);
+        Y.emplace_back(queryValues[e] + genQuery.getRandomFloatBetween(0.0f, 1.0f) * default_epsilon<Real>::noise);
+#else
+        X.emplace_back(referenceValues[e]);
+        Y.emplace_back(queryValues[e]);
+#endif
+    }
+    //std::sort(X.begin(), X.end());
+    //std::sort(Y.begin(), Y.end());
+    kdTreeX.build(X);
+    kdTreeY.build(Y);
+
+    std::vector<Real> kthNeighborDistancesRef;
+    kthNeighborDistancesRef.reserve(es);
+    std::vector<Real> kthNeighborDistancesQuery;
+    kthNeighborDistancesQuery.reserve(es);
+    std::vector<Real> nearestNeighborDistances;
+    nearestNeighborDistances.reserve(k + 1);
+    for (int e = 0; e < es; e++) {
+        nearestNeighborDistances.clear();
+        kdTreeX.findKNearestNeighbors(X.at(e), k + 1, nearestNeighborDistances);
+        kthNeighborDistancesRef.emplace_back(nearestNeighborDistances.back());
+        nearestNeighborDistances.clear();
+        kdTreeY.findKNearestNeighbors(Y.at(e), k + 1, nearestNeighborDistances);
+        kthNeighborDistancesQuery.emplace_back(nearestNeighborDistances.back());
+    }
+
+    auto a = averageDigamma<Real, false>(referenceValues, es, kthNeighborDistancesRef, true);
+    auto b = averageDigamma<Real, false>(queryValues, es, kthNeighborDistancesQuery, false);
+    auto c = Real(boost::math::digamma(k)) - Real(1) / Real(k);
+    auto d = Real(boost::math::digamma(es));*/
 
     Real mi = (-a - b + c + d) / Real(std::log(base));
     return std::max(float(mi), 0.0f);

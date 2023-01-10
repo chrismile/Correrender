@@ -198,6 +198,7 @@ public:
     void releaseScalarField(Calculator* calculator, int varIdx);
     bool getIsScalarFieldUsedInView(uint32_t viewIdx, uint32_t varIdx, Calculator* calculator = nullptr);
     uint32_t getVarIdxForCalculator(Calculator* calculator);
+    [[nodiscard]] inline int getStandardScalarFieldIdx() const { return standardScalarFieldIdx; }
 
     /// Sets data bindings used across renderers.
     virtual void setRenderDataBindings(const sgl::vk::RenderDataPtr& renderData);
@@ -282,6 +283,7 @@ protected:
     std::unordered_multimap<int, Renderer*> scalarFieldToRendererMap;
     std::unordered_multimap<Calculator*, Calculator*> calculatorUseMapRefToParent;
     std::unordered_multimap<Calculator*, Calculator*> calculatorUseMapParentToRef;
+    int standardScalarFieldIdx = 0;
 
     // File loaders.
     VolumeLoader* createVolumeLoaderByExtension(const std::string& fileExtension);
@@ -302,7 +304,7 @@ protected:
     std::unordered_map<std::string, CalculatorPtr> calculatorsDevice;
     size_t calculatorId = 0;
     sgl::vk::BufferPtr stagingBuffer; ///< For transferring calculator output from the GPU to the CPU.
-    std::map<std::string, std::function<Calculator*()>> factoriesCalculator;
+    std::vector<std::pair<std::string, std::function<Calculator*()>>> factoriesCalculator;
     std::unordered_map<CalculatorType, size_t> calculatorTypeUseCounts;
 
 private:

@@ -131,6 +131,7 @@ private:
     std::vector<CUtexObject> cachedEnsembleTexturesCu;
     CUmodule combineEnsemblesModuleCu{};
     CUfunction combineEnsemblesFunctionCu{};
+    CUfunction memcpyFloatClampToZeroFunctionCu{};
 #endif
     std::shared_ptr<ReferenceEnsembleCombinePass> referenceEnsembleCombinePass;
     std::shared_ptr<EnsembleCombinePass> ensembleCombinePass;

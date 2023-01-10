@@ -60,7 +60,7 @@ void SliceRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) {
     }
     const std::vector<std::string>& fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
     if (isNewData) {
-        selectedFieldIdx = 0;
+        selectedFieldIdx = volumeData->getStandardScalarFieldIdx();
     }
     selectedScalarFieldName = fieldNames.at(selectedFieldIdx);
     volumeData->acquireTf(this, selectedFieldIdx);

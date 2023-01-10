@@ -55,7 +55,9 @@ class DeviceCacheEntryType;
 typedef std::shared_ptr<DeviceCacheEntryType> DeviceCacheEntry;
 
 enum class CalculatorType : uint32_t {
-    VELOCITY, VECTOR_MAGNITUDE, VORTICITY, HELICITY, BINARY_OPERATOR, CORRELATION, TORCH, TINY_CUDA_NN, QUICK_MLP
+    VELOCITY, VECTOR_MAGNITUDE, VORTICITY, HELICITY,
+    BINARY_OPERATOR, NOISE_REDUCTION,
+    CORRELATION, TORCH, TINY_CUDA_NN, QUICK_MLP
 };
 
 enum class FilterDevice {

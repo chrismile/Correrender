@@ -102,9 +102,17 @@ public:
     [[nodiscard]] bool getIsRealtime() const override { return useGpu; }
     FilterDevice getFilterDevice() override;
     [[nodiscard]] bool getHasFixedRange() const override {
-        return correlationMeasureType != CorrelationMeasureType::MUTUAL_INFORMATION_BINNED;
+        return correlationMeasureType != CorrelationMeasureType::MUTUAL_INFORMATION_BINNED
+                && correlationMeasureType != CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV;
     }
-    [[nodiscard]] std::pair<float, float> getFixedRange() const override { return std::make_pair(-1.0f, 1.0f); }
+    [[nodiscard]] std::pair<float, float> getFixedRange() const override {
+        if (correlationMeasureType != CorrelationMeasureType::MUTUAL_INFORMATION_BINNED
+                && correlationMeasureType != CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV) {
+            return std::make_pair(-1.0f, 1.0f);
+        } else {
+            return std::make_pair(0.0f, 1.0f);
+        }
+    }
     void calculateCpu(int timeStepIdx, int ensembleIdx, float* buffer) override;
     void calculateDevice(int timeStepIdx, int ensembleIdx, const DeviceCacheEntry& deviceCacheEntry) override;
 

@@ -241,7 +241,7 @@ void QuickMLPSimilarityCalculator::runInferenceBatch(uint32_t batchOffset, uint3
 
     uint32_t* permutationIndicesBuffer = reinterpret_cast<uint32_t*>(permutationIndicesBufferCu);
     generateRandomPermutations<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
-            permutationIndicesBuffer, uint32_t(es));
+            permutationIndicesBuffer, uint32_t(es), batchOffset);
 
     if (moduleWrapper->networkEncoder->precisionOut() == qmlp::Tensor::Precision::FLOAT) {
         //randomShuffleFisherYates<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(

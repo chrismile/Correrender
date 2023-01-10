@@ -75,6 +75,7 @@
 #include "Calculators/Calculator.hpp"
 #include "Calculators/VelocityCalculator.hpp"
 #include "Calculators/BinaryOperatorCalculator.hpp"
+#include "Calculators/NoiseReductionCalculator.hpp"
 #include "Calculators/SimilarityCalculator.hpp"
 #ifdef SUPPORT_PYTORCH
 #include "Calculators/PyTorchSimilarityCalculator.hpp"
@@ -171,23 +172,25 @@ VolumeData::VolumeData(sgl::vk::Renderer* renderer) : renderer(renderer), multiV
     }
 
     // Create the list of calculators.
-    factoriesCalculator.insert(std::make_pair(
-            "Binary Operator", [renderer]() { return new BinaryOperatorCalculator(renderer); }));
-    factoriesCalculator.insert(std::make_pair(
-            "Correlation Calculator", [renderer]() { return new PccCalculator(renderer); }));
+    factoriesCalculator.emplace_back(
+            "Binary Operator", [renderer]() { return new BinaryOperatorCalculator(renderer); });
+    factoriesCalculator.emplace_back(
+            "Noise Reduction", [renderer]() { return new NoiseReductionCalculator(renderer); });
+    factoriesCalculator.emplace_back(
+            "Correlation Calculator", [renderer]() { return new PccCalculator(renderer); });
 #ifdef SUPPORT_PYTORCH
-    factoriesCalculator.insert(std::make_pair(
-            "PyTorch Similarity Calculator", [renderer]() { return new PyTorchSimilarityCalculator(renderer); }));
+    factoriesCalculator.emplace_back(
+            "PyTorch Similarity Calculator", [renderer]() { return new PyTorchSimilarityCalculator(renderer); });
 #endif
     if (device->getDeviceDriverId() == VK_DRIVER_ID_NVIDIA_PROPRIETARY
             && sgl::vk::getIsCudaDeviceApiFunctionTableInitialized()) {
 #ifdef SUPPORT_TINY_CUDA_NN
-        factoriesCalculator.insert(std::make_pair(
-                "tiny-cuda-nn Similarity Calculator", [renderer]() { return new TinyCudaNNSimilarityCalculator(renderer); }));
+        factoriesCalculator.emplace_back(
+                "tiny-cuda-nn Similarity Calculator", [renderer]() { return new TinyCudaNNSimilarityCalculator(renderer); });
 #endif
 #ifdef SUPPORT_QUICK_MLP
-        factoriesCalculator.insert(std::make_pair(
-                "QuickMLP Similarity Calculator", [renderer]() { return new QuickMLPSimilarityCalculator(renderer); }));
+        factoriesCalculator.emplace_back(
+                "QuickMLP Similarity Calculator", [renderer]() { return new QuickMLPSimilarityCalculator(renderer); });
 #endif
     }
 
@@ -482,6 +485,23 @@ bool VolumeData::setInputFiles(
         VolumeLoader* volumeLoader = createVolumeLoaderByExtension(fileExtension);
         volumeLoader->setInputFiles(this, filePath, dataSetInformation);
         volumeLoaders.push_back(volumeLoader);
+    }
+
+    currentTimeStepIdx = std::clamp(dataSetInformation.standardTimeStepIdx, 0, ts - 1);
+    if (!dataSetInformation.standardScalarFieldName.empty()) {
+        const std::vector<std::string>& scalarFieldNames = getFieldNames(FieldType::SCALAR);
+        auto it = std::find(
+                scalarFieldNames.begin(), scalarFieldNames.end(), dataSetInformation.standardScalarFieldName);
+        if (it != scalarFieldNames.end()) {
+            standardScalarFieldIdx = int(it - scalarFieldNames.begin());
+        } else {
+            sgl::Logfile::get()->throwError(
+                    "Error in VolumeData::setInputFiles: Scalar field name \""
+                    + dataSetInformation.standardScalarFieldName + "\" could not be found.");
+        }
+    } else {
+        standardScalarFieldIdx = std::clamp(
+                dataSetInformation.standardScalarFieldIdx, 0, int(getFieldNames(FieldType::SCALAR).size()) - 1);
     }
 
     // Automatically add calculators for velocity, vorticity and helicity if possible.

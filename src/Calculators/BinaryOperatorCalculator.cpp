@@ -69,8 +69,8 @@ void BinaryOperatorCalculator::setVolumeData(VolumeData* _volumeData, bool isNew
 
     if (isNewData) {
         for (int i = 0; i < 2; i++) {
-            scalarFieldIndices[i] = 0;
-            scalarFieldIndicesGui[i] = 0;
+            scalarFieldIndices[i] = volumeData->getStandardScalarFieldIdx();
+            scalarFieldIndicesGui[i] = volumeData->getStandardScalarFieldIdx();
             volumeData->acquireScalarField(this, scalarFieldIndices[i]);
         }
     }

@@ -69,6 +69,7 @@ void main() {
     vec3 texCoords = (fragmentPositionWorld - minBoundingBox) / (maxBoundingBox - minBoundingBox);
     float scalarValue = texture(scalarField, texCoords).r;
     vec4 volumeColor = transferFunction(scalarValue, fieldIndex);
+    volumeColor.a = 1.0;
     vec3 n = normalize(fragmentNormal);
     vec4 color = blinnPhongShadingSurface(volumeColor, fragmentPositionWorld, n);
     color = mix(volumeColor, color, lightingFactor);

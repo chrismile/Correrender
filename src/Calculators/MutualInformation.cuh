@@ -39,7 +39,7 @@
 __global__ void convertFloatToHalfArray(
         __half* __restrict__ halfValues, const float* __restrict__ floatValues, uint32_t arraySize);
 
-__global__ void generateRandomPermutations(uint32_t* permutationIndicesBuffer, uint32_t es);
+__global__ void generateRandomPermutations(uint32_t* permutationIndicesBuffer, uint32_t es, uint32_t batchOffset);
 
 template<class T> __global__ void randomShuffleFisherYates(
         T* __restrict__ outputArray, const T* __restrict__ inputArray,
@@ -86,7 +86,7 @@ template<class T> __global__ void symmetrizerPermuted(
     uint32_t channelIdx = globalThreadIdx % numChannels;
     uint32_t ensembleIdx = (globalThreadIdx / numChannels) % es;
     uint32_t batchIdx = globalThreadIdx / (numChannels * es);
-    uint32_t ensembleMemberPermuted = permutationIndicesBuffer[ensembleIdx];
+    uint32_t ensembleMemberPermuted = permutationIndicesBuffer[ensembleIdx + batchIdx * es];
     uint32_t writeOffset = globalThreadIdx;
     uint32_t readOffset = channelIdx + (ensembleMemberPermuted + batchIdx * es) * numChannels;
     uint32_t readOffsetRef = globalThreadIdx % (es * numChannels);

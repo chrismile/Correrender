@@ -369,6 +369,28 @@ void TinyCudaNNSimilarityCalculator::runInferenceReference() {
     moduleWrapper->networkEncoder->inference(
                 stream, cacheWrapper->referenceInput, cacheWrapper->referenceEncoded);
 #endif
+
+    /*int copySize = batchSize * 40;
+    int testSize = 160;
+    __half* dataHalf = new __half[copySize];
+    dataHalf[0] = 1000.0f;
+    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyDtoHAsync(
+            dataHalf, (CUdeviceptr)cacheWrapper->queryInputHalf.data(),
+            sizeof(__half) * copySize, stream), "Error in cuMemcpyDtoHAsync: ");
+    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
+            stream), "Error in cuStreamSynchronize: ");
+    std::cout << "queryInputHalf:" << std::endl;
+    for (int i = 0; i < testSize; i++) {
+        std::cout << float(dataHalf[i * numLayersInEncoder * uint32_t(es)]);
+        if (i != testSize - 1) {
+            std::cout << ", ";
+        }
+        if (i % 20 == 19 && i != 0) {
+            std::cout << std::endl;
+        }
+    }
+    std::cout << std::endl;
+    delete[] dataHalf;*/
 }
 
 void TinyCudaNNSimilarityCalculator::runInferenceBatch(uint32_t batchOffset, uint32_t batchSize)  {
@@ -456,16 +478,17 @@ void TinyCudaNNSimilarityCalculator::runInferenceBatch(uint32_t batchOffset, uin
 
     uint32_t* permutationIndicesBuffer = reinterpret_cast<uint32_t*>(permutationIndicesBufferCu);
     generateRandomPermutations<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
-            permutationIndicesBuffer, uint32_t(es));
+            permutationIndicesBuffer, uint32_t(es), batchOffset);
     //randomShuffleFisherYates<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
     //        cacheWrapper->queryEncodedPermuted.data(), cacheWrapper->queryEncoded.data(),
     //        permutationIndicesBuffer, uint32_t(es), numLayersOutEncoder);
 
-    /*auto* dataUint32 = new uint32_t[batchSize * 20];
+    /*int testSize = 10 * es;
+    auto* dataUint32 = new uint32_t[batchSize * es];
     dataUint32[0] = 1000;
     sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyDtoHAsync(
             dataUint32, (CUdeviceptr)permutationIndicesBuffer,
-            sizeof(uint32_t) * batchSize * 20, stream), "Error in cuMemcpyDtoHAsync: ");
+            sizeof(uint32_t) * batchSize * es, stream), "Error in cuMemcpyDtoHAsync: ");
     sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
             stream), "Error in cuStreamSynchronize: ");
     std::cout << "permutationIndicesBuffer:" << std::endl;
@@ -474,14 +497,14 @@ void TinyCudaNNSimilarityCalculator::runInferenceBatch(uint32_t batchOffset, uin
         if (i != testSize - 1) {
             std::cout << ", ";
         }
-        if (i % 20 == 19 && i != 0) {
+        if (i % es == (es - 1) && i != 0) {
             std::cout << std::endl;
         }
     }
     std::cout << std::endl;
-    delete[] dataUint32;
+    delete[] dataUint32;*/
 
-    dataHalf = new __half[copySize];
+    /*dataHalf = new __half[copySize];
     dataHalf[0] = 1000.0f;
     sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyDtoHAsync(
             dataHalf, (CUdeviceptr)cacheWrapper->queryEncodedPermuted.data(),

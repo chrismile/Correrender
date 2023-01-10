@@ -66,7 +66,7 @@ void IsoSurfaceRasterizer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewD
     }
     const std::vector<std::string>& fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
     if (isNewData) {
-        selectedFieldIdx = 0;
+        selectedFieldIdx = volumeData->getStandardScalarFieldIdx();
     }
     std::string oldSelectedScalarFieldName = selectedScalarFieldName;
     selectedScalarFieldName = fieldNames.at(selectedFieldIdx);

@@ -260,6 +260,28 @@ void processDataSetNodeChildren(Json::Value& childList, DataSetInformation* data
             }
         }
 
+        if (source.isMember("standard_scalar_field")) {
+            auto standardScalarFieldElement = source["standard_scalar_field"];
+            if (standardScalarFieldElement.isString()) {
+                dataSetInformation->standardScalarFieldName = standardScalarFieldElement.asString();
+            } else if (standardScalarFieldElement.isInt()) {
+                dataSetInformation->standardScalarFieldIdx = standardScalarFieldElement.asInt();
+            } else {
+                sgl::Logfile::get()->throwError(
+                        "Error in processDataSetNodeChildren: Invalid data type for 'standard_scalar_field'.");
+            }
+        }
+
+        if (source.isMember("standard_time_step")) {
+            auto standardTimeStepElement = source["standard_time_step"];
+            if (standardTimeStepElement.isInt()) {
+                dataSetInformation->standardTimeStepIdx = standardTimeStepElement.asInt();
+            } else {
+                sgl::Logfile::get()->throwError(
+                        "Error in processDataSetNodeChildren: Invalid data type for 'standard_time_step'.");
+            }
+        }
+
         dataSetInformationParent->children.emplace_back(dataSetInformation);
     }
 }
