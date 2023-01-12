@@ -524,7 +524,8 @@ void main() {
     float b = averageDigammaQuery();
     float c = digamma(k);
     float d = digamma(es);
-    float mi = (-a - b + c + d) / log(base);
+    //float mi = (-a - b + c + d) / log(base);
+    float mi = -a - b + c + d;
 
     //if (gl_GlobalInvocationID.x == 29 && gl_GlobalInvocationID.y == 176 && gl_GlobalInvocationID.z == 10) {
     //    debugPrintfEXT("abcd %f %f %f %f", a, b, c, d);

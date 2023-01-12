@@ -226,6 +226,11 @@ void PccCalculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
     EnsembleSimilarityCalculator::setVolumeData(_volumeData, isNewData);
     calculatorConstructorUseCount = volumeData->getNewCalculatorUseCount(CalculatorType::CORRELATION);
     pccComputePass->setVolumeData(volumeData, isNewData);
+
+    int es = volumeData->getEnsembleMemberCount();
+    k = std::max(sgl::iceil(3 * es, 100), 1);
+    kMax = std::max(sgl::iceil(7 * es, 100), 20);
+    pccComputePass->setKraskovNumNeighbors(k);
 }
 
 FilterDevice PccCalculator::getFilterDevice() {
@@ -255,7 +260,7 @@ void PccCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         dirty = true;
     }
     if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV && propertyEditor.addSliderIntEdit(
-            "#Neighbors", &k, 1, 20) == ImGui::EditMode::INPUT_FINISHED) {
+            "#Neighbors", &k, 1, kMax) == ImGui::EditMode::INPUT_FINISHED) {
         pccComputePass->setKraskovNumNeighbors(k);
         dirty = true;
     }
@@ -675,9 +680,9 @@ Real averageDigamma(const float* values, int es, const std::vector<Real>& distan
 
         int numPoints = endRange + 1 - startRange;
         if constexpr(includeCenter) {
-            meanDigammaValue += factor * Real(boost::math::digamma(numPoints));
+            meanDigammaValue += factor * Real(boost::math::digamma(numPoints)); // nx/y + 1
         } else {
-            meanDigammaValue += factor * Real(boost::math::digamma(numPoints - 1));
+            meanDigammaValue += factor * Real(boost::math::digamma(numPoints - 1)); // nx/y
         }
     }
 #else
@@ -750,7 +755,7 @@ void findKNearestNeighborDistances1D(
 template<class Real>
 float computeMutualInformationKraskov(
         const float* referenceValues, const float* queryValues, int k, int es) {
-    const int base = 2;
+    //const int base = 2;
 
 #ifdef KRASKOV_USE_RANDOM_NOISE
     sgl::XorshiftRandomGenerator genRef(617406168ul);
@@ -786,7 +791,8 @@ float computeMutualInformationKraskov(
     auto c = Real(boost::math::digamma(k));
     auto d = Real(boost::math::digamma(es));
 
-    Real mi = (-a - b + c + d) / Real(std::log(base));
+    //Real mi = (-a - b + c + d) / Real(std::log(base));
+    Real mi = -a - b + c + d;
     return std::max(float(mi), 0.0f);
 }
 
@@ -796,7 +802,7 @@ float computeMutualInformationKraskov(
 template<class Real>
 float computeMutualInformationKraskov2(
         const float* referenceValues, const float* queryValues, int k, int es) {
-    const int base = 2;
+    //const int base = 2;
 
 #ifdef KRASKOV_USE_RANDOM_NOISE
     sgl::XorshiftRandomGenerator genRef(617406168ul);
@@ -889,7 +895,8 @@ float computeMutualInformationKraskov2(
     auto c = Real(boost::math::digamma(k)) - Real(1) / Real(k);
     auto d = Real(boost::math::digamma(es));*/
 
-    Real mi = (-a - b + c + d) / Real(std::log(base));
+    //Real mi = (-a - b + c + d) / Real(std::log(base));
+    Real mi = -a - b + c + d;
     return std::max(float(mi), 0.0f);
 }
 

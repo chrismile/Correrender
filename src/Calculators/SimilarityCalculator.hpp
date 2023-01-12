@@ -126,6 +126,7 @@ private:
     bool useGpu = true;
     int numBins = 80; ///< For CorrelationMeasureType::MUTUAL_INFORMATION_BINNED.
     int k = 3; ///< For CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV.
+    int kMax = 20; ///< For CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV.
     int kraskovEstimatorIndex = 1; ///< For CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV.
 };
 
