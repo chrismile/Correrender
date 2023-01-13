@@ -645,7 +645,12 @@ Real averageDigamma(const float* values, int es, const std::vector<Real>& distan
 #else
         Real currentValue = values[e];
 #endif
-        Real kthDist = distanceVec[e] - default_epsilon<Real>::value;
+        Real kthDist;
+        if constexpr(includeCenter) {
+            kthDist = distanceVec[e] - default_epsilon<Real>::value;
+        } else {
+            kthDist = distanceVec[e] + default_epsilon<Real>::value;
+        }
         Real searchValueLower = currentValue - kthDist;
         Real searchValueUpper = currentValue + kthDist;
         int lower = 0;
