@@ -86,13 +86,22 @@ void loadNetwork(
     network = std::make_shared<qmlp::FusedNetwork>(
             config, std::filesystem::path(quickMlpModelsPath));
     qmlp::Tensor::Precision precision = network->networkParameterPrecision(qmlp::Tensor::INFERENCE);
+    int numEncodings = network->numEncodings();
+
+    auto numParametersTotal = uint32_t(network->networkParameterCount());
+    for (int encodingIdx = 0; encodingIdx < numEncodings; encodingIdx++) {
+        auto encoding = network->encoding(encodingIdx);
+        if (encoding->hasParameters()) {
+            numParametersTotal += encoding->parameterCount();
+        }
+    }
 
     auto* header = reinterpret_cast<QuickMLPDataHeader*>(entry.bufferData.get());
     uint8_t* paramsDataHost = entry.bufferData.get() + sizeof(QuickMLPDataHeader);
-    if (header->numParams != uint32_t(network->networkParameterCount())) {
+    if (header->numParams != numParametersTotal) {
         sgl::Logfile::get()->throwError(
                 "Error in loadNetwork: Mismatching network parameter count (" + std::to_string(header->numParams)
-                + " vs. " + std::to_string(network->networkParameterCount()) + ") for \"" + modelPath + "\".");
+                + " vs. " + std::to_string(numParametersTotal) + ") for \"" + modelPath + "\".");
     }
     if (header->format == QUICK_MLP_PARAMS_FORMAT_FLOAT && precision == qmlp::Tensor::Precision::HALF) {
         float* dataOld = reinterpret_cast<float*>(paramsDataHost);
@@ -120,6 +129,25 @@ void loadNetwork(
             reinterpret_cast<CUdeviceptr>(parameters.rawPtr()), paramsDataHost,
             qmlp::Tensor::BytesPerEntry[precision] * network->networkParameterCount()), "Error in cuMemcpyHtoD: ");
     network->setNetworkParameter(parameters, qmlp::Tensor::INFERENCE);
+
+    uint32_t parameterOffset = network->networkParameterCount();
+    for (int encodingIdx = 0; encodingIdx < numEncodings; encodingIdx++) {
+        auto encoding = network->encoding(encodingIdx);
+        if (encoding->hasParameters()) {
+            qmlp::Tensor::Precision precisionEncoding = encoding->parameterPrecision(qmlp::Tensor::INFERENCE);
+            if (precision != precisionEncoding) {
+                sgl::Logfile::get()->throwError(
+                        "Error in loadNetwork: Precision mismatch between QuickMLP network and encoding in file \""
+                        + modelPath + "\".");
+            }
+            qmlp::Tensor parametersEncoding(precisionEncoding, { encoding->parameterCount() });
+            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyHtoD(
+                    reinterpret_cast<CUdeviceptr>(parametersEncoding.rawPtr()), paramsDataHost + parameterOffset,
+                    qmlp::Tensor::BytesPerEntry[precisionEncoding] * encoding->parameterCount()), "Error in cuMemcpyHtoD: ");
+            encoding->setParameter(parametersEncoding, qmlp::Tensor::INFERENCE);
+            parameterOffset += encoding->parameterCount();
+        }
+    }
 
     if (header->format == QUICK_MLP_PARAMS_FORMAT_FLOAT && precision == qmlp::Tensor::Precision::HALF
             || header->format == QUICK_MLP_PARAMS_FORMAT_HALF && precision == qmlp::Tensor::Precision::FLOAT) {

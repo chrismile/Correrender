@@ -391,6 +391,22 @@ void TinyCudaNNSimilarityCalculator::runInferenceReference() {
     }
     std::cout << std::endl;
     delete[] dataHalf;*/
+
+    /*int sizeDataEnc = 4 * 64;
+    auto* dataEnc = new __half[sizeDataEnc];
+    cudaMemcpy(dataEnc, cacheWrapper->referenceEncoded.data(), sizeDataEnc * sizeof(__half), cudaMemcpyDeviceToHost);
+    std::cout << "dataEnc:" << std::endl;
+    for (int i = 0; i < sizeDataEnc; i++) {
+        std::cout << float(dataEnc[i]);
+        if (i != sizeDataEnc - 1) {
+            std::cout << ", ";
+        }
+        if (i % 16 == 15 && i != 0) {
+            std::cout << std::endl;
+        }
+    }
+    std::cout << std::endl;
+    delete[] dataEnc;*/
 }
 
 void TinyCudaNNSimilarityCalculator::runInferenceBatch(uint32_t batchOffset, uint32_t batchSize)  {
