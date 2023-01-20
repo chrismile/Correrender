@@ -63,7 +63,7 @@ class FileDialog;
 }
 typedef IGFD::FileDialog ImGuiFileDialog;
 
-class SceneData;
+struct SceneData;
 class ViewManager;
 class VolumeLoader;
 class VolumeWriter;

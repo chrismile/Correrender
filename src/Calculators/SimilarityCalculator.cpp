@@ -29,6 +29,11 @@
 #include <iostream>
 #include <boost/math/special_functions/digamma.hpp>
 
+#ifdef USE_TBB
+#include <tbb/parallel_for.h>
+#include <tbb/blocked_range.h>
+#endif
+
 #include <Utils/SearchStructures/KdTreed.hpp>
 #include <Utils/Random/Xorshift.hpp>
 #include <Graphics/Vulkan/Render/Renderer.hpp>
@@ -454,7 +459,7 @@ int M(const std::vector<float>& L, const std::vector<float>& R) {
     int i = 0;
     int j = 0;
     int num_swaps = 0;
-    while (i < n and j < m) {
+    while (i < n && j < m) {
         if (R[j] < L[i]) {
             num_swaps += n - i;
             j += 1;
@@ -1120,9 +1125,9 @@ void PccCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float* buffer
 #ifdef USE_TBB
         tbb::parallel_for(tbb::blocked_range<size_t>(0, numGridPoints), [&](auto const& r) {
             auto* gridPointValues = new float[es];
-            auto* histogram0 = new float[numBins];
-            auto* histogram1 = new float[numBins];
-            auto* histogram2d = new float[numBins * numBins];
+            auto* histogram0 = new double[numBins];
+            auto* histogram1 = new double[numBins];
+            auto* histogram2d = new double[numBins * numBins];
             for (auto gridPointIdx = r.begin(); gridPointIdx != r.end(); gridPointIdx++) {
 #else
 #if _OPENMP >= 200805

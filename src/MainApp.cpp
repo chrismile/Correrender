@@ -651,11 +651,11 @@ void MainApp::setRenderer(RenderingMode newRenderingMode, RendererPtr& newVolume
     newVolumeRenderer->setFileDialogInstance(fileDialogInstance);
 
     for (size_t viewIdx = 0; viewIdx < dataViews.size(); viewIdx++) {
-        newVolumeRenderer->addView(viewIdx);
+        newVolumeRenderer->addView(uint32_t(viewIdx));
         auto& viewSceneData = dataViews.at(viewIdx)->sceneData;
         if (*viewSceneData.sceneTexture) {
             newVolumeRenderer->recreateSwapchainView(
-                    viewIdx, *viewSceneData.viewportWidth, *viewSceneData.viewportHeight);
+                    uint32_t(viewIdx), *viewSceneData.viewportWidth, *viewSceneData.viewportHeight);
         }
     }
 }
@@ -1885,11 +1885,11 @@ void MainApp::loadVolumeDataSet(const std::vector<std::string>& fileNames) {
         volumeData->setClearColor(clearColor);
         volumeData->setUseLinearRGB(useLinearRGB);
         for (size_t viewIdx = 0; viewIdx < dataViews.size(); viewIdx++) {
-            volumeData->addView(viewIdx);
+            volumeData->addView(uint32_t(viewIdx));
             auto& viewSceneData = dataViews.at(viewIdx)->sceneData;
             if (*viewSceneData.sceneTexture) {
                 volumeData->recreateSwapchainView(
-                        viewIdx, *viewSceneData.viewportWidth, *viewSceneData.viewportHeight);
+                        uint32_t(viewIdx), *viewSceneData.viewportWidth, *viewSceneData.viewportHeight);
             }
         }
         newDataLoaded = true;

@@ -63,6 +63,8 @@ template<> struct hash<GribTimeStep> {
 struct GribVarInfo {
 #if defined(_WIN32) && !defined(__MINGW32__)
     std::vector<__int64> handleOffsets;
+#elif defined(__MINGW32__)
+    std::vector<_off64_t> handleOffsets;
 #else
     std::vector<__off64_t> handleOffsets;
 #endif

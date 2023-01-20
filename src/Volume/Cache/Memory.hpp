@@ -30,6 +30,7 @@
 #define CORRERENDER_MEMORY_HPP
 
 #include <vector>
+#include <cstddef>
 
 size_t getUsedSystemMemoryBytes();
 size_t getAvailableSystemMemoryBytes();

@@ -195,7 +195,7 @@ VolumeData::VolumeData(sgl::vk::Renderer* renderer) : renderer(renderer), multiV
     }
 
     sgl::vk::ImageSamplerSettings samplerSettings{};
-    imageSampler = std::make_shared<sgl::vk::ImageSampler>(device, samplerSettings, 0);
+    imageSampler = std::make_shared<sgl::vk::ImageSampler>(device, samplerSettings, 0.0f);
 }
 
 VolumeData::~VolumeData() {
@@ -603,11 +603,11 @@ void VolumeData::addCalculator(const CalculatorPtr& calculator) {
             if (!calculatorRenderer) {
                 continue;
             }
-            calculatorRenderer->addView(viewIdx);
-            SceneData* viewSceneData = viewManager->getViewSceneData(viewIdx);
+            calculatorRenderer->addView(uint32_t(viewIdx));
+            SceneData* viewSceneData = viewManager->getViewSceneData(uint32_t(viewIdx));
             if (*viewSceneData->sceneTexture) {
                 calculatorRenderer->recreateSwapchainView(
-                        viewIdx, *viewSceneData->viewportWidth, *viewSceneData->viewportHeight);
+                        uint32_t(viewIdx), *viewSceneData->viewportWidth, *viewSceneData->viewportHeight);
             }
         }
     }
@@ -1009,7 +1009,7 @@ void VolumeData::renderGuiNewCalculators() {
 }
 
 void VolumeData::renderViewCalculator(uint32_t viewIdx) {
-    uint32_t varIdx = typeToFieldNamesMapBase[FieldType::SCALAR].size();
+    auto varIdx = uint32_t(typeToFieldNamesMapBase[FieldType::SCALAR].size());
     for (const CalculatorPtr& calculator : calculators) {
         auto calculatorRenderer = calculator->getCalculatorRenderer();
         if (calculatorRenderer && getIsScalarFieldUsedInView(viewIdx, varIdx, calculator.get())) {
@@ -1213,7 +1213,7 @@ bool VolumeData::getIsScalarFieldUsedInView(uint32_t viewIdx, uint32_t varIdx, C
 
 uint32_t VolumeData::getVarIdxForCalculator(Calculator* calculator) {
     recomputeColorLegend();
-    uint32_t varIdx = typeToFieldNamesMapBase[calculator->getOutputFieldType()].size();
+    auto varIdx = uint32_t(typeToFieldNamesMapBase[calculator->getOutputFieldType()].size());
     for (CalculatorPtr& calculatorIt : calculators) {
         if (calculatorIt.get() == calculator) {
             return varIdx;

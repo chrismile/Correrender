@@ -82,7 +82,7 @@ void DiagramRenderer::initialize() {
             std::vector<float>& variableValuesAtTime = variableValuesTimeDependent.at(timeStepIdx);
             variableValuesAtTime.reserve(numVariables);
             for (int varIdx = 1; varIdx <= numVariables; varIdx++) {
-                variableValuesAtTime.push_back(dis(generator));
+                variableValuesAtTime.push_back(float(dis(generator)));
             }
         }
     }

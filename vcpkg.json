@@ -6,6 +6,7 @@
         "boost-core",
         "boost-algorithm",
         "boost-filesystem",
+        "boost-math",
         {
             "name": "boost-interprocess",
             "platform": "windows"
@@ -38,8 +39,10 @@
         "tbb",
         "eigen3",
         "jsoncpp",
+        "nlohmann-json",
         "python3",
-        "netcdf-c"
+        "netcdf-c",
+        "blosc"
     ],
     "features": {
         "tbb": {

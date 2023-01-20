@@ -402,7 +402,7 @@ if $build_with_zarr_support; then
         mkdir -p z5-src/build
         pushd z5-src/build >/dev/null
         cmake -Dxtl_DIR="${PROJECTPATH}/third_party/xtl/share/cmake/xtl" \
-        -Dxtensor_DIR="${PROJECTPATH}/third_party/xtensor/lib/cmake/xtensor" \
+        -Dxtensor_DIR="${PROJECTPATH}/third_party/xtensor/share/cmake/xtensor" \
         -Dxsimd_DIR="${PROJECTPATH}/third_party/xsimd/lib/cmake/xsimd" \
         -DBUILD_Z5PY=OFF -DWITH_ZLIB=ON -DWITH_LZ4=ON -DWITH_BLOSC=ON \
         -DCMAKE_INSTALL_PREFIX="${PROJECTPATH}/third_party/z5" ..
@@ -410,9 +410,9 @@ if $build_with_zarr_support; then
         popd >/dev/null
     fi
     params+=(-Dxtl_DIR="${PROJECTPATH}/third_party/xtl/share/cmake/xtl" \
-    -Dxtensor_DIR="${PROJECTPATH}/lib/xtensor/share/cmake/xtensor" \
+    -Dxtensor_DIR="${PROJECTPATH}/third_party/xtensor/share/cmake/xtensor" \
     -Dxsimd_DIR="${PROJECTPATH}/third_party/xsimd/lib/cmake/xsimd" \
-    -Dz5_DIR="${PROJECTPATH}/lib/z5/share/cmake/z5")
+    -Dz5_DIR="${PROJECTPATH}/third_party/z5/lib/cmake/z5")
 fi
 
 if $build_with_cuda_support; then

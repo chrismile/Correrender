@@ -26,6 +26,11 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#ifdef USE_TBB
+#include <tbb/parallel_for.h>
+#include <tbb/blocked_range.h>
+#endif
+
 #include "Normalization.hpp"
 
 void normalizeVertexPosition(
@@ -98,7 +103,7 @@ void normalizeVertexNormals(
         transformationMatrix = glm::transpose(glm::inverse(transformationMatrix));
 
 #ifdef USE_TBB
-        tbb::parallel_for(tbb::blocked_range<size_t>(0, vertexPositions.size()), [&](auto const& r) {
+        tbb::parallel_for(tbb::blocked_range<size_t>(0, vertexNormals.size()), [&](auto const& r) {
             for (size_t vertexIdx = r.begin(); vertexIdx != r.end(); vertexIdx++) {
 #else
 #if _OPENMP >= 200805
