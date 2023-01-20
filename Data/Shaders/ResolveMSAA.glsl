@@ -48,9 +48,13 @@ layout(location = 0) out vec4 fragColor;
 
 layout(binding = 0) uniform sampler2DMS inputTexture;
 
+#ifdef VULKAN
 layout(push_constant) uniform PushConstants {
     int numSamples;
 };
+#else
+uniform int numSamples;
+#endif
 
 void main() {
     ivec2 size = textureSize(inputTexture);

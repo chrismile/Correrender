@@ -38,13 +38,15 @@ enum RenderingMode : int32_t {
     RENDERING_MODE_ISOSURFACE_RASTERIZER = 2,
     RENDERING_MODE_DOMAIN_OUTLINE_RENDERER = 3,
     RENDERING_MODE_SLICE_RENDERER = 4,
+    RENDERING_MODE_DIAGRAM_RENDERER = 5
 };
 const char* const RENDERING_MODE_NAMES[] = {
         "Direct Volume Renderer",
         "Iso Surface Raycaster",
         "Iso Surface Rasterizer",
         "Domain Outline Renderer",
-        "Slice Renderer"
+        "Slice Renderer",
+        "Diagram Renderer"
 };
 const int NUM_RENDERING_MODES = ((int)(sizeof(RENDERING_MODE_NAMES) / sizeof(*RENDERING_MODE_NAMES)));
 

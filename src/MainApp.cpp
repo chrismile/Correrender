@@ -77,6 +77,7 @@
 #include "Renderers/IsoSurfaceRasterizer.hpp"
 #include "Renderers/DomainOutlineRenderer.hpp"
 #include "Renderers/SliceRenderer.hpp"
+#include "Renderers/Diagram/DiagramRenderer.hpp"
 #include "Utils/AutomaticPerformanceMeasurer.hpp"
 
 #include "Widgets/ViewManager.hpp"
@@ -590,10 +591,21 @@ void MainApp::addNewRenderer(RenderingMode renderingMode) {
     setRenderer(renderingMode, volumeRenderer);
 
     // Opaque surface renderers are always added before transparent renderers.
-    bool isOpaqueRenderer = renderingMode != RenderingMode::RENDERING_MODE_DIRECT_VOLUME_RENDERING;
-    if (isOpaqueRenderer) {
+    bool isOpaqueRenderer =
+            renderingMode != RenderingMode::RENDERING_MODE_DIRECT_VOLUME_RENDERING
+            && renderingMode != RenderingMode::RENDERING_MODE_DIAGRAM_RENDERER;
+    bool isOverlayRenderer = renderingMode == RenderingMode::RENDERING_MODE_DIAGRAM_RENDERER;
+    if (isOpaqueRenderer && !isOverlayRenderer) {
+        // Push after last opaque renderer (or at the beginning).
         auto it = volumeRenderers.begin();
         while (it != volumeRenderers.end() && it->get()->getIsOpaqueRenderer()) {
+            ++it;
+        }
+        volumeRenderers.insert(it, volumeRenderer);
+    } else if (!isOverlayRenderer) {
+        // Push before the last overlay renderer.
+        auto it = volumeRenderers.begin();
+        while (it != volumeRenderers.end() && !it->get()->getIsOverlayRenderer()) {
             ++it;
         }
         volumeRenderers.insert(it, volumeRenderer);
@@ -623,6 +635,8 @@ void MainApp::setRenderer(RenderingMode newRenderingMode, RendererPtr& newVolume
         newVolumeRenderer = std::make_shared<DomainOutlineRenderer>(viewManager);
     } else if (newRenderingMode == RENDERING_MODE_SLICE_RENDERER) {
         newVolumeRenderer = std::make_shared<SliceRenderer>(viewManager);
+    } else if (newRenderingMode == RENDERING_MODE_DIAGRAM_RENDERER) {
+        newVolumeRenderer = std::make_shared<DiagramRenderer>(viewManager);
     } else {
         int idx = std::clamp(int(newRenderingMode), 0, IM_ARRAYSIZE(RENDERING_MODE_NAMES) - 1);
         std::string warningText =

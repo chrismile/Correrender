@@ -26,53 +26,65 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
--- Vertex
+-- Vertex.Plain
 
 #version 450 core
 
-layout(location = 0) in vec3 vertexPosition;
+layout(location = 0) in vec4 vertexPosition;
+
+void main() {
+    gl_Position = mvpMatrix * vertexPosition;
+}
+
+-- Fragment.Plain
+
+#version 450 core
+
+layout(location = 0) out vec4 fragColor;
+
+#ifdef VULKAN
+layout(push_constant) uniform PushConstants {
+    vec4 color;
+};
+#else
+uniform vec4 color;
+#endif
+
+void main() {
+    fragColor = color;
+}
+
+
+-- Vertex.Textured
+
+#version 450 core
+
+layout(location = 0) in vec4 vertexPosition;
 layout(location = 1) in vec2 vertexTexCoord;
 layout(location = 0) out vec2 fragTexCoord;
 
 void main() {
     fragTexCoord = vertexTexCoord;
-    gl_Position = vec4(vertexPosition, 1.0);
+    gl_Position = mvpMatrix * vertexPosition;
 }
 
--- Fragment
+-- Fragment.Textured
 
 #version 450 core
 
 layout(location = 0) in vec2 fragTexCoord;
-layout(location = 0) out vec4 fragColorOut;
+layout(location = 0) out vec4 fragColor;
 
-layout(binding = 0) uniform sampler2D inputTexture;
+layout(binding = 0) uniform sampler2D albedoTexture;
 
 #ifdef VULKAN
 layout(push_constant) uniform PushConstants {
-    int horzBlur;
+    vec4 color;
 };
 #else
-uniform int horzBlur;
+uniform vec4 color;
 #endif
 
-// Values for perfect weights and offsets that utilize bilinear texture filtering
-// are from http://rastergrid.com/blog/2010/09/efficient-gaussian-blur-with-linear-sampling/
-const float offsets[3] = float[](0.0, 1.3846153846, 3.2307692308);
-const float weights[3] = float[](0.2270270270, 0.3162162162, 0.0702702703);
-
 void main() {
-    vec2 texSize = textureSize(inputTexture, 0);
-    vec4 fragColor = texture(inputTexture, fragTexCoord) * weights[0];
-    for (int i = 1; i < 3; i++) {
-        vec2 offset;
-        if (horzBlur == 1) {
-            offset = vec2(offsets[i] / texSize.x, 0.0) ;
-        } else {
-            offset = vec2(0.0, offsets[i] / texSize.y);
-        }
-        fragColor += texture(inputTexture, fragTexCoord+offset) * weights[i];
-        fragColor += texture(inputTexture, fragTexCoord-offset) * weights[i];
-    }
-    fragColorOut = vec4(fragColor.xyz, 1.0);
+    fragColor = color * texture(albedoTexture, fragTexCoord);
 }

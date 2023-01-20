@@ -78,6 +78,7 @@ public:
     [[nodiscard]] virtual bool needsReRenderView(uint32_t viewIdx);
     [[nodiscard]] inline bool getIsRasterizer() const { return isRasterizer; }
     [[nodiscard]] virtual bool getIsOpaqueRenderer() const { return true; }
+    [[nodiscard]] virtual bool getIsOverlayRenderer() const { return false; }
     /// Called when the camera has moved.
     virtual void onHasMoved(uint32_t viewIdx) {}
     /// If the re-rendering was triggered from an outside source, frame accumulation cannot be used.

@@ -41,6 +41,11 @@
 #include <Graphics/Vulkan/Utils/Swapchain.hpp>
 #include <Graphics/Vulkan/Shader/ShaderManager.hpp>
 
+#ifdef SUPPORT_OPENGL
+#include <Graphics/OpenGL/Context/OffscreenContextEGL.hpp>
+#include <Graphics/OpenGL/Context/OffscreenContextGlfw.hpp>
+#endif
+
 #include "MainApp.hpp"
 
 int main(int argc, char *argv[]) {
@@ -122,6 +127,15 @@ int main(int argc, char *argv[]) {
                     VK_EXT_SCALAR_BLOCK_LAYOUT_EXTENSION_NAME, VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME
             },
             optionalDeviceExtensions, requestedDeviceFeatures);
+
+#ifdef SUPPORT_OPENGL
+    sgl::OffscreenContext* offscreenContext = sgl::createOffscreenContext(device, false);
+    if (offscreenContext && offscreenContext->getIsInitialized()) {
+        offscreenContext->makeCurrent();
+        sgl::AppSettings::get()->setOffscreenContext(offscreenContext);
+    }
+#endif
+
     sgl::vk::Swapchain* swapchain = new sgl::vk::Swapchain(device);
     swapchain->create(window);
     sgl::AppSettings::get()->setPrimaryDevice(device);
@@ -137,6 +151,13 @@ int main(int argc, char *argv[]) {
     delete app;
 
     sgl::AppSettings::get()->release();
+
+#ifdef SUPPORT_OPENGL
+    if (offscreenContext) {
+        sgl::destroyOffscreenContext(offscreenContext);
+        offscreenContext = nullptr;
+    }
+#endif
 
 #ifdef USE_PYTHON
     Py_Finalize();

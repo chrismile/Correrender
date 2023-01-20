@@ -53,6 +53,9 @@ void SliceRenderer::initialize() {
 }
 
 void SliceRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) {
+    if (!volumeData) {
+        isNewData = true;
+    }
     volumeData = _volumeData;
     if (!selectedScalarFieldName.empty()) {
         volumeData->releaseTf(this, oldSelectedFieldIdx);
