@@ -26,9 +26,11 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "DeviceCacheEntry.hpp"
-
 #include <utility>
+
+#include <Graphics/Vulkan/Image/Image.hpp>
+
+#include "DeviceCacheEntry.hpp"
 
 DeviceCacheEntryType::DeviceCacheEntryType(sgl::vk::ImagePtr vulkanImage, sgl::vk::ImageSamplerPtr vulkanSampler)
         : vulkanImage(std::move(vulkanImage)), vulkanSampler(std::move(vulkanSampler)) {

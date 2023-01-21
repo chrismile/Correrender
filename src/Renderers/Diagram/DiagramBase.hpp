@@ -29,6 +29,9 @@
 #ifndef CORRERENDER_DIAGRAMBASE_HPP
 #define CORRERENDER_DIAGRAMBASE_HPP
 
+#include <set>
+#include <functional>
+
 #include <Graphics/Vulkan/libs/nanovg/NanoVGWidget.hpp>
 
 struct NVGcolor;
