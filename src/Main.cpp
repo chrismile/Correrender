@@ -96,17 +96,41 @@ int main(int argc, char *argv[]) {
     sgl::AppSettings::get()->setLoadGUI(fontRanges.Data, true, useMultiViewport);
 
     sgl::AppSettings::get()->setRenderSystem(sgl::RenderSystem::VULKAN);
+
+#ifdef SUPPORT_OPENGL
+    /*
+     * OpenGL interop is optionally supported for rendering with NanoVG.
+     * For this, we need to enable a few instance and device extensions.
+     * We need to do this before we know whether we were able to successfully create the OpenGL context,
+     * as we need a Vulkan device for matching an OpenGL context if EGL is supported.
+     */
+    sgl::AppSettings::get()->enableVulkanOffscreenOpenGLContextInteropSupport();
+#endif
+
     sgl::Window* window = sgl::AppSettings::get()->createWindow();
 
     std::vector<const char*> optionalDeviceExtensions;
 #ifdef SUPPORT_CUDA_INTEROP
     optionalDeviceExtensions = sgl::vk::Device::getCudaInteropDeviceExtensions();
 #endif
-    std::vector<const char*> raytracingDeviceExtensions = {
-    };
-    optionalDeviceExtensions.insert(
-            optionalDeviceExtensions.end(),
-            raytracingDeviceExtensions.begin(), raytracingDeviceExtensions.end());
+#ifdef SUPPORT_OPENGL
+    if (sgl::AppSettings::get()->getInstanceSupportsVulkanOpenGLInterop()) {
+        std::vector<const char*> interopDeviceExtensions =
+                sgl::AppSettings::get()->getVulkanOpenGLInteropDeviceExtensions();
+        for (const char* extensionName : interopDeviceExtensions) {
+            bool foundExtension = false;
+            for (size_t i = 0; i < optionalDeviceExtensions.size(); i++) {
+                if (strcmp(extensionName, optionalDeviceExtensions.at(i)) == 0) {
+                    foundExtension = true;
+                    break;
+                }
+            }
+            if (!foundExtension) {
+                optionalDeviceExtensions.push_back(extensionName);
+            }
+        }
+    }
+#endif
     //optionalDeviceExtensions.push_back(VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME);
 
     sgl::vk::Instance* instance = sgl::AppSettings::get()->getVulkanInstance();
@@ -131,7 +155,7 @@ int main(int argc, char *argv[]) {
 #ifdef SUPPORT_OPENGL
     sgl::OffscreenContext* offscreenContext = sgl::createOffscreenContext(device, false);
     if (offscreenContext && offscreenContext->getIsInitialized()) {
-        offscreenContext->makeCurrent();
+        //offscreenContext->makeCurrent(); //< This is called by createOffscreenContext to check interop extensions.
         sgl::AppSettings::get()->setOffscreenContext(offscreenContext);
     }
 #endif
