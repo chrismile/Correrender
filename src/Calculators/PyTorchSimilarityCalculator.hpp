@@ -90,7 +90,9 @@ public:
     }
     FilterDevice getFilterDevice() override;
     void calculateCpu(int timeStepIdx, int ensembleIdx, float* buffer) override;
+#ifdef SUPPORT_CUDA_INTEROP
     void calculateDevice(int timeStepIdx, int ensembleIdx, const DeviceCacheEntry& deviceCacheEntry) override;
+#endif
 
 protected:
     bool loadModelFromFile(int idx, const std::string& modelPath);

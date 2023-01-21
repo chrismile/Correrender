@@ -108,9 +108,6 @@ PyTorchSimilarityCalculator::PyTorchSimilarityCalculator(sgl::vk::Renderer* rend
     }
 #endif
 
-    // TODO: Test
-    //pyTorchDevice = PyTorchDevice::CPU;
-
     sgl::AppSettings::get()->getSettings().getValueOpt(
             "pyTorchSimilarityCalculatorModelFilePathEncoder", modelFilePathEncoder);
     sgl::AppSettings::get()->getSettings().getValueOpt(
@@ -350,6 +347,7 @@ void PyTorchSimilarityCalculator::calculateCpu(int timeStepIdx, int ensembleIdx,
     }
 }
 
+#ifdef SUPPORT_CUDA_INTEROP
 void PyTorchSimilarityCalculator::calculateDevice(
         int timeStepIdx, int ensembleIdx, const DeviceCacheEntry& deviceCacheEntry) {
     torch::NoGradGuard noGradGuard{};
@@ -615,11 +613,14 @@ void PyTorchSimilarityCalculator::calculateDevice(
     std::cout << "Elapsed time inference: " << elapsedInference.count() << "ms" << std::endl;
 #endif
 }
+#endif
 
 FilterDevice PyTorchSimilarityCalculator::PyTorchSimilarityCalculator::getFilterDevice() {
+#ifdef SUPPORT_CUDA_INTEROP
     if (pyTorchDevice == PyTorchDevice::CUDA) {
         return FilterDevice::CUDA;
     }
+#endif
     return FilterDevice::CPU;
 }
 

@@ -1,7 +1,7 @@
 /*
  * BSD 2-Clause License
  *
- * Copyright (c) 2022, Christoph Neuhauser
+ * Copyright (c) 2022-2023, Christoph Neuhauser
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -1252,16 +1252,13 @@ void PccCalculator::calculateDevice(int timeStepIdx, int ensembleIdx, const Devi
 
     std::vector<VolumeData::DeviceCacheEntry> ensembleEntryFields;
     std::vector<sgl::vk::ImageViewPtr> ensembleImageViews;
-    std::vector<CUtexObject> ensembleTexturesCu;
     ensembleEntryFields.reserve(es);
     ensembleImageViews.reserve(es);
-    ensembleTexturesCu.reserve(es);
     for (ensembleIdx = 0; ensembleIdx < es; ensembleIdx++) {
         VolumeData::DeviceCacheEntry ensembleEntryField = volumeData->getFieldEntryDevice(
                 FieldType::SCALAR, scalarFieldNames.at(fieldIndexGui), timeStepIdx, ensembleIdx);
         ensembleEntryFields.push_back(ensembleEntryField);
         ensembleImageViews.push_back(ensembleEntryField->getVulkanImageView());
-        ensembleTexturesCu.push_back(ensembleEntryField->getCudaTexture());
         if (ensembleEntryField->getVulkanImage()->getVkImageLayout() != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
             ensembleEntryField->getVulkanImage()->transitionImageLayout(
                     VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, renderer->getVkCommandBuffer());

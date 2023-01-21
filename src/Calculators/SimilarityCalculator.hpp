@@ -67,9 +67,9 @@ protected:
     void setReferencePointFromFocusPoint();
     bool fixPickingZPlane = true;
     bool hasHitInformation = false;
-    glm::vec3 focusPoint;
-    glm::vec3 firstHit, lastHit;
-    glm::vec3 hitLookingDirection;
+    glm::vec3 focusPoint{};
+    glm::vec3 firstHit{}, lastHit{};
+    glm::vec3 hitLookingDirection{};
 };
 
 

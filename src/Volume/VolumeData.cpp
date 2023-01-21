@@ -182,6 +182,7 @@ VolumeData::VolumeData(sgl::vk::Renderer* renderer) : renderer(renderer), multiV
     factoriesCalculator.emplace_back(
             "PyTorch Similarity Calculator", [renderer]() { return new PyTorchSimilarityCalculator(renderer); });
 #endif
+#ifdef SUPPORT_CUDA_INTEROP
     if (device->getDeviceDriverId() == VK_DRIVER_ID_NVIDIA_PROPRIETARY
             && sgl::vk::getIsCudaDeviceApiFunctionTableInitialized()) {
 #ifdef SUPPORT_TINY_CUDA_NN
@@ -193,6 +194,7 @@ VolumeData::VolumeData(sgl::vk::Renderer* renderer) : renderer(renderer), multiV
                 "QuickMLP Similarity Calculator", [renderer]() { return new QuickMLPSimilarityCalculator(renderer); });
 #endif
     }
+#endif
 
     sgl::vk::ImageSamplerSettings samplerSettings{};
     imageSampler = std::make_shared<sgl::vk::ImageSampler>(device, samplerSettings, 0.0f);
@@ -542,6 +544,7 @@ bool VolumeData::setInputFiles(
 #ifdef SUPPORT_PYTORCH
     addCalculator(std::make_shared<PyTorchSimilarityCalculator>(renderer));
 #endif
+#ifdef SUPPORT_CUDA_INTEROP
     if (device->getDeviceDriverId() == VK_DRIVER_ID_NVIDIA_PROPRIETARY
             && sgl::vk::getIsCudaDeviceApiFunctionTableInitialized()) {
 #ifdef SUPPORT_TINY_CUDA_NN
@@ -551,6 +554,7 @@ bool VolumeData::setInputFiles(
         addCalculator(std::make_shared<QuickMLPSimilarityCalculator>(renderer));
 #endif
     }
+#endif
 
     const auto& scalarFieldNames = typeToFieldNamesMap[FieldType::SCALAR];
     multiVarTransferFunctionWindow.setRequestAttributeValuesCallback([this](

@@ -174,13 +174,20 @@ endif()
 if (CUDA_ENABLED AND ${SUPPORT_TINY_CUDA_NN})
     add_subdirectory(third_party/tiny-cuda-nn)
 else()
+    list(REMOVE_ITEM SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/Calculators/TinyCudaNNSimilarityCalculator.hpp)
     list(REMOVE_ITEM CUDA_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/Calculators/TinyCudaNNSimilarityCalculator.cu)
 endif()
 
 if (CUDA_ENABLED AND ${SUPPORT_QUICK_MLP})
     add_subdirectory(third_party/quick-mlp)
 else()
+    list(REMOVE_ITEM SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/Calculators/QuickMLPSimilarityCalculator.hpp)
     list(REMOVE_ITEM CUDA_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/Calculators/QuickMLPSimilarityCalculator.cu)
+endif()
+
+if (NOT CUDA_ENABLED OR (NOT ${SUPPORT_TINY_CUDA_NN} AND NOT ${SUPPORT_QUICK_MLP}))
+    list(REMOVE_ITEM SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/Calculators/DeepLearningCudaSimilarityCalculator.hpp)
+    list(REMOVE_ITEM SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/Calculators/DeepLearningCudaSimilarityCalculator.cpp)
 endif()
 
 
