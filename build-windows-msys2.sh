@@ -101,8 +101,8 @@ if command -v pacman &> /dev/null && [ ! -d $build_dir_debug ] && [ ! -d $build_
         mingw64/mingw-w64-x86_64-vulkan-validation-layers mingw64/mingw-w64-x86_64-shaderc \
         mingw64/mingw-w64-x86_64-opencl-headers mingw64/mingw-w64-x86_64-opencl-icd \
         mingw64/mingw-w64-x86_64-jsoncpp mingw64/mingw-w64-x86_64-nlohmann-json \
-		mingw64/mingw-w64-x86_64-netcdf \
-		mingw64/mingw-w64-x86_64-eccodes mingw64/mingw-w64-x86_64-blosc \
+        mingw64/mingw-w64-x86_64-netcdf \
+        mingw64/mingw-w64-x86_64-eccodes mingw64/mingw-w64-x86_64-blosc \
         mingw64/mingw-w64-x86_64-python mingw64/mingw-w64-x86_64-python-numpy
     fi
 fi
@@ -216,7 +216,7 @@ if $build_with_zarr_support; then
         mkdir -p xtl-src/build
         pushd xtl-src/build >/dev/null
         cmake -G "MSYS Makefiles" \
-		-DCMAKE_INSTALL_PREFIX="${PROJECTPATH}/third_party/xtl" ..
+        -DCMAKE_INSTALL_PREFIX="${PROJECTPATH}/third_party/xtl" ..
         make install
         popd >/dev/null
     fi
@@ -232,7 +232,7 @@ if $build_with_zarr_support; then
         mkdir -p xtensor-src/build
         pushd xtensor-src/build >/dev/null
         cmake -G "MSYS Makefiles" \
-		-Dxtl_DIR="${PROJECTPATH}/third_party/xtl/share/cmake/xtl" \
+        -Dxtl_DIR="${PROJECTPATH}/third_party/xtl/share/cmake/xtl" \
         -DCMAKE_INSTALL_PREFIX="${PROJECTPATH}/third_party/xtensor" ..
         make install
         popd >/dev/null
@@ -249,7 +249,7 @@ if $build_with_zarr_support; then
         mkdir -p xsimd-src/build
         pushd xsimd-src/build >/dev/null
         cmake -G "MSYS Makefiles" \
-		-Dxtl_DIR="${PROJECTPATH}/third_party/xtl/share/cmake/xtl" \
+        -Dxtl_DIR="${PROJECTPATH}/third_party/xtl/share/cmake/xtl" \
         -DENABLE_XTL_COMPLEX=ON \
         -DCMAKE_INSTALL_PREFIX="${PROJECTPATH}/third_party/xsimd" ..
         make install
@@ -268,7 +268,7 @@ if $build_with_zarr_support; then
         mkdir -p z5-src/build
         pushd z5-src/build >/dev/null
         cmake -G "MSYS Makefiles"\
-		-Dxtl_DIR="${PROJECTPATH}/third_party/xtl/share/cmake/xtl" \
+        -Dxtl_DIR="${PROJECTPATH}/third_party/xtl/share/cmake/xtl" \
         -Dxtensor_DIR="${PROJECTPATH}/third_party/xtensor/share/cmake/xtensor" \
         -Dxsimd_DIR="${PROJECTPATH}/third_party/xsimd/lib/cmake/xsimd" \
         -DBUILD_Z5PY=OFF -DWITH_ZLIB=ON -DWITH_LZ4=ON -DWITH_BLOSC=ON \
@@ -349,12 +349,12 @@ for library in $ldd_output
 do
     if [[ $library == "$MSYSTEM_PREFIX"* ]] ;
     then
-		    cp "$library" "$destination_dir/bin"
+            cp "$library" "$destination_dir/bin"
     fi
     if [[ $library == libpython* ]] ;
     then
-	      tmp=${library#*lib}
-	      Python3_VERSION=${tmp%.dll}
+          tmp=${library#*lib}
+          Python3_VERSION=${tmp%.dll}
     fi
 done
 
@@ -365,7 +365,7 @@ for library in $ldd_output
 do
     if [[ $library == "$MSYSTEM_PREFIX"* ]] ;
     then
-		    cp "$library" "$destination_dir/bin"
+            cp "$library" "$destination_dir/bin"
     fi
 done
 
