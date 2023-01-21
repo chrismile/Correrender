@@ -31,6 +31,7 @@
 
 #include <vector>
 #include <cstdint>
+#include <cstddef>
 
 namespace sgl { namespace vk {
 class Renderer;

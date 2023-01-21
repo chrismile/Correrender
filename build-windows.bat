@@ -273,7 +273,9 @@ if %build_with_cuda_support% == true (
         echo downloading tiny-cuda-nn
         echo ------------------------
         git clone https://github.com/chrismile/tiny-cuda-nn.git tiny-cuda-nn --recurse-submodules
+        pushd "tiny-cuda-nn"
         git checkout activations
+        popd
     )
     if not exist ".\quick-mlp" (
         echo ------------------------

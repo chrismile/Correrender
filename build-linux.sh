@@ -441,7 +441,9 @@ if $build_with_cuda_support; then
         echo "downloading tiny-cuda-nn"
         echo "------------------------"
         git clone https://github.com/chrismile/tiny-cuda-nn.git tiny-cuda-nn --recurse-submodules
+        pushd tiny-cuda-nn >/dev/null
         git checkout activations
+        popd >/dev/null
     fi
     if [ ! -d "./quick-mlp" ]; then
         echo "------------------------"
