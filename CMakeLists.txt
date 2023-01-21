@@ -57,7 +57,7 @@ option(USE_STATIC_STD_LIBRARIES "Link with standard libraries statically (only s
 option(SUPPORT_PYTORCH "Build the PyTorch similarity calculator module." ON)
 option(SUPPORT_TINY_CUDA_NN "Build the tiny-cuda-nn similarity calculator module." ON)
 option(SUPPORT_QUICK_MLP "Build the QuickMLP similarity calculator module." ON)
-option(SUPPORT_RENDERDOC_DEBUGGER "Build with the RenderDoc debugger." ON)
+option(SUPPORT_RENDERDOC_DEBUGGER "Build with the RenderDoc debugger." OFF)
 
 set(DATA_PATH "${CMAKE_SOURCE_DIR}/Data" CACHE PATH "Location of folder 'Data'")
 add_definitions(-DDATA_PATH=\"${DATA_PATH}\")
