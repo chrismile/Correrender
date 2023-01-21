@@ -699,6 +699,18 @@ void MainApp::updateColorSpaceMode() {
     }
 }
 
+void MainApp::beginFrameMarker() {
+#ifdef SUPPORT_RENDERDOC_DEBUGGER
+    renderDocDebugger.startFrameCapture();
+#endif
+}
+
+void MainApp::endFrameMarker() {
+#ifdef SUPPORT_RENDERDOC_DEBUGGER
+    renderDocDebugger.endFrameCapture();
+#endif
+}
+
 void MainApp::render() {
     if (usePerformanceMeasurementMode) {
         performanceMeasurer->beginRenderFunction();
@@ -1621,6 +1633,10 @@ void MainApp::update(float dt) {
         // All modes were tested -> quit.
         quit();
     }
+
+#ifdef SUPPORT_RENDERDOC_DEBUGGER
+    renderDocDebugger.update();
+#endif
 
     updateCameraFlight(volumeData.get() != nullptr, usesNewState);
 

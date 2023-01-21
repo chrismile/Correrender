@@ -57,6 +57,7 @@ option(USE_STATIC_STD_LIBRARIES "Link with standard libraries statically (only s
 option(SUPPORT_PYTORCH "Build the PyTorch similarity calculator module." ON)
 option(SUPPORT_TINY_CUDA_NN "Build the tiny-cuda-nn similarity calculator module." ON)
 option(SUPPORT_QUICK_MLP "Build the QuickMLP similarity calculator module." ON)
+option(SUPPORT_RENDERDOC_DEBUGGER "Build with the RenderDoc debugger." ON)
 
 set(DATA_PATH "${CMAKE_SOURCE_DIR}/Data" CACHE PATH "Location of folder 'Data'")
 add_definitions(-DDATA_PATH=\"${DATA_PATH}\")
@@ -130,6 +131,11 @@ if(NOT z5_FOUND)
     list(REMOVE_ITEM SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/Loaders/ZarrLoader.cpp)
     list(REMOVE_ITEM SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/Loaders/ZarrLoader.hpp)
     MESSAGE(STATUS "z5 couldn't be found. Disabling zarr file loading support.")
+endif()
+
+if (NOT ${SUPPORT_RENDERDOC_DEBUGGER})
+    list(REMOVE_ITEM SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/Utils/RenderDocDebugger.hpp)
+    list(REMOVE_ITEM SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/Utils/RenderDocDebugger.cpp)
 endif()
 
 get_target_property(SGL_INTERFACE_COMPILE_DEFINITIONS sgl INTERFACE_COMPILE_DEFINITIONS)
@@ -282,6 +288,10 @@ else()
     target_include_directories(Correrender PRIVATE ${NETCDF_INCLUDE_DIR})
 endif()
 target_include_directories(Correrender PRIVATE ${sgl_INCLUDES} ${TINYXML2_INCLUDE_DIR})
+
+if (${SUPPORT_RENDERDOC_DEBUGGER})
+    target_compile_definitions(Correrender PRIVATE SUPPORT_RENDERDOC_DEBUGGER)
+endif()
 
 if(CUDA_ENABLED)
     enable_language(CUDA)

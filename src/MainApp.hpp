@@ -39,6 +39,10 @@
 #include <Graphics/Vulkan/Utils/InteropCuda.hpp>
 #endif
 
+#ifdef SUPPORT_RENDERDOC_DEBUGGER
+#include "Utils/RenderDocDebugger.hpp"
+#endif
+
 #include "Utils/InternalState.hpp"
 #include "Loaders/DataSetList.hpp"
 #include "Renderers/SceneData.hpp"
@@ -78,6 +82,8 @@ public:
 
 protected:
     void renderGuiGeneralSettingsPropertyEditor() override;
+    void beginFrameMarker() override;
+    void endFrameMarker() override;
 
 private:
     /// Renders the GUI of the scene settings and all filters and renderers.
@@ -157,6 +163,10 @@ private:
 #endif
     bool cudaInteropInitialized = false;
     bool openclInteropInitialized = false;
+
+#ifdef SUPPORT_RENDERDOC_DEBUGGER
+    RenderDocDebugger renderDocDebugger;
+#endif
 
 
     /// --- Visualization pipeline ---
