@@ -32,6 +32,12 @@
 #include <Graphics/Vulkan/Utils/InteropCuda.hpp>
 #include <Graphics/Vulkan/Render/CommandBuffer.hpp>
 #include "SimilarityCalculator.hpp"
+#include "SymmetrizerType.hpp"
+
+/// Symmetrizer operation used between encoder and decoder (@see SymmetrizerType.hpp).
+const char* const SYMMETRIZER_TYPE_SHORT_NAMES[] = {
+        "Add", "AddDiff"
+};
 
 class DeepLearningCudaSimilarityCalculator : public EnsembleSimilarityCalculator {
 public:
@@ -74,6 +80,7 @@ protected:
 
     std::string modelFilePath;
     std::string fileDialogDirectory;
+    SymmetrizerType symmetrizerType = SymmetrizerType::Add;
 
     const int gpuBatchSize1DBase = 16384;
     size_t cachedEnsembleSizeDevice = 0;

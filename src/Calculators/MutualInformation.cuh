@@ -36,6 +36,10 @@
 
 #include <cuda_fp16.h>
 
+#include <Math/Math.hpp>
+
+#include "SymmetrizerType.hpp"
+
 __global__ void convertFloatToHalfArray(
         __half* __restrict__ halfValues, const float* __restrict__ floatValues, uint32_t arraySize);
 
@@ -70,7 +74,7 @@ template<class T> __global__ void symmetrizerBE(
     }
 }
 
-template<class T> __global__ void symmetrizer(
+template<class T> __global__ void symmetrizerAdd(
         const T* __restrict__ referenceValues, const T* __restrict__ queryValues, T* __restrict__ outputValues,
         uint32_t es, uint32_t numChannels) {
     uint32_t globalThreadIdx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -79,7 +83,7 @@ template<class T> __global__ void symmetrizer(
     outputValues[readOffset] = referenceValues[readOffsetRef] + queryValues[readOffset];
 }
 
-template<class T> __global__ void symmetrizerPermuted(
+template<class T> __global__ void symmetrizerAddPermuted(
         const T* __restrict__ referenceValues, const T* __restrict__ queryValues, T* __restrict__ outputValues,
         const uint32_t* __restrict__ permutationIndicesBuffer, uint32_t es, uint32_t numChannels) {
     uint32_t globalThreadIdx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -92,6 +96,92 @@ template<class T> __global__ void symmetrizerPermuted(
     uint32_t readOffsetRef = globalThreadIdx % (es * numChannels);
     outputValues[writeOffset] = referenceValues[readOffsetRef] + queryValues[readOffset];
 }
+
+__forceinline__ __device__ float absT(float val) { return fabsf(val); }
+__forceinline__ __device__ __half absT(__half val) { return __habs(val); }
+
+template<class T> __global__ void symmetrizerAddDiff_Add(
+        const T* __restrict__ referenceValues, const T* __restrict__ queryValues, T* __restrict__ outputValues,
+        uint32_t es, uint32_t numChannels) {
+    uint32_t globalThreadIdx = blockIdx.x * blockDim.x + threadIdx.x;
+    uint32_t readOffset = globalThreadIdx;
+    uint32_t readOffsetRef = globalThreadIdx % (es * numChannels);
+    uint32_t channelIdx = globalThreadIdx % numChannels;
+    uint32_t batchEnsembleIdx = globalThreadIdx / numChannels;
+    uint32_t writeOffset = batchEnsembleIdx * numChannels * 2 + channelIdx;
+    outputValues[writeOffset] = referenceValues[readOffsetRef] + queryValues[readOffset];
+}
+
+template<class T> __global__ void symmetrizerAddDiff_Diff(
+        const T* __restrict__ referenceValues, const T* __restrict__ queryValues, T* __restrict__ outputValues,
+        uint32_t es, uint32_t numChannels) {
+    uint32_t globalThreadIdx = blockIdx.x * blockDim.x + threadIdx.x;
+    uint32_t readOffset = globalThreadIdx;
+    uint32_t readOffsetRef = globalThreadIdx % (es * numChannels);
+    uint32_t channelIdx = globalThreadIdx % numChannels;
+    uint32_t batchEnsembleIdx = globalThreadIdx / numChannels;
+    uint32_t writeOffset = batchEnsembleIdx * numChannels * 2 + numChannels + channelIdx;
+    outputValues[writeOffset] = absT(referenceValues[readOffsetRef] - queryValues[readOffset]);
+}
+
+template<class T> __global__ void symmetrizerAddDiffPermuted_Add(
+        const T* __restrict__ referenceValues, const T* __restrict__ queryValues, T* __restrict__ outputValues,
+        const uint32_t* __restrict__ permutationIndicesBuffer, uint32_t es, uint32_t numChannels) {
+    uint32_t globalThreadIdx = blockIdx.x * blockDim.x + threadIdx.x;
+    uint32_t channelIdx = globalThreadIdx % numChannels;
+    uint32_t ensembleIdx = (globalThreadIdx / numChannels) % es;
+    uint32_t batchIdx = globalThreadIdx / (numChannels * es);
+    uint32_t batchEnsembleIdx = globalThreadIdx / numChannels;
+    uint32_t ensembleMemberPermuted = permutationIndicesBuffer[ensembleIdx + batchIdx * es];
+    uint32_t writeOffset = batchEnsembleIdx * numChannels * 2 + channelIdx;
+    uint32_t readOffset = channelIdx + (ensembleMemberPermuted + batchIdx * es) * numChannels;
+    uint32_t readOffsetRef = globalThreadIdx % (es * numChannels);
+    outputValues[writeOffset] = referenceValues[readOffsetRef] + queryValues[readOffset];
+}
+
+template<class T> __global__ void symmetrizerAddDiffPermuted_Diff(
+        const T* __restrict__ referenceValues, const T* __restrict__ queryValues, T* __restrict__ outputValues,
+        const uint32_t* __restrict__ permutationIndicesBuffer, uint32_t es, uint32_t numChannels) {
+    uint32_t globalThreadIdx = blockIdx.x * blockDim.x + threadIdx.x;
+    uint32_t channelIdx = globalThreadIdx % numChannels;
+    uint32_t ensembleIdx = (globalThreadIdx / numChannels) % es;
+    uint32_t batchIdx = globalThreadIdx / (numChannels * es);
+    uint32_t batchEnsembleIdx = globalThreadIdx / numChannels;
+    uint32_t ensembleMemberPermuted = permutationIndicesBuffer[ensembleIdx + batchIdx * es];
+    uint32_t writeOffset = batchEnsembleIdx * numChannels * 2 + numChannels + channelIdx;
+    uint32_t readOffset = channelIdx + (ensembleMemberPermuted + batchIdx * es) * numChannels;
+    uint32_t readOffsetRef = globalThreadIdx % (es * numChannels);
+    outputValues[writeOffset] = absT(referenceValues[readOffsetRef] - queryValues[readOffset]);
+}
+
+template<class T> void symmetrizer(
+        const T* __restrict__ referenceValues, const T* __restrict__ queryValues,
+        T* __restrict__ symmetrizedReferenceValues, T* __restrict__ symmetrizedQueryValues,
+        const uint32_t* __restrict__ permutationIndicesBuffer,
+        uint32_t batchSize, uint32_t es, uint32_t numLayersOutEncoder,
+        SymmetrizerType symmetrizerType, CUstream stream) {
+    constexpr uint32_t blockSize = 256;
+    const uint32_t numBlocks = sgl::uiceil(batchSize * uint32_t(es) * numLayersOutEncoder, blockSize);
+    if (symmetrizerType == SymmetrizerType::Add) {
+        symmetrizerAdd<<<numBlocks, blockSize, 0, stream>>>(
+                referenceValues, queryValues, symmetrizedReferenceValues, uint32_t(es), numLayersOutEncoder);
+        symmetrizerAddPermuted<<<numBlocks, blockSize, 0, stream>>>(
+                referenceValues, queryValues, symmetrizedQueryValues, permutationIndicesBuffer,
+                uint32_t(es), numLayersOutEncoder);
+    } else if (symmetrizerType == SymmetrizerType::AddDiff) {
+        symmetrizerAddDiff_Add<<<numBlocks, blockSize, 0, stream>>>(
+                referenceValues, queryValues, symmetrizedReferenceValues, uint32_t(es), numLayersOutEncoder);
+        symmetrizerAddDiff_Diff<<<numBlocks, blockSize, 0, stream>>>(
+                referenceValues, queryValues, symmetrizedReferenceValues, uint32_t(es), numLayersOutEncoder);
+        symmetrizerAddDiffPermuted_Add<<<numBlocks, blockSize, 0, stream>>>(
+                referenceValues, queryValues, symmetrizedQueryValues, permutationIndicesBuffer,
+                uint32_t(es), numLayersOutEncoder);
+        symmetrizerAddDiffPermuted_Diff<<<numBlocks, blockSize, 0, stream>>>(
+                referenceValues, queryValues, symmetrizedQueryValues, permutationIndicesBuffer,
+                uint32_t(es), numLayersOutEncoder);
+    }
+}
+
 
 //#define USE_FAST_CUDA_MATH
 

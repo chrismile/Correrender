@@ -41,6 +41,7 @@
 #include "QuickMLPSimilarityCalculator.hpp"
 
 struct QuickMLPModuleWrapper {
+    nlohmann::json configGeneral;
     nlohmann::json configEncoder;
     nlohmann::json configDecoder;
     std::shared_ptr<qmlp::FusedNetwork> networkEncoder;
@@ -167,14 +168,34 @@ void QuickMLPSimilarityCalculator::loadModelFromFile(const std::string& modelPat
         return;
     }
 
+    // A global configuration file is optional.
     auto itConfig = archiveFiles.find("config.json");
-    auto itConfigEncoder = archiveFiles.find("config_encoder.json");
-    auto itConfigDecoder = archiveFiles.find("config_decoder.json");
     if (itConfig != archiveFiles.end()) {
         const auto& entry = itConfig->second;
-        moduleWrapper->configEncoder = moduleWrapper->configDecoder = nlohmann::json::parse(std::string(
+        moduleWrapper->configGeneral = nlohmann::json::parse(std::string(
                 reinterpret_cast<char*>(entry.bufferData.get()), entry.bufferSize));
-    } else if (itConfigEncoder != archiveFiles.end() && itConfigDecoder != archiveFiles.end()) {
+        auto symmetrizerTypeName = moduleWrapper->configGeneral.value(
+                "symmetrizer_type", SYMMETRIZER_TYPE_SHORT_NAMES[0]);
+        bool foundSymmetrizerType = false;
+        for (int i = 0; i < IM_ARRAYSIZE(SYMMETRIZER_TYPE_SHORT_NAMES); i++) {
+            if (SYMMETRIZER_TYPE_SHORT_NAMES[i] == symmetrizerTypeName) {
+                symmetrizerType = SymmetrizerType(i);
+                foundSymmetrizerType = true;
+                break;
+            }
+        }
+        if (!foundSymmetrizerType) {
+            sgl::Logfile::get()->writeError(
+                    "Error in QuickMLPSimilarityCalculator::loadModelFromFile: Invalid symmetrizer type \""
+                    + symmetrizerTypeName + "\".");
+            return;
+        }
+    }
+
+    // Encoder and decoder configuration files are mandatory.
+    auto itConfigEncoder = archiveFiles.find("config_encoder.json");
+    auto itConfigDecoder = archiveFiles.find("config_decoder.json");
+    if (itConfigEncoder != archiveFiles.end() && itConfigDecoder != archiveFiles.end()) {
         const auto& entryEncoder = itConfigEncoder->second;
         const auto& entryDecoder = itConfigDecoder->second;
         moduleWrapper->configEncoder = nlohmann::json::parse(std::string(
@@ -183,8 +204,8 @@ void QuickMLPSimilarityCalculator::loadModelFromFile(const std::string& modelPat
                 reinterpret_cast<char*>(entryDecoder.bufferData.get()), entryDecoder.bufferSize));
     } else {
         sgl::Logfile::get()->writeError(
-                "Error in QuickMLPSimilarityCalculator::loadModelFromFile: Could not load config from model \""
-                + modelPath + "\".");
+                "Error in QuickMLPSimilarityCalculator::loadModelFromFile: Could not load encoder or decoder "
+                "configuration from model \"" + modelPath + "\".");
         return;
     }
 
@@ -212,6 +233,15 @@ void QuickMLPSimilarityCalculator::loadModelFromFile(const std::string& modelPat
     numLayersOutEncoder = uint32_t(moduleWrapper->networkEncoder->channelsOut());
     numLayersInDecoder = uint32_t(moduleWrapper->networkDecoder->channelsIn());
     numLayersOutDecoder = uint32_t(moduleWrapper->networkDecoder->channelsOut());
+
+    uint32_t symmetrizerFactor = symmetrizerType == SymmetrizerType::Add ? 1 : 2;
+    if (numLayersOutEncoder * symmetrizerFactor != numLayersInDecoder) {
+        sgl::Logfile::get()->throwError(
+                "Error in QuickMLPSimilarityCalculator::loadModelFromFile: Mismatch between encoder output and "
+                "decoder input dimensions.");
+    }
+
+    cacheNeedsRecreate = true;
 }
 
 void QuickMLPSimilarityCalculator::recreateCache(int batchSize) {
@@ -275,24 +305,34 @@ void QuickMLPSimilarityCalculator::runInferenceBatch(uint32_t batchOffset, uint3
         //randomShuffleFisherYates<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
         //        cacheWrapper->queryEncodedPermuted.dataPtr<float>(), cacheWrapper->queryEncoded.dataPtr<float>(),
         //        permutationIndicesBuffer, uint32_t(es), numLayersOutEncoder);
-        symmetrizer<<<sgl::uiceil(batchSize * uint32_t(es) * numLayersOutEncoder, 256), 256, 0, stream>>>(
+        /*symmetrizerAdd<<<sgl::uiceil(batchSize * uint32_t(es) * numLayersOutEncoder, 256), 256, 0, stream>>>(
                 cacheWrapper->referenceEncoded.dataPtr<float>(), cacheWrapper->queryEncoded.dataPtr<float>(),
                 cacheWrapper->symmetrizedReferenceInput.dataPtr<float>(), uint32_t(es), numLayersOutEncoder);
-        symmetrizerPermuted<<<sgl::uiceil(batchSize * uint32_t(es) * numLayersOutEncoder, 256), 256, 0, stream>>>(
+        symmetrizerAddPermuted<<<sgl::uiceil(batchSize * uint32_t(es) * numLayersOutEncoder, 256), 256, 0, stream>>>(
                 cacheWrapper->referenceEncoded.dataPtr<float>(), cacheWrapper->queryEncoded.dataPtr<float>(),
                 cacheWrapper->symmetrizedQueryInput.dataPtr<float>(), permutationIndicesBuffer,
-                uint32_t(es), numLayersOutEncoder);
+                uint32_t(es), numLayersOutEncoder);*/
+        symmetrizer(
+                cacheWrapper->referenceEncoded.dataPtr<float>(), cacheWrapper->queryEncoded.dataPtr<float>(),
+                cacheWrapper->symmetrizedReferenceInput.dataPtr<float>(),
+                cacheWrapper->symmetrizedQueryInput.dataPtr<float>(),
+                permutationIndicesBuffer, batchSize, uint32_t(es), numLayersOutEncoder, symmetrizerType, stream);
     } else if (moduleWrapper->networkEncoder->precisionOut() == qmlp::Tensor::Precision::HALF) {
         //randomShuffleFisherYates<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
         //        cacheWrapper->queryEncodedPermuted.dataPtr<half>(), cacheWrapper->queryEncoded.dataPtr<half>(),
         //        permutationIndicesBuffer, uint32_t(es), numLayersOutEncoder);
-        symmetrizer<<<sgl::uiceil(batchSize * uint32_t(es) * numLayersOutEncoder, 256), 256, 0, stream>>>(
+        /*symmetrizerAdd<<<sgl::uiceil(batchSize * uint32_t(es) * numLayersOutEncoder, 256), 256, 0, stream>>>(
                 cacheWrapper->referenceEncoded.dataPtr<half>(), cacheWrapper->queryEncoded.dataPtr<half>(),
                 cacheWrapper->symmetrizedReferenceInput.dataPtr<half>(), uint32_t(es), numLayersOutEncoder);
-        symmetrizerPermuted<<<sgl::uiceil(batchSize * uint32_t(es) * numLayersOutEncoder, 256), 256, 0, stream>>>(
+        symmetrizerAddPermuted<<<sgl::uiceil(batchSize * uint32_t(es) * numLayersOutEncoder, 256), 256, 0, stream>>>(
                 cacheWrapper->referenceEncoded.dataPtr<half>(), cacheWrapper->queryEncoded.dataPtr<half>(),
                 cacheWrapper->symmetrizedQueryInput.dataPtr<half>(), permutationIndicesBuffer,
-                uint32_t(es), numLayersOutEncoder);
+                uint32_t(es), numLayersOutEncoder);*/
+        symmetrizer(
+                cacheWrapper->referenceEncoded.dataPtr<half>(), cacheWrapper->queryEncoded.dataPtr<half>(),
+                cacheWrapper->symmetrizedReferenceInput.dataPtr<half>(),
+                cacheWrapper->symmetrizedQueryInput.dataPtr<half>(),
+                permutationIndicesBuffer, batchSize, uint32_t(es), numLayersOutEncoder, symmetrizerType, stream);
     }
 
     moduleWrapper->networkDecoder->inference(

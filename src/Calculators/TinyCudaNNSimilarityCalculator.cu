@@ -47,6 +47,7 @@
 using precision_t = tcnn::network_precision_t;
 
 struct TinyCudaNNModuleWrapper {
+    nlohmann::json configGeneral;
     nlohmann::json configEncoder;
     nlohmann::json configDecoder;
     std::shared_ptr<tcnn::Network<float, precision_t>> networkEncoder;
@@ -197,14 +198,34 @@ void TinyCudaNNSimilarityCalculator::loadModelFromFile(const std::string& modelP
         return;
     }
 
+    // A global configuration file is optional.
     auto itConfig = archiveFiles.find("config.json");
-    auto itConfigEncoder = archiveFiles.find("config_encoder.json");
-    auto itConfigDecoder = archiveFiles.find("config_decoder.json");
     if (itConfig != archiveFiles.end()) {
         const auto& entry = itConfig->second;
-        moduleWrapper->configEncoder = moduleWrapper->configDecoder = nlohmann::json::parse(std::string(
+        moduleWrapper->configGeneral = nlohmann::json::parse(std::string(
                 reinterpret_cast<char*>(entry.bufferData.get()), entry.bufferSize));
-    } else if (itConfigEncoder != archiveFiles.end() && itConfigDecoder != archiveFiles.end()) {
+        auto symmetrizerTypeName = moduleWrapper->configGeneral.value(
+                "symmetrizer_type", SYMMETRIZER_TYPE_SHORT_NAMES[0]);
+        bool foundSymmetrizerType = false;
+        for (int i = 0; i < IM_ARRAYSIZE(SYMMETRIZER_TYPE_SHORT_NAMES); i++) {
+            if (SYMMETRIZER_TYPE_SHORT_NAMES[i] == symmetrizerTypeName) {
+                symmetrizerType = SymmetrizerType(i);
+                foundSymmetrizerType = true;
+                break;
+            }
+        }
+        if (!foundSymmetrizerType) {
+            sgl::Logfile::get()->writeError(
+                    "Error in TinyCudaNNSimilarityCalculator::loadModelFromFile: Invalid symmetrizer type \""
+                    + symmetrizerTypeName + "\".");
+            return;
+        }
+    }
+
+    // Encoder and decoder configuration files are mandatory.
+    auto itConfigEncoder = archiveFiles.find("config_encoder.json");
+    auto itConfigDecoder = archiveFiles.find("config_decoder.json");
+    if (itConfigEncoder != archiveFiles.end() && itConfigDecoder != archiveFiles.end()) {
         const auto& entryEncoder = itConfigEncoder->second;
         const auto& entryDecoder = itConfigDecoder->second;
         moduleWrapper->configEncoder = nlohmann::json::parse(std::string(
@@ -213,8 +234,8 @@ void TinyCudaNNSimilarityCalculator::loadModelFromFile(const std::string& modelP
                 reinterpret_cast<char*>(entryDecoder.bufferData.get()), entryDecoder.bufferSize));
     } else {
         sgl::Logfile::get()->writeError(
-                "Error in TinyCudaNNSimilarityCalculator::loadModelFromFile: Could not load config from model \""
-                + modelPath + "\".");
+                "Error in TinyCudaNNSimilarityCalculator::loadModelFromFile: Could not load encoder or decoder "
+                "configuration from model \"" + modelPath + "\".");
         return;
     }
 
@@ -230,13 +251,18 @@ void TinyCudaNNSimilarityCalculator::loadModelFromFile(const std::string& modelP
     }
 
     // Set input/output layer configurations for both networks.
-    auto networkOpts = moduleWrapper->configEncoder.value("network", nlohmann::json::object());
+    auto encoderNetworkOpts = moduleWrapper->configEncoder.value("network", nlohmann::json::object());
+    auto decoderNetworkOpts = moduleWrapper->configDecoder.value("network", nlohmann::json::object());
     // mlp_fused_forward needs multiple of 16 for number of input layers.
     moduleWrapper->configEncoder["network"]["n_input_dims"] = isInputEncodingIdentity ? 16 : 4;
     moduleWrapper->configDecoder["network"]["n_output_dims"] = 1;
-    if (networkOpts.find("n_output_dims") == networkOpts.end()) {
+    if (encoderNetworkOpts.find("n_output_dims") == encoderNetworkOpts.end()) {
         moduleWrapper->configEncoder["network"]["n_output_dims"] = moduleWrapper->configEncoder["network"]["n_neurons"];
-        moduleWrapper->configDecoder["network"]["n_input_dims"] = moduleWrapper->configEncoder["network"]["n_neurons"];
+    }
+    uint32_t symmetrizerFactor = symmetrizerType == SymmetrizerType::Add ? 1 : 2;
+    if (decoderNetworkOpts.find("n_input_dims") == decoderNetworkOpts.end()) {
+        uint32_t encoderOutputDims = moduleWrapper->configEncoder["network"].value("n_output_dims", 0);
+        moduleWrapper->configDecoder["network"]["n_input_dims"] = encoderOutputDims * symmetrizerFactor;
     }
 
     auto itNetworkEncoder = archiveFiles.find("network_encoder.bin");
@@ -278,8 +304,7 @@ void TinyCudaNNSimilarityCalculator::loadModelFromFile(const std::string& modelP
             moduleWrapper->networkDecoder, moduleWrapper->trainerDecoder, modelPath,
             moduleWrapper->configDecoder, itNetworkDecoder->second);
 
-    // numLayersInDecoder == numLayersOutEncoder when symmetrizer is sum operation.
-    // TODO
+    // numLayersOutEncoder == numLayersInDecoder when symmetrizer is sum operation.
 #if TCNN_HALF_PRECISION
     if (moduleWrapper->networkEncoderHalf) {
         numLayersInEncoder = uint32_t(moduleWrapper->networkEncoderHalf->input_width());
@@ -294,7 +319,13 @@ void TinyCudaNNSimilarityCalculator::loadModelFromFile(const std::string& modelP
 #endif
     numLayersInDecoder = uint32_t(moduleWrapper->networkDecoder->input_width());
     numLayersOutDecoder = uint32_t(moduleWrapper->networkDecoder->padded_output_width());
-    //moduleWrapper->networkDecoder->channelsIn():
+
+    if (numLayersOutEncoder * symmetrizerFactor != numLayersInDecoder) {
+        sgl::Logfile::get()->throwError(
+                "Error in TinyCudaNNSimilarityCalculator::loadModelFromFile: Mismatch between encoder output and "
+                "decoder input dimensions.");
+    }
+
     cacheNeedsRecreate = true;
 }
 
@@ -433,16 +464,17 @@ void TinyCudaNNSimilarityCalculator::runInferenceBatch(uint32_t batchOffset, uin
 
     /*int copySize = batchSize * 40;
     int testSize = 160;
-    __half* dataHalf = new __half[copySize];
-    dataHalf[0] = 1000.0f;
+    float* dataFloat = new float[copySize];
+    dataFloat[0] = 1000.0f;
     sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyDtoHAsync(
-            dataHalf, (CUdeviceptr)cacheWrapper->queryInputHalf.data(),
-            sizeof(__half) * copySize, stream), "Error in cuMemcpyDtoHAsync: ");
+            dataFloat, (CUdeviceptr)cacheWrapper->queryInput.data(),
+            sizeof(float) * copySize, stream), "Error in cuMemcpyDtoHAsync: ");
     sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
             stream), "Error in cuStreamSynchronize: ");
-    std::cout << "queryInputHalf:" << std::endl;
+    std::cout << "queryInput:" << std::endl;
     for (int i = 0; i < testSize; i++) {
-        std::cout << float(dataHalf[i * numLayersInEncoder * uint32_t(es)]);
+        //std::cout << dataFloat[i * numLayersInEncoder * uint32_t(es)];
+        std::cout << dataFloat[i];
         if (i != testSize - 1) {
             std::cout << ", ";
         }
@@ -451,7 +483,8 @@ void TinyCudaNNSimilarityCalculator::runInferenceBatch(uint32_t batchOffset, uin
         }
     }
     std::cout << std::endl;
-    delete[] dataHalf;
+    delete[] dataFloat;
+    __half* dataHalf = new __half[copySize];
     dataHalf = new __half[copySize];
     dataHalf[0] = 1000.0f;
     sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyDtoHAsync(
@@ -461,7 +494,8 @@ void TinyCudaNNSimilarityCalculator::runInferenceBatch(uint32_t batchOffset, uin
             stream), "Error in cuStreamSynchronize: ");
     std::cout << "queryEncoded:" << std::endl;
     for (int i = 0; i < testSize; i++) {
-        std::cout << float(dataHalf[i * numLayersOutEncoder * uint32_t(es)]);
+        //std::cout << float(dataHalf[i * numLayersOutEncoder * uint32_t(es)]);
+        std::cout << float(dataHalf[i]);
         if (i != testSize - 1) {
             std::cout << ", ";
         }
@@ -472,7 +506,8 @@ void TinyCudaNNSimilarityCalculator::runInferenceBatch(uint32_t batchOffset, uin
     std::cout << std::endl;
     std::cout << "queryEncoded(2):" << std::endl;
     for (int i = 0; i < testSize; i++) {
-        std::cout << float(dataHalf[i * numLayersOutEncoder * uint32_t(es) + numLayersOutEncoder]);
+        //std::cout << float(dataHalf[i * numLayersOutEncoder * uint32_t(es) + numLayersOutEncoder]);
+        std::cout << float(dataHalf[i]);
         if (i != testSize - 1) {
             std::cout << ", ";
         }
@@ -543,16 +578,56 @@ void TinyCudaNNSimilarityCalculator::runInferenceBatch(uint32_t batchOffset, uin
     std::cout << std::endl;
     delete[] dataHalf;*/
 
-    symmetrizer<<<sgl::uiceil(batchSize * uint32_t(es) * numLayersOutEncoder, 256), 256, 0, stream>>>(
+    /*symmetrizerAdd<<<sgl::uiceil(batchSize * uint32_t(es) * numLayersOutEncoder, 256), 256, 0, stream>>>(
             cacheWrapper->referenceEncoded.data(), cacheWrapper->queryEncoded.data(),
             cacheWrapper->symmetrizedReferenceInput.data(), uint32_t(es), numLayersOutEncoder);
-    //symmetrizer<<<sgl::uiceil(batchSize * uint32_t(es) * numLayersOutEncoder, 256), 256, 0, stream>>>(
+    //symmetrizerAdd<<<sgl::uiceil(batchSize * uint32_t(es) * numLayersOutEncoder, 256), 256, 0, stream>>>(
     //        cacheWrapper->referenceEncoded.data(), cacheWrapper->queryEncodedPermuted.data(),
     //        cacheWrapper->symmetrizedQueryInput.data(), uint32_t(es), numLayersOutEncoder);
-    symmetrizerPermuted<<<sgl::uiceil(batchSize * uint32_t(es) * numLayersOutEncoder, 256), 256, 0, stream>>>(
+    symmetrizerAddPermuted<<<sgl::uiceil(batchSize * uint32_t(es) * numLayersOutEncoder, 256), 256, 0, stream>>>(
             cacheWrapper->referenceEncoded.data(), cacheWrapper->queryEncoded.data(),
             cacheWrapper->symmetrizedQueryInput.data(), permutationIndicesBuffer,
-            uint32_t(es), numLayersOutEncoder);
+            uint32_t(es), numLayersOutEncoder);*/
+    symmetrizer(
+            cacheWrapper->referenceEncoded.data(), cacheWrapper->queryEncoded.data(),
+            cacheWrapper->symmetrizedReferenceInput.data(), cacheWrapper->symmetrizedQueryInput.data(),
+            permutationIndicesBuffer, batchSize, uint32_t(es), numLayersOutEncoder, symmetrizerType, stream);
+
+    /*dataHalf = new __half[copySize];
+    dataHalf[0] = 1000.0f;
+    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyDtoHAsync(
+            dataHalf, (CUdeviceptr)cacheWrapper->symmetrizedReferenceInput.data(),
+            sizeof(__half) * copySize, stream), "Error in cuMemcpyDtoHAsync: ");
+    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
+            stream), "Error in cuStreamSynchronize: ");
+    std::cout << "symmetrizedReferenceInput:" << std::endl;
+    for (int i = 0; i < testSize; i++) {
+        std::cout << float(dataHalf[i]);
+        if (i != testSize - 1) {
+            std::cout << ", ";
+        }
+        if (i % 20 == 19 && i != 0) {
+            std::cout << std::endl;
+        }
+    }
+    std::cout << std::endl;
+    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyDtoHAsync(
+            dataHalf, (CUdeviceptr)cacheWrapper->symmetrizedQueryInput.data(),
+            sizeof(__half) * copySize, stream), "Error in cuMemcpyDtoHAsync: ");
+    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
+            stream), "Error in cuStreamSynchronize: ");
+    std::cout << "symmetrizedQueryInput:" << std::endl;
+    for (int i = 0; i < testSize; i++) {
+        std::cout << float(dataHalf[i]);
+        if (i != testSize - 1) {
+            std::cout << ", ";
+        }
+        if (i % 20 == 19 && i != 0) {
+            std::cout << std::endl;
+        }
+    }
+    std::cout << std::endl;
+    delete[] dataHalf;*/
 
 #if TCNN_HALF_PRECISION
     moduleWrapper->networkDecoder->inference_mixed_precision(
