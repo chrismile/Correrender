@@ -166,11 +166,11 @@ template<class T, class PARAMS_T> static void loadNetwork(
     if (header->format == TINY_CUDA_NN_PARAMS_FORMAT_FLOAT) {
         trainer->set_params_full_precision(reinterpret_cast<float*>(paramsData), numParams, false);
     } else {
-        trainer->set_params(reinterpret_cast<precision_t*>(paramsData), 0, false);
+        trainer->set_params(reinterpret_cast<precision_t*>(paramsData), numParams, false);
     }
 #else
     if (header->format == TINY_CUDA_NN_PARAMS_FORMAT_FLOAT) {
-        trainer->set_params(reinterpret_cast<float*>(paramsData), 0, false);
+        trainer->set_params(reinterpret_cast<float*>(paramsData), numParams, false);
     } else {
         sgl::Logfile::get()->throwError(
                 "Error in TinyCudaNNSimilarityCalculator::loadNetwork: Half precision build was disabled.");
@@ -288,6 +288,9 @@ void TinyCudaNNSimilarityCalculator::loadModelFromFile(const std::string& modelP
         numLayersInEncoder = uint32_t(moduleWrapper->networkEncoder->input_width());
         numLayersOutEncoder = uint32_t(moduleWrapper->networkEncoder->padded_output_width());
     }
+#else
+    numLayersInEncoder = uint32_t(moduleWrapper->networkEncoder->input_width());
+    numLayersOutEncoder = uint32_t(moduleWrapper->networkEncoder->padded_output_width());
 #endif
     numLayersInDecoder = uint32_t(moduleWrapper->networkDecoder->input_width());
     numLayersOutDecoder = uint32_t(moduleWrapper->networkDecoder->padded_output_width());
