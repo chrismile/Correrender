@@ -51,7 +51,7 @@ struct TinyCudaNNModuleWrapper {
     nlohmann::json configDecoder;
     std::shared_ptr<tcnn::Network<float, precision_t>> networkEncoder;
     std::shared_ptr<tcnn::Trainer<float, precision_t, precision_t>> trainerEncoder;
-#ifdef TCNN_HALF_PRECISION
+#if TCNN_HALF_PRECISION
     std::shared_ptr<tcnn::Network<precision_t, precision_t>> networkEncoderHalf;
     std::shared_ptr<tcnn::Trainer<precision_t, precision_t, precision_t>> trainerEncoderHalf;
 #endif
@@ -61,12 +61,12 @@ struct TinyCudaNNModuleWrapper {
 
 struct TinyCudaNNCacheWrapper {
     tcnn::GPUMatrix<float> referenceInput;
-#ifdef TCNN_HALF_PRECISION
+#if TCNN_HALF_PRECISION
     tcnn::GPUMatrix<precision_t> referenceInputHalf;
 #endif
     tcnn::GPUMatrix<precision_t> referenceEncoded;
     tcnn::GPUMatrix<float> queryInput;
-#ifdef TCNN_HALF_PRECISION
+#if TCNN_HALF_PRECISION
     tcnn::GPUMatrix<precision_t> queryInputHalf;
 #endif
     tcnn::GPUMatrix<precision_t> queryEncoded;
@@ -162,7 +162,7 @@ template<class T, class PARAMS_T> static void loadNetwork(
                 + " vs. " + std::to_string(network->n_params()) + ") for \"" + modelPath + "\".");
     }
 
-#ifdef TCNN_HALF_PRECISION
+#if TCNN_HALF_PRECISION
     if (header->format == TINY_CUDA_NN_PARAMS_FORMAT_FLOAT) {
         trainer->set_params_full_precision(reinterpret_cast<float*>(paramsData), numParams, false);
     } else {
@@ -255,19 +255,19 @@ void TinyCudaNNSimilarityCalculator::loadModelFromFile(const std::string& modelP
     }
     moduleWrapper->networkEncoder = {};
     moduleWrapper->trainerEncoder = {};
-#ifdef TCNN_HALF_PRECISION
+#if TCNN_HALF_PRECISION
     moduleWrapper->networkEncoderHalf = {};
     moduleWrapper->trainerEncoderHalf = {};
 #endif
     moduleWrapper->networkDecoder = {};
     moduleWrapper->trainerDecoder = {};
-#ifdef TCNN_HALF_PRECISION
+#if TCNN_HALF_PRECISION
     if (hasInputEncoding && !isInputEncodingIdentity) {
 #endif
         loadNetwork(
                 moduleWrapper->networkEncoder, moduleWrapper->trainerEncoder, modelPath,
                 moduleWrapper->configEncoder, itNetworkEncoder->second);
-#ifdef TCNN_HALF_PRECISION
+#if TCNN_HALF_PRECISION
     } else {
         loadNetwork(
                 moduleWrapper->networkEncoderHalf, moduleWrapper->trainerEncoderHalf, modelPath,
@@ -280,7 +280,7 @@ void TinyCudaNNSimilarityCalculator::loadModelFromFile(const std::string& modelP
 
     // numLayersInDecoder == numLayersOutEncoder when symmetrizer is sum operation.
     // TODO
-#ifdef TCNN_HALF_PRECISION
+#if TCNN_HALF_PRECISION
     if (moduleWrapper->networkEncoderHalf) {
         numLayersInEncoder = uint32_t(moduleWrapper->networkEncoderHalf->input_width());
         numLayersOutEncoder = uint32_t(moduleWrapper->networkEncoderHalf->padded_output_width());
@@ -309,12 +309,12 @@ void TinyCudaNNSimilarityCalculator::recreateCache(int batchSize) {
     //cacheWrapper->queryDecoded = tcnn::GPUMatrix<precision_t>(numLayersOutDecoder, batchSize);
 
     cacheWrapper->referenceInput = tcnn::GPUMatrix<float>();
-#ifdef TCNN_HALF_PRECISION
+#if TCNN_HALF_PRECISION
     cacheWrapper->referenceInputHalf = tcnn::GPUMatrix<precision_t>();
 #endif
     cacheWrapper->referenceEncoded = tcnn::GPUMatrix<precision_t>();
     cacheWrapper->queryInput = tcnn::GPUMatrix<float>();
-#ifdef TCNN_HALF_PRECISION
+#if TCNN_HALF_PRECISION
     cacheWrapper->queryInputHalf = tcnn::GPUMatrix<precision_t>();
 #endif
     cacheWrapper->queryEncoded = tcnn::GPUMatrix<precision_t>();
@@ -328,7 +328,7 @@ void TinyCudaNNSimilarityCalculator::recreateCache(int batchSize) {
     uint32_t numInputLayers = isInputEncodingIdentity ? 16 : 4;
     uint32_t referenceInputBatchSize =
             sgl::uiceil(uint32_t(es), tcnn::batch_size_granularity) * tcnn::batch_size_granularity;
-#ifdef TCNN_HALF_PRECISION
+#if TCNN_HALF_PRECISION
     if (moduleWrapper->networkEncoderHalf) {
         cacheWrapper->referenceInputHalf = tcnn::GPUMatrix<precision_t>(numInputLayers, referenceInputBatchSize);
         cacheWrapper->queryInputHalf = tcnn::GPUMatrix<precision_t>(numInputLayers, uint32_t(es) * batchSize);
@@ -354,7 +354,7 @@ CUdeviceptr TinyCudaNNSimilarityCalculator::getQueryInputPointer()  {
 }
 
 void TinyCudaNNSimilarityCalculator::runInferenceReference() {
-#ifdef TCNN_HALF_PRECISION
+#if TCNN_HALF_PRECISION
     if (moduleWrapper->networkEncoderHalf) {
         uint32_t arraySize = cacheWrapper->referenceInputHalf.n() * cacheWrapper->referenceInputHalf.m();
         convertFloatToHalfArray<<<sgl::uiceil(arraySize, 256), 256, 0, stream>>>(
@@ -412,7 +412,7 @@ void TinyCudaNNSimilarityCalculator::runInferenceReference() {
 void TinyCudaNNSimilarityCalculator::runInferenceBatch(uint32_t batchOffset, uint32_t batchSize)  {
     int es = volumeData->getEnsembleMemberCount();
 
-#ifdef TCNN_HALF_PRECISION
+#if TCNN_HALF_PRECISION
     if (moduleWrapper->networkEncoderHalf) {
         uint32_t arraySize = cacheWrapper->queryInputHalf.n() * cacheWrapper->queryInputHalf.m();
         convertFloatToHalfArray<<<sgl::uiceil(arraySize, 256), 256, 0, stream>>>(
@@ -551,7 +551,7 @@ void TinyCudaNNSimilarityCalculator::runInferenceBatch(uint32_t batchOffset, uin
             cacheWrapper->symmetrizedQueryInput.data(), permutationIndicesBuffer,
             uint32_t(es), numLayersOutEncoder);
 
-#ifdef TCNN_HALF_PRECISION
+#if TCNN_HALF_PRECISION
     moduleWrapper->networkDecoder->inference_mixed_precision(
             stream, cacheWrapper->symmetrizedReferenceInput, cacheWrapper->referenceDecoded);
     moduleWrapper->networkDecoder->inference_mixed_precision(

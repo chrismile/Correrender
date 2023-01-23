@@ -100,9 +100,9 @@ static std::pair<std::vector<std::string>, std::function<VolumeLoader*()>> regis
 VolumeLoader* VolumeData::createVolumeLoaderByExtension(const std::string& fileExtension) {
     auto it = factoriesLoader.find(fileExtension);
     if (it == factoriesLoader.end()) {
-        sgl::Logfile::get()->throwError(
+        sgl::Logfile::get()->writeError(
                 "Error in VolumeData::createVolumeLoaderByExtension: Unsupported file extension '."
-                + fileExtension + "'.");
+                + fileExtension + "'.", true);
         return nullptr;
     } else {
         return it->second();
@@ -485,6 +485,9 @@ bool VolumeData::setInputFiles(
         std::string filePath = filePaths.at(i);
         std::string fileExtension = sgl::FileUtils::get()->getFileExtensionLower(filePath);
         VolumeLoader* volumeLoader = createVolumeLoaderByExtension(fileExtension);
+        if (!volumeLoader) {
+            return false;
+        }
         volumeLoader->setInputFiles(this, filePath, dataSetInformation);
         volumeLoaders.push_back(volumeLoader);
     }
