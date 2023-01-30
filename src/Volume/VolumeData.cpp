@@ -543,21 +543,23 @@ bool VolumeData::setInputFiles(
         helicityVariableExists = true;
     }
 
-    addCalculator(std::make_shared<PccCalculator>(renderer));
+    if (es > 1) {
+        addCalculator(std::make_shared<PccCalculator>(renderer));
 #ifdef SUPPORT_PYTORCH
-    addCalculator(std::make_shared<PyTorchSimilarityCalculator>(renderer));
+        addCalculator(std::make_shared<PyTorchSimilarityCalculator>(renderer));
 #endif
 #ifdef SUPPORT_CUDA_INTEROP
-    if (device->getDeviceDriverId() == VK_DRIVER_ID_NVIDIA_PROPRIETARY
+        if (device->getDeviceDriverId() == VK_DRIVER_ID_NVIDIA_PROPRIETARY
             && sgl::vk::getIsCudaDeviceApiFunctionTableInitialized()) {
 #ifdef SUPPORT_TINY_CUDA_NN
-        addCalculator(std::make_shared<TinyCudaNNSimilarityCalculator>(renderer));
+            addCalculator(std::make_shared<TinyCudaNNSimilarityCalculator>(renderer));
 #endif
 #ifdef SUPPORT_QUICK_MLP
-        addCalculator(std::make_shared<QuickMLPSimilarityCalculator>(renderer));
+            addCalculator(std::make_shared<QuickMLPSimilarityCalculator>(renderer));
+#endif
+        }
 #endif
     }
-#endif
 
     const auto& scalarFieldNames = typeToFieldNamesMap[FieldType::SCALAR];
     multiVarTransferFunctionWindow.setRequestAttributeValuesCallback([this](
