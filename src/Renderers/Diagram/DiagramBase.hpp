@@ -30,6 +30,7 @@
 #define CORRERENDER_DIAGRAMBASE_HPP
 
 #include <set>
+#include <sstream>
 #include <functional>
 
 #include <Graphics/Vulkan/libs/nanovg/NanoVGWidget.hpp>
@@ -37,7 +38,7 @@
 struct NVGcolor;
 
 enum class DiagramType {
-    RADAR_CHART, RADAR_BAR_CHART, HORIZON_GRAPH
+    RADAR_BAR_CHART, HEB_CHART
 };
 
 class DiagramBase : public sgl::NanoVGWidget {

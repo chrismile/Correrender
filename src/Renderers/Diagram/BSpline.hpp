@@ -26,42 +26,28 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef CORRERENDER_DIAGRAMRENDERER_HPP
-#define CORRERENDER_DIAGRAMRENDERER_HPP
+#ifndef CORRERENDER_BSPLINE_HPP
+#define CORRERENDER_BSPLINE_HPP
 
-#include <Graphics/Vulkan/Render/Passes/Pass.hpp>
-#include "../Renderer.hpp"
+#include <vector>
+#include <glm/vec2.hpp>
 
-class HEBChart;
+/**
+ * Evaluates a B-spline curve with the passed control points at parameter x.
+ * A knot vector is used such that the curve passes through the start and end point, e.g.,
+ * [0, 0, 0, 0.5, 1, 1, 1], [0, 0, 0, 0, 1, 1, 1, 1], etc.
+ * @param x The parameter value in range [0, 1] along the B-spline curve to evaluate.
+ * @param k The order of the B-spline curve. The degree of the curve is k - 1.
+ * @param controlPoints The control points.
+ * @return The evaluated point location.
+ *
+ * For more details see:
+ * - https://www.gnu.org/software/gsl/doc/html/bspline.html
+ * - https://web.mit.edu/hyperbook/Patrikalakis-Maekawa-Cho/node16.html
+ *   https://web.mit.edu/hyperbook/Patrikalakis-Maekawa-Cho/node17.html
+ *   https://web.mit.edu/hyperbook/Patrikalakis-Maekawa-Cho/node18.html
+ * - https://www.cs.cmu.edu/afs/cs/academic/class/15456-f15/Handouts/CAGD-chapter8.pdf
+ */
+glm::vec2 evaluateBSpline(float x, int k, const std::vector<glm::vec2>& controlPoints);
 
-class DiagramRenderer : public Renderer {
-public:
-    explicit DiagramRenderer(ViewManager* viewManager);
-    ~DiagramRenderer() override;
-    void initialize() override;
-    [[nodiscard]] bool getIsOpaqueRenderer() const override { return false; }
-    [[nodiscard]] bool getIsOverlayRenderer() const override { return true; }
-    void setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) override;
-    void onFieldRemoved(FieldType fieldType, int fieldIdx) override;
-    void recreateSwapchainView(uint32_t viewIdx, uint32_t width, uint32_t height) override;
-
-protected:
-    void renderViewImpl(uint32_t viewIdx) override;
-    void addViewImpl(uint32_t viewIdx) override;
-    void removeViewImpl(uint32_t viewIdx) override;
-    void renderGuiImpl(sgl::PropertyEditor& propertyEditor) override;
-
-private:
-    VolumeDataPtr volumeData;
-    std::vector<std::shared_ptr<HEBChart>> diagrams;
-
-    // UI renderer settings.
-    int selectedFieldIdx = 0, oldSelectedFieldIdx = 0;
-    std::string selectedScalarFieldName;
-
-    // Test data.
-    std::vector<std::string> variableNames;
-    std::vector<std::vector<float>> variableValuesTimeDependent;
-};
-
-#endif //CORRERENDER_DIAGRAMRENDERER_HPP
+#endif //CORRERENDER_BSPLINE_HPP

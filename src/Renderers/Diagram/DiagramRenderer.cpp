@@ -37,6 +37,7 @@
 #include "../RenderingModes.hpp"
 
 #include "RadarBarChart.hpp"
+#include "HEBChart.hpp"
 
 #include "DiagramRenderer.hpp"
 
@@ -106,11 +107,10 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
     volumeData->acquireScalarField(this, selectedFieldIdx);
     oldSelectedFieldIdx = selectedFieldIdx;
 
-    /*for (auto& dvrPass : dvrPasses) {
-        dvrPass->setVolumeData(volumeData, isNewData);
-        dvrPass->setSelectedScalarField(selectedFieldIdx, selectedScalarFieldName);
-        dvrPass->setStepSize(stepSize);
-    }*/
+    for (auto& diagram : diagrams) {
+        diagram->setVolumeData(volumeData, isNewData);
+        diagram->setSelectedScalarField(selectedFieldIdx, selectedScalarFieldName);
+    }
 }
 
 void DiagramRenderer::onFieldRemoved(FieldType fieldType, int fieldIdx) {
@@ -148,22 +148,17 @@ void DiagramRenderer::renderViewImpl(uint32_t viewIdx) {
 }
 
 void DiagramRenderer::addViewImpl(uint32_t viewIdx) {
-    auto diagram = std::make_shared<RadarBarChart>(true);
+    auto diagram = std::make_shared<HEBChart>();
+    //auto diagram = std::make_shared<RadarBarChart>(true);
     diagram->setRendererVk(renderer);
     diagram->initialize();
-    diagram->setDataTimeDependent(variableNames, variableValuesTimeDependent);
-    diagram->setUseEqualArea(true);
-    diagrams.push_back(diagram);
-
-    /*auto dvrPass = std::make_shared<DvrPass>(renderer, viewManager->getViewSceneData(viewIdx));
+    //diagram->setDataTimeDependent(variableNames, variableValuesTimeDependent);
+    //diagram->setUseEqualArea(true);
     if (volumeData) {
-        dvrPass->setVolumeData(volumeData, true);
-        dvrPass->setSelectedScalarField(selectedFieldIdx, selectedScalarFieldName);
+        diagram->setVolumeData(volumeData, true);
+        diagram->setSelectedScalarField(selectedFieldIdx, selectedScalarFieldName);
     }
-    dvrPass->setStepSize(stepSize);
-    dvrPass->setAttenuationCoefficient(attenuationCoefficient);
-    dvrPass->setNaNHandling(nanHandling);
-    dvrPasses.push_back(dvrPass);*/
+    diagrams.push_back(diagram);
 }
 
 void DiagramRenderer::removeViewImpl(uint32_t viewIdx) {
@@ -177,9 +172,9 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         if (propertyEditor.addCombo("Scalar Field", &selectedFieldIdxGui, fieldNames.data(), int(fieldNames.size()))) {
             selectedFieldIdx = selectedFieldIdxGui;
             selectedScalarFieldName = fieldNames.at(selectedFieldIdx);
-            /*for (auto& dvrPass : dvrPasses) {
-                dvrPass->setSelectedScalarField(selectedFieldIdx, selectedScalarFieldName);
-            }*/
+            for (auto& diagram : diagrams) {
+                diagram->setSelectedScalarField(selectedFieldIdx, selectedScalarFieldName);
+            }
             dirty = true;
             reRender = true;
         }

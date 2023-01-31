@@ -51,9 +51,13 @@ void DiagramBase::initialize() {
 }
 
 void DiagramBase::renderBase() {
-    NVGcolor backgroundFillColor = nvgRGBA(230, 230, 230, std::clamp(
+    //NVGcolor backgroundFillColor = nvgRGBA(230, 230, 230, std::clamp(
+    //        int(backgroundOpacity * 255), 0, 255));
+    //NVGcolor backgroundStrokeColor = nvgRGBA(190, 190, 190, std::clamp(
+    //        int(backgroundOpacity * 255), 0, 255));
+    NVGcolor backgroundFillColor = nvgRGBA(20, 20, 20, std::clamp(
             int(backgroundOpacity * 255), 0, 255));
-    NVGcolor backgroundStrokeColor = nvgRGBA(190, 190, 190, std::clamp(
+    NVGcolor backgroundStrokeColor = nvgRGBA(60, 60, 60, std::clamp(
             int(backgroundOpacity * 255), 0, 255));
 
     // Render the render target-filling widget rectangle.
