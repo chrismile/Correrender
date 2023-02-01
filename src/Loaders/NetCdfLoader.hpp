@@ -109,7 +109,7 @@ private:
     std::string filePath;
     DataSetInformation dataSetInformation;
     std::unordered_map<std::string, int> datasetNameMap;
-    int xs = 0, ys = 0, zs = 0, ts = 0;
+    int xs = 0, ys = 0, zs = 0, ts = 0, es = 0;
 };
 
 #endif //CORRERENDER_NETCDFLOADER_HPP

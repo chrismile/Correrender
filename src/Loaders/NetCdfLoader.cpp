@@ -207,7 +207,7 @@ bool NetCdfLoader::setInputFiles(
             int ndims = 0;
             int natts = 0;
             nc_inq_var(ncid, varid, varname, &type, &ndims, dimids, &natts);
-            if ((type == NC_FLOAT || type == NC_DOUBLE) && ndims == 3) {
+            if ((type == NC_FLOAT || type == NC_DOUBLE) && (ndims == 3 || ndims == 4)) {
                 varIdRepresentative = varid;
                 break;
             }
@@ -269,7 +269,7 @@ bool NetCdfLoader::setInputFiles(
         int dimensionIdsU[4];
         int dimensionIdsV[4];
         int dimensionIdsW[4];
-        char dimNameTime[NC_MAX_NAME + 1];
+        char dimNameTimeOrEnsemble[NC_MAX_NAME + 1];
         char dimNameZ[NC_MAX_NAME + 1];
         char dimNameY[NC_MAX_NAME + 1];
         char dimNameX[NC_MAX_NAME + 1];
@@ -282,19 +282,29 @@ bool NetCdfLoader::setInputFiles(
             myassert(nc_inq_vardimid(ncid, varIdRepresentative, dimensionIdsV) == NC_NOERR);
             myassert(nc_inq_vardimid(ncid, varIdRepresentative, dimensionIdsW) == NC_NOERR);
         }
-        zCoords = new float[zs];
-        yCoords = new float[ys];
-        xCoords = new float[xs];
         // Ignoring staggered grids for now by not querying i-th dimension using i-th variable.
-        size_t ts64, zs64, ys64, xs64;
-        myassert(nc_inq_dim(ncid, dimensionIdsU[0], dimNameTime, &ts64) == NC_NOERR);
+        size_t tes64, zs64, ys64, xs64;
+        myassert(nc_inq_dim(ncid, dimensionIdsU[0], dimNameTimeOrEnsemble, &tes64) == NC_NOERR);
         myassert(nc_inq_dim(ncid, dimensionIdsU[1], dimNameZ, &zs64) == NC_NOERR);
         myassert(nc_inq_dim(ncid, dimensionIdsW[2], dimNameY, &ys64) == NC_NOERR);
         myassert(nc_inq_dim(ncid, dimensionIdsW[3], dimNameX, &xs64) == NC_NOERR);
-        ts = int(ts64);
+        if (strcmp(dimNameTimeOrEnsemble, "time") == 0) {
+            ts = int(tes64);
+        } else if (strcmp(dimNameTimeOrEnsemble, "ensemble") == 0
+                || strcmp(dimNameTimeOrEnsemble, "member") == 0
+                || strcmp(dimNameTimeOrEnsemble, "members") == 0) {
+            es = int(tes64);
+        } else {
+            sgl::Logfile::get()->writeWarning(
+                    "Warning in NetCdfLoader::setInputFiles: Unknown dimension name. Assuming time.");
+            ts = int(tes64);
+        }
         zs = int(zs64);
-        ys = int(zs64);
-        xs = int(zs64);
+        ys = int(ys64);
+        xs = int(xs64);
+        zCoords = new float[zs];
+        yCoords = new float[ys];
+        xCoords = new float[xs];
         std::string stringDimNameX = dimNameX;
         std::string stringDimNameY = dimNameY;
         //std::string stringDimNameZ = dimNameZ;
@@ -302,17 +312,42 @@ bool NetCdfLoader::setInputFiles(
                 || stringDimNameX.find("lat") != std::string::npos || stringDimNameY.find("lat") != std::string::npos) {
             isLatLonData = true;
         }
+
         if (!getVariableExists(dimNameZ) && getVariableExists("vcoord")) {
             loadFloatArray1D("vcoord", zs, zCoords);
+            loadFloatArray1D(dimNameY, ys, yCoords);
+            loadFloatArray1D(dimNameX, xs, xCoords);
         } else {
-            loadFloatArray1D(dimNameZ, zs, zCoords);
+            int varid;
+            int retval = nc_inq_varid(ncid, dimNameZ, &varid);
+            if (retval != NC_ENOTVAR) {
+                loadFloatArray1D(dimNameZ, zs, zCoords);
+                loadFloatArray1D(dimNameY, ys, yCoords);
+                loadFloatArray1D(dimNameX, xs, xCoords);
+            } else {
+                for (int i = 0; i < zs; i++) {
+                    zCoords[i] = float(i);
+                }
+                for (int i = 0; i < ys; i++) {
+                    yCoords[i] = float(i);
+                }
+                for (int i = 0; i < xs; i++) {
+                    xCoords[i] = float(i);
+                }
+                isLatLonData = false;
+            }
         }
-        loadFloatArray1D(dimNameY, ys, yCoords);
-        loadFloatArray1D(dimNameX, xs, xCoords);
     } else {
         sgl::Logfile::get()->throwError(
                 "Error in NetCdfLoader::load: Invalid number of dimensions in file \""
                 + filePath + "\".");
+    }
+
+    if (ts > 1) {
+        volumeData->setNumTimeSteps(ts);
+    }
+    if (es > 1) {
+        volumeData->setEnsembleMemberCount(es);
     }
 
     // TODO: Use coords also for lat-lon-pressure?
@@ -391,8 +426,10 @@ bool NetCdfLoader::getFieldEntry(
 
     if (numDims == 3) {
         loadFloatArray3D(varid, zs, ys, xs, fieldEntryBuffer);
-    } else {
+    } else if (numDims == 4 && ts > 1) {
         loadFloatArray3D(varid, timestepIdx, zs, ys, xs, fieldEntryBuffer);
+    } else if (numDims == 4 && es > 1) {
+        loadFloatArray3D(varid, memberIdx, zs, ys, xs, fieldEntryBuffer);
     }
 
     return true;
