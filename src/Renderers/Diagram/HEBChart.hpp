@@ -35,6 +35,20 @@
 #include <glm/vec3.hpp>
 #include "DiagramBase.hpp"
 
+struct HEBNode {
+    HEBNode() {
+        parentIdx = std::numeric_limits<uint32_t>::max();
+        std::fill_n(childIndices, 8, std::numeric_limits<uint32_t>::max());
+    }
+    explicit HEBNode(uint32_t parentIdx) : parentIdx(parentIdx) {
+        std::fill_n(childIndices, 8, std::numeric_limits<uint32_t>::max());
+    }
+    glm::vec2 normalizedPosition;
+    float angle = 0.0f;
+    uint32_t parentIdx;
+    uint32_t childIndices[8];
+};
+
 /**
  * Hierarchical edge bundling chart. For more details see:
  * - "Hierarchical Edge Bundles: Visualization of Adjacency Relations in Hierarchical Data" (Danny Holten, 2006).
@@ -64,6 +78,10 @@ private:
     int selectedFieldIdx = 0;
     std::string selectedScalarFieldName;
     bool dataDirty = true;
+
+    // Hierarchy data.
+    std::vector<HEBNode> nodesList;
+    std::vector<uint32_t> pointToNodeIndexMap;
 
     // B-spline data.
     void updateData();

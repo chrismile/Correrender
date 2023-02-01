@@ -43,7 +43,6 @@
 
 DiagramRenderer::DiagramRenderer(ViewManager* viewManager)
         : Renderer(RENDERING_MODE_NAMES[int(RENDERING_MODE_DIAGRAM_RENDERER)], viewManager) {
-    ;
 }
 
 DiagramRenderer::~DiagramRenderer() {
