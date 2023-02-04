@@ -137,6 +137,8 @@ int main(int argc, char *argv[]) {
     sgl::vk::Device* device = new sgl::vk::Device;
     sgl::vk::DeviceFeatures requestedDeviceFeatures{};
     requestedDeviceFeatures.optionalPhysicalDeviceFeatures.sampleRateShading = VK_TRUE; // For MSAA.
+    requestedDeviceFeatures.optionalPhysicalDeviceFeatures.geometryShader = VK_TRUE; // For Skia (if enabled).
+    requestedDeviceFeatures.optionalPhysicalDeviceFeatures.dualSrcBlend = VK_TRUE; // For Skia (if enabled).
     requestedDeviceFeatures.optionalEnableShaderDrawParametersFeatures = true; // For deferred shading.
     requestedDeviceFeatures.requestedPhysicalDeviceFeatures.fragmentStoresAndAtomics = VK_TRUE;
     // For ensemble combination when using Vulkan-CUDA interop with PyTorch.

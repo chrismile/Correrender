@@ -30,6 +30,7 @@
 
 #include <Graphics/Vulkan/Render/Renderer.hpp>
 #include <Graphics/Vulkan/Render/ComputePipeline.hpp>
+#include <ImGui/imgui_custom.h>
 #include <ImGui/Widgets/PropertyEditor.hpp>
 
 #include "Widgets/ViewManager.hpp"
@@ -109,6 +110,10 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
     for (auto& diagram : diagrams) {
         diagram->setVolumeData(volumeData, isNewData);
         diagram->setSelectedScalarField(selectedFieldIdx, selectedScalarFieldName);
+        diagram->setBeta(beta);
+        diagram->setDownscalingFactor(downscalingFactor);
+        diagram->setLineCountFactor(lineCountFactor);
+        diagram->setCurveOpacity(curveOpacity);
     }
 }
 
@@ -156,6 +161,10 @@ void DiagramRenderer::addViewImpl(uint32_t viewIdx) {
     if (volumeData) {
         diagram->setVolumeData(volumeData, true);
         diagram->setSelectedScalarField(selectedFieldIdx, selectedScalarFieldName);
+        diagram->setBeta(beta);
+        diagram->setDownscalingFactor(downscalingFactor);
+        diagram->setLineCountFactor(lineCountFactor);
+        diagram->setCurveOpacity(curveOpacity);
     }
     diagrams.push_back(diagram);
 }
@@ -177,5 +186,35 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
             dirty = true;
             reRender = true;
         }
+    }
+
+    if (propertyEditor.addSliderFloatEdit("beta", &beta, 0.0f, 1.0f) == ImGui::EditMode::INPUT_FINISHED) {
+        for (auto& diagram : diagrams) {
+            diagram->setBeta(beta);
+        }
+        reRender = true;
+    }
+
+    if (propertyEditor.addSliderIntPowerOfTwoEdit(
+            "Downscaling", &downscalingFactor, 16, 128) == ImGui::EditMode::INPUT_FINISHED) {
+        for (auto& diagram : diagrams) {
+            diagram->setDownscalingFactor(downscalingFactor);
+        }
+        reRender = true;
+    }
+
+    if (propertyEditor.addSliderIntEdit(
+            "#Line Factor", &lineCountFactor, 10, 1000) == ImGui::EditMode::INPUT_FINISHED) {
+        for (auto& diagram : diagrams) {
+            diagram->setLineCountFactor(lineCountFactor);
+        }
+        reRender = true;
+    }
+
+    if (propertyEditor.addSliderFloat("Opacity", &curveOpacity, 0.0f, 1.0f)) {
+        for (auto& diagram : diagrams) {
+            diagram->setCurveOpacity(curveOpacity);
+        }
+        reRender = true;
     }
 }

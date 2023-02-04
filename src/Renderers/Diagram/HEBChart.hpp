@@ -63,6 +63,10 @@ public:
     void update(float dt) override;
     void setVolumeData(VolumeDataPtr& _volumeData, bool isNewData);
     void setSelectedScalarField(int selectedFieldIdx, const std::string& _scalarFieldName);
+    void setBeta(float _beta);
+    void setDownscalingFactor(int _df);
+    void setLineCountFactor(int _factor);
+    void setCurveOpacity(float _alpha);
 
 protected:
     bool hasData() override {
@@ -80,13 +84,17 @@ private:
     bool dataDirty = true;
 
     // Hierarchy data.
+    int df = 16; ///< Downscaling factor.
     std::vector<HEBNode> nodesList;
     std::vector<uint32_t> pointToNodeIndexMap;
 
     // B-spline data.
     void updateData();
-    const int NUM_LINES = 800;
+    int NUM_LINES = 0;
+    int MAX_NUM_LINES = 100;
     const int NUM_SUBDIVISIONS = 50;
+    float beta = 0.75f;
+    float curveOpacity = 0.4f;
     std::vector<glm::vec2> curvePoints;
     std::vector<float> miValues; ///< per-line values.
 };

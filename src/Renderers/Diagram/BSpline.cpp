@@ -30,7 +30,7 @@
 
 static float B(int i, int k, float x, const std::vector<float>& t) {
     if (k == 1) {
-        if (t[i] <= x && x <= t[i + 1]) {
+        if (t[i] <= x && x < t[i + 1]) {
             return 1;
         } else {
             return 0;
@@ -57,17 +57,16 @@ static float B(int i, int k, float x, const std::vector<float>& t) {
 glm::vec2 evaluateBSpline(float x, int k, const std::vector<glm::vec2>& controlPoints) {
     auto numControlPoints = int(controlPoints.size());
     std::vector<float> t(k + numControlPoints);
-    for (int i = 0; i < k; i++) {
+    for (int i = 0; i < k - 1; i++) {
         t[i] = 0.0f;
         t[int(t.size()) - i - 1] = 1.0f;
     }
-    int numMiddle = numControlPoints - k;
-    if (numMiddle == 1) {
-        t[k] = 0.5f;
-    } else {
-        for (int i = 0; i < numMiddle; i++) {
-            t[i + k] = float(i) / float(numMiddle - 1);
-        }
+    int numMiddle = numControlPoints - k + 2;
+    for (int i = 0; i < numMiddle; i++) {
+        t[i + k - 1] = float(i) / float(numMiddle - 1);
+    }
+    if (x == 1) {
+        x -= 1e-5f;
     }
     glm::vec2 sum(0.0f);
     for (int i = 0; i < numControlPoints; i++) {

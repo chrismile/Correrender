@@ -26,6 +26,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <queue>
 #include <stack>
 
 #include <Math/Math.hpp>
@@ -50,35 +51,42 @@ struct MIFieldEntry {
 
 struct StackDomain {
     StackDomain() {}
-    StackDomain(uint32_t nodeIdx, const glm::ivec3& min, const glm::ivec3& max)
-            : nodeIdx(nodeIdx), min(min), max(max) {}
+    StackDomain(uint32_t nodeIdx, uint32_t depth, const glm::ivec3& min, const glm::ivec3& max)
+            : nodeIdx(nodeIdx), depth(depth), min(min), max(max) {}
     uint32_t nodeIdx;
+    uint32_t depth;
     glm::ivec3 min, max;
 };
 
 void buildTree(
         std::vector<HEBNode>& nodesList, std::vector<uint32_t>& pointToNodeIndexMap, int xsd, int ysd, int zsd) {
-    int treeHeightX = std::ceil(std::log2(xsd));
-    int treeHeightY = std::ceil(std::log2(ysd));
-    int treeHeightZ = std::ceil(std::log2(zsd));
-    int treeHeight = std::max(treeHeightX, std::max(treeHeightY, treeHeightZ));
+    auto treeHeightX = uint32_t(std::ceil(std::log2(xsd)));
+    auto treeHeightY = uint32_t(std::ceil(std::log2(ysd)));
+    auto treeHeightZ = uint32_t(std::ceil(std::log2(zsd)));
+    auto treeHeight = std::max(treeHeightX, std::max(treeHeightY, treeHeightZ));
     nodesList.emplace_back();
     nodesList[0].normalizedPosition = glm::vec3(0.0f);
     pointToNodeIndexMap.resize(xsd * ysd * zsd);
 
-    std::stack<StackDomain> domainStack;
+    std::queue<StackDomain> domainStack;
     StackDomain rootDomain;
     rootDomain.nodeIdx = 0;
+    rootDomain.depth = 0;
     rootDomain.min = glm::ivec3(0, 0, 0);
     rootDomain.max = glm::ivec3(xsd - 1, ysd - 1, zsd - 1);
     domainStack.push(rootDomain);
+    uint32_t leafIdxOffset = std::numeric_limits<uint32_t>::max();
     while (!domainStack.empty()) {
-        auto stackEntry = domainStack.top();
+        auto stackEntry = domainStack.front();
         domainStack.pop();
         auto extent = stackEntry.max - stackEntry.min + glm::ivec3(1);
         // Leaf?
-        if (extent.x == 1 && extent.y == 1 && extent.z == 1) {
+        //if (extent.x == 1 && extent.y == 1 && extent.z == 1) {
+        if (stackEntry.depth == treeHeight) {
             pointToNodeIndexMap.at(IDXSD(stackEntry.min.x, stackEntry.min.y, stackEntry.min.z)) = stackEntry.nodeIdx;
+            if (leafIdxOffset == std::numeric_limits<uint32_t>::max()) {
+                leafIdxOffset = stackEntry.nodeIdx;
+            }
             continue;
         }
         glm::ivec3 maxHalf = stackEntry.max, minHalf = stackEntry.min;
@@ -90,52 +98,62 @@ void buildTree(
         maxHalf.z = minHalf.z - 1;
         auto childrenOffset = uint32_t(nodesList.size());
         domainStack.emplace(
-                uint32_t(nodesList.size()), glm::vec3(stackEntry.min.x, stackEntry.min.y, stackEntry.min.z),
+                uint32_t(nodesList.size()), stackEntry.depth + 1,
+                glm::vec3(stackEntry.min.x, stackEntry.min.y, stackEntry.min.z),
                 glm::vec3(maxHalf.x, maxHalf.y, maxHalf.z));
+        HEBNode child(stackEntry.nodeIdx);
+        nodesList.push_back(child);
         if (extent.x > 1) {
             domainStack.emplace(
-                    uint32_t(nodesList.size()), glm::vec3(minHalf.x, stackEntry.min.y, stackEntry.min.z),
+                    uint32_t(nodesList.size()), stackEntry.depth + 1,
+                    glm::vec3(minHalf.x, stackEntry.min.y, stackEntry.min.z),
                     glm::vec3(stackEntry.max.x, maxHalf.y, maxHalf.z));
             HEBNode child(stackEntry.nodeIdx);
             nodesList.push_back(child);
         }
         if (extent.y > 1) {
             domainStack.emplace(
-                    uint32_t(nodesList.size()), glm::vec3(stackEntry.min.x, minHalf.y, stackEntry.min.z),
+                    uint32_t(nodesList.size()), stackEntry.depth + 1,
+                    glm::vec3(stackEntry.min.x, minHalf.y, stackEntry.min.z),
                     glm::vec3(maxHalf.x, stackEntry.max.y, maxHalf.z));
             HEBNode child(stackEntry.nodeIdx);
             nodesList.push_back(child);
         }
         if (extent.x > 1 && extent.y > 1) {
             domainStack.emplace(
-                    uint32_t(nodesList.size()), glm::vec3(minHalf.x, minHalf.y, stackEntry.min.z),
+                    uint32_t(nodesList.size()), stackEntry.depth + 1,
+                    glm::vec3(minHalf.x, minHalf.y, stackEntry.min.z),
                     glm::vec3(stackEntry.max.x, stackEntry.max.y, maxHalf.z));
             HEBNode child(stackEntry.nodeIdx);
             nodesList.push_back(child);
         }
         if (extent.z > 1) {
             domainStack.emplace(
-                    uint32_t(nodesList.size()), glm::vec3(stackEntry.min.x, stackEntry.min.y, minHalf.z),
+                    uint32_t(nodesList.size()), stackEntry.depth + 1,
+                    glm::vec3(stackEntry.min.x, stackEntry.min.y, minHalf.z),
                     glm::vec3(maxHalf.x, maxHalf.y, stackEntry.max.z));
             HEBNode child(stackEntry.nodeIdx);
             nodesList.push_back(child);
             if (extent.x > 1) {
                 domainStack.emplace(
-                        uint32_t(nodesList.size()), glm::vec3(minHalf.x, stackEntry.min.y, minHalf.z),
+                        uint32_t(nodesList.size()), stackEntry.depth + 1,
+                        glm::vec3(minHalf.x, stackEntry.min.y, minHalf.z),
                         glm::vec3(stackEntry.max.x, maxHalf.y, stackEntry.max.z));
                 HEBNode child(stackEntry.nodeIdx);
                 nodesList.push_back(child);
             }
             if (extent.y > 1) {
                 domainStack.emplace(
-                        uint32_t(nodesList.size()), glm::vec3(stackEntry.min.x, minHalf.y, minHalf.z),
+                        uint32_t(nodesList.size()), stackEntry.depth + 1,
+                        glm::vec3(stackEntry.min.x, minHalf.y, minHalf.z),
                         glm::vec3(maxHalf.x, stackEntry.max.y, stackEntry.max.z));
                 HEBNode child(stackEntry.nodeIdx);
                 nodesList.push_back(child);
             }
             if (extent.x > 1 && extent.y > 1) {
                 domainStack.emplace(
-                        uint32_t(nodesList.size()), glm::vec3(minHalf.x, minHalf.y, minHalf.z),
+                        uint32_t(nodesList.size()), stackEntry.depth + 1,
+                        glm::vec3(minHalf.x, minHalf.y, minHalf.z),
                         glm::vec3(stackEntry.max.x, stackEntry.max.y, stackEntry.max.z));
                 HEBNode child(stackEntry.nodeIdx);
                 nodesList.push_back(child);
@@ -147,23 +165,31 @@ void buildTree(
         }
     }
 
+
+
     // Set node positions.
     // Start with placing the leaves on a unit circle.
     std::unordered_set<uint32_t> prevParentNodeIndices;
     std::unordered_set<uint32_t> nextParentNodeIndices;
     uint32_t leafCounter = 0;
-    for (uint32_t leafIdx : pointToNodeIndexMap) {
+    for (uint32_t leafIdx = leafIdxOffset; leafIdx < uint32_t(nodesList.size()); leafIdx++) {
         prevParentNodeIndices.insert(nodesList[leafIdx].parentIdx);
         float angle = float(leafCounter) / float(pointToNodeIndexMap.size()) * sgl::TWO_PI;
         nodesList[leafIdx].angle = angle;
         nodesList[leafIdx].normalizedPosition = glm::vec2(std::cos(angle), std::sin(angle));
+        prevParentNodeIndices.insert(nodesList[leafIdx].parentIdx);
         leafCounter++;
     }
+    /*std::stack<uint32_t> traversalStack;
+    while (!traversalStack.empty()) {
+        uint32_t nodeIdx = traversalStack.top();
+        traversalStack.pop();
+    }*/
 
-    int currentDepth = treeHeight - 1;
-    while (nextParentNodeIndices.size() > 1) {
+    int currentDepth = int(treeHeight) - 1;
+    while (!prevParentNodeIndices.empty()) {
         float radius = float(currentDepth) / float(treeHeight);
-        for (uint32_t nodeIdx : nextParentNodeIndices) {
+        for (uint32_t nodeIdx : prevParentNodeIndices) {
             auto& node = nodesList[nodeIdx];
             float minChildAngle = std::numeric_limits<float>::max();
             float maxChildAngle = std::numeric_limits<float>::lowest();
@@ -171,10 +197,14 @@ void buildTree(
                 if (node.childIndices[i] == std::numeric_limits<uint32_t>::max()) {
                     break;
                 }
-                minChildAngle = nodesList[node.childIndices[i]].angle;
+                minChildAngle = std::min(minChildAngle, nodesList[node.childIndices[i]].angle);
+                maxChildAngle = std::max(maxChildAngle, nodesList[node.childIndices[i]].angle);
             }
             node.angle = 0.5f * (minChildAngle + maxChildAngle);
             node.normalizedPosition = radius * glm::vec2(std::cos(node.angle), std::sin(node.angle));
+            if (node.parentIdx != std::numeric_limits<uint32_t>::max()) {
+                nextParentNodeIndices.insert(node.parentIdx);
+            }
         }
 
         prevParentNodeIndices = nextParentNodeIndices;
@@ -188,7 +218,7 @@ void getControlPoints(
         uint32_t pointIndex0, uint32_t pointIndex1, std::vector<glm::vec2>& controlPoints) {
     // The start nodes are leaves at the same level.
     uint32_t nidx0 = pointToNodeIndexMap.at(pointIndex0);
-    uint32_t nidx1 = pointToNodeIndexMap.at(pointIndex0);
+    uint32_t nidx1 = pointToNodeIndexMap.at(pointIndex1);
 
     // Go until lowest common ancestor (LCA).
     std::vector<uint32_t> ancestors0;
@@ -221,7 +251,16 @@ void getControlPoints(
         controlPoints.push_back(nodesList.at(ancestors0.at(idx0 + 1)).normalizedPosition);
     }
     for (int i = idx1; i >= 0; i--) {
-        controlPoints.push_back(nodesList.at(ancestors0.at(i)).normalizedPosition);
+        controlPoints.push_back(nodesList.at(ancestors1.at(i)).normalizedPosition);
+    }
+}
+
+void smoothControlPoints(std::vector<glm::vec2>& controlPoints, float beta) {
+    glm::vec2 p0 = controlPoints.front();
+    glm::vec2 pn = controlPoints.back();
+    for (int i = 1; i < int(controlPoints.size()) - 1; i++) {
+        glm::vec2& p = controlPoints.at(i);
+        p = beta * p + (1.0f - beta) * (p0 + float(i) / float(controlPoints.size() - 1) * (pn - p0));
     }
 }
 
@@ -253,16 +292,34 @@ void HEBChart::setSelectedScalarField(int _selectedFieldIdx, const std::string& 
     dataDirty = true;
 }
 
+void HEBChart::setBeta(float _beta) {
+    beta = _beta;
+    dataDirty = true;
+}
+
+void HEBChart::setDownscalingFactor(int _df) {
+    df = _df;
+    dataDirty = true;
+}
+
+void HEBChart::setLineCountFactor(int _factor) {
+    MAX_NUM_LINES = _factor;
+    dataDirty = true;
+}
+
+void HEBChart::setCurveOpacity(float _alpha) {
+    curveOpacity = _alpha;
+}
+
 void HEBChart::updateData() {
     // Values downscaled by factor 32.
     int xs = volumeData->getGridSizeX();
     int ys = volumeData->getGridSizeY();
     int zs = volumeData->getGridSizeZ();
     int es = volumeData->getEnsembleMemberCount();
-    int df = 32;
-    int xsd = sgl::iceil(xs, df); // 8
-    int ysd = sgl::iceil(ys, df); // 11
-    int zsd = sgl::iceil(zs, df); // 1
+    int xsd = sgl::iceil(xs, df);
+    int ysd = sgl::iceil(ys, df);
+    int zsd = sgl::iceil(zs, df);
     int numPoints = xsd * ysd * zsd;
 
     // Compute the downscaled field.
@@ -352,6 +409,8 @@ void HEBChart::updateData() {
     pointToNodeIndexMap.clear();
     buildTree(nodesList, pointToNodeIndexMap, xsd, ysd, zsd);
 
+    int maxNumLines = numPoints * MAX_NUM_LINES / 100;
+    NUM_LINES = std::min(maxNumLines, int(miFieldEntries.size()));
     curvePoints.resize(NUM_LINES * NUM_SUBDIVISIONS);
     miValues.resize(NUM_LINES);
     std::vector<glm::vec2> controlPoints;
@@ -360,9 +419,16 @@ void HEBChart::updateData() {
         miValues.at(lineIdx) = miEntry.miValue;
         controlPoints.clear();
         getControlPoints(nodesList, pointToNodeIndexMap, miEntry.pointIndex0, miEntry.pointIndex1, controlPoints);
+        if (beta < 1.0f) {
+            smoothControlPoints(controlPoints, beta);
+        }
         for (int ptIdx = 0; ptIdx < NUM_SUBDIVISIONS; ptIdx++) {
             float t = float(ptIdx) / float(NUM_SUBDIVISIONS - 1);
-            curvePoints.at(lineIdx * NUM_SUBDIVISIONS + ptIdx) = evaluateBSpline(t, 4, controlPoints);
+            int k = 4;
+            if (controlPoints.size() == 3) {
+                k = 3;
+            }
+            curvePoints.at(lineIdx * NUM_SUBDIVISIONS + ptIdx) = evaluateBSpline(t, k, controlPoints);
         }
     }
 }
@@ -385,11 +451,22 @@ void HEBChart::renderBase() {
      nvgStrokeColor(vg, circleStrokeColor);
      nvgStroke(vg);*/
 
+    if (dataDirty) {
+        updateData();
+        dataDirty = false;
+    }
+
     float pointRadius = 1.5f;
     auto numLeaves = int(pointToNodeIndexMap.size());
     nvgBeginPath(vg);
-    for (int i = 0; i < numLeaves; i++) {
+    /*for (int i = 0; i < numLeaves; i++) {
         const auto& leaf = nodesList.at(pointToNodeIndexMap.at(i));
+        float pointX = windowWidth / 2.0f + leaf.normalizedPosition.x * chartRadius;
+        float pointY = windowHeight / 2.0f + leaf.normalizedPosition.y * chartRadius;
+        nvgCircle(vg, pointX, pointY, pointRadius);
+    }*/
+    for (int i = 0; i < int(nodesList.size()); i++) {
+        const auto& leaf = nodesList.at(i);
         float pointX = windowWidth / 2.0f + leaf.normalizedPosition.x * chartRadius;
         float pointY = windowHeight / 2.0f + leaf.normalizedPosition.y * chartRadius;
         nvgCircle(vg, pointX, pointY, pointRadius);
@@ -397,24 +474,20 @@ void HEBChart::renderBase() {
     nvgFillColor(vg, circleFillColor);
     nvgFill(vg);
 
-    if (dataDirty) {
-        updateData();
-        dataDirty = false;
-    }
-
     // Draw the B-spline curves. TODO: Port to Vulkan or OpenGL.
-    NVGcolor curveStrokeColor = nvgRGBA(100, 255, 100, 100);
+    NVGcolor curveStrokeColor = nvgRGBA(
+            100, 255, 100, uint8_t(std::clamp(int(std::ceil(curveOpacity * 255.0f)), 0, 255)));
     if (!curvePoints.empty()) {
         for (int lineIdx = 0; lineIdx < NUM_LINES; lineIdx++) {
             nvgBeginPath(vg);
             glm::vec2 pt0 = curvePoints.at(lineIdx * NUM_SUBDIVISIONS + 0);
             pt0.x = windowWidth / 2.0f + pt0.x * chartRadius;
-            pt0.y = windowHeight / 2.0f + pt0.x * chartRadius;
+            pt0.y = windowHeight / 2.0f + pt0.y * chartRadius;
             nvgMoveTo(vg, pt0.x, pt0.y);
             for (int ptIdx = 1; ptIdx < NUM_SUBDIVISIONS; ptIdx++) {
                 glm::vec2 pt = curvePoints.at(lineIdx * NUM_SUBDIVISIONS + ptIdx);
                 pt.x = windowWidth / 2.0f + pt.x * chartRadius;
-                pt.y = windowHeight / 2.0f + pt.x * chartRadius;
+                pt.y = windowHeight / 2.0f + pt.y * chartRadius;
                 nvgLineTo(vg, pt.x, pt.y);
             }
             nvgStrokeWidth(vg, 1.0f);
