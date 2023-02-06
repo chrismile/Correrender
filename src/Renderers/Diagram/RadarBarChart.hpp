@@ -68,7 +68,7 @@ protected:
     bool hasData() override {
         return useTimeDependentData ? !variableValuesTimeDependent.empty() : !variableValues.empty();
     }
-    void renderBase() override;
+    void renderBaseNanoVG() override;
 
 private:
     glm::vec3 transferFunction(float value);

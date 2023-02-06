@@ -31,6 +31,7 @@
 #include <Utils/AppSettings.hpp>
 #include <Input/Mouse.hpp>
 #include <Math/Math.hpp>
+#include <Graphics/Vector/VectorBackendNanoVG.hpp>
 #include <Graphics/Vulkan/libs/nanovg/nanovg.h>
 #include <ImGui/ImGuiWrapper.hpp>
 
@@ -39,18 +40,25 @@
 DiagramBase::DiagramBase() {
     sgl::NanoVGSettings nanoVgSettings{};
     if (sgl::AppSettings::get()->getOffscreenContext()) {
-        nanoVgSettings.nanoVgBackend = sgl::NanoVGBackend::OPENGL;
+        nanoVgSettings.renderBackend = sgl::RenderSystem::OPENGL;
     } else {
-        nanoVgSettings.nanoVgBackend = sgl::NanoVGBackend::VULKAN;
+        nanoVgSettings.renderBackend = sgl::RenderSystem::VULKAN;
     }
-    setSettings(nanoVgSettings);
+
+    registerRenderBackendIfSupported<sgl::VectorBackendNanoVG>([this]() { this->renderBaseNanoVG(); }, nanoVgSettings);
 }
 
 void DiagramBase::initialize() {
     _initialize();
 }
 
-void DiagramBase::renderBase() {
+void DiagramBase::getNanoVGContext() {
+    vg = static_cast<sgl::VectorBackendNanoVG*>(vectorBackend)->getContext();
+}
+
+void DiagramBase::renderBaseNanoVG() {
+    getNanoVGContext();
+
     //NVGcolor backgroundFillColor = nvgRGBA(230, 230, 230, std::clamp(
     //        int(backgroundOpacity * 255), 0, 255));
     //NVGcolor backgroundStrokeColor = nvgRGBA(190, 190, 190, std::clamp(

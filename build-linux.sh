@@ -45,6 +45,9 @@ fi
 destination_dir="Shipping"
 build_with_zarr_support=true
 build_with_cuda_support=true
+build_with_skia_support=true
+skia_link_dynamically=true
+build_with_vkvg_support=true
 
 # Process command line arguments.
 custom_glslang=false
@@ -450,6 +453,49 @@ if $build_with_cuda_support; then
         echo "  downloading QuickMLP  "
         echo "------------------------"
         git clone https://github.com/chrismile/quick-mlp.git quick-mlp --recurse-submodules
+    fi
+fi
+
+if $build_with_skia_support; then
+    if [ ! -d "./skia" ]; then
+        echo "------------------------"
+        echo "    downloading Skia    "
+        echo "------------------------"
+        git clone https://skia.googlesource.com/skia.git
+        pushd skia >/dev/null
+        python3 tools/git-sync-deps
+        bin/fetch-ninja
+        if $skia_link_dynamically; then
+            bin/gn gen out/Shared --args='is_official_build=true is_component_build=true is_debug=false skia_use_vulkan=true skia_use_system_harfbuzz=false'
+            third_party/ninja/ninja -C out/Shared
+            params+=(-DSkia_DIR="${PROJECTPATH}/third_party/skia" -DSkia_BUILD_TYPE=Shared)
+        else
+            bin/gn gen out/Static --args='is_official_build=true is_debug=false skia_use_vulkan=true skia_use_system_harfbuzz=false'
+            third_party/ninja/ninja -C out/Static
+            params+=(-Dvkvg_DIR="${PROJECTPATH}/third_party/vkvg" -DSkia_BUILD_TYPE=Static)
+        fi
+        popd >/dev/null
+    fi
+fi
+
+if $build_with_vkvg_support; then
+    if [ ! -d "./vkvg" ]; then
+        echo "------------------------"
+        echo "    downloading VKVG    "
+        echo "------------------------"
+        if [ -d "./vkvg-src" ]; then
+            rm -rf "./vkvg-src"
+        fi
+        git clone --recursive https://github.com/jpbruyere/vkvg.git vkvg-src
+        mkdir -p vkvg-src/build
+        pushd vkvg-src/build >/dev/null
+        cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="${PROJECTPATH}/third_party/vkvg" \
+        -DVKVG_ENABLE_VK_SCALAR_BLOCK_LAYOUT=ON -DVKVG_ENABLE_VK_TIMELINE_SEMAPHORE=ON \
+        -DVKVG_USE_FREETYPE=OFF -DVKVG_USE_FONTCONFIG=OFF -DVKVG_USE_HARFBUZZ=OFF -DVKVG_BUILD_TESTS=OFF
+        make -j $(nproc)
+        make install
+        params+=(-Dvkvg_DIR="${PROJECTPATH}/third_party/vkvg")
+        popd >/dev/null
     fi
 fi
 

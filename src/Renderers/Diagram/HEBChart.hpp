@@ -72,7 +72,7 @@ protected:
     bool hasData() override {
         return true;
     }
-    void renderBase() override;
+    void renderBaseNanoVG() override;
 
 private:
     float chartRadius{};
@@ -84,7 +84,7 @@ private:
     bool dataDirty = true;
 
     // Hierarchy data.
-    int df = 16; ///< Downscaling factor.
+    int df = 32; ///< Downscaling factor.
     std::vector<HEBNode> nodesList;
     std::vector<uint32_t> pointToNodeIndexMap;
 

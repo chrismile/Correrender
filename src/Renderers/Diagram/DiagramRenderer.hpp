@@ -59,7 +59,7 @@ private:
     int selectedFieldIdx = 0, oldSelectedFieldIdx = 0;
     std::string selectedScalarFieldName;
     float beta = 0.75f;
-    int downscalingFactor = 16;
+    int downscalingFactor = 32;
     int lineCountFactor = 100;
     float curveOpacity = 0.4f;
 

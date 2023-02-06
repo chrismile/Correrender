@@ -33,15 +33,17 @@
 #include <sstream>
 #include <functional>
 
-#include <Graphics/Vulkan/libs/nanovg/NanoVGWidget.hpp>
+#include <Graphics/Vector/VectorWidget.hpp>
 
+struct NVGcontext;
+typedef struct NVGcontext NVGcontext;
 struct NVGcolor;
 
 enum class DiagramType {
     RADAR_BAR_CHART, HEB_CHART
 };
 
-class DiagramBase : public sgl::NanoVGWidget {
+class DiagramBase : public sgl::VectorWidget {
 public:
     DiagramBase();
     virtual void initialize();
@@ -57,7 +59,10 @@ public:
 protected:
     virtual bool hasData()=0;
 
-    void renderBase() override;
+    // NanoVG backend.
+    virtual void renderBaseNanoVG();
+    void getNanoVGContext();
+    NVGcontext* vg = nullptr;
 
     // Utility functions.
     void drawColorLegend(

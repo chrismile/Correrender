@@ -433,8 +433,8 @@ void HEBChart::updateData() {
     }
 }
 
-void HEBChart::renderBase() {
-    DiagramBase::renderBase();
+void HEBChart::renderBaseNanoVG() {
+    DiagramBase::renderBaseNanoVG();
 
     NVGcolor circleFillColor = nvgRGBA(180, 180, 180, 255);
     /*NVGcolor textColor = nvgRGBA(0, 0, 0, 255);

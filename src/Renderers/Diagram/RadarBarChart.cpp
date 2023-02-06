@@ -411,8 +411,8 @@ void RadarBarChart::drawDashedCircle(
 }
 
 
-void RadarBarChart::renderBase() {
-    DiagramBase::renderBase();
+void RadarBarChart::renderBaseNanoVG() {
+    DiagramBase::renderBaseNanoVG();
 
     NVGcolor textColor = nvgRGBA(0, 0, 0, 255);
     NVGcolor circleFillColor = nvgRGBA(180, 180, 180, 70);

@@ -197,6 +197,15 @@ if (NOT CUDA_ENABLED OR (NOT ${SUPPORT_TINY_CUDA_NN} AND NOT ${SUPPORT_QUICK_MLP
 endif()
 
 
+if(VCPKG_TOOLCHAIN)
+    find_package(skia CONFIG)
+else()
+    find_package(Skia)
+endif()
+
+find_package(vkvg)
+
+
 if(WIN32)
     add_executable(Correrender WIN32 ${SOURCES} ${CUDA_SOURCES} ${CMAKE_CURRENT_SOURCE_DIR}/CMake/winres.rc)
 elseif(APPLE)
@@ -421,6 +430,18 @@ endif()
 if (CUDA_ENABLED AND ${SUPPORT_QUICK_MLP})
     target_link_libraries(Correrender PRIVATE tiny-cuda-nn)
     target_compile_definitions(Correrender PRIVATE SUPPORT_QUICK_MLP)
+endif()
+
+if (Skia_FOUND OR skia_FOUND)
+    if(VCPKG_TOOLCHAIN)
+        target_link_libraries(Correrender PRIVATE skia::skia)
+    else()
+        target_link_libraries(Correrender PRIVATE Skia::Skia)
+    endif()
+endif()
+
+if (vkvg_FOUND)
+    target_link_libraries(Correrender PRIVATE vkvg::vkvg)
 endif()
 
 # For testing purposes.
