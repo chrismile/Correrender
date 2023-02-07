@@ -34,7 +34,7 @@
 #include <Math/Geometry/MatrixUtil.hpp>
 #include <Graphics/Color.hpp>
 #include <Graphics/Window.hpp>
-#include <Graphics/Vulkan/libs/nanovg/nanovg.h>
+#include <Graphics/Vector/nanovg/nanovg.h>
 
 #include "RadarBarChart.hpp"
 

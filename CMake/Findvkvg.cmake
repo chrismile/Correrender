@@ -29,6 +29,10 @@
 # Provides the following variables:
 # vkvg_FOUND, vkvg_LIBRARIES, vkvg_INCLUDE_DIRS, vkvg_DEFINES
 
+if (NOT DEFINED vkvg_DIR AND EXISTS "${CMAKE_SOURCE_DIR}/third_party/vkvg")
+    set(vkvg_DIR "${CMAKE_SOURCE_DIR}/third_party/vkvg")
+endif()
+
 if (DEFINED vkvg_DIR)
     set(ADDITIONAL_PATHS_ROOT "${vkvg_DIR}")
     set(ADDITIONAL_PATHS_INCLUDE "${vkvg_DIR}/include")

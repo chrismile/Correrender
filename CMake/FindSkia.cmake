@@ -29,6 +29,10 @@
 # Provides the following variables:
 # Skia_FOUND, Skia_LIBRARIES, Skia_INCLUDE_DIRS, Skia_DEFINES
 
+if (NOT DEFINED Skia_DIR AND EXISTS "${CMAKE_SOURCE_DIR}/third_party/skia")
+    set(Skia_DIR "${CMAKE_SOURCE_DIR}/third_party/skia")
+endif()
+
 if (DEFINED Skia_DIR)
     set(ADDITIONAL_PATHS_ROOT "${Skia_DIR}")
     set(ADDITIONAL_PATHS_INCLUDE "${Skia_DIR}/include")

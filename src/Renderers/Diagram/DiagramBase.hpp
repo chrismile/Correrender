@@ -38,6 +38,9 @@
 struct NVGcontext;
 typedef struct NVGcontext NVGcontext;
 struct NVGcolor;
+class SkCanvas;
+struct _vkvg_context_t;
+typedef struct _vkvg_context_t* VkvgContext;
 
 enum class DiagramType {
     RADAR_BAR_CHART, HEB_CHART
@@ -63,6 +66,25 @@ protected:
     virtual void renderBaseNanoVG();
     void getNanoVGContext();
     NVGcontext* vg = nullptr;
+
+#if defined(SUPPORT_SKIA) || defined(SUPPORT_VKVG)
+    // Scale factor used for rendering.
+    float s = 1.0f;
+#endif
+
+    // Skia backend.
+#ifdef SUPPORT_SKIA
+    virtual void renderBaseSkia();
+    void getSkiaCanvas();
+    SkCanvas* canvas = nullptr;
+#endif
+
+    // VKVG backend.
+#ifdef SUPPORT_VKVG
+    virtual void renderBaseVkvg();
+    void getVkvgContext();
+    VkvgContext context = nullptr;
+#endif
 
     // Utility functions.
     void drawColorLegend(

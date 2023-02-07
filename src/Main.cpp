@@ -139,6 +139,8 @@ int main(int argc, char *argv[]) {
     requestedDeviceFeatures.optionalPhysicalDeviceFeatures.sampleRateShading = VK_TRUE; // For MSAA.
     requestedDeviceFeatures.optionalPhysicalDeviceFeatures.geometryShader = VK_TRUE; // For Skia (if enabled).
     requestedDeviceFeatures.optionalPhysicalDeviceFeatures.dualSrcBlend = VK_TRUE; // For Skia (if enabled).
+    requestedDeviceFeatures.optionalPhysicalDeviceFeatures.logicOp = VK_TRUE; // For VKVG (if enabled).
+    requestedDeviceFeatures.optionalPhysicalDeviceFeatures.fillModeNonSolid = VK_TRUE; // For VKVG (if enabled).
     requestedDeviceFeatures.optionalEnableShaderDrawParametersFeatures = true; // For deferred shading.
     requestedDeviceFeatures.requestedPhysicalDeviceFeatures.fragmentStoresAndAtomics = VK_TRUE;
     // For ensemble combination when using Vulkan-CUDA interop with PyTorch.

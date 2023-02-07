@@ -29,12 +29,28 @@
 #include <queue>
 #include <stack>
 
+#ifdef SUPPORT_SKIA
+#include <core/SkCanvas.h>
+#include <core/SkPaint.h>
+#include <core/SkPath.h>
+#endif
+#ifdef SUPPORT_VKVG
+#include <vkvg.h>
+#endif
+
 #include <Math/Math.hpp>
-#include <Graphics/Vulkan/libs/nanovg/nanovg.h>
+#include <Graphics/Vector/nanovg/nanovg.h>
+#include <Graphics/Vector/VectorBackendNanoVG.hpp>
 
 #include "Loaders/DataSet.hpp"
 #include "Calculators/MutualInformation.hpp"
 #include "Volume/VolumeData.hpp"
+#ifdef SUPPORT_SKIA
+#include "VectorBackendSkia.hpp"
+#endif
+#ifdef SUPPORT_VKVG
+#include "VectorBackendVkvg.hpp"
+#endif
 #include "BSpline.hpp"
 #include "HEBChart.hpp"
 
@@ -264,7 +280,27 @@ void smoothControlPoints(std::vector<glm::vec2>& controlPoints, float beta) {
     }
 }
 
-HEBChart::HEBChart() = default;
+HEBChart::HEBChart() {
+#ifdef SUPPORT_SKIA
+    registerRenderBackendIfSupported<VectorBackendSkia>([this]() { this->renderBaseSkia(); });
+#endif
+#ifdef SUPPORT_VKVG
+    registerRenderBackendIfSupported<VectorBackendVkvg>([this]() { this->renderBaseVkvg(); });
+#endif
+
+    std::string defaultBackendId = sgl::VectorBackendNanoVG::getClassID();
+#if defined(SUPPORT_SKIA) || defined(SUPPORT_VKVG)
+    // NanoVG Vulkan port is broken at the moment, so use Skia or VKVG if OpenGL NanoVG cannot be used.
+    if (!sgl::AppSettings::get()->getOffscreenContext()) {
+#if defined(SUPPORT_SKIA)
+        defaultBackendId = VectorBackendSkia::getClassID();
+#elif defined(SUPPORT_VKVG)
+        defaultBackendId = VectorBackendVkvg::getClassID();
+#endif
+    }
+#endif
+    setDefaultBackendId(defaultBackendId);
+}
 
 void HEBChart::initialize() {
     borderSizeX = 10;
@@ -496,3 +532,98 @@ void HEBChart::renderBaseNanoVG() {
         }
     }
 }
+
+#ifdef SUPPORT_SKIA
+void HEBChart::renderBaseSkia() {
+    DiagramBase::renderBaseSkia();
+
+    sgl::Color circleFillColor = sgl::Color(180, 180, 180, 255);
+
+    if (dataDirty) {
+        updateData();
+        dataDirty = false;
+    }
+
+    SkPaint paint;
+    static_cast<VectorBackendSkia*>(vectorBackend)->initializePaint(&paint);
+
+    float pointRadius = 1.5f * s;
+    auto numLeaves = int(pointToNodeIndexMap.size());
+    paint.setColor(toSkColor(circleFillColor));
+    paint.setStroke(false);
+    for (int i = 0; i < int(nodesList.size()); i++) {
+        const auto& leaf = nodesList.at(i);
+        float pointX = windowWidth / 2.0f + leaf.normalizedPosition.x * chartRadius;
+        float pointY = windowHeight / 2.0f + leaf.normalizedPosition.y * chartRadius;
+        canvas->drawCircle(pointX * s, pointY * s, pointRadius, paint);
+    }
+
+    // Draw the B-spline curves.
+    sgl::Color curveStrokeColor = sgl::Color(
+            100, 255, 100, uint8_t(std::clamp(int(std::ceil(curveOpacity * 255.0f)), 0, 255)));
+    if (!curvePoints.empty()) {
+        paint.setStroke(true);
+        paint.setStrokeWidth(1.0f * s);
+        paint.setColor(toSkColor(curveStrokeColor));
+        for (int lineIdx = 0; lineIdx < NUM_LINES; lineIdx++) {
+            SkPath path;
+            glm::vec2 pt0 = curvePoints.at(lineIdx * NUM_SUBDIVISIONS + 0);
+            pt0.x = windowWidth / 2.0f + pt0.x * chartRadius;
+            pt0.y = windowHeight / 2.0f + pt0.y * chartRadius;
+            path.moveTo(pt0.x * s, pt0.y * s);
+            for (int ptIdx = 1; ptIdx < NUM_SUBDIVISIONS; ptIdx++) {
+                glm::vec2 pt = curvePoints.at(lineIdx * NUM_SUBDIVISIONS + ptIdx);
+                pt.x = windowWidth / 2.0f + pt.x * chartRadius;
+                pt.y = windowHeight / 2.0f + pt.y * chartRadius;
+                path.lineTo(pt.x * s, pt.y * s);
+            }
+            canvas->drawPath(path, paint);
+        }
+    }
+}
+#endif
+
+#ifdef SUPPORT_VKVG
+void HEBChart::renderBaseVkvg() {
+    DiagramBase::renderBaseVkvg();
+
+    sgl::Color circleFillColor = sgl::Color(180, 180, 180, 255);
+
+    if (dataDirty) {
+        updateData();
+        dataDirty = false;
+    }
+
+    float pointRadius = 1.5f * s;
+    auto numLeaves = int(pointToNodeIndexMap.size());
+    for (int i = 0; i < int(nodesList.size()); i++) {
+        const auto& leaf = nodesList.at(i);
+        float pointX = windowWidth / 2.0f + leaf.normalizedPosition.x * chartRadius;
+        float pointY = windowHeight / 2.0f + leaf.normalizedPosition.y * chartRadius;
+        vkvg_ellipse(context, pointRadius, pointRadius, pointX * s, pointY * s, 0.0f);
+    }
+    vkvg_set_source_color(context, circleFillColor.getColorRGBA());
+    vkvg_fill(context);
+
+    // Draw the B-spline curves.
+    sgl::Color curveStrokeColor = sgl::Color(100, 255, 100, 255);
+    if (!curvePoints.empty()) {
+        vkvg_set_line_width(context, 1.0f * s);
+        vkvg_set_source_color(context, curveStrokeColor.getColorRGBA());
+        vkvg_set_opacity(context, curveOpacity);
+        for (int lineIdx = 0; lineIdx < NUM_LINES; lineIdx++) {
+            glm::vec2 pt0 = curvePoints.at(lineIdx * NUM_SUBDIVISIONS + 0);
+            pt0.x = windowWidth / 2.0f + pt0.x * chartRadius;
+            pt0.y = windowHeight / 2.0f + pt0.y * chartRadius;
+            vkvg_move_to(context, pt0.x * s, pt0.y * s);
+            for (int ptIdx = 1; ptIdx < NUM_SUBDIVISIONS; ptIdx++) {
+                glm::vec2 pt = curvePoints.at(lineIdx * NUM_SUBDIVISIONS + ptIdx);
+                pt.x = windowWidth / 2.0f + pt.x * chartRadius;
+                pt.y = windowHeight / 2.0f + pt.y * chartRadius;
+                vkvg_line_to(context, pt.x * s, pt.y * s);
+            }
+        }
+        vkvg_stroke(context);
+    }
+}
+#endif

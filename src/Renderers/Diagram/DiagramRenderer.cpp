@@ -170,7 +170,7 @@ void DiagramRenderer::addViewImpl(uint32_t viewIdx) {
 }
 
 void DiagramRenderer::removeViewImpl(uint32_t viewIdx) {
-    //dvrPasses.erase(dvrPasses.begin() + viewIdx);
+    diagrams.erase(diagrams.begin() + viewIdx);
 }
 
 void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
@@ -216,5 +216,22 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
             diagram->setCurveOpacity(curveOpacity);
         }
         reRender = true;
+    }
+
+    if (diagrams.size() == 1) {
+        if (diagrams.front()->renderGuiPropertyEditor(propertyEditor)) {
+            reRender = true;
+        }
+    } else {
+        int i = 0;
+        for (auto& diagram : diagrams) {
+            if (propertyEditor.beginNode("Diagram " + std::to_string(i + 1))) {
+                if (diagram->renderGuiPropertyEditor(propertyEditor)) {
+                    reRender = true;
+                }
+                propertyEditor.endNode();
+            }
+            i++;
+        }
     }
 }

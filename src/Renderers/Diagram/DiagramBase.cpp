@@ -28,13 +28,27 @@
 
 #include <random>
 
+#ifdef SUPPORT_SKIA
+#include <core/SkCanvas.h>
+#include <core/SkPaint.h>
+#endif
+#ifdef SUPPORT_VKVG
+#include <vkvg.h>
+#endif
+
 #include <Utils/AppSettings.hpp>
 #include <Input/Mouse.hpp>
 #include <Math/Math.hpp>
 #include <Graphics/Vector/VectorBackendNanoVG.hpp>
-#include <Graphics/Vulkan/libs/nanovg/nanovg.h>
+#include <Graphics/Vector/nanovg/nanovg.h>
 #include <ImGui/ImGuiWrapper.hpp>
 
+#ifdef SUPPORT_SKIA
+#include "VectorBackendSkia.hpp"
+#endif
+#ifdef SUPPORT_VKVG
+#include "VectorBackendVkvg.hpp"
+#endif
 #include "DiagramBase.hpp"
 
 DiagramBase::DiagramBase() {
@@ -51,6 +65,7 @@ DiagramBase::DiagramBase() {
 void DiagramBase::initialize() {
     _initialize();
 }
+
 
 void DiagramBase::getNanoVGContext() {
     vg = static_cast<sgl::VectorBackendNanoVG*>(vectorBackend)->getContext();
@@ -78,6 +93,70 @@ void DiagramBase::renderBaseNanoVG() {
     nvgStrokeColor(vg, backgroundStrokeColor);
     nvgStroke(vg);
 }
+
+
+#ifdef SUPPORT_SKIA
+void DiagramBase::getSkiaCanvas() {
+    canvas = static_cast<VectorBackendSkia*>(vectorBackend)->getCanvas();
+}
+
+void DiagramBase::renderBaseSkia() {
+    getSkiaCanvas();
+    s = scaleFactor * float(supersamplingFactor);
+
+    sgl::Color backgroundFillColor = sgl::Color(20, 20, 20, std::clamp(
+            int(backgroundOpacity * 255), 0, 255));
+    sgl::Color backgroundStrokeColor = sgl::Color(60, 60, 60, std::clamp(
+            int(backgroundOpacity * 255), 0, 255));
+
+    // Render the render target-filling widget rectangle.
+    SkPaint paint;
+    static_cast<VectorBackendSkia*>(vectorBackend)->initializePaint(&paint);
+
+    paint.setColor(toSkColor(backgroundFillColor));
+    paint.setStroke(false);
+    canvas->drawRoundRect(
+            SkRect{borderWidth * s, borderWidth * s, (windowWidth - borderWidth) * s, (windowHeight - borderWidth) * s},
+            borderRoundingRadius * s, borderRoundingRadius * s, paint);
+
+    paint.setColor(toSkColor(backgroundStrokeColor));
+    paint.setStroke(true);
+    paint.setStrokeWidth(1.0f * s);
+    canvas->drawRoundRect(
+            SkRect{borderWidth * s, borderWidth * s, (windowWidth - borderWidth) * s, (windowHeight - borderWidth) * s},
+            borderRoundingRadius * s, borderRoundingRadius * s, paint);
+}
+#endif
+
+
+#ifdef SUPPORT_VKVG
+void DiagramBase::getVkvgContext() {
+    context = static_cast<VectorBackendVkvg*>(vectorBackend)->getContext();
+}
+
+void DiagramBase::renderBaseVkvg() {
+    getVkvgContext();
+    s = scaleFactor * float(supersamplingFactor);
+
+    sgl::Color backgroundFillColor = sgl::Color(20, 20, 20, 255);
+    sgl::Color backgroundStrokeColor = sgl::Color(60, 60, 60, 255);
+
+    // Render the render target-filling widget rectangle.
+    vkvg_rounded_rectangle(
+            context, borderWidth * s, borderWidth * s,
+            (windowWidth - 2.0f * borderWidth) * s, (windowHeight - 2.0f * borderWidth) * s,
+            borderRoundingRadius * s);
+    vkvg_set_opacity(context, backgroundOpacity);
+    vkvg_set_source_color(context, backgroundFillColor.getColorRGBA());
+    vkvg_fill_preserve(context);
+    vkvg_set_source_color(context, backgroundStrokeColor.getColorRGBA());
+    vkvg_set_line_width(context, 1.0f * s);
+    vkvg_stroke(context);
+
+    vkvg_set_opacity(context, 1.0f);
+}
+#endif
+
 
 /// Removes trailing zeros and unnecessary decimal points.
 std::string removeTrailingZeros(const std::string& numberString) {

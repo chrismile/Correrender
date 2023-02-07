@@ -73,6 +73,12 @@ protected:
         return true;
     }
     void renderBaseNanoVG() override;
+#ifdef SUPPORT_SKIA
+    void renderBaseSkia() override;
+#endif
+#ifdef SUPPORT_VKVG
+    void renderBaseVkvg() override;
+#endif
 
 private:
     float chartRadius{};

@@ -202,8 +202,16 @@ if(VCPKG_TOOLCHAIN)
 else()
     find_package(Skia)
 endif()
+if (NOT Skia_FOUND AND NOT skia_FOUND)
+    list(REMOVE_ITEM SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/Renderers/Diagram/VectorBackendSkia.hpp)
+    list(REMOVE_ITEM SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/Renderers/Diagram/VectorBackendSkia.cpp)
+endif()
 
 find_package(vkvg)
+if (NOT vkvg_FOUND)
+    list(REMOVE_ITEM SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/Renderers/Diagram/VectorBackendVkvg.hpp)
+    list(REMOVE_ITEM SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/Renderers/Diagram/VectorBackendVkvg.cpp)
+endif()
 
 
 if(WIN32)
@@ -438,10 +446,12 @@ if (Skia_FOUND OR skia_FOUND)
     else()
         target_link_libraries(Correrender PRIVATE Skia::Skia)
     endif()
+    target_compile_definitions(Correrender PRIVATE SUPPORT_SKIA)
 endif()
 
 if (vkvg_FOUND)
     target_link_libraries(Correrender PRIVATE vkvg::vkvg)
+    target_compile_definitions(Correrender PRIVATE SUPPORT_VKVG)
 endif()
 
 # For testing purposes.
