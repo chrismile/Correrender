@@ -29,6 +29,22 @@
 #include <queue>
 #include <stack>
 
+//#define USE_TBB
+
+#ifdef USE_TBB
+#include <tbb/parallel_for.h>
+#include <tbb/parallel_reduce.h>
+#include <tbb/parallel_sort.h>
+#include <tbb/blocked_range.h>
+#elif defined(_OPENMP)
+#include <omp.h>
+#endif
+
+//#ifndef USE_TBB
+//#include <execution>
+//#include <algorithm>
+//#endif
+
 #ifdef SUPPORT_SKIA
 #include <core/SkCanvas.h>
 #include <core/SkPaint.h>
@@ -401,37 +417,85 @@ void HEBChart::updateData() {
 
     // Compute the mutual information matrix.
     int k = std::max(sgl::iceil(3 * es, 100), 1);
+#ifdef USE_TBB
+    std::vector<MIFieldEntry> miFieldEntries = tbb::parallel_reduce(
+            tbb::blocked_range<int>(0, numPoints), std::vector<MIFieldEntry>(),
+            [&](tbb::blocked_range<int> const& r, std::vector<MIFieldEntry> miFieldEntriesThread) -> std::vector<MIFieldEntry> {
+                std::vector<float> X(es);
+                std::vector<float> Y(es);
+                for (int i = r.begin(); i != r.end(); i++) {
+#else
     std::vector<MIFieldEntry> miFieldEntries;
     miFieldEntries.reserve((numPoints * numPoints + numPoints) / 2);
-    std::vector<float> X(es);
-    std::vector<float> Y(es);
-    for (int i = 0; i < numPoints; i++) {
-        bool isNan = false;
-        for (int e = 0; e < es; e++) {
-            X[e] = downscaledEnsembleFields.at(e)[i];
-            if (std::isnan(X[e])) {
-                isNan = true;
-                break;
-            }
-        }
-        if (isNan) {
-            continue;
-        }
-        for (int j = 0; j < i; j++) {
+#if _OPENMP >= 201107
+    #pragma omp parallel default(none) shared(miFieldEntries, downscaledEnsembleFields, numPoints, es, k)
+#endif
+    {
+        std::vector<MIFieldEntry> miFieldEntriesThread;
+        std::vector<float> X(es);
+        std::vector<float> Y(es);
+#if _OPENMP >= 201107
+        #pragma omp for schedule(dynamic)
+#endif
+        for (int i = 0; i < numPoints; i++) {
+#endif
+            bool isNan = false;
             for (int e = 0; e < es; e++) {
-                Y[e] = downscaledEnsembleFields.at(e)[i];
-                if (std::isnan(Y[e])) {
+                X[e] = downscaledEnsembleFields.at(e)[i];
+                if (std::isnan(X[e])) {
                     isNan = true;
                     break;
                 }
             }
-            if (!isNan) {
-                float miValue = computeMutualInformationKraskov<double>(X.data(), Y.data(), k, es);
-                miFieldEntries.emplace_back(miValue, i, j);
+            if (isNan) {
+                continue;
+            }
+            for (int j = 0; j < i; j++) {
+                for (int e = 0; e < es; e++) {
+                    Y[e] = downscaledEnsembleFields.at(e)[i];
+                    if (std::isnan(Y[e])) {
+                        isNan = true;
+                        break;
+                    }
+                }
+                if (!isNan) {
+                    float miValue = computeMutualInformationKraskov<double>(X.data(), Y.data(), k, es);
+                    //miFieldEntries.emplace_back(miValue, i, j);
+                    miFieldEntriesThread.emplace_back(miValue, i, j);
+                }
+            }
+        }
+#ifdef USE_TBB
+                return miFieldEntriesThread;
+            },
+            [&](std::vector<MIFieldEntry> lhs, std::vector<MIFieldEntry> rhs) -> std::vector<MIFieldEntry> {
+                std::vector<MIFieldEntry> listOut = std::move(lhs);
+                listOut.insert(listOut.end(), std::make_move_iterator(rhs.begin()), std::make_move_iterator(rhs.end()));
+                return listOut;
+            });
+#else
+
+#if _OPENMP >= 201107
+        #pragma omp for ordered schedule(static, 1)
+        for (int threadIdx = 0; threadIdx < omp_get_num_threads(); ++threadIdx) {
+#else
+        for (int threadIdx = 0; threadIdx < 1; ++threadIdx) {
+#endif
+            #pragma omp ordered
+            {
+                miFieldEntries.insert(miFieldEntries.end(), miFieldEntriesThread.begin(), miFieldEntriesThread.end());
             }
         }
     }
+#endif
+
+#ifdef USE_TBB
+    tbb::parallel_sort(miFieldEntries.begin(), miFieldEntries.end());
+//#elif __cpp_lib_parallel_algorithm >= 201603L
+    //std::sort(std::execution::par_unseq, miFieldEntries.begin(), miFieldEntries.end());
+#else
     std::sort(miFieldEntries.begin(), miFieldEntries.end());
+#endif
 
     // Delete the downscaled field, as it is no longer used.
     for (int ensembleIdx = 0; ensembleIdx < es; ensembleIdx++) {
@@ -449,24 +513,42 @@ void HEBChart::updateData() {
     NUM_LINES = std::min(maxNumLines, int(miFieldEntries.size()));
     curvePoints.resize(NUM_LINES * NUM_SUBDIVISIONS);
     miValues.resize(NUM_LINES);
-    std::vector<glm::vec2> controlPoints;
-    for (int lineIdx = 0; lineIdx < NUM_LINES; lineIdx++) {
-        const auto& miEntry = miFieldEntries.at(lineIdx);
-        miValues.at(lineIdx) = miEntry.miValue;
-        controlPoints.clear();
-        getControlPoints(nodesList, pointToNodeIndexMap, miEntry.pointIndex0, miEntry.pointIndex1, controlPoints);
-        if (beta < 1.0f) {
-            smoothControlPoints(controlPoints, beta);
-        }
-        for (int ptIdx = 0; ptIdx < NUM_SUBDIVISIONS; ptIdx++) {
-            float t = float(ptIdx) / float(NUM_SUBDIVISIONS - 1);
-            int k = 4;
-            if (controlPoints.size() == 3) {
-                k = 3;
+#ifdef USE_TBB
+    tbb::parallel_for(tbb::blocked_range<int>(0, NUM_LINES), [&](auto const& r) {
+        std::vector<glm::vec2> controlPoints;
+        for (auto lineIdx = r.begin(); lineIdx != r.end(); lineIdx++) {
+#else
+#if _OPENMP >= 201107
+    #pragma omp parallel default(none) shared(miFieldEntries)
+#endif
+    {
+        std::vector<glm::vec2> controlPoints;
+#if _OPENMP >= 201107
+        #pragma omp for
+#endif
+        for (int lineIdx = 0; lineIdx < NUM_LINES; lineIdx++) {
+#endif
+            const auto& miEntry = miFieldEntries.at(lineIdx);
+            miValues.at(lineIdx) = miEntry.miValue;
+            controlPoints.clear();
+            getControlPoints(nodesList, pointToNodeIndexMap, miEntry.pointIndex0, miEntry.pointIndex1, controlPoints);
+            if (beta < 1.0f) {
+                smoothControlPoints(controlPoints, beta);
             }
-            curvePoints.at(lineIdx * NUM_SUBDIVISIONS + ptIdx) = evaluateBSpline(t, k, controlPoints);
+            for (int ptIdx = 0; ptIdx < NUM_SUBDIVISIONS; ptIdx++) {
+                float t = float(ptIdx) / float(NUM_SUBDIVISIONS - 1);
+                int k = 4;
+                if (controlPoints.size() == 3) {
+                    k = 3;
+                }
+                curvePoints.at(lineIdx * NUM_SUBDIVISIONS + ptIdx) = evaluateBSpline(t, k, controlPoints);
+            }
         }
+#ifdef USE_TBB
+    });
+#else
     }
+#endif
 }
 
 void HEBChart::renderBaseNanoVG() {

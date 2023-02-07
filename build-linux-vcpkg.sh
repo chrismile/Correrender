@@ -393,6 +393,14 @@ if $build_with_zarr_support; then
         make install
         popd >/dev/null
     fi
+
+    # Seems like xtensor can install its CMake config either to the share or lib folder.
+    if [ -d "${PROJECTPATH}/third_party/xtensor/share/cmake/xtensor" ]; then
+        xtensor_CMAKE_DIR="${PROJECTPATH}/third_party/xtensor/share/cmake/xtensor"
+    else
+        xtensor_CMAKE_DIR="${PROJECTPATH}/third_party/xtensor/lib/cmake/xtensor"
+    fi
+
     if [ ! -d "./z5" ]; then
         echo "------------------------"
         echo "     downloading z5     "
@@ -406,7 +414,7 @@ if $build_with_zarr_support; then
         mkdir -p z5-src/build
         pushd z5-src/build >/dev/null
         cmake -Dxtl_DIR="${PROJECTPATH}/third_party/xtl/share/cmake/xtl" \
-        -Dxtensor_DIR="${PROJECTPATH}/third_party/xtensor/share/cmake/xtensor" \
+        -Dxtensor_DIR="${xtensor_CMAKE_DIR}" \
         -Dxsimd_DIR="${PROJECTPATH}/third_party/xsimd/lib/cmake/xsimd" \
         -DBUILD_Z5PY=OFF -DWITH_ZLIB=ON -DWITH_LZ4=ON -DWITH_BLOSC=ON \
         -DCMAKE_INSTALL_PREFIX="${PROJECTPATH}/third_party/z5" ..
@@ -414,7 +422,7 @@ if $build_with_zarr_support; then
         popd >/dev/null
     fi
     params+=(-Dxtl_DIR="${PROJECTPATH}/third_party/xtl/share/cmake/xtl" \
-    -Dxtensor_DIR="${PROJECTPATH}/third_party/xtensor/share/cmake/xtensor" \
+    -Dxtensor_DIR="${xtensor_CMAKE_DIR}" \
     -Dxsimd_DIR="${PROJECTPATH}/third_party/xsimd/lib/cmake/xsimd" \
     -Dz5_DIR="${PROJECTPATH}/third_party/z5/lib/cmake/z5")
 fi
