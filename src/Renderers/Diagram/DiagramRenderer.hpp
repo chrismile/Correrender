@@ -30,9 +30,16 @@
 #define CORRERENDER_DIAGRAMRENDERER_HPP
 
 #include <Graphics/Vulkan/Render/Passes/Pass.hpp>
+
 #include "../Renderer.hpp"
 
 class HEBChart;
+class DomainOutlineComputePass;
+
+struct OutlineRenderData {
+    sgl::vk::BufferPtr indexBuffer;
+    sgl::vk::BufferPtr vertexPositionBuffer;
+};
 
 class DiagramRenderer : public Renderer {
 public:
@@ -44,9 +51,11 @@ public:
     void setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) override;
     void onFieldRemoved(FieldType fieldType, int fieldIdx) override;
     void recreateSwapchainView(uint32_t viewIdx, uint32_t width, uint32_t height) override;
+    void update(float dt) override;
 
 protected:
     void renderViewImpl(uint32_t viewIdx) override;
+    void renderViewPreImpl(uint32_t viewIdx) override;
     void addViewImpl(uint32_t viewIdx) override;
     void removeViewImpl(uint32_t viewIdx) override;
     void renderGuiImpl(sgl::PropertyEditor& propertyEditor) override;
@@ -62,10 +71,17 @@ private:
     int downscalingFactor = 32;
     int lineCountFactor = 100;
     float curveOpacity = 0.4f;
+    bool use2dField = true;
 
     // Test data.
     std::vector<std::string> variableNames;
     std::vector<std::vector<float>> variableValuesTimeDependent;
+
+    // Selected region.
+    float lineWidth = 0.001f;
+    std::vector<OutlineRenderData> outlineRenderDataList;
+    std::vector<std::shared_ptr<DomainOutlineRasterPass>> domainOutlineRasterPasses;
+    std::vector<std::shared_ptr<DomainOutlineComputePass>> domainOutlineComputePasses;
 };
 
 #endif //CORRERENDER_DIAGRAMRENDERER_HPP

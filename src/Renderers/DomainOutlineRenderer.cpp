@@ -45,7 +45,7 @@ DomainOutlineRenderer::~DomainOutlineRenderer() {
 void DomainOutlineRenderer::initialize() {
     Renderer::initialize();
 
-    size_t numEdges = 12;
+    const size_t numEdges = 12;
 
     sgl::vk::Device* device = renderer->getDevice();
     vertexPositionBuffer = std::make_shared<sgl::vk::Buffer>(
@@ -168,7 +168,7 @@ void DomainOutlineRasterPass::setRenderData(
 }
 
 void DomainOutlineRasterPass::loadShader() {
-    shaderStages = sgl::vk::ShaderManager->getShaderStages({"DomainOutline.Vertex", "DomainOutline.Fragment"});
+    shaderStages = sgl::vk::ShaderManager->getShaderStages({ "DomainOutline.Vertex", "DomainOutline.Fragment" });
 }
 
 void DomainOutlineRasterPass::setGraphicsPipelineInfo(sgl::vk::GraphicsPipelineInfo& pipelineInfo) {
@@ -221,4 +221,40 @@ void DomainOutlineRasterPass::_render() {
     sceneData->switchDepthState(RenderTargetAccess::RASTERIZER);
 
     RasterPass::_render();
+}
+
+
+
+DomainOutlineComputePass::DomainOutlineComputePass(sgl::vk::Renderer* renderer) : ComputePass(renderer) {
+}
+
+void DomainOutlineComputePass::setRenderData(
+        const sgl::vk::BufferPtr& _indexBuffer, const sgl::vk::BufferPtr& _vertexPositionBuffer) {
+    indexBuffer = _indexBuffer;
+    vertexPositionBuffer = _vertexPositionBuffer;
+    setDataDirty();
+}
+
+void DomainOutlineComputePass::setOutlineSettings(const sgl::AABB3& aabb, float lineWidth) {
+    pushConstants.aabbMin = aabb.min;
+    pushConstants.aabbMax = aabb.max;
+    pushConstants.lineWidth = lineWidth;
+}
+
+void DomainOutlineComputePass::loadShader() {
+    shaderStages = sgl::vk::ShaderManager->getShaderStages({ "DomainOutline.Compute" });
+}
+
+void DomainOutlineComputePass::createComputeData(sgl::vk::Renderer* renderer, sgl::vk::ComputePipelinePtr& computePipeline) {
+    computeData = std::make_shared<sgl::vk::ComputeData>(renderer, computePipeline);
+    computeData->setStaticBuffer(indexBuffer, "IndexBuffer");
+    computeData->setStaticBuffer(vertexPositionBuffer, "VertexBuffer");
+}
+
+void DomainOutlineComputePass::_render() {
+    renderer->pushConstants(getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, 0, pushConstants);
+    renderer->dispatch(computeData, 1, 1, 1);
+    renderer->insertMemoryBarrier(
+            VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_INDEX_READ_BIT | VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT);
 }

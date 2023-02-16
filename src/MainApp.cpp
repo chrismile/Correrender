@@ -1059,6 +1059,9 @@ void MainApp::renderGui() {
                         }
                         if (volumeData.get() != nullptr) {
                             for (auto& volumeRenderer : volumeRenderers) {
+                                volumeRenderer->renderViewPre(viewIdx);
+                            }
+                            for (auto& volumeRenderer : volumeRenderers) {
                                 volumeRenderer->renderView(viewIdx);
                             }
                         }

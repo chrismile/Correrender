@@ -66,6 +66,11 @@ void DiagramBase::initialize() {
     _initialize();
 }
 
+void DiagramBase::setImGuiWindowOffset(int offsetX, int offsetY) {
+    imGuiWindowOffsetX = offsetX;
+    imGuiWindowOffsetY = offsetY;
+}
+
 
 void DiagramBase::getNanoVGContext() {
     vg = static_cast<sgl::VectorBackendNanoVG*>(vectorBackend)->getContext();

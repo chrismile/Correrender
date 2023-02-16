@@ -36,6 +36,7 @@ void main() {
     gl_Position = mvpMatrix * vec4(vertexPosition, 1.0);
 }
 
+
 -- Fragment
 
 #version 450 core
@@ -48,4 +49,93 @@ layout(location = 0) out vec4 fragColor;
 
 void main() {
     fragColor = objectColor;
+}
+
+
+-- Compute
+
+#version 450 core
+
+#extension GL_EXT_scalar_block_layout : require
+
+layout(local_size_x = 16) in;
+
+layout(push_constant) uniform PushConstants {
+    vec3 aabbMin;
+    float lineWidth;
+    vec3 aabbMax;
+    float padding;
+};
+
+layout(binding = 0, std430) writeonly buffer IndexBuffer {
+    uint indexBuffer[];
+};
+
+layout(binding = 1, scalar) writeonly buffer VertexBuffer {
+    vec3 vertexBuffer[];
+};
+
+const uint indexData[36] = {
+    0, 1, 2, 1, 3, 2, // front
+    4, 6, 5, 5, 6, 7, // back
+    0, 2, 4, 4, 2, 6, // left
+    1, 5, 3, 5, 7, 3, // right
+    0, 4, 1, 1, 4, 5, // bottom
+    2, 3, 6, 3, 7, 6, // top
+};
+const vec3 vertexData[8] = {
+    vec3(0.0f, 0.0f, 0.0f),
+    vec3(1.0f, 0.0f, 0.0f),
+    vec3(0.0f, 1.0f, 0.0f),
+    vec3(1.0f, 1.0f, 0.0f),
+    vec3(0.0f, 0.0f, 1.0f),
+    vec3(1.0f, 0.0f, 1.0f),
+    vec3(0.0f, 1.0f, 1.0f),
+    vec3(1.0f, 1.0f, 1.0f),
+};
+
+void addEdge(vec3 lower, vec3 upper, uint vertexOffset, uint indexOffset) {
+    for (uint idx = 0; idx < 36; idx++) {
+        indexBuffer[indexOffset + idx] = indexData[idx] + vertexOffset;
+    }
+    for (uint vidx = 0; vidx < 8; vidx++) {
+        vec3 pos = vertexData[vidx];
+        pos = pos * (upper - lower) + lower;
+        vertexBuffer[vertexOffset + vidx] = pos;
+    }
+}
+
+void main() {
+    uint threadIdx = gl_GlobalInvocationID.x;
+    vec3 min0 = aabbMin - vec3(lineWidth / 2.0f);
+    vec3 min1 = aabbMin + vec3(lineWidth / 2.0f);
+    vec3 max0 = aabbMax - vec3(lineWidth / 2.0f);
+    vec3 max1 = aabbMax + vec3(lineWidth / 2.0f);
+    vec3 lower, upper;
+    if (threadIdx == 0) {
+        lower = vec3(min0.x, min0.y, min0.z); upper = vec3(max1.x, min1.y, min1.z);
+    } else if (threadIdx == 1) {
+        lower = vec3(min0.x, min0.y, max0.z); upper = vec3(max1.x, min1.y, max1.z);
+    } else if (threadIdx == 2) {
+        lower = vec3(min0.x, min0.y, min1.z); upper = vec3(min1.x, min1.y, max0.z);
+    } else if (threadIdx == 3) {
+        lower = vec3(max0.x, min0.y, min1.z); upper = vec3(max1.x, min1.y, max0.z);
+    } else if (threadIdx == 4) {
+        lower = vec3(min0.x, max0.y, min0.z); upper = vec3(max1.x, max1.y, min1.z);
+    } else if (threadIdx == 5) {
+        lower = vec3(min0.x, max0.y, max0.z); upper = vec3(max1.x, max1.y, max1.z);
+    } else if (threadIdx == 6) {
+        lower = vec3(min0.x, max0.y, min1.z); upper = vec3(min1.x, max1.y, max0.z);
+    } else if (threadIdx == 7) {
+        lower = vec3(max0.x, max0.y, min1.z); upper = vec3(max1.x, max1.y, max0.z);
+    } else if (threadIdx == 8) {
+        lower = vec3(min0.x, min1.y, min0.z); upper = vec3(min1.x, max0.y, min1.z);
+    } else if (threadIdx == 9) {
+        lower = vec3(max0.x, min1.y, min0.z); upper = vec3(max1.x, max0.y, min1.z);
+    } else if (threadIdx == 10) {
+        lower = vec3(min0.x, min1.y, max0.z); upper = vec3(min1.x, max0.y, max1.z);
+    } else if (threadIdx == 11) {
+        lower = vec3(max0.x, min1.y, max0.z); upper = vec3(max1.x, max0.y, max1.z);
+    }
+    addEdge(lower, upper, threadIdx * 8, threadIdx * 36);
 }

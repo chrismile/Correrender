@@ -100,6 +100,7 @@ public:
 
     bool isVisibleInView(uint32_t viewIdx);
     virtual void renderView(uint32_t viewIdx) final;
+    virtual void renderViewPre(uint32_t viewIdx) final;
     virtual void addView(uint32_t viewIdx) final;
     virtual void removeView(uint32_t viewIdx) final;
     virtual void recreateSwapchainView(uint32_t viewIdx, uint32_t width, uint32_t height);
@@ -121,6 +122,7 @@ public:
 
 protected:
     virtual void renderViewImpl(uint32_t viewIdx) {}
+    virtual void renderViewPreImpl(uint32_t viewIdx) {}
     virtual void addViewImpl(uint32_t viewIdx) {}
     virtual void removeViewImpl(uint32_t viewIdx) {}
     virtual void renderGuiImpl(sgl::PropertyEditor& propertyEditor) {}

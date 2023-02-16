@@ -67,6 +67,9 @@ public:
     void setDownscalingFactor(int _df);
     void setLineCountFactor(int _factor);
     void setCurveOpacity(float _alpha);
+    void setUse2DField(bool _use2dField);
+    bool getIsRegionSelected();
+    sgl::AABB3 getSelectedRegion();
 
 protected:
     bool hasData() override {
@@ -91,8 +94,12 @@ private:
 
     // Hierarchy data.
     int df = 32; ///< Downscaling factor.
+    int xs = 0, ys = 0, zs = 0;
+    int xsd = 0, ysd = 0, zsd = 0;
+    bool use2dField = true;
     std::vector<HEBNode> nodesList;
     std::vector<uint32_t> pointToNodeIndexMap;
+    uint32_t leafIdxOffset = 0;
 
     // B-spline data.
     void updateData();
@@ -103,6 +110,12 @@ private:
     float curveOpacity = 0.4f;
     std::vector<glm::vec2> curvePoints;
     std::vector<float> miValues; ///< per-line values.
+
+    // GUI data.
+    float pointRadiusBase = 1.5f;
+    int selectedCircleIdx = -1;
+    sgl::Color circleFillColor = sgl::Color(180, 180, 180, 255);
+    sgl::Color circleFillColorSelected = sgl::Color(180, 80, 80, 255);
 };
 
 #endif //CORRERENDER_HEBCHART_HPP

@@ -26,6 +26,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <iostream>
 #include <queue>
 #include <stack>
 
@@ -55,8 +56,11 @@
 #endif
 
 #include <Math/Math.hpp>
+#include <Math/Geometry/Circle.hpp>
 #include <Graphics/Vector/nanovg/nanovg.h>
 #include <Graphics/Vector/VectorBackendNanoVG.hpp>
+#include <Input/Mouse.hpp>
+#include <Input/Keyboard.hpp>
 
 #include "Loaders/DataSet.hpp"
 #include "Calculators/MutualInformation.hpp"
@@ -91,7 +95,8 @@ struct StackDomain {
 };
 
 void buildTree(
-        std::vector<HEBNode>& nodesList, std::vector<uint32_t>& pointToNodeIndexMap, int xsd, int ysd, int zsd) {
+        std::vector<HEBNode>& nodesList, std::vector<uint32_t>& pointToNodeIndexMap, uint32_t& leafIdxOffset,
+        int xsd, int ysd, int zsd) {
     auto treeHeightX = uint32_t(std::ceil(std::log2(xsd)));
     auto treeHeightY = uint32_t(std::ceil(std::log2(ysd)));
     auto treeHeightZ = uint32_t(std::ceil(std::log2(zsd)));
@@ -107,7 +112,7 @@ void buildTree(
     rootDomain.min = glm::ivec3(0, 0, 0);
     rootDomain.max = glm::ivec3(xsd - 1, ysd - 1, zsd - 1);
     domainStack.push(rootDomain);
-    uint32_t leafIdxOffset = std::numeric_limits<uint32_t>::max();
+    leafIdxOffset = std::numeric_limits<uint32_t>::max();
     while (!domainStack.empty()) {
         auto stackEntry = domainStack.front();
         domainStack.pop();
@@ -329,10 +334,6 @@ void HEBChart::initialize() {
     onWindowSizeChanged();
 }
 
-void HEBChart::update(float dt) {
-    DiagramBase::update(dt);
-}
-
 void HEBChart::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) {
     this->volumeData = _volumeData;
     dataDirty = true;
@@ -363,16 +364,26 @@ void HEBChart::setCurveOpacity(float _alpha) {
     curveOpacity = _alpha;
 }
 
+void HEBChart::setUse2DField(bool _use2dField) {
+    use2dField = _use2dField;
+    dataDirty = true;
+}
+
 void HEBChart::updateData() {
     // Values downscaled by factor 32.
-    int xs = volumeData->getGridSizeX();
-    int ys = volumeData->getGridSizeY();
-    int zs = volumeData->getGridSizeZ();
     int es = volumeData->getEnsembleMemberCount();
-    int xsd = sgl::iceil(xs, df);
-    int ysd = sgl::iceil(ys, df);
-    int zsd = sgl::iceil(zs, df);
+    xs = volumeData->getGridSizeX();
+    ys = volumeData->getGridSizeY();
+    zs = volumeData->getGridSizeZ();
+    xsd = sgl::iceil(xs, df);
+    ysd = sgl::iceil(ys, df);
+    zsd = sgl::iceil(zs, df);
     int numPoints = xsd * ysd * zsd;
+
+    if (use2dField) {
+        numPoints = xsd * ysd;
+        zsd = 1;
+    }
 
     // Compute the downscaled field.
     std::vector<float*> downscaledEnsembleFields;
@@ -382,23 +393,53 @@ void HEBChart::updateData() {
                 FieldType::SCALAR, selectedScalarFieldName, -1, ensembleIdx);
         float* field = ensembleEntryField.get();
         auto* dowsncaledField = new float[numPoints];
-        for (int zd = 0; zd < zsd; zd++) {
+
+        if (!use2dField) {
+            for (int zd = 0; zd < zsd; zd++) {
+                for (int yd = 0; yd < ysd; yd++) {
+                    for (int xd = 0; xd < xsd; xd++) {
+                        float valueMean = 0.0f;
+                        int numValid = 0;
+                        for (int zo = 0; zo < df; zo++) {
+                            for (int yo = 0; yo < df; yo++) {
+                                for (int xo = 0; xo < df; xo++) {
+                                    int x = xd * df + xo;
+                                    int y = yd * df + yo;
+                                    int z = zd * df + zo;
+                                    if (x < xs && y < ys && z < zs) {
+                                        float val = field[IDXS(x, y, z)];
+                                        if (!std::isnan(val)) {
+                                            valueMean += val;
+                                            numValid++;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if (numValid > 0) {
+                            valueMean = valueMean / float(numValid);
+                        } else {
+                            valueMean = std::numeric_limits<float>::quiet_NaN();
+                        }
+                        dowsncaledField[IDXSD(xd, yd, zd)] = valueMean;
+                    }
+                }
+            }
+        } else {
+            int zCenter = zs / 2;
             for (int yd = 0; yd < ysd; yd++) {
                 for (int xd = 0; xd < xsd; xd++) {
                     float valueMean = 0.0f;
                     int numValid = 0;
-                    for (int zo = 0; zo < df; zo++) {
-                        for (int yo = 0; yo < df; yo++) {
-                            for (int xo = 0; xo < df; xo++) {
-                                int x = xd * df + xo;
-                                int y = yd * df + yo;
-                                int z = zd * df + zo;
-                                if (x < xs && y < ys && z < zs) {
-                                    float val = field[IDXS(x, y, z)];
-                                    if (!std::isnan(val)) {
-                                        valueMean += val;
-                                        numValid++;
-                                    }
+                    for (int yo = 0; yo < df; yo++) {
+                        for (int xo = 0; xo < df; xo++) {
+                            int x = xd * df + xo;
+                            int y = yd * df + yo;
+                            if (x < xs && y < ys) {
+                                float val = field[IDXS(x, y, zCenter)];
+                                if (!std::isnan(val)) {
+                                    valueMean += val;
+                                    numValid++;
                                 }
                             }
                         }
@@ -408,10 +449,11 @@ void HEBChart::updateData() {
                     } else {
                         valueMean = std::numeric_limits<float>::quiet_NaN();
                     }
-                    dowsncaledField[IDXSD(xd, yd, zd)] = valueMean;
+                    dowsncaledField[IDXSD(xd, yd, 0)] = valueMean;
                 }
             }
         }
+
         downscaledEnsembleFields.at(ensembleIdx) = dowsncaledField;
     }
 
@@ -428,14 +470,14 @@ void HEBChart::updateData() {
     std::vector<MIFieldEntry> miFieldEntries;
     miFieldEntries.reserve((numPoints * numPoints + numPoints) / 2);
 #if _OPENMP >= 201107
-    #pragma omp parallel default(none) shared(miFieldEntries, downscaledEnsembleFields, numPoints, es, k)
+    //#pragma omp parallel default(none) shared(miFieldEntries, downscaledEnsembleFields, numPoints, es, k)
 #endif
     {
         std::vector<MIFieldEntry> miFieldEntriesThread;
         std::vector<float> X(es);
         std::vector<float> Y(es);
 #if _OPENMP >= 201107
-        #pragma omp for schedule(dynamic)
+        //#pragma omp for schedule(dynamic)
 #endif
         for (int i = 0; i < numPoints; i++) {
 #endif
@@ -452,7 +494,7 @@ void HEBChart::updateData() {
             }
             for (int j = 0; j < i; j++) {
                 for (int e = 0; e < es; e++) {
-                    Y[e] = downscaledEnsembleFields.at(e)[i];
+                    Y[e] = downscaledEnsembleFields.at(e)[j];
                     if (std::isnan(Y[e])) {
                         isNan = true;
                         break;
@@ -475,12 +517,12 @@ void HEBChart::updateData() {
             });
 #else
 
-#if _OPENMP >= 201107
-        #pragma omp for ordered schedule(static, 1)
-        for (int threadIdx = 0; threadIdx < omp_get_num_threads(); ++threadIdx) {
-#else
+//#if _OPENMP >= 201107
+//        #pragma omp for ordered schedule(static, 1)
+//        for (int threadIdx = 0; threadIdx < omp_get_num_threads(); ++threadIdx) {
+//#else
         for (int threadIdx = 0; threadIdx < 1; ++threadIdx) {
-#endif
+//#endif
             #pragma omp ordered
             {
                 miFieldEntries.insert(miFieldEntries.end(), miFieldEntriesThread.begin(), miFieldEntriesThread.end());
@@ -507,7 +549,7 @@ void HEBChart::updateData() {
     // Build the octree.
     nodesList.clear();
     pointToNodeIndexMap.clear();
-    buildTree(nodesList, pointToNodeIndexMap, xsd, ysd, zsd);
+    buildTree(nodesList, pointToNodeIndexMap, leafIdxOffset, xsd, ysd, zsd);
 
     int maxNumLines = numPoints * MAX_NUM_LINES / 100;
     NUM_LINES = std::min(maxNumLines, int(miFieldEntries.size()));
@@ -551,46 +593,142 @@ void HEBChart::updateData() {
 #endif
 }
 
+void HEBChart::update(float dt) {
+    DiagramBase::update(dt);
+
+    glm::vec2 mousePosition(sgl::Mouse->getX(), sgl::Mouse->getY());
+    if (sgl::ImGuiWrapper::get()->getUseDockSpaceMode()) {
+        mousePosition -= glm::vec2(imGuiWindowOffsetX, imGuiWindowOffsetY);
+    }
+    //else {
+    //    mousePosition.y = float(sgl::AppSettings::get()->getMainWindow()->getHeight()) - mousePosition.y - 1;
+    //}
+    mousePosition -= glm::vec2(getWindowOffsetX(), getWindowOffsetY());
+    mousePosition /= getScaleFactor();
+    //mousePosition.y = windowHeight - mousePosition.y;
+
+    //std::cout << "mousePosition: " << mousePosition.x << ", " << mousePosition.y << std::endl;
+
+    sgl::AABB2 windowAabb(
+            glm::vec2(borderWidth, borderWidth),
+            glm::vec2(windowWidth - 2.0f * borderWidth, windowHeight - 2.0f * borderWidth));
+    if (!windowAabb.contains(mousePosition)) {
+        if (selectedCircleIdx != -1) {
+            selectedCircleIdx = -1;
+            needsReRender = true;
+        }
+        return;
+    }
+
+    glm::vec2 centeredMousePos = mousePosition - glm::vec2(windowWidth / 2.0f, windowHeight / 2.0f);
+    float radiusMouse = std::sqrt(centeredMousePos.x * centeredMousePos.x + centeredMousePos.y * centeredMousePos.y);
+    float phiMouse = std::fmod(std::atan2(centeredMousePos.y, centeredMousePos.x) + sgl::TWO_PI, sgl::TWO_PI);
+
+    // Factor 4 is used so the user does not need to exactly hit the (potentially very small) points.
+    float minRadius = chartRadius - pointRadiusBase * 4.0f;
+    float maxRadius = chartRadius + pointRadiusBase * 4.0f;
+    auto numLeaves = int(pointToNodeIndexMap.size());
+    int sectorIdx = int(std::round(phiMouse / sgl::TWO_PI * float(numLeaves))) % numLeaves;
+
+    //std::cout << "sector idx: " << sectorIdx << std::endl;
+
+    if (radiusMouse >= minRadius && radiusMouse <= maxRadius) {
+        float sectorCenterAngle = float(sectorIdx) / float(numLeaves) * sgl::TWO_PI;
+        sgl::Circle circle(
+                chartRadius * glm::vec2(std::cos(sectorCenterAngle), std::sin(sectorCenterAngle)),
+                pointRadiusBase * 4.0f);
+        if (circle.contains(centeredMousePos)) {
+            selectedCircleIdx = sectorIdx;
+            needsReRender = true;
+        } else {
+            selectedCircleIdx = -1;
+            needsReRender = true;
+        }
+    } else {
+        selectedCircleIdx = -1;
+        needsReRender = true;
+    }
+}
+
+bool HEBChart::getIsRegionSelected() {
+    return selectedCircleIdx >= 0;
+}
+
+sgl::AABB3 HEBChart::getSelectedRegion() {
+    //const auto& leaf = nodesList.at(int(leafIdxOffset) + selectedCircleIdx);
+    auto pointIdx =
+            uint32_t(std::find(pointToNodeIndexMap.begin(), pointToNodeIndexMap.end(), int(leafIdxOffset) + selectedCircleIdx)
+            - pointToNodeIndexMap.begin());
+    uint32_t xd = pointIdx % uint32_t(xsd);
+    uint32_t yd = (pointIdx / uint32_t(xsd)) % uint32_t(ys);
+    uint32_t zd = pointIdx / uint32_t(xsd * ysd);
+    sgl::AABB3 aabb;
+    if (use2dField) {
+        int zCenter = zs / 2;
+        aabb.min = glm::vec3(xd * df, yd * df, zCenter);
+        aabb.max = glm::vec3(
+                float(std::min(int(xd + 1) * df, xs)),
+                float(std::min(int(yd + 1) * df, ys)),
+                float(std::min(zCenter + 1, zs)));
+    } else {
+        aabb.min = glm::vec3(xd * df, yd * df, zd * df);
+        aabb.max = glm::vec3(
+                float(std::min(int(xd + 1) * df, xs)),
+                float(std::min(int(yd + 1) * df, ys)),
+                float(std::min(int(yd + 1) * df, zs)));
+    }
+    aabb.min /= glm::vec3(xs, ys, zs);
+    aabb.max /= glm::vec3(xs, ys, zs);
+    sgl::AABB3 volumeAABB = volumeData->getBoundingBoxRendering();
+    aabb.min = volumeAABB.min + (volumeAABB.max - volumeAABB.min) * aabb.min;
+    aabb.max = volumeAABB.min + (volumeAABB.max - volumeAABB.min) * aabb.max;
+    return aabb;
+}
+
 void HEBChart::renderBaseNanoVG() {
     DiagramBase::renderBaseNanoVG();
 
-    NVGcolor circleFillColor = nvgRGBA(180, 180, 180, 255);
-    /*NVGcolor textColor = nvgRGBA(0, 0, 0, 255);
-     NVGcolor circleFillColor = nvgRGBA(180, 180, 180, 70);
-     NVGcolor circleStrokeColor = nvgRGBA(120, 120, 120, 120);
-     NVGcolor dashedCircleStrokeColor = nvgRGBA(120, 120, 120, 120);
-
-     // Render the central radial chart area.
-     glm::vec2 center(windowWidth / 2.0f, windowHeight / 2.0f);
-     nvgBeginPath(vg);
-     nvgCircle(vg, center.x, center.y, chartRadius);
-     nvgFillColor(vg, circleFillColor);
-     nvgFill(vg);
-     nvgStrokeColor(vg, circleStrokeColor);
-     nvgStroke(vg);*/
+    NVGcolor circleFillColorNvg = nvgRGBA(
+            circleFillColor.getR(), circleFillColor.getG(),
+            circleFillColor.getB(), circleFillColor.getA());
+    NVGcolor circleFillColorSelectedNvg = nvgRGBA(
+            circleFillColorSelected.getR(), circleFillColorSelected.getG(),
+            circleFillColorSelected.getB(), circleFillColorSelected.getA());
 
     if (dataDirty) {
         updateData();
         dataDirty = false;
     }
 
-    float pointRadius = 1.5f;
-    auto numLeaves = int(pointToNodeIndexMap.size());
+    float pointRadius = pointRadiusBase;
     nvgBeginPath(vg);
-    /*for (int i = 0; i < numLeaves; i++) {
-        const auto& leaf = nodesList.at(pointToNodeIndexMap.at(i));
-        float pointX = windowWidth / 2.0f + leaf.normalizedPosition.x * chartRadius;
-        float pointY = windowHeight / 2.0f + leaf.normalizedPosition.y * chartRadius;
-        nvgCircle(vg, pointX, pointY, pointRadius);
-    }*/
-    for (int i = 0; i < int(nodesList.size()); i++) {
+    /*for (int i = 0; i < int(nodesList.size()); i++) {
         const auto& leaf = nodesList.at(i);
         float pointX = windowWidth / 2.0f + leaf.normalizedPosition.x * chartRadius;
         float pointY = windowHeight / 2.0f + leaf.normalizedPosition.y * chartRadius;
         nvgCircle(vg, pointX, pointY, pointRadius);
+    }*/
+    for (int leafIdx = int(leafIdxOffset); leafIdx < int(nodesList.size()); leafIdx++) {
+        const auto& leaf = nodesList.at(leafIdx);
+        if (leafIdx - int(leafIdxOffset) == selectedCircleIdx) {
+            continue;
+        }
+        float pointX = windowWidth / 2.0f + leaf.normalizedPosition.x * chartRadius;
+        float pointY = windowHeight / 2.0f + leaf.normalizedPosition.y * chartRadius;
+        nvgCircle(vg, pointX, pointY, pointRadius);
     }
-    nvgFillColor(vg, circleFillColor);
+    nvgFillColor(vg, circleFillColorNvg);
     nvgFill(vg);
+
+    if (selectedCircleIdx >= 0) {
+        const auto& leaf = nodesList.at(int(leafIdxOffset) + selectedCircleIdx);
+        float pointX = windowWidth / 2.0f + leaf.normalizedPosition.x * chartRadius;
+        float pointY = windowHeight / 2.0f + leaf.normalizedPosition.y * chartRadius;
+        nvgBeginPath(vg);
+        nvgCircle(vg, pointX, pointY, pointRadius);
+        nvgFillColor(vg, circleFillColorSelectedNvg);
+        nvgFill(vg);
+    }
 
     // Draw the B-spline curves. TODO: Port to Vulkan or OpenGL.
     NVGcolor curveStrokeColor = nvgRGBA(
@@ -619,8 +757,6 @@ void HEBChart::renderBaseNanoVG() {
 void HEBChart::renderBaseSkia() {
     DiagramBase::renderBaseSkia();
 
-    sgl::Color circleFillColor = sgl::Color(180, 180, 180, 255);
-
     if (dataDirty) {
         updateData();
         dataDirty = false;
@@ -629,14 +765,30 @@ void HEBChart::renderBaseSkia() {
     SkPaint paint;
     static_cast<VectorBackendSkia*>(vectorBackend)->initializePaint(&paint);
 
-    float pointRadius = 1.5f * s;
-    auto numLeaves = int(pointToNodeIndexMap.size());
+    float pointRadius = pointRadiusBase * s;
     paint.setColor(toSkColor(circleFillColor));
     paint.setStroke(false);
-    for (int i = 0; i < int(nodesList.size()); i++) {
+    /*for (int i = 0; i < int(nodesList.size()); i++) {
         const auto& leaf = nodesList.at(i);
         float pointX = windowWidth / 2.0f + leaf.normalizedPosition.x * chartRadius;
         float pointY = windowHeight / 2.0f + leaf.normalizedPosition.y * chartRadius;
+        canvas->drawCircle(pointX * s, pointY * s, pointRadius, paint);
+    }*/
+    for (int leafIdx = int(leafIdxOffset); leafIdx < int(nodesList.size()); leafIdx++) {
+        const auto& leaf = nodesList.at(leafIdx);
+        if (leafIdx - int(leafIdxOffset) == selectedCircleIdx) {
+            continue;
+        }
+        float pointX = windowWidth / 2.0f + leaf.normalizedPosition.x * chartRadius;
+        float pointY = windowHeight / 2.0f + leaf.normalizedPosition.y * chartRadius;
+        canvas->drawCircle(pointX * s, pointY * s, pointRadius, paint);
+    }
+
+    if (selectedCircleIdx >= 0) {
+        const auto& leaf = nodesList.at(int(leafIdxOffset) + selectedCircleIdx);
+        float pointX = windowWidth / 2.0f + leaf.normalizedPosition.x * chartRadius;
+        float pointY = windowHeight / 2.0f + leaf.normalizedPosition.y * chartRadius;
+        paint.setColor(toSkColor(circleFillColorSelected));
         canvas->drawCircle(pointX * s, pointY * s, pointRadius, paint);
     }
 
@@ -669,23 +821,38 @@ void HEBChart::renderBaseSkia() {
 void HEBChart::renderBaseVkvg() {
     DiagramBase::renderBaseVkvg();
 
-    sgl::Color circleFillColor = sgl::Color(180, 180, 180, 255);
-
     if (dataDirty) {
         updateData();
         dataDirty = false;
     }
 
-    float pointRadius = 1.5f * s;
-    auto numLeaves = int(pointToNodeIndexMap.size());
-    for (int i = 0; i < int(nodesList.size()); i++) {
+    float pointRadius = pointRadiusBase * s;
+    /*for (int i = 0; i < int(nodesList.size()); i++) {
         const auto& leaf = nodesList.at(i);
+        float pointX = windowWidth / 2.0f + leaf.normalizedPosition.x * chartRadius;
+        float pointY = windowHeight / 2.0f + leaf.normalizedPosition.y * chartRadius;
+        vkvg_ellipse(context, pointRadius, pointRadius, pointX * s, pointY * s, 0.0f);
+    }*/
+    for (int leafIdx = int(leafIdxOffset); leafIdx < int(nodesList.size()); leafIdx++) {
+        const auto& leaf = nodesList.at(leafIdx);
+        if (leafIdx - int(leafIdxOffset) == selectedCircleIdx) {
+            continue;
+        }
         float pointX = windowWidth / 2.0f + leaf.normalizedPosition.x * chartRadius;
         float pointY = windowHeight / 2.0f + leaf.normalizedPosition.y * chartRadius;
         vkvg_ellipse(context, pointRadius, pointRadius, pointX * s, pointY * s, 0.0f);
     }
     vkvg_set_source_color(context, circleFillColor.getColorRGBA());
     vkvg_fill(context);
+
+    if (selectedCircleIdx >= 0) {
+        const auto& leaf = nodesList.at(int(leafIdxOffset) + selectedCircleIdx);
+        float pointX = windowWidth / 2.0f + leaf.normalizedPosition.x * chartRadius;
+        float pointY = windowHeight / 2.0f + leaf.normalizedPosition.y * chartRadius;
+        vkvg_ellipse(context, pointRadius, pointRadius, pointX * s, pointY * s, 0.0f);
+        vkvg_set_source_color(context, circleFillColor.getColorRGBA());
+        vkvg_fill(context);
+    }
 
     // Draw the B-spline curves.
     sgl::Color curveStrokeColor = sgl::Color(100, 255, 100, 255);

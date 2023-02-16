@@ -33,6 +33,7 @@
 #include <ImGui/imgui_custom.h>
 #include <ImGui/Widgets/PropertyEditor.hpp>
 
+#include "Renderers/DomainOutlineRenderer.hpp"
 #include "Widgets/ViewManager.hpp"
 #include "Volume/VolumeData.hpp"
 #include "../RenderingModes.hpp"
@@ -114,6 +115,7 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
         diagram->setDownscalingFactor(downscalingFactor);
         diagram->setLineCountFactor(lineCountFactor);
         diagram->setCurveOpacity(curveOpacity);
+        diagram->setUse2DField(use2dField);
     }
 }
 
@@ -140,15 +142,43 @@ void DiagramRenderer::recreateSwapchainView(uint32_t viewIdx, uint32_t width, ui
             (*sceneData->sceneTexture)->getImageView(),
             VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
             VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    domainOutlineRasterPasses.at(viewIdx)->recreateSwapchain(width, height);
+    domainOutlineComputePasses.at(viewIdx)->recreateSwapchain(width, height);
+}
+
+void DiagramRenderer::update(float dt) {
+    uint32_t viewIdx = 0;
+    for (auto& diagram : diagrams) {
+        diagram->update(dt);
+        if (diagram->getNeedsReRender()) {
+            reRenderViewArray.at(viewIdx) = true;
+        }
+        viewIdx++;
+    }
 }
 
 void DiagramRenderer::renderViewImpl(uint32_t viewIdx) {
     auto& diagram = diagrams.at(viewIdx);
+    if (sgl::ImGuiWrapper::get()->getUseDockSpaceMode()) {
+        ImVec2 pos = ImGui::GetCursorScreenPos();
+        diagram->setImGuiWindowOffset(int(pos.x), int(pos.y));
+    } else {
+        diagram->setImGuiWindowOffset(0, 0);
+    }
     diagram->render();
 
     SceneData* sceneData = viewManager->getViewSceneData(viewIdx);
     sceneData->switchColorState(RenderTargetAccess::RASTERIZER);
     diagram->blitToTargetVk();
+}
+
+void DiagramRenderer::renderViewPreImpl(uint32_t viewIdx) {
+    auto& diagram = diagrams.at(viewIdx);
+    if (diagram->getIsRegionSelected()) {
+        domainOutlineComputePasses.at(viewIdx)->setOutlineSettings(diagram->getSelectedRegion(), lineWidth);
+        domainOutlineComputePasses.at(viewIdx)->render();
+        domainOutlineRasterPasses.at(viewIdx)->render();
+    }
 }
 
 void DiagramRenderer::addViewImpl(uint32_t viewIdx) {
@@ -165,12 +195,40 @@ void DiagramRenderer::addViewImpl(uint32_t viewIdx) {
         diagram->setDownscalingFactor(downscalingFactor);
         diagram->setLineCountFactor(lineCountFactor);
         diagram->setCurveOpacity(curveOpacity);
+        diagram->setUse2DField(use2dField);
     }
     diagrams.push_back(diagram);
+
+    const size_t numEdges = 12;
+    OutlineRenderData outlineRenderData{};
+    sgl::vk::Device* device = renderer->getDevice();
+    outlineRenderData.vertexPositionBuffer = std::make_shared<sgl::vk::Buffer>(
+            device, sizeof(glm::vec3) * numEdges * 8,
+            VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+            VMA_MEMORY_USAGE_GPU_ONLY);
+    outlineRenderData.indexBuffer = std::make_shared<sgl::vk::Buffer>(
+            device, sizeof(uint32_t) * numEdges * 6 * 6,
+            VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+            VMA_MEMORY_USAGE_GPU_ONLY);
+
+    outlineRenderDataList.push_back(outlineRenderData);
+
+    auto domainOutlineRasterPass = std::make_shared<DomainOutlineRasterPass>(
+            renderer, viewManager->getViewSceneData(viewIdx));
+    domainOutlineRasterPass->setRenderData(outlineRenderData.indexBuffer, outlineRenderData.vertexPositionBuffer);
+    domainOutlineRasterPasses.push_back(domainOutlineRasterPass);
+
+    auto domainOutlineComputePass = std::make_shared<DomainOutlineComputePass>(renderer);
+    domainOutlineComputePass->setRenderData(outlineRenderData.indexBuffer, outlineRenderData.vertexPositionBuffer);
+    domainOutlineComputePasses.push_back(domainOutlineComputePass);
 }
 
 void DiagramRenderer::removeViewImpl(uint32_t viewIdx) {
     diagrams.erase(diagrams.begin() + viewIdx);
+
+    outlineRenderDataList.erase(outlineRenderDataList.begin() + viewIdx);
+    domainOutlineRasterPasses.erase(domainOutlineRasterPasses.begin() + viewIdx);
+    domainOutlineComputePasses.erase(domainOutlineComputePasses.begin() + viewIdx);
 }
 
 void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
@@ -214,6 +272,13 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
     if (propertyEditor.addSliderFloat("Opacity", &curveOpacity, 0.0f, 1.0f)) {
         for (auto& diagram : diagrams) {
             diagram->setCurveOpacity(curveOpacity);
+        }
+        reRender = true;
+    }
+
+    if (propertyEditor.addCheckbox("Use 2D Field", &use2dField)) {
+        for (auto& diagram : diagrams) {
+            diagram->setUse2DField(use2dField);
         }
         reRender = true;
     }

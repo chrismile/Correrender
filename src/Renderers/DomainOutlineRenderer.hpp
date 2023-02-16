@@ -91,4 +91,31 @@ private:
     sgl::vk::BufferPtr uniformDataBuffer;
 };
 
+struct DomainOutlinePushConstants {
+    glm::vec3 aabbMin{};
+    float lineWidth{};
+    glm::vec3 aabbMax{};
+    float padding{};
+};
+
+class DomainOutlineComputePass : public sgl::vk::ComputePass {
+public:
+    explicit DomainOutlineComputePass(sgl::vk::Renderer* renderer);
+
+    // Public interface.
+    void setRenderData(
+            const sgl::vk::BufferPtr& _indexBuffer, const sgl::vk::BufferPtr& _vertexPositionBuffer);
+    void setOutlineSettings(const sgl::AABB3& aabb, float lineWidth);
+
+protected:
+    void loadShader() override;
+    void createComputeData(sgl::vk::Renderer* renderer, sgl::vk::ComputePipelinePtr& computePipeline) override;
+    void _render() override;
+
+private:
+    DomainOutlinePushConstants pushConstants;
+    sgl::vk::BufferPtr indexBuffer;
+    sgl::vk::BufferPtr vertexPositionBuffer;
+};
+
 #endif //CORRERENDER_DOMAINOUTLINERENDERER_HPP

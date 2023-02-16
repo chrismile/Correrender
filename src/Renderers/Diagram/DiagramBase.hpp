@@ -51,7 +51,8 @@ public:
     DiagramBase();
     virtual void initialize();
     virtual DiagramType getDiagramType()=0;
-    virtual void renderImGui() {}
+    void setImGuiWindowOffset(int offsetX, int offsetY);
+    [[nodiscard]] inline bool getNeedsReRender() { bool tmp = needsReRender; needsReRender = false; return tmp; }
 
     [[nodiscard]] inline bool getSelectedVariablesChanged() const { return selectedVariablesChanged; };
     [[nodiscard]] inline const std::set<size_t>& getSelectedVariableIndices() const { return selectedVariableIndices; };
@@ -115,11 +116,15 @@ protected:
 
     float textSize = 8.0f;
 
+    bool needsReRender = false;
     float borderSizeX = 0, borderSizeY = 0;
     const float borderWidth = 1.0f;
     const float borderRoundingRadius = 4.0f;
     float backgroundOpacity = 1.0f;
     float textSizeLegend = 12.0f;
+
+    // Offset for deducing mouse position.
+    int imGuiWindowOffsetX = 0, imGuiWindowOffsetY = 0;
 
     // Variables can be selected by clicking on them.
     size_t numVariables = 0;

@@ -78,6 +78,12 @@ void Renderer::renderView(uint32_t viewIdx) {
     }
 }
 
+void Renderer::renderViewPre(uint32_t viewIdx) {
+    if (viewVisibilityArray.at(viewIdx)) {
+        renderViewPreImpl(viewIdx);
+    }
+}
+
 void Renderer::addView(uint32_t viewIdx) {
     viewVisibilityArray.resize(viewIdx + 1);
     if (viewIdx == 0) {
