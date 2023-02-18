@@ -212,7 +212,7 @@ layout(push_constant) uniform PushConstants {
  */
 
 //const uint k = 3; //< Set via define.
-const uint base = 2;
+//const uint base = 2;
 
 float referenceValues[ENSEMBLE_MEMBER_COUNT];
 float queryValues[ENSEMBLE_MEMBER_COUNT];
