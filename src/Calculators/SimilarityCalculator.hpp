@@ -122,7 +122,7 @@ protected:
 
 private:
     std::shared_ptr<PccComputePass> pccComputePass;
-    CorrelationMeasureType correlationMeasureType = CorrelationMeasureType::PEARSON;
+    CorrelationMeasureType correlationMeasureType = CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV;
     bool useGpu = true;
     int numBins = 80; ///< For CorrelationMeasureType::MUTUAL_INFORMATION_BINNED.
     int k = 3; ///< For CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV.
@@ -152,7 +152,7 @@ protected:
 private:
     VolumeData* volumeData = nullptr;
     int cachedEnsembleMemberCount = 0;
-    CorrelationMeasureType correlationMeasureType = CorrelationMeasureType::PEARSON;
+    CorrelationMeasureType correlationMeasureType = CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV;
 
     const uint32_t batchEnsembleCountThreshold = 10;
     const int computeBlockSizeX = 8, computeBlockSizeY = 8, computeBlockSizeZ = 4;

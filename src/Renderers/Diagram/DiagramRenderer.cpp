@@ -115,6 +115,7 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
         diagram->setDownscalingFactor(downscalingFactor);
         diagram->setLineCountFactor(lineCountFactor);
         diagram->setCurveOpacity(curveOpacity);
+        diagram->setCellDistanceThreshold(cellDistanceThreshold);
         diagram->setUse2DField(use2dField);
     }
 }
@@ -195,6 +196,7 @@ void DiagramRenderer::addViewImpl(uint32_t viewIdx) {
         diagram->setDownscalingFactor(downscalingFactor);
         diagram->setLineCountFactor(lineCountFactor);
         diagram->setCurveOpacity(curveOpacity);
+        diagram->setCellDistanceThreshold(cellDistanceThreshold);
         diagram->setUse2DField(use2dField);
     }
     diagrams.push_back(diagram);
@@ -272,6 +274,13 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
     if (propertyEditor.addSliderFloat("Opacity", &curveOpacity, 0.0f, 1.0f)) {
         for (auto& diagram : diagrams) {
             diagram->setCurveOpacity(curveOpacity);
+        }
+        reRender = true;
+    }
+
+    if (propertyEditor.addSliderInt("Dist. Thresh.", &cellDistanceThreshold, 0, 100)) {
+        for (auto& diagram : diagrams) {
+            diagram->setCellDistanceThreshold(cellDistanceThreshold);
         }
         reRender = true;
     }

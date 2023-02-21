@@ -71,6 +71,7 @@ private:
     int downscalingFactor = 32;
     int lineCountFactor = 100;
     float curveOpacity = 0.4f;
+    int cellDistanceThreshold = 0;
     bool use2dField = true;
 
     // Test data.

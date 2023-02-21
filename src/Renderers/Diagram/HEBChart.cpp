@@ -364,6 +364,11 @@ void HEBChart::setCurveOpacity(float _alpha) {
     curveOpacity = _alpha;
 }
 
+void HEBChart::setCellDistanceThreshold(int _thresh) {
+    cellDistanceThreshold = _thresh;
+    dataDirty = true;
+}
+
 void HEBChart::setUse2DField(bool _use2dField) {
     use2dField = _use2dField;
     dataDirty = true;
@@ -470,14 +475,14 @@ void HEBChart::updateData() {
     std::vector<MIFieldEntry> miFieldEntries;
     miFieldEntries.reserve((numPoints * numPoints + numPoints) / 2);
 #if _OPENMP >= 201107
-    //#pragma omp parallel default(none) shared(miFieldEntries, downscaledEnsembleFields, numPoints, es, k)
+    #pragma omp parallel default(none) shared(miFieldEntries, downscaledEnsembleFields, numPoints, es, k)
 #endif
     {
         std::vector<MIFieldEntry> miFieldEntriesThread;
         std::vector<float> X(es);
         std::vector<float> Y(es);
 #if _OPENMP >= 201107
-        //#pragma omp for schedule(dynamic)
+        #pragma omp for schedule(dynamic)
 #endif
         for (int i = 0; i < numPoints; i++) {
 #endif
@@ -493,6 +498,13 @@ void HEBChart::updateData() {
                 continue;
             }
             for (int j = 0; j < i; j++) {
+                if (cellDistanceThreshold > 0) {
+                    glm::vec3 pti(i % uint32_t(xsd), (i / uint32_t(xsd)) % uint32_t(ys), i / uint32_t(xsd * ysd));
+                    glm::vec3 ptj(j % uint32_t(xsd), (j / uint32_t(xsd)) % uint32_t(ys), j / uint32_t(xsd * ysd));
+                    if (glm::length(pti - ptj) < float(cellDistanceThreshold)) {
+                        continue;
+                    }
+                }
                 for (int e = 0; e < es; e++) {
                     Y[e] = downscaledEnsembleFields.at(e)[j];
                     if (std::isnan(Y[e])) {
@@ -517,12 +529,12 @@ void HEBChart::updateData() {
             });
 #else
 
-//#if _OPENMP >= 201107
-//        #pragma omp for ordered schedule(static, 1)
-//        for (int threadIdx = 0; threadIdx < omp_get_num_threads(); ++threadIdx) {
-//#else
+#if _OPENMP >= 201107
+        #pragma omp for ordered schedule(static, 1)
+        for (int threadIdx = 0; threadIdx < omp_get_num_threads(); ++threadIdx) {
+#else
         for (int threadIdx = 0; threadIdx < 1; ++threadIdx) {
-//#endif
+#endif
             #pragma omp ordered
             {
                 miFieldEntries.insert(miFieldEntries.end(), miFieldEntriesThread.begin(), miFieldEntriesThread.end());

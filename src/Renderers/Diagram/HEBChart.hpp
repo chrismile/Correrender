@@ -67,6 +67,7 @@ public:
     void setDownscalingFactor(int _df);
     void setLineCountFactor(int _factor);
     void setCurveOpacity(float _alpha);
+    void setCellDistanceThreshold(int _thresh);
     void setUse2DField(bool _use2dField);
     bool getIsRegionSelected();
     sgl::AABB3 getSelectedRegion();
@@ -108,6 +109,7 @@ private:
     const int NUM_SUBDIVISIONS = 50;
     float beta = 0.75f;
     float curveOpacity = 0.4f;
+    int cellDistanceThreshold = 0;
     std::vector<glm::vec2> curvePoints;
     std::vector<float> miValues; ///< per-line values.
 
