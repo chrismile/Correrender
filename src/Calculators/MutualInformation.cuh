@@ -183,6 +183,56 @@ template<class T> void symmetrizer(
 }
 
 
+template<class T> __global__ void symmetrizerSrnAdd(
+        const T* __restrict__ referenceValues, const T* __restrict__ queryValues, T* __restrict__ outputValues,
+        uint32_t numChannels) {
+    uint32_t globalThreadIdx = blockIdx.x * blockDim.x + threadIdx.x;
+    uint32_t readOffset = globalThreadIdx;
+    uint32_t readOffsetRef = globalThreadIdx % numChannels;
+    outputValues[readOffset] = referenceValues[readOffsetRef] + queryValues[readOffset];
+}
+
+template<class T> __global__ void symmetrizerSrnAddDiff_Add(
+        const T* __restrict__ referenceValues, const T* __restrict__ queryValues, T* __restrict__ outputValues,
+        uint32_t numChannels) {
+    uint32_t globalThreadIdx = blockIdx.x * blockDim.x + threadIdx.x;
+    uint32_t readOffset = globalThreadIdx;
+    uint32_t channelIdx = globalThreadIdx % numChannels;
+    uint32_t readOffsetRef = channelIdx;
+    uint32_t batchEnsembleIdx = globalThreadIdx / numChannels;
+    uint32_t writeOffset = batchEnsembleIdx * numChannels * 2 + channelIdx;
+    outputValues[writeOffset] = referenceValues[readOffsetRef] + queryValues[readOffset];
+}
+
+template<class T> __global__ void symmetrizerSrnAddDiff_Diff(
+        const T* __restrict__ referenceValues, const T* __restrict__ queryValues, T* __restrict__ outputValues,
+        uint32_t numChannels) {
+    uint32_t globalThreadIdx = blockIdx.x * blockDim.x + threadIdx.x;
+    uint32_t readOffset = globalThreadIdx;
+    uint32_t channelIdx = globalThreadIdx % numChannels;
+    uint32_t readOffsetRef = channelIdx;
+    uint32_t batchEnsembleIdx = globalThreadIdx / numChannels;
+    uint32_t writeOffset = batchEnsembleIdx * numChannels * 2 + numChannels + channelIdx;
+    outputValues[writeOffset] = absT(referenceValues[readOffsetRef] - queryValues[readOffset]);
+}
+
+template<class T> void symmetrizerSrn(
+        const T* __restrict__ referenceValues, const T* __restrict__ queryValues, T* __restrict__ symmetrizedValues,
+        uint32_t batchSize, uint32_t numLayersOutEncoder, SymmetrizerType symmetrizerType, CUstream stream) {
+    constexpr uint32_t blockSize = 256;
+    const uint32_t numBlocks = sgl::uiceil(batchSize * numLayersOutEncoder, blockSize);
+    if (symmetrizerType == SymmetrizerType::Add) {
+        symmetrizerSrnAdd<<<numBlocks, blockSize, 0, stream>>>(
+                referenceValues, queryValues, symmetrizedValues, numLayersOutEncoder);
+    } else if (symmetrizerType == SymmetrizerType::AddDiff) {
+        symmetrizerSrnAddDiff_Add<<<numBlocks, blockSize, 0, stream>>>(
+                referenceValues, queryValues, symmetrizedValues, numLayersOutEncoder);
+        symmetrizerSrnAddDiff_Diff<<<numBlocks, blockSize, 0, stream>>>(
+                referenceValues, queryValues, symmetrizedValues, numLayersOutEncoder);
+    }
+}
+
+
 //#define USE_FAST_CUDA_MATH
 
 template<class T> __global__ void combineDecoderOutput(
@@ -212,8 +262,13 @@ template<class T> __global__ void combineDecoderOutput(
     }
     float meanQuery = -logf(float(numChannels)) + logf(queryExpSum) + queryMax;
 
-    //miValues[globalThreadIdx] = float(referenceDecoded[(readOffset + 0) * paddingFactor]);
     miValues[globalThreadIdx] = fmaxf(meanReference - meanQuery, 0.0f);
+}
+
+template<class T> __global__ void copyDecoderOutputSrn(
+        const T* __restrict__ decodedValues, float* __restrict__ miValues, uint32_t paddingFactor) {
+    uint32_t globalThreadIdx = blockIdx.x * blockDim.x + threadIdx.x;
+    miValues[globalThreadIdx] = fmaxf(decodedValues[globalThreadIdx * paddingFactor], 0.0f);
 }
 
 #endif //CORRERENDER_MUTUALINFORMATION_CUH

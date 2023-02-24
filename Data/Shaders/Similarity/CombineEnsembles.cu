@@ -50,14 +50,14 @@ extern "C" __global__ void combineEnsembles(
         float minEnsembleVal, float maxEnsembleVal,
         float4* outputBuffer, cudaTextureObject_t* scalarFieldEnsembles) {
     uint32_t globalThreadIdx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (globalThreadIdx >= batchSize) {
+        return;
+    }
     uint32_t pointIdxWriteOffset = globalThreadIdx * es;
     uint32_t pointIdxReadOffset = globalThreadIdx + batchOffset;
     uint32_t x = pointIdxReadOffset % xs;
     uint32_t y = (pointIdxReadOffset / xs) % ys;
     uint32_t z = pointIdxReadOffset / (xs * ys);
-    if (globalThreadIdx >= batchSize) {
-        return;
-    }
     float3 pointCoords = make_float3(
             2.0f * float(x) / float(xs - 1) - 1.0f,
             2.0f * float(y) / float(ys - 1) - 1.0f,
@@ -113,14 +113,14 @@ extern "C" __global__ void combineEnsemblesAligned(
         float minEnsembleVal, float maxEnsembleVal,
         float4* outputBuffer, cudaTextureObject_t* scalarFieldEnsembles, uint32_t alignment) {
     uint32_t globalThreadIdx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (globalThreadIdx >= batchSize) {
+        return;
+    }
     uint32_t pointIdxWriteOffset = globalThreadIdx * es;
     uint32_t pointIdxReadOffset = globalThreadIdx + batchOffset;
     uint32_t x = pointIdxReadOffset % xs;
     uint32_t y = (pointIdxReadOffset / xs) % ys;
     uint32_t z = pointIdxReadOffset / (xs * ys);
-    if (globalThreadIdx >= batchSize) {
-        return;
-    }
     float3 pointCoords = make_float3(
             2.0f * float(x) / float(xs - 1) - 1.0f,
             2.0f * float(y) / float(ys - 1) - 1.0f,
@@ -170,4 +170,32 @@ extern "C" __global__ void combineEnsemblesReferenceAligned(
 #endif
     ensembleValue = (ensembleValue - minEnsembleVal) / (maxEnsembleVal - minEnsembleVal);
     outputBuffer[e * alignment] = make_float4(ensembleValue, pointCoords.x, pointCoords.y, pointCoords.z);
+}
+
+extern "C" __global__ void writeGridPositions(
+        uint32_t xs, uint32_t ys, uint32_t zs, uint32_t batchOffset, uint32_t batchSize, float* outputBuffer,
+        uint32_t stride) {
+    uint32_t globalThreadIdx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (globalThreadIdx >= batchSize) {
+        return;
+    }
+    uint32_t pointIdxWriteOffset = globalThreadIdx * stride;
+    uint32_t pointIdxReadOffset = globalThreadIdx + batchOffset;
+    uint32_t x = pointIdxReadOffset % xs;
+    uint32_t y = (pointIdxReadOffset / xs) % ys;
+    uint32_t z = pointIdxReadOffset / (xs * ys);
+    outputBuffer[pointIdxWriteOffset] = 2.0f * float(x) / float(xs - 1) - 1.0f;
+    outputBuffer[pointIdxWriteOffset + 1] = 2.0f * float(y) / float(ys - 1) - 1.0f;
+    outputBuffer[pointIdxWriteOffset + 2] = 2.0f * float(z) / float(zs - 1) - 1.0f;
+}
+
+extern "C" __global__ void writeGridPositionReference(
+        uint32_t xs, uint32_t ys, uint32_t zs, uint3 referencePointIdx, float* outputBuffer) {
+    uint32_t globalThreadIdx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (globalThreadIdx >= 1) {
+        return;
+    }
+    outputBuffer[0] = 2.0f * float(referencePointIdx.x) / float(xs - 1) - 1.0f;
+    outputBuffer[1] = 2.0f * float(referencePointIdx.y) / float(ys - 1) - 1.0f;
+    outputBuffer[2] = 2.0f * float(referencePointIdx.z) / float(zs - 1) - 1.0f;
 }

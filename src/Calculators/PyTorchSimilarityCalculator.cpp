@@ -104,6 +104,10 @@ PyTorchSimilarityCalculator::PyTorchSimilarityCalculator(sgl::vk::Renderer* rend
                 &combineEnsemblesFunctionCu, combineEnsemblesModuleCu, "combineEnsembles"), "Error in cuModuleGetFunction: ");
         sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
                 &memcpyFloatClampToZeroFunctionCu, combineEnsemblesModuleCu, "memcpyFloatClampToZero"), "Error in cuModuleGetFunction: ");
+        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
+                &writeGridPositionsFunctionCu, combineEnsemblesModuleCu, "writeGridPositions"), "Error in cuModuleGetFunction: ");
+        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
+                &writeGridPositionReferenceFunctionCu, combineEnsemblesModuleCu, "writeGridPositionReference"), "Error in cuModuleGetFunction: ");
         delete[] moduleBuffer;
     }
 #endif
@@ -140,10 +144,6 @@ PyTorchSimilarityCalculator::~PyTorchSimilarityCalculator() {
     if (batchInputValues) {
         delete[] batchInputValues;
         batchInputValues = nullptr;
-    }
-    if (srnBatchInputValues) {
-        delete[] srnBatchInputValues;
-        srnBatchInputValues = nullptr;
     }
     if (outputImageBufferCu != 0) {
         sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFree(
@@ -226,87 +226,69 @@ void PyTorchSimilarityCalculator::calculateCpu(int timeStepIdx, int ensembleIdx,
         return;
     }
 
-    if (networkType == NetworkType::MINE) {
-        calculateCpuMINE(timeStepIdx, ensembleIdx, buffer);
-    } else if (networkType == NetworkType::SRN) {
-        calculateCpuSRN(timeStepIdx, ensembleIdx, buffer);
-    }
-}
-
-void PyTorchSimilarityCalculator::calculateDevice(
-        int timeStepIdx, int ensembleIdx, const DeviceCacheEntry& deviceCacheEntry) {
-    torch::NoGradGuard noGradGuard{};
-
-    renderer->insertImageMemoryBarrier(
-            deviceCacheEntry->getVulkanImage(),
-            VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
-            VK_ACCESS_NONE_KHR, VK_ACCESS_TRANSFER_WRITE_BIT);
-
-    if (!encoderWrapper || !decoderWrapper) {
-        deviceCacheEntry->getVulkanImage()->clearColor(glm::vec4(0.0f), renderer->getVkCommandBuffer());
-        sgl::Logfile::get()->writeWarning(
-                "Warning in PyTorchSimilarityCalculator::calculateCpu: Encoder or decoder module is not loaded.",
-                true);
-        return;
-    }
-
-    if (networkType == NetworkType::MINE) {
-        calculateDeviceMINE(timeStepIdx, ensembleIdx, deviceCacheEntry);
-    } else if (networkType == NetworkType::SRN) {
-        calculateDeviceSRN(timeStepIdx, ensembleIdx, deviceCacheEntry);
-    }
-}
-
-void PyTorchSimilarityCalculator::calculateCpuMINE(int timeStepIdx, int ensembleIdx, float* buffer) {
     int xs = volumeData->getGridSizeX();
     int ys = volumeData->getGridSizeY();
     int zs = volumeData->getGridSizeZ();
-    int es = volumeData->getEnsembleMemberCount();
+    int es = networkType == NetworkType::MINE ? volumeData->getEnsembleMemberCount() : 0;
     auto ues = uint32_t(es);
 
-    if (srnBatchInputValues) {
-        delete[] srnBatchInputValues;
-        srnBatchInputValues = nullptr;
-    }
     if (cachedEnsembleSizeHost != size_t(es)) {
         if (cachedEnsembleSizeHost != 0) {
             delete[] referenceInputValues;
             delete[] batchInputValues;
         }
         cachedEnsembleSizeHost = size_t(es);
-        referenceInputValues = new float[es * 4];
-        batchInputValues = new float[es * 4 * batchSize1D];
+        if (networkType == NetworkType::MINE) {
+            referenceInputValues = new float[es * 4];
+            batchInputValues = new float[es * 4 * mineBatchSize1D];
+        } else {
+            referenceInputValues = new float[3];
+            batchInputValues = new float[3 * srnBatchSize1D];
+        }
     }
 
-    std::vector<VolumeData::HostCacheEntry> ensembleEntryFields;
-    std::vector<float*> ensembleFields;
-    ensembleEntryFields.reserve(es);
-    ensembleFields.reserve(es);
     float minEnsembleVal = std::numeric_limits<float>::max();
     float maxEnsembleVal = std::numeric_limits<float>::lowest();
-    for (ensembleIdx = 0; ensembleIdx < es; ensembleIdx++) {
-        VolumeData::HostCacheEntry ensembleEntryField = volumeData->getFieldEntryCpu(
-                FieldType::SCALAR, scalarFieldNames.at(fieldIndexGui), timeStepIdx, ensembleIdx);
-        auto [minVal, maxVal] = volumeData->getMinMaxScalarFieldValue(
-                scalarFieldNames.at(fieldIndexGui), timeStepIdx, ensembleIdx);
-        minEnsembleVal = std::min(minEnsembleVal, minVal);
-        maxEnsembleVal = std::max(maxEnsembleVal, maxVal);
-        ensembleEntryFields.push_back(ensembleEntryField);
-        ensembleFields.push_back(ensembleEntryField.get());
+    std::vector<VolumeData::HostCacheEntry> ensembleEntryFields;
+    std::vector<float*> ensembleFields;
+    if (networkType == NetworkType::MINE) {
+        ensembleEntryFields.reserve(es);
+        ensembleFields.reserve(es);
+        for (ensembleIdx = 0; ensembleIdx < es; ensembleIdx++) {
+            VolumeData::HostCacheEntry ensembleEntryField = volumeData->getFieldEntryCpu(
+                    FieldType::SCALAR, scalarFieldNames.at(fieldIndexGui), timeStepIdx, ensembleIdx);
+            auto [minVal, maxVal] = volumeData->getMinMaxScalarFieldValue(
+                    scalarFieldNames.at(fieldIndexGui), timeStepIdx, ensembleIdx);
+            minEnsembleVal = std::min(minEnsembleVal, minVal);
+            maxEnsembleVal = std::max(maxEnsembleVal, maxVal);
+            ensembleEntryFields.push_back(ensembleEntryField);
+            ensembleFields.push_back(ensembleEntryField.get());
+        }
     }
-
-    std::vector<int64_t> referenceInputSizes = { 1, es, 4 };
 
     size_t referencePointIdx = IDXS(referencePointIndex.x, referencePointIndex.y, referencePointIndex.z);
     glm::vec3 referencePointNorm =
             glm::vec3(referencePointIndex) / glm::vec3(xs - 1, ys - 1, zs - 1) * 2.0f - glm::vec3(1.0f);
-    for (int e = 0; e < es; e++) {
-        referenceInputValues[e * 4] =
-                (ensembleFields.at(e)[referencePointIdx] - minEnsembleVal) / (maxEnsembleVal - minEnsembleVal);
-        referenceInputValues[e * 4 + 1] = referencePointNorm.x;
-        referenceInputValues[e * 4 + 2] = referencePointNorm.y;
-        referenceInputValues[e * 4 + 3] = referencePointNorm.z;
+    std::vector<int64_t> referenceInputSizes;
+    std::vector<int64_t> inputSizes;
+    if (networkType == NetworkType::MINE) {
+        for (int e = 0; e < es; e++) {
+            referenceInputValues[e * 4] =
+                    (ensembleFields.at(e)[referencePointIdx] - minEnsembleVal) / (maxEnsembleVal - minEnsembleVal);
+            referenceInputValues[e * 4 + 1] = referencePointNorm.x;
+            referenceInputValues[e * 4 + 2] = referencePointNorm.y;
+            referenceInputValues[e * 4 + 3] = referencePointNorm.z;
+        }
+        referenceInputSizes = { 1, es, 4 };
+        inputSizes = { mineBatchSize1D, es, 4 };
+    } else {
+        for (int e = 0; e < es; e++) {
+            referenceInputValues[0] = referencePointNorm.x;
+            referenceInputValues[1] = referencePointNorm.y;
+            referenceInputValues[2] = referencePointNorm.z;
+        }
+        referenceInputSizes = { 1, 3 };
+        inputSizes = { srnBatchSize1D, 3 };
     }
 
     torch::Tensor referenceInputTensor = torch::from_blob(
@@ -322,41 +304,66 @@ void PyTorchSimilarityCalculator::calculateCpuMINE(int timeStepIdx, int ensemble
     decoderInputs.resize(2);
     decoderInputs.at(0) = referenceEncodedTensor;
 
-    std::vector<int64_t> inputSizes = { batchSize1D, es, 4 };
-
+    uint32_t batchSize1D = networkType == NetworkType::MINE ? mineBatchSize1D : srnBatchSize1D;
     uint32_t numSliceEntries = uint32_t(xs) * uint32_t(ys) * uint32_t(zs);
     uint32_t numBatches = sgl::uiceil(numSliceEntries, uint32_t(batchSize1D));
     for (uint32_t batchIdx = 0; batchIdx < numBatches; batchIdx++) {
         uint32_t batchOffset = batchIdx * batchSize1D;
         uint32_t batchSize = std::min(uint32_t(batchSize1D), numSliceEntries - batchOffset);
 
+        if (networkType == NetworkType::MINE) {
 #ifdef USE_TBB
-        tbb::parallel_for(tbb::blocked_range<uint32_t>(0, batchSize), [&](auto const& r) {
-            for (auto pointIdx = r.begin(); pointIdx != r.end(); pointIdx++) {
+            tbb::parallel_for(tbb::blocked_range<uint32_t>(0, batchSize), [&](auto const& r) {
+                for (auto pointIdx = r.begin(); pointIdx != r.end(); pointIdx++) {
 #else
 #if _OPENMP >= 201107
-        #pragma omp parallel for default(none) shared(xs, ys, zs, es, ues, batchSize, batchOffset) \
-        shared(ensembleFields, minEnsembleVal, maxEnsembleVal)
+            #pragma omp parallel for default(none) shared(xs, ys, zs, es, ues, batchSize, batchOffset) \
+            shared(ensembleFields, minEnsembleVal, maxEnsembleVal)
 #endif
-        for (uint32_t pointIdx = 0; pointIdx < batchSize; pointIdx++) {
+            for (uint32_t pointIdx = 0; pointIdx < batchSize; pointIdx++) {
 #endif
-            uint32_t pointIdxWriteOffset = pointIdx * es * 4;
-            uint32_t pointIdxReadOffset = pointIdx + batchOffset;
-            uint32_t x = pointIdxReadOffset % uint32_t(xs);
-            uint32_t y = (pointIdxReadOffset / uint32_t(xs)) % uint32_t(ys);
-            uint32_t z = pointIdxReadOffset / uint32_t(xs * ys);
-            glm::vec3 pointNorm = glm::vec3(x, y, z) / glm::vec3(xs - 1, ys - 1, zs - 1) * 2.0f - glm::vec3(1.0f);
-            for (uint32_t e = 0; e < ues; e++) {
-                batchInputValues[pointIdxWriteOffset + e * 4] =
-                        (ensembleFields.at(e)[pointIdxReadOffset] - minEnsembleVal) / (maxEnsembleVal - minEnsembleVal);
-                batchInputValues[pointIdxWriteOffset + e * 4 + 1] = pointNorm.x;
-                batchInputValues[pointIdxWriteOffset + e * 4 + 2] = pointNorm.y;
-                batchInputValues[pointIdxWriteOffset + e * 4 + 3] = pointNorm.z;
+                uint32_t pointIdxWriteOffset = pointIdx * es * 4;
+                uint32_t pointIdxReadOffset = pointIdx + batchOffset;
+                uint32_t x = pointIdxReadOffset % uint32_t(xs);
+                uint32_t y = (pointIdxReadOffset / uint32_t(xs)) % uint32_t(ys);
+                uint32_t z = pointIdxReadOffset / uint32_t(xs * ys);
+                glm::vec3 pointNorm = glm::vec3(x, y, z) / glm::vec3(xs - 1, ys - 1, zs - 1) * 2.0f - glm::vec3(1.0f);
+                for (uint32_t e = 0; e < ues; e++) {
+                    batchInputValues[pointIdxWriteOffset + e * 4] =
+                            (ensembleFields.at(e)[pointIdxReadOffset] - minEnsembleVal) / (maxEnsembleVal - minEnsembleVal);
+                    batchInputValues[pointIdxWriteOffset + e * 4 + 1] = pointNorm.x;
+                    batchInputValues[pointIdxWriteOffset + e * 4 + 2] = pointNorm.y;
+                    batchInputValues[pointIdxWriteOffset + e * 4 + 3] = pointNorm.z;
+                }
             }
-        }
 #ifdef USE_TBB
-        });
+            });
 #endif
+        } else {
+#ifdef USE_TBB
+            tbb::parallel_for(tbb::blocked_range<uint32_t>(0, batchSize), [&](auto const& r) {
+                for (auto pointIdx = r.begin(); pointIdx != r.end(); pointIdx++) {
+#else
+#if _OPENMP >= 201107
+            #pragma omp parallel for default(none) shared(xs, ys, zs, es, ues, batchSize, batchOffset) \
+            shared(ensembleFields, minEnsembleVal, maxEnsembleVal)
+#endif
+            for (uint32_t pointIdx = 0; pointIdx < batchSize; pointIdx++) {
+#endif
+                uint32_t pointIdxWriteOffset = pointIdx * 3;
+                uint32_t pointIdxReadOffset = pointIdx + batchOffset;
+                uint32_t x = pointIdxReadOffset % uint32_t(xs);
+                uint32_t y = (pointIdxReadOffset / uint32_t(xs)) % uint32_t(ys);
+                uint32_t z = pointIdxReadOffset / uint32_t(xs * ys);
+                glm::vec3 pointNorm = glm::vec3(x, y, z) / glm::vec3(xs - 1, ys - 1, zs - 1) * 2.0f - glm::vec3(1.0f);
+                batchInputValues[pointIdxWriteOffset] = pointNorm.x;
+                batchInputValues[pointIdxWriteOffset + 1] = pointNorm.y;
+                batchInputValues[pointIdxWriteOffset + 2] = pointNorm.z;
+            }
+#ifdef USE_TBB
+            });
+#endif
+        }
 
         torch::Tensor inputTensor = torch::from_blob(
                 batchInputValues, inputSizes,
@@ -385,22 +392,43 @@ void PyTorchSimilarityCalculator::calculateCpuMINE(int timeStepIdx, int ensemble
 }
 
 #ifdef SUPPORT_CUDA_INTEROP
-void PyTorchSimilarityCalculator::calculateDeviceMINE(
+void PyTorchSimilarityCalculator::calculateDevice(
         int timeStepIdx, int ensembleIdx, const DeviceCacheEntry& deviceCacheEntry) {
+    torch::NoGradGuard noGradGuard{};
+
+    renderer->insertImageMemoryBarrier(
+            deviceCacheEntry->getVulkanImage(),
+            VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_ACCESS_NONE_KHR, VK_ACCESS_TRANSFER_WRITE_BIT);
+
+    if (!encoderWrapper || !decoderWrapper) {
+        deviceCacheEntry->getVulkanImage()->clearColor(glm::vec4(0.0f), renderer->getVkCommandBuffer());
+        sgl::Logfile::get()->writeWarning(
+                "Warning in PyTorchSimilarityCalculator::calculateCpu: Encoder or decoder module is not loaded.",
+                true);
+        return;
+    }
+
     int xs = volumeData->getGridSizeX();
     int ys = volumeData->getGridSizeY();
     int zs = volumeData->getGridSizeZ();
-    int es = volumeData->getEnsembleMemberCount();
+    int es = networkType == NetworkType::MINE ? volumeData->getEnsembleMemberCount() : 0;
 
-    int gpuBatchSize1D = gpuBatchSize1DBase;
-    if (es >= 200) {
-        gpuBatchSize1D /= 2;
-    }
-    if (es >= 400) {
-        gpuBatchSize1D /= 2;
-    }
-    if (es >= 800) {
-        gpuBatchSize1D /= 2;
+    int gpuBatchSize1D;
+    if (networkType == NetworkType::MINE) {
+        gpuBatchSize1D = gpuBatchSize1DBase;
+        if (es >= 200) {
+            gpuBatchSize1D /= 2;
+        }
+        if (es >= 400) {
+            gpuBatchSize1D /= 2;
+        }
+        if (es >= 800) {
+            gpuBatchSize1D /= 2;
+        }
+    } else {
+        gpuBatchSize1D = srnGpuBatchSize1DBase;
     }
 
     cudaStream_t stream = at::cuda::getCurrentCUDAStream();
@@ -424,23 +452,35 @@ void PyTorchSimilarityCalculator::calculateDeviceMINE(
                     ensembleTextureArrayCu, stream), "Error in cuMemFreeAsync: ");
         }
         cachedEnsembleSizeDevice = size_t(es);
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
-                &ensembleTextureArrayCu, es * sizeof(CUtexObject), stream), "Error in cuMemAllocAsync: ");
 
-        auto referenceInputBufferVk = std::make_shared<sgl::vk::Buffer>(
-                renderer->getDevice(), sizeof(float) * es * 4,
-                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY,
-                true, true);
-        referenceInputBufferCu = std::make_shared<sgl::vk::BufferCudaDriverApiExternalMemoryVk>(referenceInputBufferVk);
+        if (networkType == NetworkType::MINE) {
+            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
+                    &ensembleTextureArrayCu, es * sizeof(CUtexObject), stream), "Error in cuMemAllocAsync: ");
+            auto referenceInputBufferVk = std::make_shared<sgl::vk::Buffer>(
+                    renderer->getDevice(), sizeof(float) * es * 4,
+                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY,
+                    true, true);
+            referenceInputBufferCu = std::make_shared<sgl::vk::BufferCudaDriverApiExternalMemoryVk>(referenceInputBufferVk);
+            auto inputBufferVk = std::make_shared<sgl::vk::Buffer>(
+                    renderer->getDevice(), sizeof(float) * gpuBatchSize1D * es * 4,
+                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY,
+                    true, true);
+            inputBufferCu = std::make_shared<sgl::vk::BufferCudaDriverApiExternalMemoryVk>(inputBufferVk);
 
-        auto inputBufferVk = std::make_shared<sgl::vk::Buffer>(
-                renderer->getDevice(), sizeof(float) * gpuBatchSize1D * es * 4,
-                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY,
-                true, true);
-        inputBufferCu = std::make_shared<sgl::vk::BufferCudaDriverApiExternalMemoryVk>(inputBufferVk);
-
-        ensembleCombinePass->setOutputBuffer(inputBufferCu->getVulkanBuffer());
-        referenceEnsembleCombinePass->setOutputBuffer(referenceInputBufferCu->getVulkanBuffer());
+            ensembleCombinePass->setOutputBuffer(inputBufferCu->getVulkanBuffer());
+            referenceEnsembleCombinePass->setOutputBuffer(referenceInputBufferCu->getVulkanBuffer());
+        } else {
+            auto referenceInputBufferVk = std::make_shared<sgl::vk::Buffer>(
+                    renderer->getDevice(), sizeof(float) * 3,
+                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY,
+                    true, true);
+            referenceInputBufferCu = std::make_shared<sgl::vk::BufferCudaDriverApiExternalMemoryVk>(referenceInputBufferVk);
+            auto inputBufferVk = std::make_shared<sgl::vk::Buffer>(
+                    renderer->getDevice(), sizeof(float) * gpuBatchSize1D * 3,
+                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY,
+                    true, true);
+            inputBufferCu = std::make_shared<sgl::vk::BufferCudaDriverApiExternalMemoryVk>(inputBufferVk);
+        }
     }
 
     sgl::vk::Swapchain* swapchain = sgl::AppSettings::get()->getSwapchain();
@@ -463,69 +503,73 @@ void PyTorchSimilarityCalculator::calculateDeviceMINE(
     }
     timelineValue++;
 
-#ifdef TEST_INFERENCE_SPEED
-    auto startLoad = std::chrono::system_clock::now();
-#endif
-
     float minEnsembleVal = std::numeric_limits<float>::max();
     float maxEnsembleVal = std::numeric_limits<float>::lowest();
     std::vector<VolumeData::DeviceCacheEntry> ensembleEntryFields;
     std::vector<sgl::vk::ImageViewPtr> ensembleImageViews;
     std::vector<CUtexObject> ensembleTexturesCu;
-    ensembleEntryFields.reserve(es);
-    ensembleImageViews.reserve(es);
-    ensembleTexturesCu.reserve(es);
-    for (ensembleIdx = 0; ensembleIdx < es; ensembleIdx++) {
-        VolumeData::DeviceCacheEntry ensembleEntryField = volumeData->getFieldEntryDevice(
-                FieldType::SCALAR, scalarFieldNames.at(fieldIndexGui), timeStepIdx, ensembleIdx);
-        ensembleEntryFields.push_back(ensembleEntryField);
-        ensembleImageViews.push_back(ensembleEntryField->getVulkanImageView());
-        ensembleTexturesCu.push_back(ensembleEntryField->getCudaTexture());
-        if (ensembleEntryField->getVulkanImage()->getVkImageLayout() != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
-            deviceCacheEntry->getVulkanImage()->transitionImageLayout(
-                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, renderer->getVkCommandBuffer());
-        }
-        auto [minVal, maxVal] = volumeData->getMinMaxScalarFieldValue(
-                scalarFieldNames.at(fieldIndexGui), timeStepIdx, ensembleIdx);
-        minEnsembleVal = std::min(minEnsembleVal, minVal);
-        maxEnsembleVal = std::max(maxEnsembleVal, maxVal);
-    }
+    if (networkType == NetworkType::MINE) {
+#ifdef TEST_INFERENCE_SPEED
+        auto startLoad = std::chrono::system_clock::now();
+#endif
 
-    referenceEnsembleCombinePass->setEnsembleImageViews(ensembleImageViews);
-    referenceEnsembleCombinePass->setEnsembleMinMax(minEnsembleVal, maxEnsembleVal);
-    if (createBatchesWithVulkan) {
-        ensembleCombinePass->setEnsembleImageViews(ensembleImageViews);
-        ensembleCombinePass->setEnsembleMinMax(minEnsembleVal, maxEnsembleVal);
-        ensembleCombinePass->setBatchSize(gpuBatchSize1D);
-    } else {
-        if (cachedEnsembleTexturesCu != ensembleTexturesCu) {
-            cachedEnsembleTexturesCu = ensembleTexturesCu;
-            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
-                    stream), "Error in cuStreamSynchronize: ");
-            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyHtoD(
-                    ensembleTextureArrayCu, ensembleTexturesCu.data(), sizeof(CUtexObject) * es), "Error in cuMemcpyHtoD: ");
+        ensembleEntryFields.reserve(es);
+        ensembleImageViews.reserve(es);
+        ensembleTexturesCu.reserve(es);
+        for (ensembleIdx = 0; ensembleIdx < es; ensembleIdx++) {
+            VolumeData::DeviceCacheEntry ensembleEntryField = volumeData->getFieldEntryDevice(
+                    FieldType::SCALAR, scalarFieldNames.at(fieldIndexGui), timeStepIdx, ensembleIdx);
+            ensembleEntryFields.push_back(ensembleEntryField);
+            ensembleImageViews.push_back(ensembleEntryField->getVulkanImageView());
+            ensembleTexturesCu.push_back(ensembleEntryField->getCudaTexture());
+            if (ensembleEntryField->getVulkanImage()->getVkImageLayout() != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+                deviceCacheEntry->getVulkanImage()->transitionImageLayout(
+                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, renderer->getVkCommandBuffer());
+            }
+            auto [minVal, maxVal] = volumeData->getMinMaxScalarFieldValue(
+                    scalarFieldNames.at(fieldIndexGui), timeStepIdx, ensembleIdx);
+            minEnsembleVal = std::min(minEnsembleVal, minVal);
+            maxEnsembleVal = std::max(maxEnsembleVal, maxVal);
         }
-    }
+
+        referenceEnsembleCombinePass->setEnsembleImageViews(ensembleImageViews);
+        referenceEnsembleCombinePass->setEnsembleMinMax(minEnsembleVal, maxEnsembleVal);
+        if (createBatchesWithVulkan) {
+            ensembleCombinePass->setEnsembleImageViews(ensembleImageViews);
+            ensembleCombinePass->setEnsembleMinMax(minEnsembleVal, maxEnsembleVal);
+            ensembleCombinePass->setBatchSize(gpuBatchSize1D);
+        } else {
+            if (cachedEnsembleTexturesCu != ensembleTexturesCu) {
+                cachedEnsembleTexturesCu = ensembleTexturesCu;
+                sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
+                        stream), "Error in cuStreamSynchronize: ");
+                sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyHtoD(
+                        ensembleTextureArrayCu, ensembleTexturesCu.data(), sizeof(CUtexObject) * es),
+                                       "Error in cuMemcpyHtoD: ");
+            }
+        }
 
 #ifdef TEST_INFERENCE_SPEED
-    auto endLoad = std::chrono::system_clock::now();
-    auto elapsedLoad = std::chrono::duration_cast<std::chrono::milliseconds>(endLoad - startLoad);
-    std::cout << "Elapsed time load: " << elapsedLoad.count() << "ms" << std::endl;
+        auto endLoad = std::chrono::system_clock::now();
+        auto elapsedLoad = std::chrono::duration_cast<std::chrono::milliseconds>(endLoad - startLoad);
+        std::cout << "Elapsed time load: " << elapsedLoad.count() << "ms" << std::endl;
 #endif
+    }
 
 #ifdef TEST_INFERENCE_SPEED
     auto startInference = std::chrono::system_clock::now();
 #endif
 
-    std::vector<int64_t> referenceInputSizes = { 1, es, 4 };
-
-    referenceEnsembleCombinePass->buildIfNecessary();
-    renderer->pushConstants(
-            referenceEnsembleCombinePass->getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, 0, referencePointIndex);
-    referenceEnsembleCombinePass->render();
-    renderer->insertMemoryBarrier(
-            VK_ACCESS_SHADER_WRITE_BIT, 0,
-            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
+    if (networkType == NetworkType::MINE) {
+        referenceEnsembleCombinePass->buildIfNecessary();
+        renderer->pushConstants(
+                referenceEnsembleCombinePass->getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                referencePointIndex);
+        referenceEnsembleCombinePass->render();
+        renderer->insertMemoryBarrier(
+                VK_ACCESS_SHADER_WRITE_BIT, 0,
+                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
+    }
 
     sgl::vk::CommandBufferPtr commandBufferRender = renderer->getCommandBuffer();
     vulkanFinishedSemaphore->setSignalSemaphoreValue(timelineValue);
@@ -542,329 +586,31 @@ void PyTorchSimilarityCalculator::calculateDeviceMINE(
 
     vulkanFinishedSemaphore->waitSemaphoreCuda(stream, timelineValue);
 
-    torch::Tensor referenceInputTensor = torch::from_blob(
-            (void*)referenceInputBufferCu->getCudaDevicePtr(), referenceInputSizes,
-            torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCUDA));
-    std::vector<torch::jit::IValue> referenceInputs;
-    referenceInputs.emplace_back(referenceInputTensor);
-    at::Tensor referenceEncodedTensor = encoderWrapper->module.forward(referenceInputs).toTensor();
-
-    std::vector<torch::jit::IValue> encoderInputs;
-    encoderInputs.resize(1);
-    std::vector<torch::jit::IValue> decoderInputs;
-    decoderInputs.resize(2);
-    decoderInputs.at(0) = referenceEncodedTensor;
-
-    std::vector<int64_t> inputSizes = { gpuBatchSize1D, es, 4 };
-
-    uint32_t numSliceEntries = uint32_t(xs) * uint32_t(ys) * uint32_t(zs);
-    uint32_t numBatches = sgl::uiceil(numSliceEntries, uint32_t(gpuBatchSize1D));
-    for (uint32_t batchIdx = 0; batchIdx < numBatches; batchIdx++) {
-        uint32_t batchOffset = batchIdx * gpuBatchSize1D;
-        uint32_t batchSize = std::min(uint32_t(gpuBatchSize1D), numSliceEntries - batchOffset);
-
-        if (createBatchesWithVulkan) {
-            ensembleCombinePass->buildIfNecessary();
-            renderer->pushConstants(
-                    ensembleCombinePass->getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT,
-                    0, batchOffset);
-            renderer->pushConstants(
-                    ensembleCombinePass->getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT,
-                    sizeof(uint32_t), batchSize);
-            ensembleCombinePass->render();
-        } else {
-            CUdeviceptr outputBuffer = inputBufferCu->getCudaDevicePtr();
-            CUdeviceptr scalarFieldEnsembles = ensembleTextureArrayCu;
-            void* kernelParameters[] = {
-                    &xs, &ys, &zs, &es, &batchOffset, &batchSize, &minEnsembleVal, &maxEnsembleVal,
-                    &outputBuffer, &scalarFieldEnsembles
-            };
-            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuLaunchKernel(
-                    combineEnsemblesFunctionCu,
-                    sgl::uiceil(batchSize, 256), 1, 1, //< Grid size.
-                    256, 1, 1, //< Block size.
-                    0, //< Dynamic shared memory size.
-                    stream,
-                    kernelParameters, //< Kernel parameters.
-                    nullptr //< Extra (empty).
-            ), "Error in cuLaunchKernel: ");
-        }
-
-        torch::Tensor inputTensor = torch::from_blob(
-                (void*)inputBufferCu->getCudaDevicePtr(), inputSizes,
-                torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCUDA));
-        encoderInputs.at(0) = inputTensor;
-        at::Tensor encodedTensor = encoderWrapper->module.forward(encoderInputs).toTensor();
-        decoderInputs.at(1) = encodedTensor;
-        at::Tensor similarityMetricTensor = decoderWrapper->module.forward(decoderInputs).toTensor();
-        if (!similarityMetricTensor.is_contiguous()) {
-            if (isFirstContiguousWarning) {
-                sgl::Logfile::get()->writeWarning("Error in PyTorchDenoiser::denoise: Output tensor is not contiguous.");
-                isFirstContiguousWarning = false;
-            }
-            similarityMetricTensor = similarityMetricTensor.contiguous();
-        }
-        //sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyAsync(
-        //        outputImageBufferCu + batchOffset * sizeof(float),
-        //        (CUdeviceptr)similarityMetricTensor.data_ptr(),
-        //        sizeof(float) * batchSize, stream), "Error in cuMemcpyAsync: ");
-
-        CUdeviceptr outputBuffer = outputImageBufferCu + batchOffset * sizeof(float);
-        auto inputBuffer = (CUdeviceptr)similarityMetricTensor.data_ptr();
-        void* kernelParametersCopy[] = { &outputBuffer, &inputBuffer, &batchSize };
+    if (networkType == NetworkType::SRN_MINE) {
+        CUdeviceptr outputBufferRef = referenceInputBufferCu->getCudaDevicePtr();
+        void* kernelParameters[] = {
+                &xs, &ys, &zs, &referencePointIndex.x, &outputBufferRef
+        };
         sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuLaunchKernel(
-                memcpyFloatClampToZeroFunctionCu,
-                sgl::uiceil(batchSize, 256), 1, 1, //< Grid size.
-                256, 1, 1, //< Block size.
+                writeGridPositionReferenceFunctionCu,
+                1, 1, 1, //< Grid size.
+                1, 1, 1, //< Block size.
                 0, //< Dynamic shared memory size.
                 stream,
-                kernelParametersCopy, //< Kernel parameters.
+                kernelParameters, //< Kernel parameters.
                 nullptr //< Extra (empty).
         ), "Error in cuLaunchKernel: ");
     }
 
-    deviceCacheEntry->getImageCudaExternalMemory()->memcpyCudaDtoA3DAsync(outputImageBufferCu, stream);
-
-    cudaFinishedSemaphore->signalSemaphoreCuda(stream, timelineValue);
-    cudaFinishedSemaphore->setWaitSemaphoreValue(timelineValue);
-    sgl::vk::CommandBufferPtr postRenderCommandBuffer = postRenderCommandBuffers.at(frameIndex);
-    renderer->pushCommandBuffer(postRenderCommandBuffer);
-    renderer->beginCommandBuffer();
-    postRenderCommandBuffer->pushWaitSemaphore(
-            cudaFinishedSemaphore, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
-
-#ifdef TEST_INFERENCE_SPEED
-    auto endInference = std::chrono::system_clock::now();
-    auto elapsedInference = std::chrono::duration_cast<std::chrono::milliseconds>(endInference - startInference);
-    std::cout << "Elapsed time inference: " << elapsedInference.count() << "ms" << std::endl;
-#endif
-}
-#endif
-
-void PyTorchSimilarityCalculator::calculateCpuSRN(int timeStepIdx, int ensembleIdx, float* buffer) {
-    int xs = volumeData->getGridSizeX();
-    int ys = volumeData->getGridSizeY();
-    int zs = volumeData->getGridSizeZ();
-
-    if (cachedEnsembleSizeHost != 0) {
-        delete[] referenceInputValues;
-        delete[] batchInputValues;
-    }
-    cachedEnsembleSizeHost = 0;
-    if (!srnBatchInputValues) {
-        srnBatchInputValues = new float[3 * srnBatchSize1D];
-    }
-
-    std::vector<torch::jit::IValue> encoderInputs;
-    encoderInputs.resize(1);
-    std::vector<torch::jit::IValue> decoderInputs;
-    decoderInputs.resize(1);
-
-    std::vector<int64_t> inputSizes = { srnBatchSize1D, 3 };
-    torch::Tensor inputTensor = torch::from_blob(
-            srnBatchInputValues, inputSizes,
-            torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCPU));
-    encoderInputs.at(0) = inputTensor;
-
-    uint32_t numSliceEntries = uint32_t(xs) * uint32_t(ys) * uint32_t(zs);
-    uint32_t numBatches = sgl::uiceil(numSliceEntries, uint32_t(srnBatchSize1D));
-    for (uint32_t batchIdx = 0; batchIdx < numBatches; batchIdx++) {
-        uint32_t batchOffset = batchIdx * srnBatchSize1D;
-        uint32_t batchSize = std::min(uint32_t(srnBatchSize1D), numSliceEntries - batchOffset);
-
-#ifdef USE_TBB
-        tbb::parallel_for(tbb::blocked_range<uint32_t>(0, batchSize), [&](auto const& r) {
-            for (auto pointIdx = r.begin(); pointIdx != r.end(); pointIdx++) {
-#else
-#if _OPENMP >= 201107
-        #pragma omp parallel for default(none) shared(xs, ys, zs, batchSize, batchOffset)
-#endif
-        for (uint32_t pointIdx = 0; pointIdx < batchSize; pointIdx++) {
-#endif
-            uint32_t pointIdxWriteOffset = pointIdx * 3;
-            uint32_t pointIdxReadOffset = pointIdx + batchOffset;
-            uint32_t x = pointIdxReadOffset % uint32_t(xs);
-            uint32_t y = (pointIdxReadOffset / uint32_t(xs)) % uint32_t(ys);
-            uint32_t z = pointIdxReadOffset / uint32_t(xs * ys);
-            glm::vec3 pointNorm = glm::vec3(x, y, z) / glm::vec3(xs - 1, ys - 1, zs - 1) * 2.0f - glm::vec3(1.0f);
-            srnBatchInputValues[pointIdxWriteOffset] = pointNorm.x;
-            srnBatchInputValues[pointIdxWriteOffset + 1] = pointNorm.y;
-            srnBatchInputValues[pointIdxWriteOffset + 2] = pointNorm.z;
-        }
-#ifdef USE_TBB
-        });
-#endif
-
-        at::Tensor encodedTensor = encoderWrapper->module.forward(encoderInputs).toTensor();
-        decoderInputs.at(0) = encodedTensor;
-        at::Tensor similarityMetricTensor = decoderWrapper->module.forward(decoderInputs).toTensor();
-        if (!similarityMetricTensor.is_contiguous()) {
-            if (isFirstContiguousWarning) {
-                sgl::Logfile::get()->writeWarning("Error in PyTorchDenoiser::denoise: Output tensor is not contiguous.");
-                isFirstContiguousWarning = false;
-            }
-            similarityMetricTensor = similarityMetricTensor.contiguous();
-        }
-        memcpy(buffer + batchOffset, similarityMetricTensor.data_ptr(), sizeof(float) * batchSize);
-
-        // Clamp values to zero.
-        float* bufferFlt = buffer + batchOffset;
-        for (uint32_t i = 0; i < batchSize; i++) {
-            if (bufferFlt[i] < 0.0f) {
-                bufferFlt[i] = 0.0f;
-            }
-        }
-    }
-}
-
-#ifdef SUPPORT_CUDA_INTEROP
-void PyTorchSimilarityCalculator::calculateDeviceSRN(
-        int timeStepIdx, int ensembleIdx, const DeviceCacheEntry& deviceCacheEntry) {
-    int xs = volumeData->getGridSizeX();
-    int ys = volumeData->getGridSizeY();
-    int zs = volumeData->getGridSizeZ();
-
-    int gpuBatchSize1D = srnGpuBatchSize1DBase;
-
-    cudaStream_t stream = at::cuda::getCurrentCUDAStream();
-
-    size_t volumeDataSlice3dSize = volumeData->getSlice3dSizeInBytes(FieldType::SCALAR);
-    if (cachedVolumeDataSlice3dSize != volumeDataSlice3dSize) {
-        if (outputImageBufferCu != 0) {
-            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
-                    outputImageBufferCu, stream), "Error in cuMemFreeAsync: ");
-        }
-        cachedVolumeDataSlice3dSize = volumeDataSlice3dSize;
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
-                &outputImageBufferCu, volumeDataSlice3dSize, stream), "Error in cuMemAllocAsync: ");
-    }
-
-    if (cachedEnsembleSizeDevice != 0) {
-        referenceInputBufferCu = {};
-        inputBufferCu = {};
-        if (ensembleTextureArrayCu != 0) {
-            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
-                    ensembleTextureArrayCu, stream), "Error in cuMemFreeAsync: ");
-            ensembleTextureArrayCu = {};
-        }
-        cachedEnsembleSizeDevice = 0;
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
-                &ensembleTextureArrayCu, es * sizeof(CUtexObject), stream), "Error in cuMemAllocAsync: ");
-
-        auto referenceInputBufferVk = std::make_shared<sgl::vk::Buffer>(
-                renderer->getDevice(), sizeof(float) * es * 4,
-                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY,
-                true, true);
-        referenceInputBufferCu = std::make_shared<sgl::vk::BufferCudaDriverApiExternalMemoryVk>(referenceInputBufferVk);
-
-        auto inputBufferVk = std::make_shared<sgl::vk::Buffer>(
-                renderer->getDevice(), sizeof(float) * gpuBatchSize1D * es * 4,
-                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY,
-                true, true);
-        inputBufferCu = std::make_shared<sgl::vk::BufferCudaDriverApiExternalMemoryVk>(inputBufferVk);
-
-        ensembleCombinePass->setOutputBuffer(inputBufferCu->getVulkanBuffer());
-        referenceEnsembleCombinePass->setOutputBuffer(referenceInputBufferCu->getVulkanBuffer());
-    }
-
-    sgl::vk::Swapchain* swapchain = sgl::AppSettings::get()->getSwapchain();
-    uint32_t frameIndex = swapchain ? swapchain->getImageIndex() : 0;
-    size_t numSwapchainImages = swapchain ? swapchain->getNumImages() : 1;
-    if (numSwapchainImages != cachedNumSwapchainImages) {
-        cachedNumSwapchainImages = numSwapchainImages;
-        sgl::vk::Device* device = renderer->getDevice();
-        timelineValue = 0;
-        postRenderCommandBuffers.clear();
-        sgl::vk::CommandPoolType commandPoolType;
-        commandPoolType.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-        for (size_t frameIdx = 0; frameIdx < numSwapchainImages; frameIdx++) {
-            postRenderCommandBuffers.push_back(std::make_shared<sgl::vk::CommandBuffer>(device, commandPoolType));
-        }
-        vulkanFinishedSemaphore = std::make_shared<sgl::vk::SemaphoreVkCudaDriverApiInterop>(
-                device, 0, VK_SEMAPHORE_TYPE_TIMELINE, timelineValue);
-        cudaFinishedSemaphore = std::make_shared<sgl::vk::SemaphoreVkCudaDriverApiInterop>(
-                device, 0, VK_SEMAPHORE_TYPE_TIMELINE, timelineValue);
-    }
-    timelineValue++;
-
-#ifdef TEST_INFERENCE_SPEED
-    auto startLoad = std::chrono::system_clock::now();
-#endif
-
-    float minEnsembleVal = std::numeric_limits<float>::max();
-    float maxEnsembleVal = std::numeric_limits<float>::lowest();
-    std::vector<VolumeData::DeviceCacheEntry> ensembleEntryFields;
-    std::vector<sgl::vk::ImageViewPtr> ensembleImageViews;
-    std::vector<CUtexObject> ensembleTexturesCu;
-    ensembleEntryFields.reserve(es);
-    ensembleImageViews.reserve(es);
-    ensembleTexturesCu.reserve(es);
-    for (ensembleIdx = 0; ensembleIdx < es; ensembleIdx++) {
-        VolumeData::DeviceCacheEntry ensembleEntryField = volumeData->getFieldEntryDevice(
-                FieldType::SCALAR, scalarFieldNames.at(fieldIndexGui), timeStepIdx, ensembleIdx);
-        ensembleEntryFields.push_back(ensembleEntryField);
-        ensembleImageViews.push_back(ensembleEntryField->getVulkanImageView());
-        ensembleTexturesCu.push_back(ensembleEntryField->getCudaTexture());
-        if (ensembleEntryField->getVulkanImage()->getVkImageLayout() != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
-            deviceCacheEntry->getVulkanImage()->transitionImageLayout(
-                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, renderer->getVkCommandBuffer());
-        }
-        auto [minVal, maxVal] = volumeData->getMinMaxScalarFieldValue(
-                scalarFieldNames.at(fieldIndexGui), timeStepIdx, ensembleIdx);
-        minEnsembleVal = std::min(minEnsembleVal, minVal);
-        maxEnsembleVal = std::max(maxEnsembleVal, maxVal);
-    }
-
-    referenceEnsembleCombinePass->setEnsembleImageViews(ensembleImageViews);
-    referenceEnsembleCombinePass->setEnsembleMinMax(minEnsembleVal, maxEnsembleVal);
-    if (createBatchesWithVulkan) {
-        ensembleCombinePass->setEnsembleImageViews(ensembleImageViews);
-        ensembleCombinePass->setEnsembleMinMax(minEnsembleVal, maxEnsembleVal);
-        ensembleCombinePass->setBatchSize(gpuBatchSize1D);
+    std::vector<int64_t> referenceInputSizes;
+    std::vector<int64_t> inputSizes;
+    if (networkType == NetworkType::MINE) {
+        referenceInputSizes = { 1, es, 4 };
+        inputSizes = { gpuBatchSize1D, es, 4 };
     } else {
-        if (cachedEnsembleTexturesCu != ensembleTexturesCu) {
-            cachedEnsembleTexturesCu = ensembleTexturesCu;
-            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
-                    stream), "Error in cuStreamSynchronize: ");
-            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyHtoD(
-                    ensembleTextureArrayCu, ensembleTexturesCu.data(), sizeof(CUtexObject) * es), "Error in cuMemcpyHtoD: ");
-        }
+        referenceInputSizes = { 1, 3 };
+        inputSizes = { gpuBatchSize1D, 3 };
     }
-
-#ifdef TEST_INFERENCE_SPEED
-    auto endLoad = std::chrono::system_clock::now();
-    auto elapsedLoad = std::chrono::duration_cast<std::chrono::milliseconds>(endLoad - startLoad);
-    std::cout << "Elapsed time load: " << elapsedLoad.count() << "ms" << std::endl;
-#endif
-
-#ifdef TEST_INFERENCE_SPEED
-    auto startInference = std::chrono::system_clock::now();
-#endif
-
-    std::vector<int64_t> referenceInputSizes = { 1, es, 4 };
-
-    referenceEnsembleCombinePass->buildIfNecessary();
-    renderer->pushConstants(
-            referenceEnsembleCombinePass->getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, 0, referencePointIndex);
-    referenceEnsembleCombinePass->render();
-    renderer->insertMemoryBarrier(
-            VK_ACCESS_SHADER_WRITE_BIT, 0,
-            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
-
-    sgl::vk::CommandBufferPtr commandBufferRender = renderer->getCommandBuffer();
-    vulkanFinishedSemaphore->setSignalSemaphoreValue(timelineValue);
-    commandBufferRender->pushSignalSemaphore(vulkanFinishedSemaphore);
-    renderer->endCommandBuffer();
-
-    /*
-     * 'model->forward()' uses device caching allocators, which may call functions like 'cudaStreamIsCapturing',
-     * which enforce synchronization of the stream with the host if more memory needs to be allocated. Thus, we must
-     * submit the Vulkan command buffers before this function, as otherwise, CUDA will wait forever on the render
-     * finished semaphore!
-     */
-    renderer->submitToQueue();
-
-    vulkanFinishedSemaphore->waitSemaphoreCuda(stream, timelineValue);
 
     torch::Tensor referenceInputTensor = torch::from_blob(
             (void*)referenceInputBufferCu->getCudaDevicePtr(), referenceInputSizes,
@@ -879,7 +625,6 @@ void PyTorchSimilarityCalculator::calculateDeviceSRN(
     decoderInputs.resize(2);
     decoderInputs.at(0) = referenceEncodedTensor;
 
-    std::vector<int64_t> inputSizes = { gpuBatchSize1D, es, 4 };
 
     uint32_t numSliceEntries = uint32_t(xs) * uint32_t(ys) * uint32_t(zs);
     uint32_t numBatches = sgl::uiceil(numSliceEntries, uint32_t(gpuBatchSize1D));
@@ -887,7 +632,7 @@ void PyTorchSimilarityCalculator::calculateDeviceSRN(
         uint32_t batchOffset = batchIdx * gpuBatchSize1D;
         uint32_t batchSize = std::min(uint32_t(gpuBatchSize1D), numSliceEntries - batchOffset);
 
-        if (createBatchesWithVulkan) {
+        if (networkType == NetworkType::MINE && createBatchesWithVulkan) {
             ensembleCombinePass->buildIfNecessary();
             renderer->pushConstants(
                     ensembleCombinePass->getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT,
@@ -899,17 +644,28 @@ void PyTorchSimilarityCalculator::calculateDeviceSRN(
         } else {
             CUdeviceptr outputBuffer = inputBufferCu->getCudaDevicePtr();
             CUdeviceptr scalarFieldEnsembles = ensembleTextureArrayCu;
-            void* kernelParameters[] = {
-                    &xs, &ys, &zs, &es, &batchOffset, &batchSize, &minEnsembleVal, &maxEnsembleVal,
-                    &outputBuffer, &scalarFieldEnsembles
-            };
+            std::vector<void*> kernelParameters;
+            CUfunction queryInputAssemblyFunction;
+            uint32_t srnStride = 3;
+            if (networkType == NetworkType::MINE) {
+                kernelParameters = {
+                        &xs, &ys, &zs, &es, &batchOffset, &batchSize, &minEnsembleVal, &maxEnsembleVal,
+                        &outputBuffer, &scalarFieldEnsembles
+                };
+                queryInputAssemblyFunction = combineEnsemblesFunctionCu;
+            } else {
+                kernelParameters = {
+                        &xs, &ys, &zs, &batchOffset, &batchSize, &outputBuffer, &srnStride
+                };
+                queryInputAssemblyFunction = writeGridPositionsFunctionCu;
+            }
             sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuLaunchKernel(
-                    combineEnsemblesFunctionCu,
+                    queryInputAssemblyFunction,
                     sgl::uiceil(batchSize, 256), 1, 1, //< Grid size.
                     256, 1, 1, //< Block size.
                     0, //< Dynamic shared memory size.
                     stream,
-                    kernelParameters, //< Kernel parameters.
+                    kernelParameters.data(), //< Kernel parameters.
                     nullptr //< Extra (empty).
             ), "Error in cuLaunchKernel: ");
         }

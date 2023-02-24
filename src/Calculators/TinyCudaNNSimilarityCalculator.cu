@@ -71,7 +71,6 @@ struct TinyCudaNNCacheWrapper {
     tcnn::GPUMatrix<precision_t> queryInputHalf;
 #endif
     tcnn::GPUMatrix<precision_t> queryEncoded;
-    tcnn::GPUMatrix<precision_t> queryEncodedPermuted;
     tcnn::GPUMatrix<precision_t> symmetrizedReferenceInput;
     tcnn::GPUMatrix<precision_t> symmetrizedQueryInput;
     tcnn::GPUMatrix<precision_t> referenceDecoded;
@@ -204,6 +203,7 @@ void TinyCudaNNSimilarityCalculator::loadModelFromFile(const std::string& modelP
         const auto& entry = itConfig->second;
         moduleWrapper->configGeneral = nlohmann::json::parse(std::string(
                 reinterpret_cast<char*>(entry.bufferData.get()), entry.bufferSize));
+
         auto symmetrizerTypeName = moduleWrapper->configGeneral.value(
                 "symmetrizer_type", SYMMETRIZER_TYPE_SHORT_NAMES[0]);
         bool foundSymmetrizerType = false;
@@ -218,6 +218,27 @@ void TinyCudaNNSimilarityCalculator::loadModelFromFile(const std::string& modelP
             sgl::Logfile::get()->writeError(
                     "Error in TinyCudaNNSimilarityCalculator::loadModelFromFile: Invalid symmetrizer type \""
                     + symmetrizerTypeName + "\".");
+            return;
+        }
+
+        auto networkTypeName = moduleWrapper->configGeneral.value(
+                "network_type", NETWORK_TYPE_SHORT_NAMES[0]);
+        bool foundNetworkType = false;
+        for (int i = 0; i < IM_ARRAYSIZE(NETWORK_TYPE_SHORT_NAMES); i++) {
+            if (NETWORK_TYPE_SHORT_NAMES[i] == networkTypeName) {
+                networkType = NetworkType(i);
+                foundNetworkType = true;
+                break;
+            }
+        }
+        if (!foundNetworkType && networkTypeName == "MINE_SRN") {
+            networkType = NetworkType::SRN_MINE;
+            foundNetworkType = true;
+        }
+        if (!foundNetworkType) {
+            sgl::Logfile::get()->writeError(
+                    "Error in TinyCudaNNSimilarityCalculator::loadModelFromFile: Invalid network type \""
+                    + networkTypeName + "\".");
             return;
         }
     }
@@ -254,7 +275,15 @@ void TinyCudaNNSimilarityCalculator::loadModelFromFile(const std::string& modelP
     auto encoderNetworkOpts = moduleWrapper->configEncoder.value("network", nlohmann::json::object());
     auto decoderNetworkOpts = moduleWrapper->configDecoder.value("network", nlohmann::json::object());
     // mlp_fused_forward needs multiple of 16 for number of input layers.
-    moduleWrapper->configEncoder["network"]["n_input_dims"] = isInputEncodingIdentity ? 16 : 4;
+    int numInputLayers = 16;
+    if (!isInputEncodingIdentity) {
+        if (networkType == NetworkType::MINE) {
+            numInputLayers = 4;
+        } else {
+            numInputLayers = 3;
+        }
+    }
+    moduleWrapper->configEncoder["network"]["n_input_dims"] = numInputLayers;
     moduleWrapper->configDecoder["network"]["n_output_dims"] = 1;
     if (encoderNetworkOpts.find("n_output_dims") == encoderNetworkOpts.end()) {
         moduleWrapper->configEncoder["network"]["n_output_dims"] = moduleWrapper->configEncoder["network"]["n_neurons"];
@@ -330,17 +359,7 @@ void TinyCudaNNSimilarityCalculator::loadModelFromFile(const std::string& modelP
 }
 
 void TinyCudaNNSimilarityCalculator::recreateCache(int batchSize) {
-    int es = volumeData->getEnsembleMemberCount();
-
-    //cacheWrapper->referenceInput = tcnn::GPUMatrix<float>(uint32_t(es) * 4, 1);
-    //cacheWrapper->referenceEncoded = tcnn::GPUMatrix<precision_t>(numLayersOutEncoder, 1);
-    //cacheWrapper->queryInput = tcnn::GPUMatrix<float>(uint32_t(es) * 4, batchSize);
-    //cacheWrapper->queryEncoded = tcnn::GPUMatrix<precision_t>(numLayersOutEncoder, batchSize);
-    //cacheWrapper->queryEncodedPermuted = tcnn::GPUMatrix<precision_t>(numLayersOutEncoder, batchSize);
-    //cacheWrapper->symmetrizedReferenceInput = tcnn::GPUMatrix<precision_t>(numLayersInDecoder, batchSize);
-    //cacheWrapper->symmetrizedQueryInput = tcnn::GPUMatrix<precision_t>(numLayersInDecoder, batchSize);
-    //cacheWrapper->referenceDecoded = tcnn::GPUMatrix<precision_t>(numLayersOutDecoder, batchSize);
-    //cacheWrapper->queryDecoded = tcnn::GPUMatrix<precision_t>(numLayersOutDecoder, batchSize);
+    int es = networkType == NetworkType::MINE ? volumeData->getEnsembleMemberCount() : 1;
 
     cacheWrapper->referenceInput = tcnn::GPUMatrix<float>();
 #if TCNN_HALF_PRECISION
@@ -352,14 +371,20 @@ void TinyCudaNNSimilarityCalculator::recreateCache(int batchSize) {
     cacheWrapper->queryInputHalf = tcnn::GPUMatrix<precision_t>();
 #endif
     cacheWrapper->queryEncoded = tcnn::GPUMatrix<precision_t>();
-    cacheWrapper->queryEncodedPermuted = tcnn::GPUMatrix<precision_t>();
     cacheWrapper->symmetrizedReferenceInput = tcnn::GPUMatrix<precision_t>();
     cacheWrapper->symmetrizedQueryInput = tcnn::GPUMatrix<precision_t>();
     cacheWrapper->referenceDecoded = tcnn::GPUMatrix<precision_t>();
     cacheWrapper->queryDecoded = tcnn::GPUMatrix<precision_t>();
 
     // mlp_fused_forward needs multiple of 16 for number of input layers.
-    uint32_t numInputLayers = isInputEncodingIdentity ? 16 : 4;
+    uint32_t numInputLayers = 16;
+    if (!isInputEncodingIdentity) {
+        if (networkType == NetworkType::MINE) {
+            numInputLayers = 4;
+        } else {
+            numInputLayers = 3;
+        }
+    }
     uint32_t referenceInputBatchSize =
             sgl::uiceil(uint32_t(es), tcnn::batch_size_granularity) * tcnn::batch_size_granularity;
 #if TCNN_HALF_PRECISION
@@ -372,7 +397,6 @@ void TinyCudaNNSimilarityCalculator::recreateCache(int batchSize) {
     cacheWrapper->queryInput = tcnn::GPUMatrix<float>(numInputLayers, uint32_t(es) * batchSize);
     cacheWrapper->referenceEncoded = tcnn::GPUMatrix<precision_t>(numLayersOutEncoder, referenceInputBatchSize);
     cacheWrapper->queryEncoded = tcnn::GPUMatrix<precision_t>(numLayersOutEncoder, uint32_t(es) * batchSize);
-    cacheWrapper->queryEncodedPermuted = tcnn::GPUMatrix<precision_t>(numLayersOutEncoder, uint32_t(es) * batchSize);
     cacheWrapper->symmetrizedReferenceInput = tcnn::GPUMatrix<precision_t>(numLayersInDecoder, uint32_t(es) * batchSize);
     cacheWrapper->symmetrizedQueryInput = tcnn::GPUMatrix<precision_t>(numLayersInDecoder, uint32_t(es) * batchSize);
     cacheWrapper->referenceDecoded = tcnn::GPUMatrix<precision_t>(numLayersOutDecoder, uint32_t(es) * batchSize);
@@ -530,12 +554,23 @@ void TinyCudaNNSimilarityCalculator::runInferenceBatch(uint32_t batchOffset, uin
             cacheWrapper->queryEncoded.n() * cacheWrapper->queryEncoded.m(),
             stream), "Error in cuMemcpyAsync: ");*/
 
-    uint32_t* permutationIndicesBuffer = reinterpret_cast<uint32_t*>(permutationIndicesBufferCu);
-    generateRandomPermutations<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
-            permutationIndicesBuffer, uint32_t(es), batchOffset);
-    //randomShuffleFisherYates<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
-    //        cacheWrapper->queryEncodedPermuted.data(), cacheWrapper->queryEncoded.data(),
-    //        permutationIndicesBuffer, uint32_t(es), numLayersOutEncoder);
+    if (networkType == NetworkType::MINE) {
+        uint32_t* permutationIndicesBuffer = reinterpret_cast<uint32_t*>(permutationIndicesBufferCu);
+        generateRandomPermutations<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
+                permutationIndicesBuffer, uint32_t(es), batchOffset);
+        //randomShuffleFisherYates<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
+        //        cacheWrapper->queryEncodedPermuted.data(), cacheWrapper->queryEncoded.data(),
+        //        permutationIndicesBuffer, uint32_t(es), numLayersOutEncoder);
+        symmetrizer(
+                cacheWrapper->referenceEncoded.data(), cacheWrapper->queryEncoded.data(),
+                cacheWrapper->symmetrizedReferenceInput.data(), cacheWrapper->symmetrizedQueryInput.data(),
+                permutationIndicesBuffer, batchSize, uint32_t(es), numLayersOutEncoder, symmetrizerType, stream);
+    } else {
+        symmetrizerSrn(
+                cacheWrapper->referenceEncoded.data(), cacheWrapper->queryEncoded.data(),
+                cacheWrapper->symmetrizedQueryInput.data(),
+                batchSize, numLayersOutEncoder, symmetrizerType, stream);
+    }
 
     /*int testSize = 10 * es;
     auto* dataUint32 = new uint32_t[batchSize * es];
@@ -588,10 +623,6 @@ void TinyCudaNNSimilarityCalculator::runInferenceBatch(uint32_t batchOffset, uin
             cacheWrapper->referenceEncoded.data(), cacheWrapper->queryEncoded.data(),
             cacheWrapper->symmetrizedQueryInput.data(), permutationIndicesBuffer,
             uint32_t(es), numLayersOutEncoder);*/
-    symmetrizer(
-            cacheWrapper->referenceEncoded.data(), cacheWrapper->queryEncoded.data(),
-            cacheWrapper->symmetrizedReferenceInput.data(), cacheWrapper->symmetrizedQueryInput.data(),
-            permutationIndicesBuffer, batchSize, uint32_t(es), numLayersOutEncoder, symmetrizerType, stream);
 
     /*dataHalf = new __half[copySize];
     dataHalf[0] = 1000.0f;
@@ -630,13 +661,17 @@ void TinyCudaNNSimilarityCalculator::runInferenceBatch(uint32_t batchOffset, uin
     delete[] dataHalf;*/
 
 #if TCNN_HALF_PRECISION
-    moduleWrapper->networkDecoder->inference_mixed_precision(
-            stream, cacheWrapper->symmetrizedReferenceInput, cacheWrapper->referenceDecoded);
+    if (networkType == NetworkType::MINE) {
+        moduleWrapper->networkDecoder->inference_mixed_precision(
+                stream, cacheWrapper->symmetrizedReferenceInput, cacheWrapper->referenceDecoded);
+    }
     moduleWrapper->networkDecoder->inference_mixed_precision(
             stream, cacheWrapper->symmetrizedQueryInput, cacheWrapper->queryDecoded);
 #else
-    moduleWrapper->networkDecoder->inference(
-            stream, cacheWrapper->symmetrizedReferenceInput, cacheWrapper->referenceDecoded);
+    if (networkType == NetworkType::MINE) {
+        moduleWrapper->networkDecoder->inference(
+                stream, cacheWrapper->symmetrizedReferenceInput, cacheWrapper->referenceDecoded);
+    }
     moduleWrapper->networkDecoder->inference(
             stream, cacheWrapper->symmetrizedQueryInput, cacheWrapper->queryDecoded);
 #endif
@@ -678,9 +713,14 @@ void TinyCudaNNSimilarityCalculator::runInferenceBatch(uint32_t batchOffset, uin
     delete[] dataHalf;*/
 
     float* miOutput = reinterpret_cast<float*>(outputImageBufferCu) + batchOffset;
-    combineDecoderOutput<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
-            cacheWrapper->referenceDecoded.data(), cacheWrapper->queryDecoded.data(), miOutput,
-            uint32_t(es), numLayersOutDecoder);
+    if (networkType == NetworkType::MINE) {
+        combineDecoderOutput<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
+                cacheWrapper->referenceDecoded.data(), cacheWrapper->queryDecoded.data(), miOutput,
+                uint32_t(es), numLayersOutDecoder);
+    } else {
+        copyDecoderOutputSrn<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
+                cacheWrapper->queryDecoded.data(), miOutput, numLayersOutDecoder);
+    }
 
     /*copySize = batchSize;
     float* data = new float[copySize];

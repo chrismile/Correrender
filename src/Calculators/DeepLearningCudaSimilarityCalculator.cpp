@@ -87,6 +87,10 @@ void DeepLearningCudaSimilarityCalculator::initialize() {
             &combineEnsemblesAlignedFunctionCu, combineEnsemblesModuleCu, "combineEnsemblesAligned"), "Error in cuModuleGetFunction: ");
     sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
             &combineEnsemblesReferenceAlignedFunctionCu, combineEnsemblesModuleCu, "combineEnsemblesReferenceAligned"), "Error in cuModuleGetFunction: ");
+    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
+            &writeGridPositionsFunctionCu, combineEnsemblesModuleCu, "writeGridPositions"), "Error in cuModuleGetFunction: ");
+    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
+            &writeGridPositionReferenceFunctionCu, combineEnsemblesModuleCu, "writeGridPositionReference"), "Error in cuModuleGetFunction: ");
     delete[] moduleBuffer;
 
     sgl::AppSettings::get()->getSettings().getValueOpt(modelFilePathSettingsKey.c_str(), modelFilePath);
@@ -184,11 +188,6 @@ void DeepLearningCudaSimilarityCalculator::renderGuiImpl(sgl::PropertyEditor& pr
 
 void DeepLearningCudaSimilarityCalculator::calculateDevice(
         int timeStepIdx, int ensembleIdx, const DeviceCacheEntry& deviceCacheEntry) {
-    int xs = volumeData->getGridSizeX();
-    int ys = volumeData->getGridSizeY();
-    int zs = volumeData->getGridSizeZ();
-    int es = volumeData->getEnsembleMemberCount();
-
     renderer->insertImageMemoryBarrier(
             deviceCacheEntry->getVulkanImage(),
             VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
@@ -203,15 +202,36 @@ void DeepLearningCudaSimilarityCalculator::calculateDevice(
         return;
     }
 
-    int gpuBatchSize1D = gpuBatchSize1DBase;
-    if (es >= 200) {
-        gpuBatchSize1D /= 2;
+    int xs = volumeData->getGridSizeX();
+    int ys = volumeData->getGridSizeY();
+    int zs = volumeData->getGridSizeZ();
+    int es = networkType == NetworkType::MINE ? volumeData->getEnsembleMemberCount() : 0;
+
+    int gpuBatchSize1D;
+    if (networkType == NetworkType::MINE) {
+        gpuBatchSize1D = gpuBatchSize1DBase;
+        if (es >= 200) {
+            gpuBatchSize1D /= 2;
+        }
+        if (es >= 400) {
+            gpuBatchSize1D /= 2;
+        }
+        if (es >= 800) {
+            gpuBatchSize1D /= 2;
+        }
+    } else {
+        gpuBatchSize1D = srnGpuBatchSize1DBase;
     }
-    if (es >= 400) {
-        gpuBatchSize1D /= 2;
-    }
-    if (es >= 800) {
-        gpuBatchSize1D /= 2;
+
+    size_t volumeDataSlice3dSize = volumeData->getSlice3dSizeInBytes(FieldType::SCALAR);
+    if (cachedVolumeDataSlice3dSize != volumeDataSlice3dSize) {
+        if (outputImageBufferCu != 0) {
+            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
+                    outputImageBufferCu, stream), "Error in cuMemFreeAsync: ");
+        }
+        cachedVolumeDataSlice3dSize = volumeDataSlice3dSize;
+        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
+                &outputImageBufferCu, volumeDataSlice3dSize, stream), "Error in cuMemAllocAsync: ");
     }
 
     if (cachedEnsembleSizeDevice != size_t(es)) {
@@ -219,22 +239,17 @@ void DeepLearningCudaSimilarityCalculator::calculateDevice(
             sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
                     permutationIndicesBufferCu, stream), "Error in cuMemFreeAsync: ");
         }
-        if (outputImageBufferCu != 0) {
-            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
-                    outputImageBufferCu, stream), "Error in cuMemFreeAsync: ");
-        }
         if (ensembleTextureArrayCu != 0) {
             sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
                     ensembleTextureArrayCu, stream), "Error in cuMemFreeAsync: ");
         }
         cachedEnsembleSizeDevice = size_t(es);
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
-                &permutationIndicesBufferCu, gpuBatchSize1D * es * sizeof(uint32_t), stream), "Error in cuMemAllocAsync: ");
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
-                &outputImageBufferCu, volumeData->getSlice3dSizeInBytes(FieldType::SCALAR), stream), "Error in cuMemAllocAsync: ");
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
-                &ensembleTextureArrayCu, es * sizeof(CUtexObject), stream), "Error in cuMemAllocAsync: ");
-
+        if (networkType == NetworkType::MINE) {
+            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
+                    &permutationIndicesBufferCu, gpuBatchSize1D * es * sizeof(uint32_t), stream), "Error in cuMemAllocAsync: ");
+            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
+                    &ensembleTextureArrayCu, es * sizeof(CUtexObject), stream), "Error in cuMemAllocAsync: ");
+        }
         cacheNeedsRecreate = true;
     }
 
@@ -263,50 +278,50 @@ void DeepLearningCudaSimilarityCalculator::calculateDevice(
     }
     timelineValue++;
 
-#ifdef TEST_INFERENCE_SPEED
-    auto startLoad = std::chrono::system_clock::now();
-#endif
-
     float minEnsembleVal = std::numeric_limits<float>::max();
     float maxEnsembleVal = std::numeric_limits<float>::lowest();
     std::vector<VolumeData::DeviceCacheEntry> ensembleEntryFields;
     std::vector<CUtexObject> ensembleTexturesCu;
-    ensembleEntryFields.reserve(es);
-    ensembleTexturesCu.reserve(es);
-    for (ensembleIdx = 0; ensembleIdx < es; ensembleIdx++) {
-        VolumeData::DeviceCacheEntry ensembleEntryField = volumeData->getFieldEntryDevice(
-                FieldType::SCALAR, scalarFieldNames.at(fieldIndexGui), timeStepIdx, ensembleIdx);
-        ensembleEntryFields.push_back(ensembleEntryField);
-        ensembleTexturesCu.push_back(ensembleEntryField->getCudaTexture());
-        if (ensembleEntryField->getVulkanImage()->getVkImageLayout() != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
-            deviceCacheEntry->getVulkanImage()->transitionImageLayout(
-                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, renderer->getVkCommandBuffer());
-        }
-        auto [minVal, maxVal] = volumeData->getMinMaxScalarFieldValue(
-                scalarFieldNames.at(fieldIndexGui), timeStepIdx, ensembleIdx);
-        minEnsembleVal = std::min(minEnsembleVal, minVal);
-        maxEnsembleVal = std::max(maxEnsembleVal, maxVal);
-    }
+    if (networkType == NetworkType::MINE) {
+#ifdef TEST_INFERENCE_SPEED
+        auto startLoad = std::chrono::system_clock::now();
+#endif
 
-    if (cachedEnsembleTexturesCu != ensembleTexturesCu) {
-        cachedEnsembleTexturesCu = ensembleTexturesCu;
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
-                stream), "Error in cuStreamSynchronize: ");
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyHtoD(
-                ensembleTextureArrayCu, ensembleTexturesCu.data(), sizeof(CUtexObject) * es), "Error in cuMemcpyHtoD: ");
-    }
+        ensembleEntryFields.reserve(es);
+        ensembleTexturesCu.reserve(es);
+        for (ensembleIdx = 0; ensembleIdx < es; ensembleIdx++) {
+            VolumeData::DeviceCacheEntry ensembleEntryField = volumeData->getFieldEntryDevice(
+                    FieldType::SCALAR, scalarFieldNames.at(fieldIndexGui), timeStepIdx, ensembleIdx);
+            ensembleEntryFields.push_back(ensembleEntryField);
+            ensembleTexturesCu.push_back(ensembleEntryField->getCudaTexture());
+            if (ensembleEntryField->getVulkanImage()->getVkImageLayout() != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+                deviceCacheEntry->getVulkanImage()->transitionImageLayout(
+                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, renderer->getVkCommandBuffer());
+            }
+            auto [minVal, maxVal] = volumeData->getMinMaxScalarFieldValue(
+                    scalarFieldNames.at(fieldIndexGui), timeStepIdx, ensembleIdx);
+            minEnsembleVal = std::min(minEnsembleVal, minVal);
+            maxEnsembleVal = std::max(maxEnsembleVal, maxVal);
+        }
+
+        if (cachedEnsembleTexturesCu != ensembleTexturesCu) {
+            cachedEnsembleTexturesCu = ensembleTexturesCu;
+            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
+                    stream), "Error in cuStreamSynchronize: ");
+            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyHtoD(
+                    ensembleTextureArrayCu, ensembleTexturesCu.data(), sizeof(CUtexObject) * es), "Error in cuMemcpyHtoD: ");
+        }
 
 #ifdef TEST_INFERENCE_SPEED
-    auto endLoad = std::chrono::system_clock::now();
-    auto elapsedLoad = std::chrono::duration_cast<std::chrono::milliseconds>(endLoad - startLoad);
-    std::cout << "Elapsed time load: " << elapsedLoad.count() << "ms" << std::endl;
+        auto endLoad = std::chrono::system_clock::now();
+        auto elapsedLoad = std::chrono::duration_cast<std::chrono::milliseconds>(endLoad - startLoad);
+        std::cout << "Elapsed time load: " << elapsedLoad.count() << "ms" << std::endl;
 #endif
+    }
 
 #ifdef TEST_INFERENCE_SPEED
     auto startInference = std::chrono::system_clock::now();
 #endif
-
-    std::vector<int64_t> referenceInputSizes = { 1, es, 4 };
 
     sgl::vk::CommandBufferPtr commandBufferRender = renderer->getCommandBuffer();
     vulkanFinishedSemaphore->setSignalSemaphoreValue(timelineValue);
@@ -321,22 +336,35 @@ void DeepLearningCudaSimilarityCalculator::calculateDevice(
 
     callbackBeginCompute();
 
-    CUdeviceptr scalarFieldEnsembles = ensembleTextureArrayCu;
+    std::vector<void*> kernelParametersRef;
+    CUfunction referenceInputAssemblyFunction;
+    CUdeviceptr scalarFieldEnsembles = {};
     CUdeviceptr outputBufferRef = getReferenceInputPointer();
-    void* kernelParametersRef[] = {
-            &xs, &ys, &zs, &es, &referencePointIndex.x, &minEnsembleVal, &maxEnsembleVal,
-            &outputBufferRef, &scalarFieldEnsembles, &alignmentVec4
-    };
+    uint32_t srnStride = 0;
+    if (networkType == NetworkType::MINE) {
+        scalarFieldEnsembles = ensembleTextureArrayCu;
+        kernelParametersRef = {
+                &xs, &ys, &zs, &es, &referencePointIndex.x, &minEnsembleVal, &maxEnsembleVal,
+                &outputBufferRef, &scalarFieldEnsembles, &alignmentVec4
+        };
+        referenceInputAssemblyFunction =
+                alignmentVec4 == 1 ? combineEnsemblesReferenceFunctionCu : combineEnsemblesReferenceAlignedFunctionCu;
+    } else {
+        srnStride = getSrnStride();
+        kernelParametersRef = {
+                &xs, &ys, &zs, &referencePointIndex.x, &outputBufferRef
+        };
+        referenceInputAssemblyFunction = writeGridPositionReferenceFunctionCu;
+    }
     sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuLaunchKernel(
-            alignmentVec4 == 1 ? combineEnsemblesReferenceFunctionCu : combineEnsemblesReferenceAlignedFunctionCu,
-            sgl::uiceil(es, 256), 1, 1, //< Grid size.
-            256, 1, 1, //< Block size.
+            referenceInputAssemblyFunction,
+            networkType == NetworkType::MINE ? sgl::uiceil(es, 256) : 1, 1, 1, //< Grid size.
+            networkType == NetworkType::MINE ? 256 : 1, 1, 1, //< Block size.
             0, //< Dynamic shared memory size.
             stream,
-            kernelParametersRef, //< Kernel parameters.
+            kernelParametersRef.data(), //< Kernel parameters.
             nullptr //< Extra (empty).
     ), "Error in cuLaunchKernel: ");
-
     runInferenceReference();
 
     uint32_t numSliceEntries = uint32_t(xs) * uint32_t(ys) * uint32_t(zs);
@@ -346,17 +374,28 @@ void DeepLearningCudaSimilarityCalculator::calculateDevice(
         uint32_t batchSize = std::min(uint32_t(gpuBatchSize1D), numSliceEntries - batchOffset);
 
         CUdeviceptr outputBuffer = getQueryInputPointer();
-        void* kernelParameters[] = {
-                &xs, &ys, &zs, &es, &batchOffset, &batchSize, &minEnsembleVal, &maxEnsembleVal,
-                &outputBuffer, &scalarFieldEnsembles, &alignmentVec4
-        };
+        std::vector<void*> kernelParameters;
+        CUfunction queryInputAssemblyFunction;
+        if (networkType == NetworkType::MINE) {
+            kernelParameters = {
+                    &xs, &ys, &zs, &es, &batchOffset, &batchSize, &minEnsembleVal, &maxEnsembleVal,
+                    &outputBuffer, &scalarFieldEnsembles, &alignmentVec4
+            };
+            queryInputAssemblyFunction =
+                    alignmentVec4 == 1 ? combineEnsemblesFunctionCu : combineEnsemblesAlignedFunctionCu;
+        } else {
+            kernelParameters = {
+                    &xs, &ys, &zs, &batchOffset, &batchSize, &outputBuffer, &srnStride
+            };
+            queryInputAssemblyFunction = writeGridPositionsFunctionCu;
+        }
         sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuLaunchKernel(
-                alignmentVec4 == 1 ? combineEnsemblesFunctionCu : combineEnsemblesAlignedFunctionCu,
+                queryInputAssemblyFunction,
                 sgl::uiceil(batchSize, 256), 1, 1, //< Grid size.
                 256, 1, 1, //< Block size.
                 0, //< Dynamic shared memory size.
                 stream,
-                kernelParameters, //< Kernel parameters.
+                kernelParameters.data(), //< Kernel parameters.
                 nullptr //< Extra (empty).
         ), "Error in cuLaunchKernel: ");
 
@@ -382,3 +421,4 @@ void DeepLearningCudaSimilarityCalculator::calculateDevice(
     std::cout << "Elapsed time inference: " << elapsedInference.count() << "ms" << std::endl;
 #endif
 }
+

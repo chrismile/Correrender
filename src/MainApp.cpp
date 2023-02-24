@@ -140,6 +140,16 @@ MainApp::MainApp()
             sgl::vk::checkCUresult(cuResult, "Error in cuCtxCreate: ");
         }
     }
+
+    if (cudaInteropInitialized) {
+        nvrtcInitialized = true;
+        if (!sgl::vk::initializeNvrtcFunctionTable()) {
+            nvrtcInitialized = false;
+            sgl::Logfile::get()->writeWarning(
+                    "Warning in MainApp::MainApp: sgl::vk::initializeNvrtcFunctionTable() returned false.",
+                    false);
+        }
+    }
 #endif
 
 #ifdef SUPPORT_OPENCL_INTEROP
@@ -406,6 +416,9 @@ MainApp::~MainApp() {
 #endif
 
 #ifdef SUPPORT_CUDA_INTEROP
+    if (sgl::vk::getIsNvrtcFunctionTableInitialized()) {
+        sgl::vk::freeNvrtcFunctionTable();
+    }
     if (sgl::vk::getIsCudaDeviceApiFunctionTableInitialized()) {
         if (cuContext) {
             CUresult cuResult = sgl::vk::g_cudaDeviceApiFunctionTable.cuCtxDestroy(cuContext);

@@ -489,7 +489,7 @@ if $build_with_skia_support; then
         else
             bin/gn gen out/Static --args='is_official_build=true is_debug=false skia_use_vulkan=true skia_use_system_harfbuzz=false skia_use_fontconfig=false'
             third_party/ninja/ninja -C out/Static
-            params+=(-Dvkvg_DIR="${PROJECTPATH}/third_party/vkvg" -DSkia_BUILD_TYPE=Static)
+            params+=(-DSkia_DIR="${PROJECTPATH}/third_party/skia" -DSkia_BUILD_TYPE=Static)
         fi
         popd >/dev/null
     fi

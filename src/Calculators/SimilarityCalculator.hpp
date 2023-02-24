@@ -43,9 +43,16 @@ enum class NetworkType {
      */
     MINE,
     /*
+     * Scene representation network consisting of an encoder and decoder stage.
+     */
+    SRN_MINE,
+    /*
      * Scene representation network. This network takes as an input positions and outputs the correlation value.
      */
     SRN
+};
+const char* const NETWORK_TYPE_SHORT_NAMES[] = {
+        "MINE", "SRN_MINE", "SRN"
 };
 
 class ReferencePointSelectionRenderer;
@@ -137,6 +144,7 @@ private:
     std::shared_ptr<PccComputePass> pccComputePass;
     CorrelationMeasureType correlationMeasureType = CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV;
     bool useGpu = true;
+    bool useCuda = true; ///< Currently only for CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV.
     int numBins = 80; ///< For CorrelationMeasureType::MUTUAL_INFORMATION_BINNED.
     int k = 3; ///< For CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV.
     int kMax = 20; ///< For CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV.

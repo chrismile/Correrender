@@ -74,6 +74,7 @@ protected:
     virtual void runInferenceReference() = 0;
     virtual void runInferenceBatch(uint32_t batchOffset, uint32_t batchSize) = 0;
     virtual uint32_t getInputChannelAlignment() { return 1; }
+    virtual uint32_t getSrnStride() { return 3; }
 
     /// Renders the GUI. Returns whether re-rendering has become necessary due to the user's actions.
     void renderGuiImpl(sgl::PropertyEditor& propertyEditor) override;
@@ -81,11 +82,16 @@ protected:
     std::string modelFilePath;
     std::string fileDialogDirectory;
     NetworkType networkType = NetworkType::MINE;
+
     /// For networkType == NetworkType::MINE.
     SymmetrizerType symmetrizerType = SymmetrizerType::Add;
-
     const int gpuBatchSize1DBase = 16384;
-    size_t cachedEnsembleSizeDevice = 0;
+
+    /// For networkType == NetworkType::SRN_MINE.
+    const int srnGpuBatchSize1DBase = 131072;
+    size_t cachedVolumeDataSlice3dSize = 0;
+
+    size_t cachedEnsembleSizeDevice = std::numeric_limits<size_t>::max();
     bool cacheNeedsRecreate = false;
 
     size_t cachedNumSwapchainImages = 0;
@@ -96,10 +102,12 @@ protected:
     CUdeviceptr outputImageBufferCu{};
     CUdeviceptr ensembleTextureArrayCu{};
     std::vector<CUtexObject> cachedEnsembleTexturesCu;
+    CUstream stream{};
     CUmodule combineEnsemblesModuleCu{};
     CUfunction combineEnsemblesFunctionCu{}, combineEnsemblesReferenceFunctionCu{};
     CUfunction combineEnsemblesAlignedFunctionCu{}, combineEnsemblesReferenceAlignedFunctionCu{};
-    CUstream stream{};
+    // For networkType == NetworkType::SRN_MINE.
+    CUfunction writeGridPositionsFunctionCu{}, writeGridPositionReferenceFunctionCu{};
 
 private:
     std::string implName, implNameKey, implNameKeyUpper, fileDialogKey, fileDialogDescription, modelFilePathSettingsKey;

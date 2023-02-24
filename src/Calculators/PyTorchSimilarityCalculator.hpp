@@ -102,15 +102,6 @@ protected:
     void renderGuiImpl(sgl::PropertyEditor& propertyEditor) override;
 
 private:
-    void calculateCpuMINE(int timeStepIdx, int ensembleIdx, float* buffer);
-#ifdef SUPPORT_CUDA_INTEROP
-    void calculateDeviceMINE(int timeStepIdx, int ensembleIdx, const DeviceCacheEntry& deviceCacheEntry);
-#endif
-    void calculateCpuSRN(int timeStepIdx, int ensembleIdx, float* buffer);
-#ifdef SUPPORT_CUDA_INTEROP
-    void calculateDeviceSRN(int timeStepIdx, int ensembleIdx, const DeviceCacheEntry& deviceCacheEntry);
-#endif
-
     void openModelSelectionDialog();
     PyTorchDevice pyTorchDevice = PyTorchDevice::CPU;
     std::string modelFilePathEncoder, modelFilePathDecoder;
@@ -120,25 +111,23 @@ private:
     bool isFirstContiguousWarning = true;
     NetworkType networkType = NetworkType::MINE;
 
-    /// For networkType == NetworkType::{MINE,SRN}.
+    /// For networkType == NetworkType::{MINE,SRN_MINE}.
     size_t cachedEnsembleSizeHost = 0;
     size_t cachedEnsembleSizeDevice = 0;
     size_t cachedVolumeDataSlice3dSize = 0;
 
     /// For networkType == NetworkType::MINE.
-    const int batchSize1D = 8192; // 1024
+    const int mineBatchSize1D = 8192; // 1024
     const int gpuBatchSize1DBase = 16384;
 
-    /// For networkType == NetworkType::SRN.
+    /// For networkType == NetworkType::SRN_MINE.
     const int srnBatchSize1D = 65536;
     const int srnGpuBatchSize1DBase = 131072;
 
-    // Data for MINE CPU computations.
+    // Data for CPU computations.
     std::vector<sgl::vk::BufferPtr> renderImageStagingBuffers;
     float* referenceInputValues = nullptr;
     float* batchInputValues = nullptr;
-    // Data for SRN CPU computations.
-    float* srnBatchInputValues = nullptr;
 
 #ifdef SUPPORT_CUDA_INTEROP
     // Synchronization primitives.
@@ -154,6 +143,8 @@ private:
     CUmodule combineEnsemblesModuleCu{};
     CUfunction combineEnsemblesFunctionCu{};
     CUfunction memcpyFloatClampToZeroFunctionCu{};
+    // For networkType == NetworkType::SRN_MINE.
+    CUfunction writeGridPositionsFunctionCu{}, writeGridPositionReferenceFunctionCu{};
 #endif
     std::shared_ptr<ReferenceEnsembleCombinePass> referenceEnsembleCombinePass;
     std::shared_ptr<EnsembleCombinePass> ensembleCombinePass;

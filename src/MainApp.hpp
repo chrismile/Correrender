@@ -162,6 +162,7 @@ private:
     CUdevice cuDevice = 0;
 #endif
     bool cudaInteropInitialized = false;
+    bool nvrtcInitialized = false;
     bool openclInteropInitialized = false;
 
 #ifdef SUPPORT_RENDERDOC_DEBUGGER

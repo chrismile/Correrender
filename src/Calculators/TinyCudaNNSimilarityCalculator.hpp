@@ -52,6 +52,7 @@ protected:
     void runInferenceReference() override;
     void runInferenceBatch(uint32_t batchOffset, uint32_t batchSize) override;
     uint32_t getInputChannelAlignment() override { return isInputEncodingIdentity ? 16 : 4; }
+    uint32_t getSrnStride() override { return isInputEncodingIdentity ? 16 : 3; }
 
 private:
     uint32_t numLayersInEncoder = 0, numLayersOutEncoder = 0, numLayersInDecoder = 0, numLayersOutDecoder = 0;

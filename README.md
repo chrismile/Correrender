@@ -27,13 +27,13 @@ installed using the package manager `pacman` when using the scripts.
 
 #### Ubuntu 18.04, 20.04 & 22.04
 
-Ubuntu 20.04 and 22.04 are fully supported.
+Ubuntu 22.04 is fully supported.
 
 The Vulkan SDK, which is a dependency of this program that cannot be installed using the default package sources or
 vcpkg, will be automatically installed using the official Vulkan SDK PPA.
 
-Please note that Ubuntu 18.04 is only partially supported. It ships an old version of CMake, which causes the build
-process using vcpkg to fail if not updating CMake manually beforehand.
+Please note that Ubuntu 18.04 and 20.04 ship a too old version of CMake, which causes the build process to fail.
+In this case, CMake needs to be upgraded manually beforehand using the steps at https://apt.kitware.com/.
 
 #### Other Linux Distributions
 
