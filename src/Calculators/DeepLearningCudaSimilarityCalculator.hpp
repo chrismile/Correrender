@@ -80,6 +80,8 @@ protected:
 
     std::string modelFilePath;
     std::string fileDialogDirectory;
+    NetworkType networkType = NetworkType::MINE;
+    /// For networkType == NetworkType::MINE.
     SymmetrizerType symmetrizerType = SymmetrizerType::Add;
 
     const int gpuBatchSize1DBase = 16384;

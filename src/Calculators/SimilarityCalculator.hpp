@@ -35,6 +35,19 @@
 
 #include "Calculator.hpp"
 
+enum class NetworkType {
+    /*
+     * Network based on the paper "Mutual Information Neural Estimation", Belghazi et al. 2018.
+     * For more details see: https://arxiv.org/abs/1801.04062
+     * This network takes as an input a scalar value and positions. It consists of one encoder and one decoder network.
+     */
+    MINE,
+    /*
+     * Scene representation network. This network takes as an input positions and outputs the correlation value.
+     */
+    SRN
+};
+
 class ReferencePointSelectionRenderer;
 
 class EnsembleSimilarityCalculator : public Calculator {
