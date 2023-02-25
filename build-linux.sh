@@ -220,6 +220,21 @@ fi
 [ -d "./third_party/" ] || mkdir "./third_party/"
 pushd third_party > /dev/null
 
+cmake_version=$(cmake --version | head -n 1 | awk '{print $NF}')
+cmake_version_major=$(echo $cmake_version | cut -d. -f1)
+cmake_version_minor=$(echo $cmake_version | cut -d. -f2)
+if [[ $cmake_version_major < 3 || ($cmake_version_major == 3 && $cmake_version_minor < 18) ]]; then
+    cmake_download_version="3.25.2"
+    if [ ! -d "cmake-${cmake_download_version}-linux-x86_64" ]; then
+        echo "------------------------"
+        echo "    downloading cmake   "
+        echo "------------------------"
+        curl --silent --show-error --fail -OL "https://github.com/Kitware/CMake/releases/download/v${cmake_download_version}/cmake-${cmake_download_version}-linux-x86_64.tar.gz"
+        tar -xzf cmake-${cmake_download_version}-linux-x86_64.tar.gz -C .
+    fi
+    PATH="${PROJECTPATH}/third_party/cmake-${cmake_download_version}-linux-x86_64/bin:$PATH"
+fi
+
 os_arch="$(uname -m)"
 if [[ ! -v VULKAN_SDK ]]; then
     echo "------------------------"

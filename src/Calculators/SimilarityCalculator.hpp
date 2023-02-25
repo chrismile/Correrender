@@ -144,7 +144,7 @@ private:
     std::shared_ptr<PccComputePass> pccComputePass;
     CorrelationMeasureType correlationMeasureType = CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV;
     bool useGpu = true;
-    bool useCuda = true; ///< Currently only for CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV.
+    bool useCuda = false; ///< Currently only for CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV.
     int numBins = 80; ///< For CorrelationMeasureType::MUTUAL_INFORMATION_BINNED.
     int k = 3; ///< For CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV.
     int kMax = 20; ///< For CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV.
@@ -152,10 +152,12 @@ private:
 };
 
 class SpearmanReferenceRankComputePass;
+struct SimilarityCalculatorKernelCache;
 
 class PccComputePass : public sgl::vk::ComputePass {
 public:
     explicit PccComputePass(sgl::vk::Renderer* renderer);
+    ~PccComputePass() override;
     void setVolumeData(VolumeData* _volumeData, bool isNewData);
     void setEnsembleImageViews(const std::vector<sgl::vk::ImageViewPtr>& _ensembleImageViews);
     void setOutputImage(const sgl::vk::ImageViewPtr& _outputImage);
@@ -164,6 +166,9 @@ public:
     void setNumBins(int _numBins);
     void setKraskovNumNeighbors(int _k);
     void setKraskovEstimatorIndex(int _kraskovEstimatorIndex);
+    void computeCuda(
+            const std::string& fieldName, int timeStepIdx, const DeviceCacheEntry& deviceCacheEntry,
+            glm::ivec3& referencePointIndex);
 
 protected:
     void loadShader() override;
@@ -196,6 +201,21 @@ private:
     // For Kraskov mutual information (MI) estimator.
     int k = 3;
     int kraskovEstimatorIndex = 1;
+
+#ifdef SUPPORT_CUDA_INTEROP
+    // For CUDA implementation of estimators.
+    size_t cachedNumSwapchainImages = 0;
+    std::vector<sgl::vk::CommandBufferPtr> postRenderCommandBuffers;
+    sgl::vk::SemaphoreVkCudaDriverApiInteropPtr vulkanFinishedSemaphore, cudaFinishedSemaphore;
+    uint64_t timelineValue = 0;
+    size_t cachedEnsembleSizeDevice = std::numeric_limits<size_t>::max();
+    size_t cachedVolumeDataSlice3dSize = 0;
+    CUdeviceptr outputImageBufferCu{};
+    CUdeviceptr ensembleTextureArrayCu{};
+    std::vector<CUtexObject> cachedEnsembleTexturesCu;
+    CUstream stream{};
+    SimilarityCalculatorKernelCache* kernelCache = nullptr;
+#endif
 };
 
 class SpearmanReferenceRankComputePass : public sgl::vk::ComputePass {

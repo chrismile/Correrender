@@ -33,6 +33,8 @@
 #include <tbb/blocked_range.h>
 #endif
 
+#include <Utils/AppSettings.hpp>
+#include <Graphics/Vulkan/Utils/Swapchain.hpp>
 #include <Graphics/Vulkan/Render/Renderer.hpp>
 #include <Graphics/Vulkan/Render/CommandBuffer.hpp>
 #include <Graphics/Vulkan/Render/ComputePipeline.hpp>
@@ -218,6 +220,8 @@ void EnsembleSimilarityCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEd
 
 
 PccCalculator::PccCalculator(sgl::vk::Renderer* renderer) : EnsembleSimilarityCalculator(renderer) {
+    useCuda = sgl::vk::getIsCudaDeviceApiFunctionTableInitialized() && sgl::vk::getIsNvrtcFunctionTableInitialized();
+
     pccComputePass = std::make_shared<PccComputePass>(renderer);
     pccComputePass->setCorrelationMeasureType(correlationMeasureType);
     pccComputePass->setNumBins(numBins);
@@ -237,7 +241,14 @@ void PccCalculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
 }
 
 FilterDevice PccCalculator::getFilterDevice() {
-    return useGpu ? FilterDevice::VULKAN : FilterDevice::CPU;
+    if (useGpu) {
+        if (useCuda) {
+            return FilterDevice::CUDA;
+        } else {
+            return FilterDevice::VULKAN;
+        }
+    }
+    return FilterDevice::CPU;
 }
 
 void PccCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
@@ -253,10 +264,28 @@ void PccCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
             useGpu = false;
         }
     }
+
+#ifdef SUPPORT_CUDA_INTEROP
+    if (sgl::vk::getIsCudaDeviceApiFunctionTableInitialized() && sgl::vk::getIsNvrtcFunctionTableInitialized()
+            && correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV) {
+        const char* const choices[] = {
+                "CPU", "Vulkan", "CUDA"
+        };
+        int choice = !useGpu ? 0 : (!useCuda ? 1 : 2);
+        if (propertyEditor.addCombo("Device", &choice, choices, 3)) {
+            bool useGpuOld = useGpu;
+            useGpu = choice != 0;
+            useCuda = choice != 1;
+            hasFilterDeviceChanged = useGpuOld != useGpu;
+            dirty = true;
+        }
+    } else
+#endif
     if (correlationMeasureType != CorrelationMeasureType::KENDALL && propertyEditor.addCheckbox("Use GPU", &useGpu)) {
         hasFilterDeviceChanged = true;
         dirty = true;
     }
+
     if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED && propertyEditor.addSliderIntEdit(
             "#Bins", &numBins, 10, 100) == ImGui::EditMode::INPUT_FINISHED) {
         pccComputePass->setNumBins(numBins);
@@ -876,33 +905,39 @@ void PccCalculator::calculateDevice(int timeStepIdx, int ensembleIdx, const Devi
     auto startInference = std::chrono::system_clock::now();
 #endif
 
-    pccComputePass->setOutputImage(deviceCacheEntry->getVulkanImageView());
-    pccComputePass->setEnsembleImageViews(ensembleImageViews);
+    if (correlationMeasureType != CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV || !useCuda) {
+        pccComputePass->setOutputImage(deviceCacheEntry->getVulkanImageView());
+        pccComputePass->setEnsembleImageViews(ensembleImageViews);
 
-    renderer->insertImageMemoryBarrier(
-            deviceCacheEntry->getVulkanImage(),
-            VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
-            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-            VK_ACCESS_NONE_KHR, VK_ACCESS_SHADER_WRITE_BIT);
+        renderer->insertImageMemoryBarrier(
+                deviceCacheEntry->getVulkanImage(),
+                VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
+                VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                VK_ACCESS_NONE_KHR, VK_ACCESS_SHADER_WRITE_BIT);
 
-    pccComputePass->buildIfNecessary();
-    pccComputePass->setReferencePoint(referencePointIndex);
-    if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
-        float minEnsembleVal = std::numeric_limits<float>::max();
-        float maxEnsembleVal = std::numeric_limits<float>::lowest();
+        pccComputePass->buildIfNecessary();
+        pccComputePass->setReferencePoint(referencePointIndex);
         if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
-            for (ensembleIdx = 0; ensembleIdx < es; ensembleIdx++) {
-                auto [minVal, maxVal] = volumeData->getMinMaxScalarFieldValue(
-                        scalarFieldNames.at(fieldIndexGui), timeStepIdx, ensembleIdx);
-                minEnsembleVal = std::min(minEnsembleVal, minVal);
-                maxEnsembleVal = std::max(maxEnsembleVal, maxVal);
+            float minEnsembleVal = std::numeric_limits<float>::max();
+            float maxEnsembleVal = std::numeric_limits<float>::lowest();
+            if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
+                for (ensembleIdx = 0; ensembleIdx < es; ensembleIdx++) {
+                    auto [minVal, maxVal] = volumeData->getMinMaxScalarFieldValue(
+                            scalarFieldNames.at(fieldIndexGui), timeStepIdx, ensembleIdx);
+                    minEnsembleVal = std::min(minEnsembleVal, minVal);
+                    maxEnsembleVal = std::max(maxEnsembleVal, maxVal);
+                }
             }
+            renderer->pushConstants(
+                    pccComputePass->getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, sizeof(glm::vec4),
+                    glm::vec2(minEnsembleVal, maxEnsembleVal));
         }
-        renderer->pushConstants(
-                pccComputePass->getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, sizeof(glm::vec4),
-                glm::vec2(minEnsembleVal, maxEnsembleVal));
+        pccComputePass->render();
+    } else {
+        pccComputePass->setEnsembleImageViews(ensembleImageViews);
+        pccComputePass->computeCuda(
+                scalarFieldNames.at(fieldIndexGui), timeStepIdx, deviceCacheEntry, referencePointIndex);
     }
-    pccComputePass->render();
 
 #ifdef TEST_INFERENCE_SPEED
     renderer->syncWithCpu();
@@ -920,6 +955,30 @@ PccComputePass::PccComputePass(sgl::vk::Renderer* renderer) : ComputePass(render
             VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
             VMA_MEMORY_USAGE_GPU_ONLY);
     spearmanReferenceRankComputePass = std::make_shared<SpearmanReferenceRankComputePass>(renderer, uniformBuffer);
+
+#ifdef SUPPORT_CUDA_INTEROP
+    if (sgl::vk::getIsCudaDeviceApiFunctionTableInitialized()) {
+        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamCreate(
+                &stream, 0), "Error in cuStreamCreate: ");
+    }
+#endif
+}
+
+PccComputePass::~PccComputePass() {
+#ifdef SUPPORT_CUDA_INTEROP
+    if (outputImageBufferCu != 0) {
+        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFree(
+                outputImageBufferCu), "Error in cuMemFree: ");
+    }
+    if (ensembleTextureArrayCu != 0) {
+        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFree(
+                ensembleTextureArrayCu), "Error in cuMemFree: ");
+    }
+    if (stream) {
+        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamDestroy(
+                stream), "Error in cuStreamDestroy: ");
+    }
+#endif
 }
 
 void PccComputePass::setVolumeData(VolumeData *_volumeData, bool isNewData) {
@@ -1103,6 +1162,342 @@ void PccComputePass::_render() {
                 sgl::iceil(volumeData->getGridSizeY(), computeBlockSizeY),
                 sgl::iceil(volumeData->getGridSizeZ(), computeBlockSizeZ));
     }
+}
+
+struct SimilarityCalculatorKernelCache {
+    ~SimilarityCalculatorKernelCache() {
+        if (cumodule) {
+            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleUnload(
+                    cumodule), "Error in cuModuleUnload: ");
+        }
+    }
+    std::string kernelString;
+    std::map<std::string, std::string> preprocessorDefines;
+    CUmodule cumodule{};
+    CUfunction kernel{};
+};
+
+struct CudaDeviceCoresInfo {
+    uint32_t numMultiprocessors;
+    uint32_t warpSize;
+    uint32_t numCoresPerMultiprocessor;
+    uint32_t numCudaCoresTotal;
+};
+
+CudaDeviceCoresInfo getNumCudaCores(CUdevice cuDevice) {
+    CudaDeviceCoresInfo info{};
+
+    /*
+     * Only use one thread block per shader multiprocessor (SM) to improve chance of fair scheduling.
+     * See, e.g.: https://stackoverflow.com/questions/33150040/doubling-buffering-in-cuda-so-the-cpu-can-operate-on-data-produced-by-a-persiste/33158954#33158954%5B/
+     */
+    CUresult cuResult;
+    int numMultiprocessors = 16;
+    cuResult = sgl::vk::g_cudaDeviceApiFunctionTable.cuDeviceGetAttribute(
+            &numMultiprocessors, CU_DEVICE_ATTRIBUTE_MULTIPROCESSOR_COUNT, cuDevice);
+    sgl::vk::checkCUresult(cuResult, "Error in cuDeviceGetAttribute: ");
+    info.numMultiprocessors = uint32_t(numMultiprocessors);
+
+    /*
+     * Use more threads than warp size. Factor 4 seems to make sense at least for RTX 3090.
+     * For more details see: https://stackoverflow.com/questions/32530604/how-can-i-get-number-of-cores-in-cuda-device
+     * Or: https://github.com/NVIDIA/cuda-samples/blob/master/Common/helper_cuda.h
+     * https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#compute-capabilities
+     * https://developer.nvidia.com/blog/inside-pascal/
+     */
+    int warpSize = 32;
+    cuResult = sgl::vk::g_cudaDeviceApiFunctionTable.cuDeviceGetAttribute(
+            &warpSize, CU_DEVICE_ATTRIBUTE_WARP_SIZE, cuDevice);
+    sgl::vk::checkCUresult(cuResult, "Error in cuDeviceGetAttribute: ");
+    info.warpSize = uint32_t(warpSize);
+
+    int major = 0;
+    cuResult = sgl::vk::g_cudaDeviceApiFunctionTable.cuDeviceGetAttribute(
+            &major, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, cuDevice);
+    sgl::vk::checkCUresult(cuResult, "Error in cuDeviceGetAttribute: ");
+    int minor = 0;
+    cuResult = sgl::vk::g_cudaDeviceApiFunctionTable.cuDeviceGetAttribute(
+            &minor, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR, cuDevice);
+    sgl::vk::checkCUresult(cuResult, "Error in cuDeviceGetAttribute: ");
+
+    // Use warp size * 4 as fallback for unknown architectures.
+    int numCoresPerMultiprocessor = warpSize * 4;
+
+    if (major == 2) {
+        if (minor == 1) {
+            numCoresPerMultiprocessor = 48;
+        } else {
+            numCoresPerMultiprocessor = 32;
+        }
+    } else if (major == 3) {
+        numCoresPerMultiprocessor = 192;
+    } else if (major == 5) {
+        numCoresPerMultiprocessor = 128;
+    } else if (major == 6) {
+        if (minor == 0) {
+            numCoresPerMultiprocessor = 64;
+        } else {
+            numCoresPerMultiprocessor = 128;
+        }
+    } else if (major == 7) {
+        numCoresPerMultiprocessor = 64;
+    } else if (major == 8) {
+        if (minor == 0) {
+            numCoresPerMultiprocessor = 64;
+        } else {
+            numCoresPerMultiprocessor = 128;
+        }
+    } else if (major == 9) {
+        numCoresPerMultiprocessor = 128;
+    }
+    info.numCoresPerMultiprocessor = uint32_t(numCoresPerMultiprocessor);
+    info.numCudaCoresTotal = info.numMultiprocessors * info.numCoresPerMultiprocessor;
+
+    return info;
+}
+
+void PccComputePass::computeCuda(
+        const std::string& fieldName, int timeStepIdx, const DeviceCacheEntry& deviceCacheEntry,
+        glm::ivec3& referencePointIndex) {
+    int xs = volumeData->getGridSizeX();
+    int ys = volumeData->getGridSizeY();
+    int zs = volumeData->getGridSizeZ();
+    int es = volumeData->getEnsembleMemberCount();
+    int N = es;
+    int M = volumeData->getGridSizeX() * volumeData->getGridSizeY() * volumeData->getGridSizeZ();
+
+    renderer->insertImageMemoryBarrier(
+            deviceCacheEntry->getVulkanImage(),
+            VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_ACCESS_NONE_KHR, VK_ACCESS_TRANSFER_WRITE_BIT);
+
+    size_t volumeDataSlice3dSize = volumeData->getSlice3dSizeInBytes(FieldType::SCALAR);
+    if (cachedVolumeDataSlice3dSize != volumeDataSlice3dSize) {
+        if (outputImageBufferCu != 0) {
+            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
+                    outputImageBufferCu, stream), "Error in cuMemFreeAsync: ");
+        }
+        cachedVolumeDataSlice3dSize = volumeDataSlice3dSize;
+        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
+                &outputImageBufferCu, volumeDataSlice3dSize, stream), "Error in cuMemAllocAsync: ");
+    }
+
+    if (cachedEnsembleSizeDevice != size_t(es)) {
+        if (ensembleTextureArrayCu != 0) {
+            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
+                    ensembleTextureArrayCu, stream), "Error in cuMemFreeAsync: ");
+        }
+        cachedEnsembleSizeDevice = size_t(es);
+        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
+                &ensembleTextureArrayCu, es * sizeof(CUtexObject), stream), "Error in cuMemAllocAsync: ");
+    }
+
+    sgl::vk::Swapchain* swapchain = sgl::AppSettings::get()->getSwapchain();
+    uint32_t frameIndex = swapchain ? swapchain->getImageIndex() : 0;
+    size_t numSwapchainImages = swapchain ? swapchain->getNumImages() : 1;
+    if (numSwapchainImages != cachedNumSwapchainImages) {
+        cachedNumSwapchainImages = numSwapchainImages;
+        sgl::vk::Device* device = renderer->getDevice();
+        timelineValue = 0;
+        postRenderCommandBuffers.clear();
+        sgl::vk::CommandPoolType commandPoolType;
+        commandPoolType.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+        for (size_t frameIdx = 0; frameIdx < numSwapchainImages; frameIdx++) {
+            postRenderCommandBuffers.push_back(std::make_shared<sgl::vk::CommandBuffer>(device, commandPoolType));
+        }
+        vulkanFinishedSemaphore = std::make_shared<sgl::vk::SemaphoreVkCudaDriverApiInterop>(
+                device, 0, VK_SEMAPHORE_TYPE_TIMELINE, timelineValue);
+        cudaFinishedSemaphore = std::make_shared<sgl::vk::SemaphoreVkCudaDriverApiInterop>(
+                device, 0, VK_SEMAPHORE_TYPE_TIMELINE, timelineValue);
+    }
+    timelineValue++;
+
+    std::vector<VolumeData::DeviceCacheEntry> ensembleEntryFields;
+    std::vector<CUtexObject> ensembleTexturesCu;
+    ensembleEntryFields.reserve(es);
+    ensembleTexturesCu.reserve(es);
+    for (int ensembleIdx = 0; ensembleIdx < es; ensembleIdx++) {
+        VolumeData::DeviceCacheEntry ensembleEntryField = volumeData->getFieldEntryDevice(
+                FieldType::SCALAR, fieldName, timeStepIdx, ensembleIdx);
+        ensembleEntryFields.push_back(ensembleEntryField);
+        ensembleTexturesCu.push_back(ensembleEntryField->getCudaTexture());
+        if (ensembleEntryField->getVulkanImage()->getVkImageLayout() != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+            deviceCacheEntry->getVulkanImage()->transitionImageLayout(
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, renderer->getVkCommandBuffer());
+        }
+    }
+
+    if (cachedEnsembleTexturesCu != ensembleTexturesCu) {
+        cachedEnsembleTexturesCu = ensembleTexturesCu;
+        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
+                stream), "Error in cuStreamSynchronize: ");
+        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyHtoD(
+                ensembleTextureArrayCu, ensembleTexturesCu.data(), sizeof(CUtexObject) * es), "Error in cuMemcpyHtoD: ");
+    }
+
+    sgl::vk::CommandBufferPtr commandBufferRender = renderer->getCommandBuffer();
+    vulkanFinishedSemaphore->setSignalSemaphoreValue(timelineValue);
+    commandBufferRender->pushSignalSemaphore(vulkanFinishedSemaphore);
+    renderer->endCommandBuffer();
+
+    renderer->submitToQueue();
+
+    vulkanFinishedSemaphore->waitSemaphoreCuda(stream, timelineValue);
+
+    std::map<std::string, std::string> preprocessorDefines;
+    preprocessorDefines.insert(std::make_pair(
+            "ENSEMBLE_MEMBER_COUNT", std::to_string(N)));
+    auto maxBinaryTreeLevels = uint32_t(std::ceil(std::log2(N + 1)));
+    preprocessorDefines.insert(std::make_pair(
+            "MAX_STACK_SIZE_BUILD", std::to_string(2 * maxBinaryTreeLevels)));
+    preprocessorDefines.insert(std::make_pair(
+            "MAX_STACK_SIZE_KN", std::to_string(maxBinaryTreeLevels)));
+    preprocessorDefines.insert(std::make_pair("k", std::to_string(k)));
+
+    if (!kernelCache || kernelCache->preprocessorDefines != preprocessorDefines) {
+        if (kernelCache) {
+            delete[] kernelCache;
+        }
+        kernelCache = new SimilarityCalculatorKernelCache;
+
+        if (kernelCache->kernelString.empty()) {
+            std::ifstream inFile(
+                    sgl::AppSettings::get()->getDataDirectory() + "Shaders/Similarity/MutualInformationKraskov.cu",
+                    std::ios::binary);
+            if (!inFile.is_open()) {
+                sgl::Logfile::get()->throwError(
+                        "Error in PccComputePass::computeCuda: Could not open MutualInformationKraskov.cu.");
+            }
+            inFile.seekg(0, std::ios::end);
+            auto fileSize = inFile.tellg();
+            inFile.seekg(0, std::ios::beg);
+            kernelCache->kernelString.resize(fileSize);
+            inFile.read(kernelCache->kernelString.data(), fileSize);
+            inFile.close();
+        }
+
+        std::string code;
+        for (const auto& entry : preprocessorDefines) {
+            code += std::string("#define ") + entry.first + " " + entry.second + "\n";
+        }
+        code += "#line 1\n";
+        code += kernelCache->kernelString;
+
+        nvrtcProgram prog;
+        sgl::vk::checkNvrtcResult(sgl::vk::g_nvrtcFunctionTable.nvrtcCreateProgram(
+                &prog, code.c_str(), "MutualInformationKraskov.cu", 0, nullptr, nullptr), "Error in nvrtcCreateProgram: ");
+        auto retVal = nvrtcCompileProgram(prog, 0, nullptr);
+        if (retVal == NVRTC_ERROR_COMPILATION) {
+            size_t logSize = 0;
+            sgl::vk::checkNvrtcResult(sgl::vk::g_nvrtcFunctionTable.nvrtcGetProgramLogSize(
+                    prog, &logSize), "Error in nvrtcGetProgramLogSize: ");
+            char* log = new char[logSize];
+            sgl::vk::checkNvrtcResult(sgl::vk::g_nvrtcFunctionTable.nvrtcGetProgramLog(
+                    prog, log), "Error in nvrtcGetProgramLog: ");
+            std::cerr << "NVRTC log:" << std::endl << log << std::endl;
+            delete[] log;
+            sgl::vk::checkNvrtcResult(sgl::vk::g_nvrtcFunctionTable.nvrtcDestroyProgram(
+                    &prog), "Error in nvrtcDestroyProgram: ");
+            exit(1);
+        }
+
+        size_t ptxSize = 0;
+        sgl::vk::checkNvrtcResult(sgl::vk::g_nvrtcFunctionTable.nvrtcGetPTXSize(
+                prog, &ptxSize), "Error in nvrtcGetPTXSize: ");
+        char* ptx = new char[ptxSize];
+        sgl::vk::checkNvrtcResult(sgl::vk::g_nvrtcFunctionTable.nvrtcGetPTX(
+                prog, ptx), "Error in nvrtcGetPTX: ");
+        sgl::vk::checkNvrtcResult(sgl::vk::g_nvrtcFunctionTable.nvrtcDestroyProgram(
+                &prog), "Error in nvrtcDestroyProgram: ");
+
+        kernelCache->preprocessorDefines = preprocessorDefines;
+
+        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleLoadDataEx(
+                &kernelCache->cumodule, ptx, 0, nullptr, nullptr), "Error in cuModuleLoadDataEx: ");
+        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
+                &kernelCache->kernel, kernelCache->cumodule, "mutualInformationKraskov"), "Error in cuModuleGetFunction: ");
+        delete[] ptx;
+    }
+
+    int minGridSize = 0;
+    int bestBlockSize = 32;
+    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuOccupancyMaxPotentialBlockSize(
+            &minGridSize, &bestBlockSize, kernelCache->kernel, nullptr, 0, 0), "Error in cuOccupancyMaxPotentialBlockSize: ");
+    //std::cout << "minGridSize: " << minGridSize << ", bestBlockSize: " << bestBlockSize << std::endl;
+
+    CUdevice cuDevice{};
+    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuDeviceGet(&cuDevice, 0), "Error in cuDeviceGet: ");
+    CudaDeviceCoresInfo deviceCoresInfo = getNumCudaCores(cuDevice);
+    //std::cout << "numMultiprocessors: " << deviceCoresInfo.numMultiprocessors << ", bestBlockSize: " << deviceCoresInfo.warpSize << std::endl;
+    int BLOCK_SIZE = sgl::lastPowerOfTwo(bestBlockSize);
+    while (BLOCK_SIZE > int(deviceCoresInfo.warpSize)
+           && sgl::iceil(int(M), BLOCK_SIZE) * 2 < int(deviceCoresInfo.numMultiprocessors)) {
+        BLOCK_SIZE /= 2;
+    }
+
+    /*
+     * Estimated time: M * N * log2(N).
+     * On a RTX 3090, M = 1.76 * 10^6 and N = 100 takes approx. 1s.
+     */
+    const uint32_t numCudaCoresRtx3090 = 10496;
+    double factorM = double(M) / (1.76 * 1e6);
+    double factorN = double(N) / 100.0 * std::log2(double(N) / 100.0 + 1.0);
+    double factorCudaCores = double(numCudaCoresRtx3090) / double(deviceCoresInfo.numCudaCoresTotal);
+    auto batchCount = uint32_t(std::ceil(factorM * factorN * factorCudaCores));
+
+    // __global__ void mutualInformationKraskov(
+    //        cudaTextureObject_t* scalarFieldEnsembles, float* __restrict__ miArray,
+    //        uint32_t xs, uint32_t ys, uint32_t zs, uint3 referencePointIdx,
+    //        const uint32_t batchOffset, const uint32_t batchSize) {
+    CUdeviceptr scalarFieldEnsembles = ensembleTextureArrayCu;
+    CUdeviceptr miArray = outputImageBufferCu;
+    auto batchSize = uint32_t(M);
+    if (batchCount == 1) {
+        auto batchOffset = uint32_t(0);
+        void* kernelParameters[] = {
+                &scalarFieldEnsembles, &miArray, &xs, &ys, &zs, &referencePointIndex.x,
+                &batchOffset, &batchSize
+        };
+        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuLaunchKernel(
+                kernelCache->kernel, sgl::iceil(int(M), BLOCK_SIZE), 1, 1, //< Grid size.
+                BLOCK_SIZE, 1, 1, //< Block size.
+                0, //< Dynamic shared memory size.
+                stream,
+                kernelParameters, //< Kernel parameters.
+                nullptr
+        ), "Error in cuLaunchKernel: "); //< Extra (empty).
+    } else {
+        auto batchSizeLocal = sgl::uiceil(uint32_t(M), batchCount);
+        for (uint32_t batchIdx = 0; batchIdx < batchCount; batchIdx++) {
+            auto batchOffset = batchSizeLocal * batchIdx;
+            if (batchOffset + batchSizeLocal > uint32_t(M)) {
+                batchSizeLocal = uint32_t(M) - batchSizeLocal;
+            }
+            void* kernelParameters[] = {
+                    &scalarFieldEnsembles, &miArray, &xs, &ys, &zs, &referencePointIndex.x,
+                    &batchOffset, &batchSize
+            };
+            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuLaunchKernel(
+                    kernelCache->kernel, sgl::iceil(int(batchSizeLocal), BLOCK_SIZE), 1, 1, //< Grid size.
+                    BLOCK_SIZE, 1, 1, //< Block size.
+                    0, //< Dynamic shared memory size.
+                    stream,
+                    kernelParameters, //< Kernel parameters.
+                    nullptr
+            ), "Error in cuLaunchKernel: "); //< Extra (empty).
+        }
+    }
+
+    deviceCacheEntry->getImageCudaExternalMemory()->memcpyCudaDtoA3DAsync(outputImageBufferCu, stream);
+
+    cudaFinishedSemaphore->signalSemaphoreCuda(stream, timelineValue);
+    cudaFinishedSemaphore->setWaitSemaphoreValue(timelineValue);
+    sgl::vk::CommandBufferPtr postRenderCommandBuffer = postRenderCommandBuffers.at(frameIndex);
+    renderer->pushCommandBuffer(postRenderCommandBuffer);
+    renderer->beginCommandBuffer();
+    postRenderCommandBuffer->pushWaitSemaphore(
+            cudaFinishedSemaphore, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
 }
 
 

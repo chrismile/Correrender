@@ -478,9 +478,6 @@ void main() {
             nanValue = value;
         }
         queryValues[e] = value;
-        //if (gl_GlobalInvocationID.x == 29 && gl_GlobalInvocationID.y == 176 && gl_GlobalInvocationID.z == 10) {
-        //    debugPrintfEXT("ref %f, query %f", texelFetch(sampler3D(scalarFieldEnsembles[nonuniformEXT(e)], scalarFieldSampler), referencePointIdx, 0).r, texelFetch(sampler3D(scalarFieldEnsembles[nonuniformEXT(e)], scalarFieldSampler), currentPointIdx, 0).r);
-        //}
     }
 #else
     float nanValue = 0.0;
