@@ -33,15 +33,6 @@ template<class Real>
 float computeMutualInformationBinned(
         const float* referenceValues, const float* queryValues, int numBins, int es,
         Real* histogram0, Real* histogram1, Real* histogram2d);
-
-template<class Real>
-float computeMutualInformationKraskov(
-        const float* referenceValues, const float* queryValues, int k, int es);
-
-template<class Real>
-float computeMutualInformationKraskov2(
-        const float* referenceValues, const float* queryValues, int k, int es);
-
 extern template
 float computeMutualInformationBinned<float>(
         const float* referenceValues, const float* queryValues, int numBins, int es,
@@ -51,13 +42,18 @@ float computeMutualInformationBinned<double>(
         const float* referenceValues, const float* queryValues, int numBins, int es,
         double* histogram0, double* histogram1, double* histogram2d);
 
+template<class Real>
+float computeMutualInformationKraskov(
+        const float* referenceValues, const float* queryValues, int k, int es);
+template<class Real>
+float computeMutualInformationKraskov2(
+        const float* referenceValues, const float* queryValues, int k, int es);
 extern template
 float computeMutualInformationKraskov<float>(
         const float* referenceValues, const float* queryValues, int k, int es);
 extern template
 float computeMutualInformationKraskov<double>(
         const float* referenceValues, const float* queryValues, int k, int es);
-
 extern template
 float computeMutualInformationKraskov2<float>(
         const float* referenceValues, const float* queryValues, int k, int es);

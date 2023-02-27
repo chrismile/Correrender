@@ -207,9 +207,21 @@ bool NetCdfLoader::setInputFiles(
             int ndims = 0;
             int natts = 0;
             nc_inq_var(ncid, varid, varname, &type, &ndims, dimids, &natts);
-            if ((type == NC_FLOAT || type == NC_DOUBLE) && (ndims == 3 || ndims == 4)) {
+            if ((type == NC_FLOAT || type == NC_DOUBLE) && ndims == 4) {
                 varIdRepresentative = varid;
                 break;
+            }
+        }
+        if (varIdRepresentative == -1) {
+            for (int varid = 0; varid < nvarsp; varid++) {
+                nc_type type = NC_FLOAT;
+                int ndims = 0;
+                int natts = 0;
+                nc_inq_var(ncid, varid, varname, &type, &ndims, dimids, &natts);
+                if ((type == NC_FLOAT || type == NC_DOUBLE) && ndims == 3) {
+                    varIdRepresentative = varid;
+                    break;
+                }
             }
         }
         if (varIdRepresentative < 0) {

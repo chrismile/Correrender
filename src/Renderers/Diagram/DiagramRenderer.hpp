@@ -31,6 +31,7 @@
 
 #include <Graphics/Vulkan/Render/Passes/Pass.hpp>
 
+#include "../../Calculators/Similarity.hpp"
 #include "../Renderer.hpp"
 
 class HEBChart;
@@ -67,11 +68,13 @@ private:
     // UI renderer settings.
     int selectedFieldIdx = 0, oldSelectedFieldIdx = 0;
     std::string selectedScalarFieldName;
+    CorrelationMeasureType correlationMeasureType = CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV;
     float beta = 0.75f;
     int downscalingFactor = 32;
     int lineCountFactor = 100;
     float curveOpacity = 0.4f;
     int cellDistanceThreshold = 0;
+    int diagramRadius = 160;
     bool use2dField = true;
 
     // Test data.

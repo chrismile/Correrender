@@ -34,26 +34,7 @@
 #include <Graphics/Vulkan/Render/Passes/Pass.hpp>
 
 #include "Calculator.hpp"
-
-enum class NetworkType {
-    /*
-     * Network based on the paper "Mutual Information Neural Estimation", Belghazi et al. 2018.
-     * For more details see: https://arxiv.org/abs/1801.04062
-     * This network takes as an input a scalar value and positions. It consists of one encoder and one decoder network.
-     */
-    MINE,
-    /*
-     * Scene representation network consisting of an encoder and decoder stage.
-     */
-    SRN_MINE,
-    /*
-     * Scene representation network. This network takes as an input positions and outputs the correlation value.
-     */
-    SRN
-};
-const char* const NETWORK_TYPE_SHORT_NAMES[] = {
-        "MINE", "SRN_MINE", "SRN"
-};
+#include "Similarity.hpp"
 
 class ReferencePointSelectionRenderer;
 
@@ -94,13 +75,6 @@ protected:
 
 
 class PccComputePass;
-
-enum class CorrelationMeasureType {
-    PEARSON, SPEARMAN, KENDALL, MUTUAL_INFORMATION_BINNED, MUTUAL_INFORMATION_KRASKOV
-};
-const char* const CORRELATION_MEASURE_TYPE_NAMES[] = {
-        "Pearson", "Spearman", "Kendall", "Mutual Information (Binned)", "Mutual Information (Kraskov)"
-};
 
 /**
  * Pearson correlation coefficient (PCC) calculator.

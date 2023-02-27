@@ -33,7 +33,9 @@
 #include <vector>
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
+
 #include "DiagramBase.hpp"
+#include "../../Calculators/Similarity.hpp"
 
 struct HEBNode {
     HEBNode() {
@@ -63,11 +65,13 @@ public:
     void update(float dt) override;
     void setVolumeData(VolumeDataPtr& _volumeData, bool isNewData);
     void setSelectedScalarField(int selectedFieldIdx, const std::string& _scalarFieldName);
+    void setCorrelationMeasureType(CorrelationMeasureType _correlationMeasureType);
     void setBeta(float _beta);
     void setDownscalingFactor(int _df);
     void setLineCountFactor(int _factor);
     void setCurveOpacity(float _alpha);
     void setCellDistanceThreshold(int _thresh);
+    void setDiagramRadius(int radius);
     void setUse2DField(bool _use2dField);
     bool getIsRegionSelected();
     sgl::AABB3 getSelectedRegion();
@@ -94,6 +98,7 @@ private:
     bool dataDirty = true;
 
     // Hierarchy data.
+    CorrelationMeasureType correlationMeasureType = CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV;
     int df = 32; ///< Downscaling factor.
     int xs = 0, ys = 0, zs = 0;
     int xsd = 0, ysd = 0, zsd = 0;

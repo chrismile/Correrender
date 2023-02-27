@@ -110,13 +110,17 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
 
     for (auto& diagram : diagrams) {
         diagram->setVolumeData(volumeData, isNewData);
-        diagram->setSelectedScalarField(selectedFieldIdx, selectedScalarFieldName);
-        diagram->setBeta(beta);
-        diagram->setDownscalingFactor(downscalingFactor);
-        diagram->setLineCountFactor(lineCountFactor);
-        diagram->setCurveOpacity(curveOpacity);
-        diagram->setCellDistanceThreshold(cellDistanceThreshold);
-        diagram->setUse2DField(use2dField);
+        if (isNewData) {
+            diagram->setSelectedScalarField(selectedFieldIdx, selectedScalarFieldName);
+            diagram->setCorrelationMeasureType(correlationMeasureType);
+            diagram->setBeta(beta);
+            diagram->setDownscalingFactor(downscalingFactor);
+            diagram->setLineCountFactor(lineCountFactor);
+            diagram->setCurveOpacity(curveOpacity);
+            diagram->setCellDistanceThreshold(cellDistanceThreshold);
+            diagram->setDiagramRadius(diagramRadius);
+            diagram->setUse2DField(use2dField);
+        }
     }
 }
 
@@ -192,11 +196,13 @@ void DiagramRenderer::addViewImpl(uint32_t viewIdx) {
     if (volumeData) {
         diagram->setVolumeData(volumeData, true);
         diagram->setSelectedScalarField(selectedFieldIdx, selectedScalarFieldName);
+        diagram->setCorrelationMeasureType(correlationMeasureType);
         diagram->setBeta(beta);
         diagram->setDownscalingFactor(downscalingFactor);
         diagram->setLineCountFactor(lineCountFactor);
         diagram->setCurveOpacity(curveOpacity);
         diagram->setCellDistanceThreshold(cellDistanceThreshold);
+        diagram->setDiagramRadius(diagramRadius);
         diagram->setUse2DField(use2dField);
     }
     diagrams.push_back(diagram);
@@ -248,6 +254,16 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         }
     }
 
+    if (propertyEditor.addCombo(
+            "Correlation Measure", (int*)&correlationMeasureType,
+            CORRELATION_MEASURE_TYPE_NAMES, IM_ARRAYSIZE(CORRELATION_MEASURE_TYPE_NAMES))) {
+        for (auto& diagram : diagrams) {
+            diagram->setCorrelationMeasureType(correlationMeasureType);
+        }
+        dirty = true;
+        reRender = true;
+    }
+
     if (propertyEditor.addSliderFloatEdit("beta", &beta, 0.0f, 1.0f) == ImGui::EditMode::INPUT_FINISHED) {
         for (auto& diagram : diagrams) {
             diagram->setBeta(beta);
@@ -281,6 +297,13 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
     if (propertyEditor.addSliderInt("Dist. Thresh.", &cellDistanceThreshold, 0, 100)) {
         for (auto& diagram : diagrams) {
             diagram->setCellDistanceThreshold(cellDistanceThreshold);
+        }
+        reRender = true;
+    }
+
+    if (propertyEditor.addSliderInt("Diagram Radius", &diagramRadius, 100, 400)) {
+        for (auto& diagram : diagrams) {
+            diagram->setDiagramRadius(diagramRadius);
         }
         reRender = true;
     }

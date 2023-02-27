@@ -135,6 +135,14 @@ float computeMutualInformationBinned(
 
     return float(mi);
 }
+template
+float computeMutualInformationBinned<float>(
+        const float* referenceValues, const float* queryValues, int numBins, int es,
+        float* histogram0, float* histogram1, float* histogram2d);
+template
+float computeMutualInformationBinned<double>(
+        const float* referenceValues, const float* queryValues, int numBins, int es,
+        double* histogram0, double* histogram1, double* histogram2d);
 
 #define KRASKOV_USE_RANDOM_NOISE
 #define USE_1D_BINARY_SEARCH
@@ -432,16 +440,6 @@ float computeMutualInformationKraskov2(
     Real mi = -a - b + c + d;
     return std::max(float(mi), 0.0f);
 }
-
-
-template
-float computeMutualInformationBinned<float>(
-        const float* referenceValues, const float* queryValues, int numBins, int es,
-        float* histogram0, float* histogram1, float* histogram2d);
-template
-float computeMutualInformationBinned<double>(
-        const float* referenceValues, const float* queryValues, int numBins, int es,
-        double* histogram0, double* histogram1, double* histogram2d);
 
 template
 float computeMutualInformationKraskov<float>(
