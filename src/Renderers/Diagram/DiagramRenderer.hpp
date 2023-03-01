@@ -83,9 +83,9 @@ private:
 
     // Selected region.
     float lineWidth = 0.001f;
-    std::vector<OutlineRenderData> outlineRenderDataList;
-    std::vector<std::shared_ptr<DomainOutlineRasterPass>> domainOutlineRasterPasses;
-    std::vector<std::shared_ptr<DomainOutlineComputePass>> domainOutlineComputePasses;
+    std::vector<OutlineRenderData> outlineRenderDataList[2];
+    std::vector<std::shared_ptr<DomainOutlineRasterPass>> domainOutlineRasterPasses[2];
+    std::vector<std::shared_ptr<DomainOutlineComputePass>> domainOutlineComputePasses[2];
 };
 
 #endif //CORRERENDER_DIAGRAMRENDERER_HPP

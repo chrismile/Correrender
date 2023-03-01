@@ -697,6 +697,7 @@ void HEBChart::updateData() {
     NUM_LINES = std::min(maxNumLines, int(miFieldEntries.size()));
     curvePoints.resize(NUM_LINES * NUM_SUBDIVISIONS);
     miValues.resize(NUM_LINES);
+    connectedPointsArray.resize(NUM_LINES);
 #ifdef USE_TBB
     tbb::parallel_for(tbb::blocked_range<int>(0, NUM_LINES), [&](auto const& r) {
         std::vector<glm::vec2> controlPoints;
@@ -714,6 +715,11 @@ void HEBChart::updateData() {
 #endif
             const auto& miEntry = miFieldEntries.at(lineIdx);
             miValues.at(lineIdx) = miEntry.miValue;
+
+            auto idx0 = int(pointToNodeIndexMap.at(miEntry.pointIndex0) - leafIdxOffset);
+            auto idx1 = int(pointToNodeIndexMap.at(miEntry.pointIndex1) - leafIdxOffset);
+            connectedPointsArray.at(lineIdx) = std::make_pair(idx0, idx1);
+
             controlPoints.clear();
             getControlPoints(nodesList, pointToNodeIndexMap, miEntry.pointIndex0, miEntry.pointIndex1, controlPoints);
             if (beta < 1.0f) {
@@ -733,6 +739,51 @@ void HEBChart::updateData() {
 #else
     }
 #endif
+}
+
+/**
+ * Computes the distance of a point to a line segment.
+ * See: http://geomalgorithms.com/a02-_lines.html
+ *
+ * @param p The position of the point.
+ * @param l0 The first line point.
+ * @param l1 The second line point.
+ * @return The distance of p to the line segment.
+ */
+inline float getDistanceToLineSegment(glm::vec2 p, glm::vec2 l0, glm::vec2 l1) {
+    glm::vec2 v = l1 - l0;
+    glm::vec2 w = p - l0;
+    float c1 = glm::dot(v, w);
+    if (c1 <= 0.0) {
+        return glm::length(p - l0);
+    }
+
+    float c2 = glm::dot(v, v);
+    if (c2 <= c1) {
+        return glm::length(p - l1);
+    }
+
+    float b = c1 / c2;
+    glm::vec2 pb = l0 + b * v;
+    return glm::length(p - pb);
+}
+
+inline int sign(float x) { return x > 0.0f ? 1 : (x < 0.0f ? -1 : 0); }
+
+bool isInsidePolygon(const std::vector<glm::vec2>& polygon, const glm::vec2& pt) {
+    int firstSide = 0;
+    auto n = int(polygon.size());
+    for (int i = 0; i < n; i++) {
+        const glm::vec2& p0 = polygon.at(i);
+        const glm::vec2& p1 = polygon.at((i + 1) % n);
+        int side = sign((p1[0] - p0[0]) * (pt[1] - p0[1]) - (p1[1] - p0[1]) * (pt[0] - p0[0]));
+        if (i == 0) {
+            firstSide = side;
+        } else if (firstSide != side) {
+            return false;
+        }
+    }
+    return true;
 }
 
 void HEBChart::update(float dt) {
@@ -755,51 +806,117 @@ void HEBChart::update(float dt) {
             glm::vec2(borderWidth, borderWidth),
             glm::vec2(windowWidth - 2.0f * borderWidth, windowHeight - 2.0f * borderWidth));
     if (!windowAabb.contains(mousePosition)) {
-        if (selectedCircleIdx != -1) {
-            selectedCircleIdx = -1;
+        if (hoveredPointIdx != -1) {
+            hoveredPointIdx = -1;
             needsReRender = true;
         }
-        return;
-    }
-
-    glm::vec2 centeredMousePos = mousePosition - glm::vec2(windowWidth / 2.0f, windowHeight / 2.0f);
-    float radiusMouse = std::sqrt(centeredMousePos.x * centeredMousePos.x + centeredMousePos.y * centeredMousePos.y);
-    float phiMouse = std::fmod(std::atan2(centeredMousePos.y, centeredMousePos.x) + sgl::TWO_PI, sgl::TWO_PI);
-
-    // Factor 4 is used so the user does not need to exactly hit the (potentially very small) points.
-    float minRadius = chartRadius - pointRadiusBase * 4.0f;
-    float maxRadius = chartRadius + pointRadiusBase * 4.0f;
-    auto numLeaves = int(pointToNodeIndexMap.size());
-    int sectorIdx = int(std::round(phiMouse / sgl::TWO_PI * float(numLeaves))) % numLeaves;
-
-    //std::cout << "sector idx: " << sectorIdx << std::endl;
-
-    if (radiusMouse >= minRadius && radiusMouse <= maxRadius) {
-        float sectorCenterAngle = float(sectorIdx) / float(numLeaves) * sgl::TWO_PI;
-        sgl::Circle circle(
-                chartRadius * glm::vec2(std::cos(sectorCenterAngle), std::sin(sectorCenterAngle)),
-                pointRadiusBase * 4.0f);
-        if (circle.contains(centeredMousePos)) {
-            selectedCircleIdx = sectorIdx;
-            needsReRender = true;
-        } else {
-            selectedCircleIdx = -1;
+        if (hoveredLineIdx != -1) {
+            hoveredLineIdx = -1;
             needsReRender = true;
         }
     } else {
-        selectedCircleIdx = -1;
+        glm::vec2 centeredMousePos = mousePosition - glm::vec2(windowWidth / 2.0f, windowHeight / 2.0f);
+        float radiusMouse = std::sqrt(centeredMousePos.x * centeredMousePos.x + centeredMousePos.y * centeredMousePos.y);
+        float phiMouse = std::fmod(std::atan2(centeredMousePos.y, centeredMousePos.x) + sgl::TWO_PI, sgl::TWO_PI);
+
+        // Factor 4 is used so the user does not need to exactly hit the (potentially very small) points.
+        float minRadius = chartRadius - pointRadiusBase * 4.0f;
+        float maxRadius = chartRadius + pointRadiusBase * 4.0f;
+        auto numLeaves = int(pointToNodeIndexMap.size());
+        int sectorIdx = int(std::round(phiMouse / sgl::TWO_PI * float(numLeaves))) % numLeaves;
+
+        //std::cout << "sector idx: " << sectorIdx << std::endl;
+
+        if (radiusMouse >= minRadius && radiusMouse <= maxRadius) {
+            float sectorCenterAngle = float(sectorIdx) / float(numLeaves) * sgl::TWO_PI;
+            sgl::Circle circle(
+                    chartRadius * glm::vec2(std::cos(sectorCenterAngle), std::sin(sectorCenterAngle)),
+                    pointRadiusBase * 4.0f);
+            if (circle.contains(centeredMousePos)) {
+                hoveredPointIdx = sectorIdx;
+            } else {
+                hoveredPointIdx = -1;
+            }
+        } else {
+            hoveredPointIdx = -1;
+        }
+
+        // Select a line.
+        const float minDist = 4.0f;
+        if (!curvePoints.empty()) {
+            // TODO: Test if point lies in convex hull of control points first (using @see isInsidePolygon).
+            int closestLineIdx = -1;
+            float closestLineDist = std::numeric_limits<float>::max();
+            for (int lineIdx = 0; lineIdx < NUM_LINES; lineIdx++) {
+                for (int ptIdx = 0; ptIdx < NUM_SUBDIVISIONS - 1; ptIdx++) {
+                    glm::vec2 pt0 = curvePoints.at(lineIdx * NUM_SUBDIVISIONS + ptIdx);
+                    pt0.x = windowWidth / 2.0f + pt0.x * chartRadius;
+                    pt0.y = windowHeight / 2.0f + pt0.y * chartRadius;
+                    glm::vec2 pt1 = curvePoints.at(lineIdx * NUM_SUBDIVISIONS + ptIdx + 1);
+                    pt1.x = windowWidth / 2.0f + pt1.x * chartRadius;
+                    pt1.y = windowHeight / 2.0f + pt1.y * chartRadius;
+                    float dist = getDistanceToLineSegment(mousePosition, pt0, pt1);
+                    if (dist < closestLineDist && dist <= minDist) {
+                        closestLineIdx = lineIdx;
+                        closestLineDist = dist;
+                    }
+                }
+            }
+            if (closestLineIdx >= 0 && closestLineDist <= minDist) {
+                hoveredLineIdx = closestLineIdx;
+            } else {
+                hoveredLineIdx = -1;
+            }
+        } else {
+            hoveredLineIdx = -1;
+        }
+    }
+
+    if (sgl::Mouse->buttonPressed(1)) {
+        clickedLineIdx = -1;
+        clickedPointIdx = -1;
+        if (hoveredLineIdx >= 0) {
+            clickedLineIdx = hoveredLineIdx;
+        } else if (hoveredPointIdx >= 0) {
+            clickedPointIdx = hoveredPointIdx;
+        }
+    }
+
+    int newSelectedLineIdx = -1;
+    int newSelectedPointIndices[2] = { -1, -1 };
+    if (hoveredLineIdx >= 0) {
+        newSelectedLineIdx = hoveredLineIdx;
+    } else if (clickedLineIdx >= 0 && hoveredPointIdx < 0) {
+        newSelectedLineIdx = clickedLineIdx;
+    }
+
+    if (newSelectedLineIdx >= 0) {
+        const auto& points = connectedPointsArray.at(newSelectedLineIdx);
+        newSelectedPointIndices[0] = points.first;
+        newSelectedPointIndices[1] = points.second;
+    } else if (hoveredPointIdx >= 0) {
+        newSelectedPointIndices[0] = hoveredPointIdx;
+    } else if (clickedPointIdx >= 0) {
+        newSelectedPointIndices[0] = clickedPointIdx;
+    }
+
+    if (selectedPointIndices[0] != newSelectedPointIndices[0] || selectedPointIndices[1] != newSelectedPointIndices[1]
+            || selectedLineIdx != newSelectedLineIdx) {
         needsReRender = true;
     }
+    selectedLineIdx = newSelectedLineIdx;
+    selectedPointIndices[0] = newSelectedPointIndices[0];
+    selectedPointIndices[1] = newSelectedPointIndices[1];
 }
 
-bool HEBChart::getIsRegionSelected() {
-    return selectedCircleIdx >= 0;
+bool HEBChart::getIsRegionSelected(int idx) {
+    return selectedPointIndices[idx] >= 0;
 }
 
-sgl::AABB3 HEBChart::getSelectedRegion() {
+sgl::AABB3 HEBChart::getSelectedRegion(int idx) {
     //const auto& leaf = nodesList.at(int(leafIdxOffset) + selectedCircleIdx);
     auto pointIdx =
-            uint32_t(std::find(pointToNodeIndexMap.begin(), pointToNodeIndexMap.end(), int(leafIdxOffset) + selectedCircleIdx)
+            uint32_t(std::find(pointToNodeIndexMap.begin(), pointToNodeIndexMap.end(), int(leafIdxOffset) + selectedPointIndices[idx])
             - pointToNodeIndexMap.begin());
     uint32_t xd = pointIdx % uint32_t(xsd);
     uint32_t yd = (pointIdx / uint32_t(xsd)) % uint32_t(ysd);
@@ -842,36 +959,6 @@ void HEBChart::renderBaseNanoVG() {
         dataDirty = false;
     }
 
-    float pointRadius = pointRadiusBase;
-    nvgBeginPath(vg);
-    /*for (int i = 0; i < int(nodesList.size()); i++) {
-        const auto& leaf = nodesList.at(i);
-        float pointX = windowWidth / 2.0f + leaf.normalizedPosition.x * chartRadius;
-        float pointY = windowHeight / 2.0f + leaf.normalizedPosition.y * chartRadius;
-        nvgCircle(vg, pointX, pointY, pointRadius);
-    }*/
-    for (int leafIdx = int(leafIdxOffset); leafIdx < int(nodesList.size()); leafIdx++) {
-        const auto& leaf = nodesList.at(leafIdx);
-        if (leafIdx - int(leafIdxOffset) == selectedCircleIdx) {
-            continue;
-        }
-        float pointX = windowWidth / 2.0f + leaf.normalizedPosition.x * chartRadius;
-        float pointY = windowHeight / 2.0f + leaf.normalizedPosition.y * chartRadius;
-        nvgCircle(vg, pointX, pointY, pointRadius);
-    }
-    nvgFillColor(vg, circleFillColorNvg);
-    nvgFill(vg);
-
-    if (selectedCircleIdx >= 0) {
-        const auto& leaf = nodesList.at(int(leafIdxOffset) + selectedCircleIdx);
-        float pointX = windowWidth / 2.0f + leaf.normalizedPosition.x * chartRadius;
-        float pointY = windowHeight / 2.0f + leaf.normalizedPosition.y * chartRadius;
-        nvgBeginPath(vg);
-        nvgCircle(vg, pointX, pointY, pointRadius);
-        nvgFillColor(vg, circleFillColorSelectedNvg);
-        nvgFill(vg);
-    }
-
     // Draw the B-spline curves. TODO: Port to Vulkan or OpenGL.
     NVGcolor curveStrokeColor = nvgRGBA(
             100, 255, 100, uint8_t(std::clamp(int(std::ceil(curveOpacity * 255.0f)), 0, 255)));
@@ -888,19 +975,55 @@ void HEBChart::renderBaseNanoVG() {
                 pt.y = windowHeight / 2.0f + pt.y * chartRadius;
                 nvgLineTo(vg, pt.x, pt.y);
             }
-            nvgStrokeWidth(vg, 1.0f);
 
-            bool colorByValue = true;
-            if (colorByValue) {
+            float strokeWidth = lineIdx == hoveredLineIdx ? 1.5f : 1.0f;
+            nvgStrokeWidth(vg, strokeWidth);
+
+            bool opacityByValue = true;
+            if (opacityByValue) {
                 float maxMi = miValues.front();
                 float minMi = miValues.back();
                 float factor = (miValues.at(lineIdx) - minMi) / (maxMi - minMi) * 0.75f + 0.25f;
                 curveStrokeColor.a = curveOpacity * factor;
             }
+            curveStrokeColor.a = lineIdx == selectedLineIdx ? 1.0f : curveStrokeColor.a;
             nvgStrokeColor(vg, curveStrokeColor);
 
             nvgStroke(vg);
         }
+    }
+
+    // Draw the point circles.
+    float pointRadius = pointRadiusBase;
+    nvgBeginPath(vg);
+    /*for (int i = 0; i < int(nodesList.size()); i++) {
+        const auto& leaf = nodesList.at(i);
+        float pointX = windowWidth / 2.0f + leaf.normalizedPosition.x * chartRadius;
+        float pointY = windowHeight / 2.0f + leaf.normalizedPosition.y * chartRadius;
+        nvgCircle(vg, pointX, pointY, pointRadius);
+    }*/
+    for (int leafIdx = int(leafIdxOffset); leafIdx < int(nodesList.size()); leafIdx++) {
+        const auto& leaf = nodesList.at(leafIdx);
+        int pointIdx = leafIdx - int(leafIdxOffset);
+        if (pointIdx == selectedPointIndices[0] || pointIdx == selectedPointIndices[1]) {
+            continue;
+        }
+        float pointX = windowWidth / 2.0f + leaf.normalizedPosition.x * chartRadius;
+        float pointY = windowHeight / 2.0f + leaf.normalizedPosition.y * chartRadius;
+        nvgCircle(vg, pointX, pointY, pointRadius);
+    }
+    nvgFillColor(vg, circleFillColorNvg);
+    nvgFill(vg);
+
+    int numPointsSelected = selectedPointIndices[0] < 0 ? 0 : (selectedPointIndices[1] < 0 ? 1 : 2);
+    for (int idx = 0; idx < numPointsSelected; idx++) {
+        const auto& leaf = nodesList.at(int(leafIdxOffset) + selectedPointIndices[idx]);
+        float pointX = windowWidth / 2.0f + leaf.normalizedPosition.x * chartRadius;
+        float pointY = windowHeight / 2.0f + leaf.normalizedPosition.y * chartRadius;
+        nvgBeginPath(vg);
+        nvgCircle(vg, pointX, pointY, pointRadius * 1.5f);
+        nvgFillColor(vg, circleFillColorSelectedNvg);
+        nvgFill(vg);
     }
 }
 
@@ -915,33 +1038,6 @@ void HEBChart::renderBaseSkia() {
 
     SkPaint paint;
     static_cast<VectorBackendSkia*>(vectorBackend)->initializePaint(&paint);
-
-    float pointRadius = pointRadiusBase * s;
-    paint.setColor(toSkColor(circleFillColor));
-    paint.setStroke(false);
-    /*for (int i = 0; i < int(nodesList.size()); i++) {
-        const auto& leaf = nodesList.at(i);
-        float pointX = windowWidth / 2.0f + leaf.normalizedPosition.x * chartRadius;
-        float pointY = windowHeight / 2.0f + leaf.normalizedPosition.y * chartRadius;
-        canvas->drawCircle(pointX * s, pointY * s, pointRadius, paint);
-    }*/
-    for (int leafIdx = int(leafIdxOffset); leafIdx < int(nodesList.size()); leafIdx++) {
-        const auto& leaf = nodesList.at(leafIdx);
-        if (leafIdx - int(leafIdxOffset) == selectedCircleIdx) {
-            continue;
-        }
-        float pointX = windowWidth / 2.0f + leaf.normalizedPosition.x * chartRadius;
-        float pointY = windowHeight / 2.0f + leaf.normalizedPosition.y * chartRadius;
-        canvas->drawCircle(pointX * s, pointY * s, pointRadius, paint);
-    }
-
-    if (selectedCircleIdx >= 0) {
-        const auto& leaf = nodesList.at(int(leafIdxOffset) + selectedCircleIdx);
-        float pointX = windowWidth / 2.0f + leaf.normalizedPosition.x * chartRadius;
-        float pointY = windowHeight / 2.0f + leaf.normalizedPosition.y * chartRadius;
-        paint.setColor(toSkColor(circleFillColorSelected));
-        canvas->drawCircle(pointX * s, pointY * s, pointRadius, paint);
-    }
 
     // Draw the B-spline curves.
     sgl::Color curveStrokeColor = sgl::Color(
@@ -962,8 +1058,60 @@ void HEBChart::renderBaseSkia() {
                 pt.y = windowHeight / 2.0f + pt.y * chartRadius;
                 path.lineTo(pt.x * s, pt.y * s);
             }
+
+            bool opacityByValue = true;
+            if (opacityByValue) {
+                float maxMi = miValues.front();
+                float minMi = miValues.back();
+                float factor = (miValues.at(lineIdx) - minMi) / (maxMi - minMi) * 0.75f + 0.25f;
+                curveStrokeColor.setFloatA(curveOpacity * factor);
+                paint.setColor(toSkColor(curveStrokeColor));
+            }
+
+            if (selectedLineIdx == lineIdx) {
+                sgl::Color curveStrokeColorSelected = curveStrokeColor;
+                curveStrokeColorSelected.setA(255);
+                paint.setColor(toSkColor(curveStrokeColorSelected));
+                paint.setStrokeWidth(1.5f * s);
+            } else {
+                if (!opacityByValue) {
+                    paint.setColor(toSkColor(curveStrokeColor));
+                }
+                paint.setStrokeWidth(1.0f * s);
+            }
+
             canvas->drawPath(path, paint);
         }
+    }
+
+    // Draw the point circles.
+    float pointRadius = pointRadiusBase * s;
+    paint.setColor(toSkColor(circleFillColor));
+    paint.setStroke(false);
+    /*for (int i = 0; i < int(nodesList.size()); i++) {
+        const auto& leaf = nodesList.at(i);
+        float pointX = windowWidth / 2.0f + leaf.normalizedPosition.x * chartRadius;
+        float pointY = windowHeight / 2.0f + leaf.normalizedPosition.y * chartRadius;
+        canvas->drawCircle(pointX * s, pointY * s, pointRadius, paint);
+    }*/
+    for (int leafIdx = int(leafIdxOffset); leafIdx < int(nodesList.size()); leafIdx++) {
+        const auto& leaf = nodesList.at(leafIdx);
+        int pointIdx = leafIdx - int(leafIdxOffset);
+        if (pointIdx == selectedPointIndices[0] || pointIdx == selectedPointIndices[1]) {
+            continue;
+        }
+        float pointX = windowWidth / 2.0f + leaf.normalizedPosition.x * chartRadius;
+        float pointY = windowHeight / 2.0f + leaf.normalizedPosition.y * chartRadius;
+        canvas->drawCircle(pointX * s, pointY * s, pointRadius, paint);
+    }
+
+    int numPointsSelected = selectedPointIndices[0] < 0 ? 0 : (selectedPointIndices[1] < 0 ? 1 : 2);
+    for (int idx = 0; idx < numPointsSelected; idx++) {
+        const auto& leaf = nodesList.at(int(leafIdxOffset) + selectedPointIndices[idx]);
+        float pointX = windowWidth / 2.0f + leaf.normalizedPosition.x * chartRadius;
+        float pointY = windowHeight / 2.0f + leaf.normalizedPosition.y * chartRadius;
+        paint.setColor(toSkColor(circleFillColorSelected));
+        canvas->drawCircle(pointX * s, pointY * s, pointRadius * 1.5f, paint);
     }
 }
 #endif
@@ -977,6 +1125,77 @@ void HEBChart::renderBaseVkvg() {
         dataDirty = false;
     }
 
+    // Draw the B-spline curves.
+    sgl::Color curveStrokeColor = sgl::Color(100, 255, 100, 255);
+    if (!curvePoints.empty()) {
+        vkvg_set_line_width(context, 1.0f * s);
+        vkvg_set_source_color(context, curveStrokeColor.getColorRGBA());
+
+        bool opacityByValue = true;
+        if (opacityByValue) {
+            float maxMi = miValues.front();
+            float minMi = miValues.back();
+            for (int lineIdx = 0; lineIdx < NUM_LINES; lineIdx++) {
+                if (lineIdx == selectedLineIdx) {
+                    continue;
+                }
+                float factor = (miValues.at(lineIdx) - minMi) / (maxMi - minMi) * 0.75f + 0.25f;
+                vkvg_set_opacity(context, curveOpacity * factor);
+
+                glm::vec2 pt0 = curvePoints.at(lineIdx * NUM_SUBDIVISIONS + 0);
+                pt0.x = windowWidth / 2.0f + pt0.x * chartRadius;
+                pt0.y = windowHeight / 2.0f + pt0.y * chartRadius;
+                vkvg_move_to(context, pt0.x * s, pt0.y * s);
+                for (int ptIdx = 1; ptIdx < NUM_SUBDIVISIONS; ptIdx++) {
+                    glm::vec2 pt = curvePoints.at(lineIdx * NUM_SUBDIVISIONS + ptIdx);
+                    pt.x = windowWidth / 2.0f + pt.x * chartRadius;
+                    pt.y = windowHeight / 2.0f + pt.y * chartRadius;
+                    vkvg_line_to(context, pt.x * s, pt.y * s);
+                }
+
+                vkvg_stroke(context);
+            }
+        } else {
+            vkvg_set_opacity(context, curveOpacity);
+            for (int lineIdx = 0; lineIdx < NUM_LINES; lineIdx++) {
+                if (lineIdx == selectedLineIdx) {
+                    continue;
+                }
+                glm::vec2 pt0 = curvePoints.at(lineIdx * NUM_SUBDIVISIONS + 0);
+                pt0.x = windowWidth / 2.0f + pt0.x * chartRadius;
+                pt0.y = windowHeight / 2.0f + pt0.y * chartRadius;
+                vkvg_move_to(context, pt0.x * s, pt0.y * s);
+                for (int ptIdx = 1; ptIdx < NUM_SUBDIVISIONS; ptIdx++) {
+                    glm::vec2 pt = curvePoints.at(lineIdx * NUM_SUBDIVISIONS + ptIdx);
+                    pt.x = windowWidth / 2.0f + pt.x * chartRadius;
+                    pt.y = windowHeight / 2.0f + pt.y * chartRadius;
+                    vkvg_line_to(context, pt.x * s, pt.y * s);
+                }
+            }
+            vkvg_stroke(context);
+        }
+
+        if (hoveredLineIdx >= 0) {
+            vkvg_set_line_width(context, 1.5f * s);
+            vkvg_set_opacity(context, 1.0f);
+
+            glm::vec2 pt0 = curvePoints.at(hoveredLineIdx * NUM_SUBDIVISIONS + 0);
+            pt0.x = windowWidth / 2.0f + pt0.x * chartRadius;
+            pt0.y = windowHeight / 2.0f + pt0.y * chartRadius;
+            vkvg_move_to(context, pt0.x * s, pt0.y * s);
+            for (int ptIdx = 1; ptIdx < NUM_SUBDIVISIONS; ptIdx++) {
+                glm::vec2 pt = curvePoints.at(hoveredLineIdx * NUM_SUBDIVISIONS + ptIdx);
+                pt.x = windowWidth / 2.0f + pt.x * chartRadius;
+                pt.y = windowHeight / 2.0f + pt.y * chartRadius;
+                vkvg_line_to(context, pt.x * s, pt.y * s);
+            }
+
+            vkvg_stroke(context);
+        }
+    }
+    vkvg_set_opacity(context, 1.0f);
+
+    // Draw the point circles.
     float pointRadius = pointRadiusBase * s;
     /*for (int i = 0; i < int(nodesList.size()); i++) {
         const auto& leaf = nodesList.at(i);
@@ -986,7 +1205,8 @@ void HEBChart::renderBaseVkvg() {
     }*/
     for (int leafIdx = int(leafIdxOffset); leafIdx < int(nodesList.size()); leafIdx++) {
         const auto& leaf = nodesList.at(leafIdx);
-        if (leafIdx - int(leafIdxOffset) == selectedCircleIdx) {
+        int pointIdx = leafIdx - int(leafIdxOffset);
+        if (pointIdx == selectedPointIndices[0] || pointIdx == selectedPointIndices[1]) {
             continue;
         }
         float pointX = windowWidth / 2.0f + leaf.normalizedPosition.x * chartRadius;
@@ -996,34 +1216,14 @@ void HEBChart::renderBaseVkvg() {
     vkvg_set_source_color(context, circleFillColor.getColorRGBA());
     vkvg_fill(context);
 
-    if (selectedCircleIdx >= 0) {
-        const auto& leaf = nodesList.at(int(leafIdxOffset) + selectedCircleIdx);
+    int numPointsSelected = selectedPointIndices[0] < 0 ? 0 : (selectedPointIndices[1] < 0 ? 1 : 2);
+    for (int idx = 0; idx < numPointsSelected; idx++) {
+        const auto& leaf = nodesList.at(int(leafIdxOffset) + selectedPointIndices[idx]);
         float pointX = windowWidth / 2.0f + leaf.normalizedPosition.x * chartRadius;
         float pointY = windowHeight / 2.0f + leaf.normalizedPosition.y * chartRadius;
-        vkvg_ellipse(context, pointRadius, pointRadius, pointX * s, pointY * s, 0.0f);
-        vkvg_set_source_color(context, circleFillColor.getColorRGBA());
+        vkvg_ellipse(context, pointRadius * 1.5f, pointRadius * 1.5f, pointX * s, pointY * s, 0.0f);
+        vkvg_set_source_color(context, circleFillColorSelected.getColorRGBA());
         vkvg_fill(context);
-    }
-
-    // Draw the B-spline curves.
-    sgl::Color curveStrokeColor = sgl::Color(100, 255, 100, 255);
-    if (!curvePoints.empty()) {
-        vkvg_set_line_width(context, 1.0f * s);
-        vkvg_set_source_color(context, curveStrokeColor.getColorRGBA());
-        vkvg_set_opacity(context, curveOpacity);
-        for (int lineIdx = 0; lineIdx < NUM_LINES; lineIdx++) {
-            glm::vec2 pt0 = curvePoints.at(lineIdx * NUM_SUBDIVISIONS + 0);
-            pt0.x = windowWidth / 2.0f + pt0.x * chartRadius;
-            pt0.y = windowHeight / 2.0f + pt0.y * chartRadius;
-            vkvg_move_to(context, pt0.x * s, pt0.y * s);
-            for (int ptIdx = 1; ptIdx < NUM_SUBDIVISIONS; ptIdx++) {
-                glm::vec2 pt = curvePoints.at(lineIdx * NUM_SUBDIVISIONS + ptIdx);
-                pt.x = windowWidth / 2.0f + pt.x * chartRadius;
-                pt.y = windowHeight / 2.0f + pt.y * chartRadius;
-                vkvg_line_to(context, pt.x * s, pt.y * s);
-            }
-        }
-        vkvg_stroke(context);
     }
 }
 #endif

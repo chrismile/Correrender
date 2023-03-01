@@ -141,14 +141,15 @@ void DiagramRenderer::onFieldRemoved(FieldType fieldType, int fieldIdx) {
 }
 
 void DiagramRenderer::recreateSwapchainView(uint32_t viewIdx, uint32_t width, uint32_t height) {
-    //dvrPasses.at(viewIdx)->recreateSwapchain(width, height);
     SceneData* sceneData = viewManager->getViewSceneData(viewIdx);
     diagrams.at(viewIdx)->setBlitTargetVk(
             (*sceneData->sceneTexture)->getImageView(),
             VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
             VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-    domainOutlineRasterPasses.at(viewIdx)->recreateSwapchain(width, height);
-    domainOutlineComputePasses.at(viewIdx)->recreateSwapchain(width, height);
+    for (int idx = 0; idx < 2; idx++) {
+        domainOutlineRasterPasses[idx].at(viewIdx)->recreateSwapchain(width, height);
+        domainOutlineComputePasses[idx].at(viewIdx)->recreateSwapchain(width, height);
+    }
 }
 
 void DiagramRenderer::update(float dt) {
@@ -179,10 +180,12 @@ void DiagramRenderer::renderViewImpl(uint32_t viewIdx) {
 
 void DiagramRenderer::renderViewPreImpl(uint32_t viewIdx) {
     auto& diagram = diagrams.at(viewIdx);
-    if (diagram->getIsRegionSelected()) {
-        domainOutlineComputePasses.at(viewIdx)->setOutlineSettings(diagram->getSelectedRegion(), lineWidth);
-        domainOutlineComputePasses.at(viewIdx)->render();
-        domainOutlineRasterPasses.at(viewIdx)->render();
+    for (int idx = 0; idx < 2; idx++) {
+        if (diagram->getIsRegionSelected(idx)) {
+            domainOutlineComputePasses[idx].at(viewIdx)->setOutlineSettings(diagram->getSelectedRegion(idx), lineWidth);
+            domainOutlineComputePasses[idx].at(viewIdx)->render();
+            domainOutlineRasterPasses[idx].at(viewIdx)->render();
+        }
     }
 }
 
@@ -208,35 +211,38 @@ void DiagramRenderer::addViewImpl(uint32_t viewIdx) {
     diagrams.push_back(diagram);
 
     const size_t numEdges = 12;
-    OutlineRenderData outlineRenderData{};
-    sgl::vk::Device* device = renderer->getDevice();
-    outlineRenderData.vertexPositionBuffer = std::make_shared<sgl::vk::Buffer>(
-            device, sizeof(glm::vec3) * numEdges * 8,
-            VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-            VMA_MEMORY_USAGE_GPU_ONLY);
-    outlineRenderData.indexBuffer = std::make_shared<sgl::vk::Buffer>(
-            device, sizeof(uint32_t) * numEdges * 6 * 6,
-            VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-            VMA_MEMORY_USAGE_GPU_ONLY);
+    for (int idx = 0; idx < 2; idx++) {
+        OutlineRenderData outlineRenderData{};
+        sgl::vk::Device* device = renderer->getDevice();
+        outlineRenderData.vertexPositionBuffer = std::make_shared<sgl::vk::Buffer>(
+                device, sizeof(glm::vec3) * numEdges * 8,
+                VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                VMA_MEMORY_USAGE_GPU_ONLY);
+        outlineRenderData.indexBuffer = std::make_shared<sgl::vk::Buffer>(
+                device, sizeof(uint32_t) * numEdges * 6 * 6,
+                VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+                VMA_MEMORY_USAGE_GPU_ONLY);
+        outlineRenderDataList[idx].push_back(outlineRenderData);
 
-    outlineRenderDataList.push_back(outlineRenderData);
+        auto domainOutlineRasterPass = std::make_shared<DomainOutlineRasterPass>(
+                renderer, viewManager->getViewSceneData(viewIdx));
+        domainOutlineRasterPass->setRenderData(outlineRenderData.indexBuffer, outlineRenderData.vertexPositionBuffer);
+        domainOutlineRasterPasses[idx].push_back(domainOutlineRasterPass);
 
-    auto domainOutlineRasterPass = std::make_shared<DomainOutlineRasterPass>(
-            renderer, viewManager->getViewSceneData(viewIdx));
-    domainOutlineRasterPass->setRenderData(outlineRenderData.indexBuffer, outlineRenderData.vertexPositionBuffer);
-    domainOutlineRasterPasses.push_back(domainOutlineRasterPass);
-
-    auto domainOutlineComputePass = std::make_shared<DomainOutlineComputePass>(renderer);
-    domainOutlineComputePass->setRenderData(outlineRenderData.indexBuffer, outlineRenderData.vertexPositionBuffer);
-    domainOutlineComputePasses.push_back(domainOutlineComputePass);
+        auto domainOutlineComputePass = std::make_shared<DomainOutlineComputePass>(renderer);
+        domainOutlineComputePass->setRenderData(outlineRenderData.indexBuffer, outlineRenderData.vertexPositionBuffer);
+        domainOutlineComputePasses[idx].push_back(domainOutlineComputePass);
+    }
 }
 
 void DiagramRenderer::removeViewImpl(uint32_t viewIdx) {
     diagrams.erase(diagrams.begin() + viewIdx);
 
-    outlineRenderDataList.erase(outlineRenderDataList.begin() + viewIdx);
-    domainOutlineRasterPasses.erase(domainOutlineRasterPasses.begin() + viewIdx);
-    domainOutlineComputePasses.erase(domainOutlineComputePasses.begin() + viewIdx);
+    for (int idx = 0; idx < 2; idx++) {
+        outlineRenderDataList[idx].erase(outlineRenderDataList[idx].begin() + viewIdx);
+        domainOutlineRasterPasses[idx].erase(domainOutlineRasterPasses[idx].begin() + viewIdx);
+        domainOutlineComputePasses[idx].erase(domainOutlineComputePasses[idx].begin() + viewIdx);
+    }
 }
 
 void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {

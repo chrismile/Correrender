@@ -73,8 +73,8 @@ public:
     void setCellDistanceThreshold(int _thresh);
     void setDiagramRadius(int radius);
     void setUse2DField(bool _use2dField);
-    bool getIsRegionSelected();
-    sgl::AABB3 getSelectedRegion();
+    bool getIsRegionSelected(int idx);
+    sgl::AABB3 getSelectedRegion(int idx);
 
 protected:
     bool hasData() override {
@@ -117,10 +117,16 @@ private:
     int cellDistanceThreshold = 0;
     std::vector<glm::vec2> curvePoints;
     std::vector<float> miValues; ///< per-line values.
+    std::vector<std::pair<int, int>> connectedPointsArray; ///< points connected by lines.
 
     // GUI data.
     float pointRadiusBase = 1.5f;
-    int selectedCircleIdx = -1;
+    int hoveredPointIdx = -1;
+    int hoveredLineIdx = -1;
+    int clickedPointIdx = -1;
+    int clickedLineIdx = -1;
+    int selectedPointIndices[2] = { -1, -1 };
+    int selectedLineIdx = -1;
     sgl::Color circleFillColor = sgl::Color(180, 180, 180, 255);
     sgl::Color circleFillColorSelected = sgl::Color(180, 80, 80, 255);
 };
