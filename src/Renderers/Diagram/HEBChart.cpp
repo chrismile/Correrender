@@ -322,6 +322,8 @@ HEBChart::HEBChart() {
     }
 #endif
     setDefaultBackendId(defaultBackendId);
+
+    initializeColorPoints();
 }
 
 void HEBChart::initialize() {
@@ -346,14 +348,18 @@ void HEBChart::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) {
         dataDirty = true;
     }
     if (isNewData) {
-        hoveredPointIdx = -1;
-        clickedPointIdx = -1;
-        selectedPointIndices[0] = -1;
-        selectedPointIndices[1] = -1;
-        hoveredLineIdx = -1;
-        clickedLineIdx = -1;
-        selectedLineIdx = -1;
+        resetSelectedPrimitives();
     }
+}
+
+void HEBChart::resetSelectedPrimitives() {
+    hoveredPointIdx = -1;
+    clickedPointIdx = -1;
+    selectedPointIndices[0] = -1;
+    selectedPointIndices[1] = -1;
+    hoveredLineIdx = -1;
+    clickedLineIdx = -1;
+    selectedLineIdx = -1;
 }
 
 void HEBChart::setSelectedScalarField(int _selectedFieldIdx, const std::string& _scalarFieldName) {
@@ -408,6 +414,12 @@ void HEBChart::setColorByValue(bool _colorByValue) {
     needsReRender = true;
 }
 
+void HEBChart::setColorMap(DiagramColorMap _colorMap) {
+    colorMap = _colorMap;
+    initializeColorPoints();
+    needsReRender = true;
+}
+
 void HEBChart::setUse2DField(bool _use2dField) {
     use2dField = _use2dField;
     dataDirty = true;
@@ -423,6 +435,11 @@ void HEBChart::updateData() {
     ysd = sgl::iceil(ys, df);
     zsd = sgl::iceil(zs, df);
     int numPoints = xsd * ysd * zsd;
+
+    if (selectedLineIdx >= 0 || selectedPointIndices[0] >= 0 || selectedPointIndices[1] >= 0) {
+        needsReRender = true;
+    }
+    resetSelectedPrimitives();
 
     if (use2dField) {
         numPoints = xsd * ysd;
@@ -998,15 +1015,27 @@ std::pair<glm::vec3, glm::vec3> HEBChart::getLinePositions() {
     return std::make_pair(p0, p1);
 }
 
+void HEBChart::initializeColorPoints() {
+    colorPoints = getColorPoints(colorMap);
+}
+
 glm::vec4 HEBChart::evalColorMapVec4(float t) {
     t = glm::clamp(t, 0.0f, 1.0f);
-    glm::vec3 c0(208.0f/255.0f, 231.0f/255.0f, 208.0f/255.0f);
-    glm::vec3 c1(100.0f/255.0f, 1.0f, 100.0f/255.0f);
+    //glm::vec3 c0(208.0f/255.0f, 231.0f/255.0f, 208.0f/255.0f);
+    //glm::vec3 c1(100.0f/255.0f, 1.0f, 100.0f/255.0f);
     float opacity = curveOpacity;
     if (opacityByValue) {
         opacity *= t * 0.75f + 0.25f;
     }
-    return glm::vec4(glm::mix(c0, c1, t), opacity);
+    //return glm::vec4(glm::mix(c0, c1, t), opacity);
+    auto N = int(colorPoints.size());
+    float arrayPosFlt = t * float(N - 1);
+    int lastIdx = std::min(int(arrayPosFlt), N - 1);
+    int nextIdx = std::min(lastIdx + 1, N - 1);
+    float f1 = arrayPosFlt - float(lastIdx);
+    const glm::vec3& c0 = colorPoints.at(lastIdx);
+    const glm::vec3& c1 = colorPoints.at(nextIdx);
+    return glm::vec4(glm::mix(c0, c1, f1), opacity);
 }
 
 sgl::Color HEBChart::evalColorMap(float t) {
@@ -1059,6 +1088,8 @@ void HEBChart::renderBaseNanoVG() {
                 float minMi = miValues.back();
                 float factor = (miValues.at(lineIdx) - minMi) / (maxMi - minMi) * 0.75f + 0.25f;
                 curveStrokeColor.a = curveOpacity * factor;
+            } else {
+                curveStrokeColor.a = curveOpacity;
             }
 
             curveStrokeColor.a = lineIdx == selectedLineIdx ? 1.0f : curveStrokeColor.a;

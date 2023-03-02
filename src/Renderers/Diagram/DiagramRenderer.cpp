@@ -122,6 +122,7 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
             diagram->setDiagramRadius(diagramRadius);
             diagram->setOpacityByValue(opacityByValue);
             diagram->setColorByValue(colorByValue);
+            diagram->setColorMap(colorMap);
             diagram->setUse2DField(use2dField);
         }
     }
@@ -225,6 +226,7 @@ void DiagramRenderer::addViewImpl(uint32_t viewIdx) {
         diagram->setDiagramRadius(diagramRadius);
         diagram->setOpacityByValue(opacityByValue);
         diagram->setColorByValue(colorByValue);
+        diagram->setColorMap(colorMap);
         diagram->setUse2DField(use2dField);
     }
     diagrams.push_back(diagram);
@@ -347,6 +349,15 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
     if (propertyEditor.addCheckbox("Value -> Color", &colorByValue)) {
         for (auto& diagram : diagrams) {
             diagram->setColorByValue(colorByValue);
+        }
+        reRender = true;
+    }
+
+    if (colorByValue && propertyEditor.addCombo(
+            "Color Map", (int*)&colorMap, DIAGRAM_COLOR_MAP_NAMES,
+            IM_ARRAYSIZE(DIAGRAM_COLOR_MAP_NAMES))) {
+        for (auto& diagram : diagrams) {
+            diagram->setColorMap(colorMap);
         }
         reRender = true;
     }

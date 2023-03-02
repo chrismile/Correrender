@@ -34,6 +34,7 @@
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 
+#include "DiagramColorMap.hpp"
 #include "DiagramBase.hpp"
 #include "../../Calculators/Similarity.hpp"
 
@@ -74,6 +75,7 @@ public:
     void setDiagramRadius(int radius);
     void setOpacityByValue(bool _opacityByValue);
     void setColorByValue(bool _colorByValue);
+    void setColorMap(DiagramColorMap _colorMap);
     void setUse2DField(bool _use2dField);
 
     bool getIsRegionSelected(int idx);
@@ -127,17 +129,21 @@ private:
     std::vector<std::pair<int, int>> connectedPointsArray; ///< points connected by lines.
 
     // GUI data.
-    float pointRadiusBase = 1.5f;
+    void resetSelectedPrimitives();
     int hoveredPointIdx = -1;
     int hoveredLineIdx = -1;
     int clickedPointIdx = -1;
     int clickedLineIdx = -1;
     int selectedPointIndices[2] = { -1, -1 };
     int selectedLineIdx = -1;
+    float pointRadiusBase = 1.5f;
     sgl::Color circleFillColor = sgl::Color(180, 180, 180, 255);
     sgl::Color circleFillColorSelected = sgl::Color(180, 80, 80, 255);
     bool opacityByValue = false;
     bool colorByValue = true;
+    DiagramColorMap colorMap = DiagramColorMap::CIVIDIS;
+    std::vector<glm::vec3> colorPoints;
+    void initializeColorPoints();
     glm::vec4 evalColorMapVec4(float t);
     sgl::Color evalColorMap(float t);
 };

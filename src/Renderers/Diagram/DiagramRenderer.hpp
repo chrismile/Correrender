@@ -33,6 +33,7 @@
 
 #include "../../Calculators/Similarity.hpp"
 #include "../Renderer.hpp"
+#include "DiagramColorMap.hpp"
 
 class HEBChart;
 class DomainOutlineRasterPass;
@@ -80,6 +81,7 @@ private:
     int diagramRadius = 160;
     bool opacityByValue = false;
     bool colorByValue = true;
+    DiagramColorMap colorMap = DiagramColorMap::CIVIDIS;
     bool use2dField = false;
 
     // Test data.
