@@ -64,7 +64,7 @@ private:
 
 class DomainOutlineRasterPass : public sgl::vk::RasterPass {
 public:
-    explicit DomainOutlineRasterPass(sgl::vk::Renderer* renderer, SceneData* camera);
+    explicit DomainOutlineRasterPass(sgl::vk::Renderer* renderer, SceneData* sceneData);
 
     // Public interface.
     void setRenderData(

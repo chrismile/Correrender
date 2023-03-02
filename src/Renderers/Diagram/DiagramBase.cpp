@@ -36,6 +36,7 @@
 #include <vkvg.h>
 #endif
 
+#include <Math/Geometry/AABB2.hpp>
 #include <Utils/AppSettings.hpp>
 #include <Input/Mouse.hpp>
 #include <Math/Math.hpp>
@@ -69,6 +70,237 @@ void DiagramBase::initialize() {
 void DiagramBase::setImGuiWindowOffset(int offsetX, int offsetY) {
     imGuiWindowOffsetX = offsetX;
     imGuiWindowOffsetY = offsetY;
+}
+
+void DiagramBase::update(float dt) {
+    glm::ivec2 mousePositionPx(sgl::Mouse->getX(), sgl::Mouse->getY());
+    glm::vec2 mousePosition(sgl::Mouse->getX(), sgl::Mouse->getY());
+    if (sgl::ImGuiWrapper::get()->getUseDockSpaceMode()) {
+        mousePosition -= glm::vec2(imGuiWindowOffsetX, imGuiWindowOffsetY);
+        mousePositionPx -= glm::ivec2(imGuiWindowOffsetX, imGuiWindowOffsetY);
+    }
+    mousePosition -= glm::vec2(getWindowOffsetX(), getWindowOffsetY());
+    mousePosition /= getScaleFactor();
+
+    bool isMouseOverDiagram = getIsMouseOverDiagram(mousePositionPx);
+
+    // Mouse press event.
+    if (isMouseOverDiagram) {
+        if (sgl::Mouse->buttonPressed(1)) {
+            isMouseGrabbed = true;
+        }
+        mousePressEventResizeWindow(mousePositionPx, mousePosition);
+        mousePressEventMoveWindow(mousePositionPx, mousePosition);
+    }
+
+    // Mouse move event.
+    if (sgl::Mouse->mouseMoved()) {
+        if (isMouseOverDiagram || isMouseGrabbed) {
+            mouseMoveEvent(mousePositionPx, mousePosition);
+        } else {
+            mouseMoveEventParent(mousePositionPx, mousePosition);
+        }
+    }
+
+    // Mouse release event.
+    if (sgl::Mouse->buttonReleased(1)) {
+        resizeDirection = ResizeDirection::NONE;
+        isDraggingWindow = false;
+        isMouseGrabbed =  false;
+    }
+}
+
+bool DiagramBase::getIsMouseOverDiagramImGui() const {
+    glm::ivec2 mousePositionPx(sgl::Mouse->getX(), sgl::Mouse->getY());
+    if (sgl::ImGuiWrapper::get()->getUseDockSpaceMode()) {
+        mousePositionPx -= glm::ivec2(imGuiWindowOffsetX, imGuiWindowOffsetY);
+    }
+    return getIsMouseOverDiagram(mousePositionPx);
+}
+
+void DiagramBase::mouseMoveEvent(const glm::ivec2& mousePositionPx, const glm::vec2& mousePositionScaled) {
+    if (sgl::Mouse->buttonReleased(1)) {
+        resizeDirection = ResizeDirection::NONE;
+        isDraggingWindow = false;
+    }
+
+    if (resizeDirection != ResizeDirection::NONE) {
+        auto diffX = float(mousePositionPx.x - lastResizeMouseX);
+        auto diffY = float(mousePositionPx.y - lastResizeMouseY);
+        if ((resizeDirection & ResizeDirection::LEFT) != 0) {
+            windowOffsetX += diffX;
+            windowWidth -= diffX / scaleFactor;
+        }
+        if ((resizeDirection & ResizeDirection::RIGHT) != 0) {
+            windowWidth += diffX / scaleFactor;
+        }
+        if ((resizeDirection & ResizeDirection::BOTTOM) != 0) {
+            windowOffsetY += diffY;
+            windowHeight -= diffY / scaleFactor;
+        }
+        if ((resizeDirection & ResizeDirection::TOP) != 0) {
+            windowHeight += diffY / scaleFactor;
+        }
+        lastResizeMouseX = mousePositionPx.x;
+        lastResizeMouseY = mousePositionPx.y;
+        needsReRender = true;
+        syncRendererWithCpu();
+        onWindowSizeChanged();
+        onUpdatedWindowSize();
+    } else {
+        glm::vec2 mousePosition(float(mousePositionPx.x), float(mousePositionPx.y));
+
+        sgl::AABB2 leftAabb;
+        leftAabb.min = glm::vec2(windowOffsetX, windowOffsetY);
+        leftAabb.max = glm::vec2(windowOffsetX + resizeMargin, windowOffsetY + float(fboHeightDisplay));
+        sgl::AABB2 rightAabb;
+        rightAabb.min = glm::vec2(windowOffsetX + float(fboWidthDisplay) - resizeMargin, windowOffsetY);
+        rightAabb.max = glm::vec2(windowOffsetX + float(fboWidthDisplay), windowOffsetY + float(fboHeightDisplay));
+        sgl::AABB2 bottomAabb;
+        bottomAabb.min = glm::vec2(windowOffsetX, windowOffsetY);
+        bottomAabb.max = glm::vec2(windowOffsetX + float(fboWidthDisplay), windowOffsetY + resizeMargin);
+        sgl::AABB2 topAabb;
+        topAabb.min = glm::vec2(windowOffsetX, windowOffsetY + float(fboHeightDisplay) - resizeMargin);
+        topAabb.max = glm::vec2(windowOffsetX + float(fboWidthDisplay), windowOffsetY + float(fboHeightDisplay));
+
+        ResizeDirection resizeDirectionCurr = ResizeDirection::NONE;
+        if (leftAabb.contains(mousePosition)) {
+            resizeDirectionCurr = ResizeDirection(resizeDirectionCurr | ResizeDirection::LEFT);
+        }
+        if (rightAabb.contains(mousePosition)) {
+            resizeDirectionCurr = ResizeDirection(resizeDirectionCurr | ResizeDirection::RIGHT);
+        }
+        if (bottomAabb.contains(mousePosition)) {
+            resizeDirectionCurr = ResizeDirection(resizeDirectionCurr | ResizeDirection::BOTTOM);
+        }
+        if (topAabb.contains(mousePosition)) {
+            resizeDirectionCurr = ResizeDirection(resizeDirectionCurr | ResizeDirection::TOP);
+        }
+
+        /*Qt::CursorShape newCursorShape = Qt::ArrowCursor;
+        if (resizeDirectionCurr == ResizeDirection::LEFT
+            || resizeDirectionCurr == ResizeDirection::RIGHT) {
+            newCursorShape = Qt::SizeHorCursor;
+        } else if (resizeDirectionCurr == ResizeDirection::BOTTOM
+                   || resizeDirectionCurr == ResizeDirection::TOP) {
+            newCursorShape = Qt::SizeVerCursor;
+        } else if (resizeDirectionCurr == ResizeDirection::BOTTOM_LEFT
+                   || resizeDirectionCurr == ResizeDirection::TOP_RIGHT) {
+            newCursorShape = Qt::SizeBDiagCursor;
+        } else if (resizeDirectionCurr == ResizeDirection::TOP_LEFT
+                   || resizeDirectionCurr == ResizeDirection::BOTTOM_RIGHT) {
+            newCursorShape = Qt::SizeFDiagCursor;
+        } else {
+            newCursorShape = Qt::ArrowCursor;
+        }
+
+        if (newCursorShape != cursorShape) {
+            cursorShape = newCursorShape;
+            if (cursorShape == Qt::ArrowCursor) {
+                sceneView->unsetCursor();
+            } else {
+                sceneView->setCursor(cursorShape);
+            }
+        }*/
+    }
+
+    if (isDraggingWindow) {
+        windowOffsetX = windowOffsetXBase + float(mousePositionPx.x - mouseDragStartPosX);
+        windowOffsetY = windowOffsetYBase + float(mousePositionPx.y - mouseDragStartPosY);
+        needsReRender = true;
+    }
+}
+
+void DiagramBase::mouseMoveEventParent(const glm::ivec2& mousePositionPx, const glm::vec2& mousePositionScaled) {
+    if (sgl::Mouse->isButtonUp(1)) {
+        resizeDirection = ResizeDirection::NONE;
+        isDraggingWindow = false;
+    }
+
+    if (resizeDirection != ResizeDirection::NONE) {
+        float diffX = float(mousePositionPx.x - lastResizeMouseX);
+        float diffY = float(mousePositionPx.y - lastResizeMouseY);
+        if ((resizeDirection & ResizeDirection::LEFT) != 0) {
+            windowOffsetX += diffX;
+            windowWidth -= diffX / scaleFactor;
+        }
+        if ((resizeDirection & ResizeDirection::RIGHT) != 0) {
+            windowWidth += diffX / scaleFactor;
+        }
+        if ((resizeDirection & ResizeDirection::BOTTOM) != 0) {
+            windowOffsetY += diffY;
+            windowHeight -= diffY / scaleFactor;
+        }
+        if ((resizeDirection & ResizeDirection::TOP) != 0) {
+            windowHeight += diffY / scaleFactor;
+        }
+        lastResizeMouseX = mousePositionPx.x;
+        lastResizeMouseY = mousePositionPx.y;
+        needsReRender = true;
+        syncRendererWithCpu();
+        onWindowSizeChanged();
+        onUpdatedWindowSize();
+    } else {
+        /*if (cursorShape != Qt::ArrowCursor) {
+            cursorShape = Qt::ArrowCursor;
+            sceneView->unsetCursor();
+        }*/
+    }
+
+    if (isDraggingWindow) {
+        windowOffsetX = windowOffsetXBase + float(mousePositionPx.x - mouseDragStartPosX);
+        windowOffsetY = windowOffsetYBase + float(mousePositionPx.y - mouseDragStartPosY);
+        needsReRender = true;
+    }
+}
+
+void DiagramBase::mousePressEventResizeWindow(const glm::ivec2& mousePositionPx, const glm::vec2& mousePositionScaled) {
+    if (sgl::Mouse->buttonPressed(1)) {
+        // First, check if a resize event was started.
+        glm::vec2 mousePosition(float(mousePositionPx.x), float(mousePositionPx.y));
+
+        sgl::AABB2 leftAabb;
+        leftAabb.min = glm::vec2(windowOffsetX, windowOffsetY);
+        leftAabb.max = glm::vec2(windowOffsetX + resizeMargin, windowOffsetY + float(fboHeightDisplay));
+        sgl::AABB2 rightAabb;
+        rightAabb.min = glm::vec2(windowOffsetX + float(fboWidthDisplay) - resizeMargin, windowOffsetY);
+        rightAabb.max = glm::vec2(windowOffsetX + float(fboWidthDisplay), windowOffsetY + float(fboHeightDisplay));
+        sgl::AABB2 bottomAabb;
+        bottomAabb.min = glm::vec2(windowOffsetX, windowOffsetY);
+        bottomAabb.max = glm::vec2(windowOffsetX + float(fboWidthDisplay), windowOffsetY + resizeMargin);
+        sgl::AABB2 topAabb;
+        topAabb.min = glm::vec2(windowOffsetX, windowOffsetY + float(fboHeightDisplay) - resizeMargin);
+        topAabb.max = glm::vec2(windowOffsetX + float(fboWidthDisplay), windowOffsetY + float(fboHeightDisplay));
+
+        resizeDirection = ResizeDirection::NONE;
+        if (leftAabb.contains(mousePosition)) {
+            resizeDirection = ResizeDirection(resizeDirection | ResizeDirection::LEFT);
+        }
+        if (rightAabb.contains(mousePosition)) {
+            resizeDirection = ResizeDirection(resizeDirection | ResizeDirection::RIGHT);
+        }
+        if (bottomAabb.contains(mousePosition)) {
+            resizeDirection = ResizeDirection(resizeDirection | ResizeDirection::BOTTOM);
+        }
+        if (topAabb.contains(mousePosition)) {
+            resizeDirection = ResizeDirection(resizeDirection | ResizeDirection::TOP);
+        }
+
+        if (resizeDirection != ResizeDirection::NONE) {
+            lastResizeMouseX = mousePositionPx.x;
+            lastResizeMouseY = mousePositionPx.y;
+        }
+    }
+}
+
+void DiagramBase::mousePressEventMoveWindow(const glm::ivec2& mousePositionPx, const glm::vec2& mousePositionScaled) {
+    if (resizeDirection == ResizeDirection::NONE && sgl::Mouse->buttonPressed(1)) {
+        isDraggingWindow = true;
+        windowOffsetXBase = windowOffsetX;
+        windowOffsetYBase = windowOffsetY;
+        mouseDragStartPosX = mousePositionPx.x;
+        mouseDragStartPosY = mousePositionPx.y;
+    }
 }
 
 

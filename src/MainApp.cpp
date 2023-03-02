@@ -1785,6 +1785,15 @@ void MainApp::update(float dt) {
     }
 
     if (!io.WantCaptureMouse || mouseHoverWindowIndex != -1) {
+        // Update in inverse order due to back-to-front composited rendering.
+        bool hasGrabbedMouse = false;
+        //for (auto& volumeRenderer : volumeRenderers) {
+        for (auto it = volumeRenderers.rbegin(); it != volumeRenderers.rend(); it++) {
+            auto& volumeRenderer = *it;
+            volumeRenderer->update(dt, hasGrabbedMouse);
+            hasGrabbedMouse = hasGrabbedMouse || volumeRenderer->getHasGrabbedMouse();
+        }
+
         if (useDockSpaceMode) {
             for (int i = 0; i < int(dataViews.size()); i++) {
                 DataViewPtr& dataView = dataViews.at(i);
@@ -1799,7 +1808,9 @@ void MainApp::update(float dt) {
                     hasMovedIndex = i;
                 }
                 this->reRender = false;
-                moveCameraMouse(dt);
+                if (!hasGrabbedMouse) {
+                    moveCameraMouse(dt);
+                }
                 if (this->reRender && dataView->syncWithParentCamera) {
                     for (DataViewPtr& dataViewLocal : dataViews) {
                         if (dataViewLocal->syncWithParentCamera) {
@@ -1815,11 +1826,9 @@ void MainApp::update(float dt) {
                 this->reRender = reRenderOld;
             }
         } else {
-            moveCameraMouse(dt);
-        }
-
-        for (auto& volumeRenderer : volumeRenderers) {
-            volumeRenderer->update(dt);
+            if (!hasGrabbedMouse) {
+                moveCameraMouse(dt);
+            }
         }
     }
 }

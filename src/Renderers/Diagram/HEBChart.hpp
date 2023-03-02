@@ -72,9 +72,14 @@ public:
     void setCurveOpacity(float _alpha);
     void setCellDistanceThreshold(int _thresh);
     void setDiagramRadius(int radius);
+    void setOpacityByValue(bool _opacityByValue);
+    void setColorByValue(bool _colorByValue);
     void setUse2DField(bool _use2dField);
+
     bool getIsRegionSelected(int idx);
+    uint32_t getSelectedPointIndexGrid(int idx);
     sgl::AABB3 getSelectedRegion(int idx);
+    std::pair<glm::vec3, glm::vec3> getLinePositions();
 
 protected:
     bool hasData() override {
@@ -87,6 +92,8 @@ protected:
 #ifdef SUPPORT_VKVG
     void renderBaseVkvg() override;
 #endif
+
+    void onUpdatedWindowSize() override;
 
 private:
     float chartRadius{};
@@ -129,6 +136,10 @@ private:
     int selectedLineIdx = -1;
     sgl::Color circleFillColor = sgl::Color(180, 180, 180, 255);
     sgl::Color circleFillColorSelected = sgl::Color(180, 80, 80, 255);
+    bool opacityByValue = false;
+    bool colorByValue = true;
+    glm::vec4 evalColorMapVec4(float t);
+    sgl::Color evalColorMap(float t);
 };
 
 #endif //CORRERENDER_HEBCHART_HPP

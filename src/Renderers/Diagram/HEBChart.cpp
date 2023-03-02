@@ -335,10 +335,24 @@ void HEBChart::initialize() {
     onWindowSizeChanged();
 }
 
+void HEBChart::onUpdatedWindowSize() {
+    float minDim = std::min(windowWidth - 2.0f * borderSizeX, windowHeight - 2.0f * borderSizeY);
+    chartRadius = std::round(0.5f * minDim);
+}
+
 void HEBChart::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) {
     this->volumeData = _volumeData;
     if (selectedFieldIdx >= int(volumeData->getFieldNamesBase(FieldType::SCALAR).size())) {
         dataDirty = true;
+    }
+    if (isNewData) {
+        hoveredPointIdx = -1;
+        clickedPointIdx = -1;
+        selectedPointIndices[0] = -1;
+        selectedPointIndices[1] = -1;
+        hoveredLineIdx = -1;
+        clickedLineIdx = -1;
+        selectedLineIdx = -1;
     }
 }
 
@@ -382,6 +396,16 @@ void HEBChart::setDiagramRadius(int radius) {
     windowWidth = (chartRadius + borderSizeX) * 2.0f;
     windowHeight = (chartRadius + borderSizeY) * 2.0f;
     onWindowSizeChanged();
+}
+
+void HEBChart::setOpacityByValue(bool _opacityByValue) {
+    opacityByValue = _opacityByValue;
+    needsReRender = true;
+}
+
+void HEBChart::setColorByValue(bool _colorByValue) {
+    colorByValue = _colorByValue;
+    needsReRender = true;
 }
 
 void HEBChart::setUse2DField(bool _use2dField) {
@@ -805,7 +829,8 @@ void HEBChart::update(float dt) {
     sgl::AABB2 windowAabb(
             glm::vec2(borderWidth, borderWidth),
             glm::vec2(windowWidth - 2.0f * borderWidth, windowHeight - 2.0f * borderWidth));
-    if (!windowAabb.contains(mousePosition)) {
+    bool isMouseInWindow = windowAabb.contains(mousePosition);
+    if (!isMouseInWindow) {
         if (hoveredPointIdx != -1) {
             hoveredPointIdx = -1;
             needsReRender = true;
@@ -872,7 +897,7 @@ void HEBChart::update(float dt) {
         }
     }
 
-    if (sgl::Mouse->buttonPressed(1)) {
+    if (isMouseInWindow && sgl::Mouse->buttonPressed(1)) {
         clickedLineIdx = -1;
         clickedPointIdx = -1;
         if (hoveredLineIdx >= 0) {
@@ -913,11 +938,15 @@ bool HEBChart::getIsRegionSelected(int idx) {
     return selectedPointIndices[idx] >= 0;
 }
 
+uint32_t HEBChart::getSelectedPointIndexGrid(int idx) {
+    return uint32_t(std::find(
+            pointToNodeIndexMap.begin(), pointToNodeIndexMap.end(),
+            int(leafIdxOffset) + selectedPointIndices[idx]) - pointToNodeIndexMap.begin());
+}
+
 sgl::AABB3 HEBChart::getSelectedRegion(int idx) {
     //const auto& leaf = nodesList.at(int(leafIdxOffset) + selectedCircleIdx);
-    auto pointIdx =
-            uint32_t(std::find(pointToNodeIndexMap.begin(), pointToNodeIndexMap.end(), int(leafIdxOffset) + selectedPointIndices[idx])
-            - pointToNodeIndexMap.begin());
+    auto pointIdx = getSelectedPointIndexGrid(idx);
     uint32_t xd = pointIdx % uint32_t(xsd);
     uint32_t yd = (pointIdx / uint32_t(xsd)) % uint32_t(ysd);
     uint32_t zd = pointIdx / uint32_t(xsd * ysd);
@@ -942,6 +971,46 @@ sgl::AABB3 HEBChart::getSelectedRegion(int idx) {
     aabb.min = volumeAABB.min + (volumeAABB.max - volumeAABB.min) * aabb.min;
     aabb.max = volumeAABB.min + (volumeAABB.max - volumeAABB.min) * aabb.max;
     return aabb;
+}
+
+std::pair<glm::vec3, glm::vec3> HEBChart::getLinePositions() {
+    auto pointIdx0 = getSelectedPointIndexGrid(0);
+    uint32_t xd0 = pointIdx0 % uint32_t(xsd);
+    uint32_t yd0 = (pointIdx0 / uint32_t(xsd)) % uint32_t(ysd);
+    uint32_t zd0 = pointIdx0 / uint32_t(xsd * ysd);
+    glm::ivec3 c0((int)xd0, (int)yd0, (int)zd0);
+    auto pointIdx1 = getSelectedPointIndexGrid(1);
+    uint32_t xd1 = pointIdx1 % uint32_t(xsd);
+    uint32_t yd1 = (pointIdx1 / uint32_t(xsd)) % uint32_t(ysd);
+    uint32_t zd1 = pointIdx1 / uint32_t(xsd * ysd);
+    glm::ivec3 c1((int)xd1, (int)yd1, (int)zd1);
+
+    auto b0 = getSelectedRegion(0);
+    auto b1 = getSelectedRegion(1);
+
+    glm::vec3 p0, p1;
+    p0.x = c0.x < c1.x ? b0.max.x : (c0.x > c1.x ? b0.min.x : 0.5f * (b0.min.x + b0.max.x));
+    p0.y = c0.y < c1.y ? b0.max.y : (c0.y > c1.y ? b0.min.y : 0.5f * (b0.min.y + b0.max.y));
+    p0.z = c0.z < c1.z ? b0.max.z : (c0.z > c1.z ? b0.min.z : 0.5f * (b0.min.z + b0.max.z));
+    p1.x = c1.x < c0.x ? b1.max.x : (c1.x > c0.x ? b1.min.x : 0.5f * (b1.min.x + b1.max.x));
+    p1.y = c1.y < c0.y ? b1.max.y : (c1.y > c0.y ? b1.min.y : 0.5f * (b1.min.y + b1.max.y));
+    p1.z = c1.z < c0.z ? b1.max.z : (c1.z > c0.z ? b1.min.z : 0.5f * (b1.min.z + b1.max.z));
+    return std::make_pair(p0, p1);
+}
+
+glm::vec4 HEBChart::evalColorMapVec4(float t) {
+    t = glm::clamp(t, 0.0f, 1.0f);
+    glm::vec3 c0(208.0f/255.0f, 231.0f/255.0f, 208.0f/255.0f);
+    glm::vec3 c1(100.0f/255.0f, 1.0f, 100.0f/255.0f);
+    float opacity = curveOpacity;
+    if (opacityByValue) {
+        opacity *= t * 0.75f + 0.25f;
+    }
+    return glm::vec4(glm::mix(c0, c1, t), opacity);
+}
+
+sgl::Color HEBChart::evalColorMap(float t) {
+    return sgl::colorFromVec4(evalColorMapVec4(t));
 }
 
 void HEBChart::renderBaseNanoVG() {
@@ -979,13 +1048,19 @@ void HEBChart::renderBaseNanoVG() {
             float strokeWidth = lineIdx == hoveredLineIdx ? 1.5f : 1.0f;
             nvgStrokeWidth(vg, strokeWidth);
 
-            bool opacityByValue = true;
-            if (opacityByValue) {
+            if (colorByValue) {
+                float maxMi = miValues.front();
+                float minMi = miValues.back();
+                float factor = (miValues.at(lineIdx) - minMi) / (maxMi - minMi);
+                glm::vec4 color = evalColorMapVec4(factor);
+                curveStrokeColor = nvgRGBAf(color.x, color.y, color.z, color.w);
+            } else if (opacityByValue) {
                 float maxMi = miValues.front();
                 float minMi = miValues.back();
                 float factor = (miValues.at(lineIdx) - minMi) / (maxMi - minMi) * 0.75f + 0.25f;
                 curveStrokeColor.a = curveOpacity * factor;
             }
+
             curveStrokeColor.a = lineIdx == selectedLineIdx ? 1.0f : curveStrokeColor.a;
             nvgStrokeColor(vg, curveStrokeColor);
 
@@ -1059,8 +1134,12 @@ void HEBChart::renderBaseSkia() {
                 path.lineTo(pt.x * s, pt.y * s);
             }
 
-            bool opacityByValue = true;
-            if (opacityByValue) {
+            if (colorByValue) {
+                float maxMi = miValues.front();
+                float minMi = miValues.back();
+                float factor = (miValues.at(lineIdx) - minMi) / (maxMi - minMi);
+                paint.setColor(toSkColor(evalColorMap(factor)));
+            } else if (opacityByValue) {
                 float maxMi = miValues.front();
                 float minMi = miValues.back();
                 float factor = (miValues.at(lineIdx) - minMi) / (maxMi - minMi) * 0.75f + 0.25f;
@@ -1074,7 +1153,7 @@ void HEBChart::renderBaseSkia() {
                 paint.setColor(toSkColor(curveStrokeColorSelected));
                 paint.setStrokeWidth(1.5f * s);
             } else {
-                if (!opacityByValue) {
+                if (!colorByValue && !opacityByValue) {
                     paint.setColor(toSkColor(curveStrokeColor));
                 }
                 paint.setStrokeWidth(1.0f * s);
@@ -1131,16 +1210,22 @@ void HEBChart::renderBaseVkvg() {
         vkvg_set_line_width(context, 1.0f * s);
         vkvg_set_source_color(context, curveStrokeColor.getColorRGBA());
 
-        bool opacityByValue = true;
-        if (opacityByValue) {
+        if (colorByValue || opacityByValue) {
             float maxMi = miValues.front();
             float minMi = miValues.back();
             for (int lineIdx = 0; lineIdx < NUM_LINES; lineIdx++) {
                 if (lineIdx == selectedLineIdx) {
                     continue;
                 }
-                float factor = (miValues.at(lineIdx) - minMi) / (maxMi - minMi) * 0.75f + 0.25f;
-                vkvg_set_opacity(context, curveOpacity * factor);
+                if (colorByValue) {
+                    float factor = (miValues.at(lineIdx) - minMi) / (maxMi - minMi);
+                    auto color = evalColorMap(factor);
+                    vkvg_set_source_color(context, color.getColorRGB());
+                    vkvg_set_opacity(context, color.getFloatA());
+                } else if (opacityByValue) {
+                    float factor = (miValues.at(lineIdx) - minMi) / (maxMi - minMi) * 0.75f + 0.25f;
+                    vkvg_set_opacity(context, curveOpacity * factor);
+                }
 
                 glm::vec2 pt0 = curvePoints.at(lineIdx * NUM_SUBDIVISIONS + 0);
                 pt0.x = windowWidth / 2.0f + pt0.x * chartRadius;

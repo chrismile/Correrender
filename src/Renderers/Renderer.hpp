@@ -111,7 +111,9 @@ public:
     /// For rendering secondary ImGui windows (e.g., for transfer function widgets).
     virtual void renderGuiWindowSecondary() {}
     /// Updates the internal logic (called once per frame).
-    virtual void update(float dt) {}
+    virtual void update(float dt, bool isMouseGrabbed) {}
+    /// Returns whether the mouse is grabbed by the renderer.
+    virtual bool getHasGrabbedMouse() const { return false; }
 
     inline const std::string& getWindowName() { return windowName; }
     [[nodiscard]] inline ViewManager* getViewManager() const { return viewManager; }

@@ -50,9 +50,12 @@ class DiagramBase : public sgl::VectorWidget {
 public:
     DiagramBase();
     virtual void initialize();
+    void update(float dt) override;
+    [[nodiscard]] bool getIsMouseOverDiagramImGui() const;
     virtual DiagramType getDiagramType()=0;
     void setImGuiWindowOffset(int offsetX, int offsetY);
     [[nodiscard]] inline bool getNeedsReRender() { bool tmp = needsReRender; needsReRender = false; return tmp; }
+    [[nodiscard]] inline bool getIsMouseGrabbed() { return isMouseGrabbed; }
 
     [[nodiscard]] inline bool getSelectedVariablesChanged() const { return selectedVariablesChanged; };
     [[nodiscard]] inline const std::set<size_t>& getSelectedVariableIndices() const { return selectedVariableIndices; };
@@ -62,6 +65,13 @@ public:
 
 protected:
     virtual bool hasData()=0;
+
+    // Widget move/resize events.
+    void mouseMoveEvent(const glm::ivec2& mousePositionPx, const glm::vec2& mousePositionScaled);
+    void mouseMoveEventParent(const glm::ivec2& mousePositionPx, const glm::vec2& mousePositionScaled);
+    void mousePressEventResizeWindow(const glm::ivec2& mousePositionPx, const glm::vec2& mousePositionScaled);
+    void mousePressEventMoveWindow(const glm::ivec2& mousePositionPx, const glm::vec2& mousePositionScaled);
+    virtual void onUpdatedWindowSize() {}
 
     // NanoVG backend.
     virtual void renderBaseNanoVG();
@@ -123,8 +133,31 @@ protected:
     float backgroundOpacity = 1.0f;
     float textSizeLegend = 12.0f;
 
+    enum ResizeDirection {
+        NONE = 0, LEFT = 1, RIGHT = 2, BOTTOM = 4, TOP = 8,
+        BOTTOM_LEFT = BOTTOM | LEFT, BOTTOM_RIGHT = BOTTOM | RIGHT, TOP_LEFT = TOP | LEFT, TOP_RIGHT = TOP | RIGHT
+    };
+    inline ResizeDirection getResizeDirection() const { return resizeDirection; }
+
+    // Dragging the window.
+    bool isDraggingWindow = false;
+    int mouseDragStartPosX = 0;
+    int mouseDragStartPosY = 0;
+    float windowOffsetXBase = 0.0f;
+    float windowOffsetYBase = 0.0f;
+
+    // Resizing the window.
+    bool isResizingWindow = false;
+    ResizeDirection resizeDirection = ResizeDirection::NONE;
+    const float resizeMarginBase = 4;
+    float resizeMargin = resizeMarginBase; // including scale factor
+    int lastResizeMouseX = 0;
+    int lastResizeMouseY = 0;
+    //Qt::CursorShape cursorShape = Qt::ArrowCursor;
+
     // Offset for deducing mouse position.
     int imGuiWindowOffsetX = 0, imGuiWindowOffsetY = 0;
+    bool isMouseGrabbed = false;
 
     // Variables can be selected by clicking on them.
     size_t numVariables = 0;

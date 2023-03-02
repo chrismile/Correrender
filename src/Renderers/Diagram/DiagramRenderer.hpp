@@ -35,7 +35,9 @@
 #include "../Renderer.hpp"
 
 class HEBChart;
+class DomainOutlineRasterPass;
 class DomainOutlineComputePass;
+class ConnectingLineRasterPass;
 
 struct OutlineRenderData {
     sgl::vk::BufferPtr indexBuffer;
@@ -52,7 +54,8 @@ public:
     void setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) override;
     void onFieldRemoved(FieldType fieldType, int fieldIdx) override;
     void recreateSwapchainView(uint32_t viewIdx, uint32_t width, uint32_t height) override;
-    void update(float dt) override;
+    void update(float dt, bool isMouseGrabbed) override;
+    bool getHasGrabbedMouse() const override;
 
 protected:
     void renderViewImpl(uint32_t viewIdx) override;
@@ -75,7 +78,9 @@ private:
     float curveOpacity = 0.4f;
     int cellDistanceThreshold = 0;
     int diagramRadius = 160;
-    bool use2dField = true;
+    bool opacityByValue = false;
+    bool colorByValue = true;
+    bool use2dField = false;
 
     // Test data.
     std::vector<std::string> variableNames;
@@ -86,6 +91,7 @@ private:
     std::vector<OutlineRenderData> outlineRenderDataList[2];
     std::vector<std::shared_ptr<DomainOutlineRasterPass>> domainOutlineRasterPasses[2];
     std::vector<std::shared_ptr<DomainOutlineComputePass>> domainOutlineComputePasses[2];
+    std::vector<std::shared_ptr<ConnectingLineRasterPass>> connectingLineRasterPass;
 };
 
 #endif //CORRERENDER_DIAGRAMRENDERER_HPP

@@ -38,6 +38,7 @@
 #include "Volume/VolumeData.hpp"
 #include "../RenderingModes.hpp"
 
+#include "ConnectingLineRasterPass.hpp"
 #include "RadarBarChart.hpp"
 #include "HEBChart.hpp"
 
@@ -119,6 +120,8 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
             diagram->setCurveOpacity(curveOpacity);
             diagram->setCellDistanceThreshold(cellDistanceThreshold);
             diagram->setDiagramRadius(diagramRadius);
+            diagram->setOpacityByValue(opacityByValue);
+            diagram->setColorByValue(colorByValue);
             diagram->setUse2DField(use2dField);
         }
     }
@@ -150,9 +153,10 @@ void DiagramRenderer::recreateSwapchainView(uint32_t viewIdx, uint32_t width, ui
         domainOutlineRasterPasses[idx].at(viewIdx)->recreateSwapchain(width, height);
         domainOutlineComputePasses[idx].at(viewIdx)->recreateSwapchain(width, height);
     }
+    connectingLineRasterPass.at(viewIdx)->recreateSwapchain(width, height);
 }
 
-void DiagramRenderer::update(float dt) {
+void DiagramRenderer::update(float dt, bool isMouseGrabbed) {
     uint32_t viewIdx = 0;
     for (auto& diagram : diagrams) {
         diagram->update(dt);
@@ -161,6 +165,15 @@ void DiagramRenderer::update(float dt) {
         }
         viewIdx++;
     }
+}
+
+bool DiagramRenderer::getHasGrabbedMouse() const {
+    for (auto& diagram : diagrams) {
+        if (diagram->getIsMouseGrabbed() || diagram->getIsMouseOverDiagramImGui()) {
+            return true;
+        }
+    }
+    return false;
 }
 
 void DiagramRenderer::renderViewImpl(uint32_t viewIdx) {
@@ -187,6 +200,10 @@ void DiagramRenderer::renderViewPreImpl(uint32_t viewIdx) {
             domainOutlineRasterPasses[idx].at(viewIdx)->render();
         }
     }
+    if (diagram->getIsRegionSelected(0) && diagram->getIsRegionSelected(1)) {
+        connectingLineRasterPass.at(viewIdx)->setLineSettings(diagram->getLinePositions(), lineWidth);
+        connectingLineRasterPass.at(viewIdx)->render();
+    }
 }
 
 void DiagramRenderer::addViewImpl(uint32_t viewIdx) {
@@ -206,6 +223,8 @@ void DiagramRenderer::addViewImpl(uint32_t viewIdx) {
         diagram->setCurveOpacity(curveOpacity);
         diagram->setCellDistanceThreshold(cellDistanceThreshold);
         diagram->setDiagramRadius(diagramRadius);
+        diagram->setOpacityByValue(opacityByValue);
+        diagram->setColorByValue(colorByValue);
         diagram->setUse2DField(use2dField);
     }
     diagrams.push_back(diagram);
@@ -233,10 +252,14 @@ void DiagramRenderer::addViewImpl(uint32_t viewIdx) {
         domainOutlineComputePass->setRenderData(outlineRenderData.indexBuffer, outlineRenderData.vertexPositionBuffer);
         domainOutlineComputePasses[idx].push_back(domainOutlineComputePass);
     }
+
+    connectingLineRasterPass.push_back(std::make_shared<ConnectingLineRasterPass>(
+            renderer, viewManager->getViewSceneData(viewIdx)));
 }
 
 void DiagramRenderer::removeViewImpl(uint32_t viewIdx) {
     diagrams.erase(diagrams.begin() + viewIdx);
+    connectingLineRasterPass.erase(connectingLineRasterPass.begin() + viewIdx);
 
     for (int idx = 0; idx < 2; idx++) {
         outlineRenderDataList[idx].erase(outlineRenderDataList[idx].begin() + viewIdx);
@@ -310,6 +333,20 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
     if (propertyEditor.addSliderInt("Diagram Radius", &diagramRadius, 100, 400)) {
         for (auto& diagram : diagrams) {
             diagram->setDiagramRadius(diagramRadius);
+        }
+        reRender = true;
+    }
+
+    if (propertyEditor.addCheckbox("Value -> Opacity", &opacityByValue)) {
+        for (auto& diagram : diagrams) {
+            diagram->setOpacityByValue(opacityByValue);
+        }
+        reRender = true;
+    }
+
+    if (propertyEditor.addCheckbox("Value -> Color", &colorByValue)) {
+        for (auto& diagram : diagrams) {
+            diagram->setColorByValue(colorByValue);
         }
         reRender = true;
     }

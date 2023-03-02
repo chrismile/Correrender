@@ -173,7 +173,7 @@ void DomainOutlineRasterPass::loadShader() {
 
 void DomainOutlineRasterPass::setGraphicsPipelineInfo(sgl::vk::GraphicsPipelineInfo& pipelineInfo) {
     pipelineInfo.setInputAssemblyTopology(sgl::vk::PrimitiveTopology::TRIANGLE_LIST);
-    pipelineInfo.setCullMode(sgl::vk::CullMode::CULL_BACK);
+    pipelineInfo.setCullMode(sgl::vk::CullMode::CULL_NONE);
     pipelineInfo.setVertexBufferBindingByLocationIndex("vertexPosition", sizeof(glm::vec3));
 }
 
