@@ -74,11 +74,13 @@ private:
     std::string selectedScalarFieldName;
     CorrelationMeasureType correlationMeasureType = CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV;
     float beta = 0.75f;
+    int minDownscalingFactor = 16, maxDownscalingFactor = 64;
     int downscalingFactor = 32;
     int lineCountFactor = 100;
     float curveOpacity = 0.4f;
     int cellDistanceThreshold = 0;
     int diagramRadius = 160;
+    bool alignWithParentWindow = false;
     bool opacityByValue = false;
     bool colorByValue = true;
     DiagramColorMap colorMap = DiagramColorMap::CIVIDIS;

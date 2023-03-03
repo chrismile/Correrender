@@ -26,6 +26,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <iostream>
 #include <random>
 
 #ifdef SUPPORT_SKIA
@@ -85,7 +86,7 @@ void DiagramBase::update(float dt) {
     bool isMouseOverDiagram = getIsMouseOverDiagram(mousePositionPx);
 
     // Mouse press event.
-    if (isMouseOverDiagram) {
+    if (isMouseOverDiagram && !isWindowFixed) {
         if (sgl::Mouse->buttonPressed(1)) {
             isMouseGrabbed = true;
         }
@@ -177,31 +178,28 @@ void DiagramBase::mouseMoveEvent(const glm::ivec2& mousePositionPx, const glm::v
             resizeDirectionCurr = ResizeDirection(resizeDirectionCurr | ResizeDirection::TOP);
         }
 
-        /*Qt::CursorShape newCursorShape = Qt::ArrowCursor;
+        sgl::CursorType newCursorShape = sgl::CursorType::DEFAULT;
         if (resizeDirectionCurr == ResizeDirection::LEFT
-            || resizeDirectionCurr == ResizeDirection::RIGHT) {
-            newCursorShape = Qt::SizeHorCursor;
+                || resizeDirectionCurr == ResizeDirection::RIGHT) {
+            newCursorShape = sgl::CursorType::SIZEWE;
         } else if (resizeDirectionCurr == ResizeDirection::BOTTOM
-                   || resizeDirectionCurr == ResizeDirection::TOP) {
-            newCursorShape = Qt::SizeVerCursor;
+                || resizeDirectionCurr == ResizeDirection::TOP) {
+            newCursorShape = sgl::CursorType::SIZENS;
         } else if (resizeDirectionCurr == ResizeDirection::BOTTOM_LEFT
-                   || resizeDirectionCurr == ResizeDirection::TOP_RIGHT) {
-            newCursorShape = Qt::SizeBDiagCursor;
+                || resizeDirectionCurr == ResizeDirection::TOP_RIGHT) {
+            newCursorShape = sgl::CursorType::SIZENESW;
         } else if (resizeDirectionCurr == ResizeDirection::TOP_LEFT
-                   || resizeDirectionCurr == ResizeDirection::BOTTOM_RIGHT) {
-            newCursorShape = Qt::SizeFDiagCursor;
+                || resizeDirectionCurr == ResizeDirection::BOTTOM_RIGHT) {
+            newCursorShape = sgl::CursorType::SIZENWSE;
         } else {
-            newCursorShape = Qt::ArrowCursor;
+            newCursorShape = sgl::CursorType::DEFAULT;
         }
 
         if (newCursorShape != cursorShape) {
+            sgl::Window* window = sgl::AppSettings::get()->getMainWindow();
             cursorShape = newCursorShape;
-            if (cursorShape == Qt::ArrowCursor) {
-                sceneView->unsetCursor();
-            } else {
-                sceneView->setCursor(cursorShape);
-            }
-        }*/
+            window->setCursorType(cursorShape);
+        }
     }
 
     if (isDraggingWindow) {
@@ -241,10 +239,11 @@ void DiagramBase::mouseMoveEventParent(const glm::ivec2& mousePositionPx, const 
         onWindowSizeChanged();
         onUpdatedWindowSize();
     } else {
-        /*if (cursorShape != Qt::ArrowCursor) {
-            cursorShape = Qt::ArrowCursor;
-            sceneView->unsetCursor();
-        }*/
+        if (cursorShape != sgl::CursorType::DEFAULT) {
+            sgl::Window* window = sgl::AppSettings::get()->getMainWindow();
+            cursorShape = sgl::CursorType::DEFAULT;
+            window->setCursorType(cursorShape);
+        }
     }
 
     if (isDraggingWindow) {

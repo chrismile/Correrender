@@ -64,6 +64,7 @@ public:
     DiagramType getDiagramType() override { return DiagramType::HEB_CHART; }
     void initialize() override;
     void update(float dt) override;
+    void updateSizeByParent();
     void setVolumeData(VolumeDataPtr& _volumeData, bool isNewData);
     void setSelectedScalarField(int selectedFieldIdx, const std::string& _scalarFieldName);
     void setCorrelationMeasureType(CorrelationMeasureType _correlationMeasureType);
@@ -73,6 +74,7 @@ public:
     void setCurveOpacity(float _alpha);
     void setCellDistanceThreshold(int _thresh);
     void setDiagramRadius(int radius);
+    void setAlignWithParentWindow(bool _align);
     void setOpacityByValue(bool _opacityByValue);
     void setColorByValue(bool _colorByValue);
     void setColorMap(DiagramColorMap _colorMap);
@@ -115,6 +117,7 @@ private:
     std::vector<HEBNode> nodesList;
     std::vector<uint32_t> pointToNodeIndexMap;
     uint32_t leafIdxOffset = 0;
+    std::vector<float> leafStdDevArray;
 
     // B-spline data.
     void updateData();
@@ -139,6 +142,7 @@ private:
     float pointRadiusBase = 1.5f;
     sgl::Color circleFillColor = sgl::Color(180, 180, 180, 255);
     sgl::Color circleFillColorSelected = sgl::Color(180, 80, 80, 255);
+    bool alignWithParentWindow = false;
     bool opacityByValue = false;
     bool colorByValue = true;
     DiagramColorMap colorMap = DiagramColorMap::CIVIDIS;
@@ -146,6 +150,12 @@ private:
     void initializeColorPoints();
     glm::vec4 evalColorMapVec4(float t);
     sgl::Color evalColorMap(float t);
+
+    // Outer ring.
+    bool showRing = true;
+    float outerRingOffset = 3.0f;
+    const float outerRingWidth = 20.0f;
+    float minStdDev = 0.0f, maxStdDev = 0.0f;
 };
 
 #endif //CORRERENDER_HEBCHART_HPP

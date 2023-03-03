@@ -57,6 +57,7 @@
 
 #include <Math/Math.hpp>
 #include <Math/Geometry/Circle.hpp>
+#include <Utils/Parallel/Reduction.hpp>
 #include <Graphics/Vector/nanovg/nanovg.h>
 #include <Graphics/Vector/VectorBackendNanoVG.hpp>
 #include <Input/Mouse.hpp>
@@ -330,6 +331,11 @@ void HEBChart::initialize() {
     borderSizeX = 10;
     borderSizeY = 10;
     chartRadius = 160;
+    if (showRing) {
+        borderSizeX += outerRingWidth + outerRingOffset;
+        borderSizeY += outerRingWidth + outerRingOffset;
+    }
+
     windowWidth = (chartRadius + borderSizeX) * 2.0f;
     windowHeight = (chartRadius + borderSizeY) * 2.0f;
 
@@ -402,6 +408,14 @@ void HEBChart::setDiagramRadius(int radius) {
     windowWidth = (chartRadius + borderSizeX) * 2.0f;
     windowHeight = (chartRadius + borderSizeY) * 2.0f;
     onWindowSizeChanged();
+}
+
+void HEBChart::setAlignWithParentWindow(bool _align) {
+    alignWithParentWindow = _align;
+    isWindowFixed = alignWithParentWindow;
+    if (alignWithParentWindow) {
+        updateSizeByParent();
+    }
 }
 
 void HEBChart::setOpacityByValue(bool _opacityByValue) {
@@ -722,17 +736,92 @@ void HEBChart::updateData() {
     std::sort(miFieldEntries.begin(), miFieldEntries.end());
 #endif
 
+    // Build the octree.
+    nodesList.clear();
+    pointToNodeIndexMap.clear();
+    buildTree(nodesList, pointToNodeIndexMap, leafIdxOffset, xsd, ysd, zsd);
+
+    // Compute the standard deviation inside the downscaled grids.
+    leafStdDevArray.resize(numPoints);
+    for (int pointIdx = 0; pointIdx < numPoints; pointIdx++) {
+        int ensembleNumValid = 0;
+        float ensembleVarianceSum = 0.0f;
+        for (int ensembleIdx = 0; ensembleIdx < es; ensembleIdx++) {
+            VolumeData::HostCacheEntry ensembleEntryField = volumeData->getFieldEntryCpu(
+                    FieldType::SCALAR, selectedScalarFieldName, -1, ensembleIdx);
+            float* field = ensembleEntryField.get();
+            float* dowsncaledField = downscaledEnsembleFields.at(ensembleIdx);
+            int xd = pointIdx % xsd;
+            int yd = (pointIdx / xsd) % ysd;
+            int zd = pointIdx / (xsd * ysd);
+
+            int numValid = 0;
+            float valueMean = dowsncaledField[IDXSD(xd, yd, zd)];
+            float varianceSum = 0.0f;
+            float diff;
+            if (!use2dField) {
+                for (int zo = 0; zo < df; zo++) {
+                    for (int yo = 0; yo < df; yo++) {
+                        for (int xo = 0; xo < df; xo++) {
+                            int x = xd * df + xo;
+                            int y = yd * df + yo;
+                            int z = zd * df + zo;
+                            if (x < xs && y < ys && z < zs) {
+                                float val = field[IDXS(x, y, z)];
+                                if (!std::isnan(val)) {
+                                    diff = valueMean - val;
+                                    varianceSum += diff * diff;
+                                    numValid++;
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                int zCenter = zs / 2;
+                for (int yo = 0; yo < df; yo++) {
+                    for (int xo = 0; xo < df; xo++) {
+                        int x = xd * df + xo;
+                        int y = yd * df + yo;
+                        if (x < xs && y < ys) {
+                            float val = field[IDXS(x, y, zCenter)];
+                            if (!std::isnan(val)) {
+                                diff = valueMean - val;
+                                varianceSum += diff * diff;
+                                numValid++;
+                            }
+                        }
+                    }
+                }
+            }
+            if (numValid > 1) {
+                ensembleVarianceSum += varianceSum / float(numValid - 1);
+                ensembleNumValid += 1;
+            }
+        }
+        float stdDev = 0.0f;
+        if (ensembleNumValid > 0) {
+            ensembleVarianceSum /= float(ensembleNumValid);
+            stdDev = std::sqrt(ensembleVarianceSum);
+        } else {
+            stdDev = std::numeric_limits<float>::quiet_NaN();
+        }
+
+        uint32_t leafIdx = pointToNodeIndexMap.at(pointIdx) - leafIdxOffset;
+        leafStdDevArray.at(leafIdx) = stdDev;
+    }
+
+    // Normalize standard deviations for visualization.
+    auto [minVal, maxVal] = sgl::reduceFloatArrayMinMax(leafStdDevArray);
+    minStdDev = minVal;
+    maxStdDev = maxVal;
+
     // Delete the downscaled field, as it is no longer used.
     for (int ensembleIdx = 0; ensembleIdx < es; ensembleIdx++) {
         float* dowsncaledField = downscaledEnsembleFields.at(ensembleIdx);
         delete[] dowsncaledField;
     }
     downscaledEnsembleFields.clear();
-
-    // Build the octree.
-    nodesList.clear();
-    pointToNodeIndexMap.clear();
-    buildTree(nodesList, pointToNodeIndexMap, leafIdxOffset, xsd, ysd, zsd);
 
     int maxNumLines = numPoints * MAX_NUM_LINES / 100;
     NUM_LINES = std::min(maxNumLines, int(miFieldEntries.size()));
@@ -825,6 +914,16 @@ bool isInsidePolygon(const std::vector<glm::vec2>& polygon, const glm::vec2& pt)
         }
     }
     return true;
+}
+
+void HEBChart::updateSizeByParent() {
+    auto [parentWidth, parentHeight] = getBlitTargetSize();
+    windowOffsetX = 0;
+    windowOffsetY = 0;
+    windowWidth = float(parentWidth);
+    windowHeight = float(parentHeight);
+    onUpdatedWindowSize();
+    onWindowSizeChanged();
 }
 
 void HEBChart::update(float dt) {
@@ -1130,6 +1229,62 @@ void HEBChart::renderBaseNanoVG() {
         nvgCircle(vg, pointX, pointY, pointRadius * 1.5f);
         nvgFillColor(vg, circleFillColorSelectedNvg);
         nvgFill(vg);
+    }
+
+    if (showRing) {
+        glm::vec2 center(windowWidth / 2.0f, windowHeight / 2.0f);
+        float rlo = chartRadius + outerRingOffset;
+        float rhi = chartRadius + outerRingOffset + outerRingWidth;
+        float rmi = chartRadius + outerRingOffset + 0.5f * outerRingWidth;
+
+        for (int leafIdx = int(leafIdxOffset); leafIdx < int(nodesList.size()); leafIdx++) {
+            int numLeaves = int(nodesList.size()) - int(leafIdxOffset);
+            int nextIdx = (leafIdx + 1 - int(leafIdxOffset)) % numLeaves + int(leafIdxOffset);
+            const auto& leafCurr = nodesList.at(leafIdx);
+            const auto& leafNext = nodesList.at(nextIdx);
+            //float angle0 = float(leafIdx - int(leafIdxOffset)) / float(numLeaves) * sgl::TWO_PI;
+            //float angle1 = float(leafIdx + 1 - int(leafIdxOffset)) / float(numLeaves) * sgl::TWO_PI;
+            float angle0 = leafCurr.angle;
+            float angle1 = leafNext.angle + 0.01f;
+            float cos0 = std::cos(angle0), sin0 = std::sin(angle0), cos1 = std::cos(angle1), sin1 = std::sin(angle1);
+            glm::vec2 lo0 = center + rlo * glm::vec2(cos0, sin0);
+            glm::vec2 lo1 = center + rlo * glm::vec2(cos1, sin1);
+            glm::vec2 hi0 = center + rhi * glm::vec2(cos0, sin0);
+            glm::vec2 hi1 = center + rhi * glm::vec2(cos1, sin1);
+            glm::vec2 mi0 = center + rmi * glm::vec2(cos0, sin0);
+            glm::vec2 mi1 = center + rmi * glm::vec2(cos1, sin1);
+            nvgBeginPath(vg);
+            nvgArc(vg, center.x, center.y, rlo, angle1, angle0, NVG_CCW);
+            nvgLineTo(vg, hi0.x, hi0.y);
+            nvgArc(vg, center.x, center.y, rhi, angle0, angle1, NVG_CW);
+            nvgLineTo(vg, lo1.x, lo1.y);
+            nvgClosePath(vg);
+
+            float stdev0 = leafStdDevArray.at(leafIdx - int(leafIdxOffset));
+            float t0 = (stdev0 - minStdDev) / (maxStdDev - minStdDev);
+            glm::vec4 rgbColor0 = evalColorMapVec4(t0);
+            //glm::vec4 rgbColor0 = evalColorMapVec4(leafCurr.angle / sgl::TWO_PI);
+            rgbColor0.w = 1.0f;
+            NVGcolor fillColor0 = nvgRGBAf(rgbColor0.x, rgbColor0.y, rgbColor0.z, rgbColor0.w);
+            float stdev1 = leafStdDevArray.at(nextIdx - int(leafIdxOffset));
+            float t1 = (stdev1 - minStdDev) / (maxStdDev - minStdDev);
+            glm::vec4 rgbColor1 = evalColorMapVec4(t1);
+            //glm::vec4 rgbColor1 = evalColorMapVec4(leafNext.angle / sgl::TWO_PI);
+            rgbColor1.w = 1.0f;
+            NVGcolor fillColor1 = nvgRGBAf(rgbColor1.x, rgbColor1.y, rgbColor1.z, rgbColor1.w);
+
+            NVGpaint paint = nvgLinearGradient(vg, mi0.x, mi0.y, mi1.x, mi1.y, fillColor0, fillColor1);
+            nvgFillPaint(vg, paint);
+            nvgFill(vg);
+        }
+
+        NVGcolor circleStrokeColor = nvgRGBA(60, 60, 60, 255);
+        nvgBeginPath(vg);
+        nvgCircle(vg, center.x, center.y, rlo);
+        nvgCircle(vg, center.x, center.y, rhi);
+        nvgStrokeWidth(vg, 1.0f);
+        nvgStrokeColor(vg, circleStrokeColor);
+        nvgStroke(vg);
     }
 }
 

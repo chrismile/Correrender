@@ -28,6 +28,7 @@
 
 #include <random>
 
+#include <Graphics/Window.hpp>
 #include <Graphics/Vulkan/Render/Renderer.hpp>
 #include <Graphics/Vulkan/Render/ComputePipeline.hpp>
 #include <ImGui/imgui_custom.h>
@@ -103,6 +104,17 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
     const std::vector<std::string>& fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
     if (isNewData) {
         selectedFieldIdx = volumeData->getStandardScalarFieldIdx();
+        int xs = volumeData->getGridSizeX();
+        int ys = volumeData->getGridSizeY();
+        int zs = volumeData->getGridSizeZ();
+        int dsx = int(std::ceil(std::cbrt(float(xs * ys * zs) / 100.0f)));
+        dsx = std::max(dsx, 1);
+        if (!sgl::isPowerOfTwo(dsx)) {
+            dsx = sgl::nextPowerOfTwo(dsx);
+        }
+        downscalingFactor = dsx;
+        minDownscalingFactor = std::max(downscalingFactor / 2, 1);
+        maxDownscalingFactor = downscalingFactor * 2;
     }
     selectedScalarFieldName = fieldNames.at(selectedFieldIdx);
     volumeData->acquireTf(this, selectedFieldIdx);
@@ -120,6 +132,7 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
             diagram->setCurveOpacity(curveOpacity);
             diagram->setCellDistanceThreshold(cellDistanceThreshold);
             diagram->setDiagramRadius(diagramRadius);
+            diagram->setAlignWithParentWindow(alignWithParentWindow);
             diagram->setOpacityByValue(opacityByValue);
             diagram->setColorByValue(colorByValue);
             diagram->setColorMap(colorMap);
@@ -150,6 +163,9 @@ void DiagramRenderer::recreateSwapchainView(uint32_t viewIdx, uint32_t width, ui
             (*sceneData->sceneTexture)->getImageView(),
             VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
             VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    if (alignWithParentWindow) {
+        diagrams.at(viewIdx)->updateSizeByParent();
+    }
     for (int idx = 0; idx < 2; idx++) {
         domainOutlineRasterPasses[idx].at(viewIdx)->recreateSwapchain(width, height);
         domainOutlineComputePasses[idx].at(viewIdx)->recreateSwapchain(width, height);
@@ -160,9 +176,11 @@ void DiagramRenderer::recreateSwapchainView(uint32_t viewIdx, uint32_t width, ui
 void DiagramRenderer::update(float dt, bool isMouseGrabbed) {
     uint32_t viewIdx = 0;
     for (auto& diagram : diagrams) {
-        diagram->update(dt);
-        if (diagram->getNeedsReRender()) {
-            reRenderViewArray.at(viewIdx) = true;
+        if (isVisibleInView(viewIdx)) {
+            diagram->update(dt);
+            if (diagram->getNeedsReRender()) {
+                reRenderViewArray.at(viewIdx) = true;
+            }
         }
         viewIdx++;
     }
@@ -224,6 +242,7 @@ void DiagramRenderer::addViewImpl(uint32_t viewIdx) {
         diagram->setCurveOpacity(curveOpacity);
         diagram->setCellDistanceThreshold(cellDistanceThreshold);
         diagram->setDiagramRadius(diagramRadius);
+        diagram->setAlignWithParentWindow(alignWithParentWindow);
         diagram->setOpacityByValue(opacityByValue);
         diagram->setColorByValue(colorByValue);
         diagram->setColorMap(colorMap);
@@ -303,7 +322,8 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
     }
 
     if (propertyEditor.addSliderIntPowerOfTwoEdit(
-            "Downscaling", &downscalingFactor, 16, 128) == ImGui::EditMode::INPUT_FINISHED) {
+            "Downscaling", &downscalingFactor, minDownscalingFactor, maxDownscalingFactor)
+                == ImGui::EditMode::INPUT_FINISHED) {
         for (auto& diagram : diagrams) {
             diagram->setDownscalingFactor(downscalingFactor);
         }
@@ -335,6 +355,13 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
     if (propertyEditor.addSliderInt("Diagram Radius", &diagramRadius, 100, 400)) {
         for (auto& diagram : diagrams) {
             diagram->setDiagramRadius(diagramRadius);
+        }
+        reRender = true;
+    }
+
+    if (propertyEditor.addCheckbox("Align with Window", &alignWithParentWindow)) {
+        for (auto& diagram : diagrams) {
+            diagram->setAlignWithParentWindow(alignWithParentWindow);
         }
         reRender = true;
     }

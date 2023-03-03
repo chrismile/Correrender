@@ -52,6 +52,7 @@ public:
     virtual void initialize();
     void update(float dt) override;
     [[nodiscard]] bool getIsMouseOverDiagramImGui() const;
+    virtual void updateSizeByParent() {}
     virtual DiagramType getDiagramType()=0;
     void setImGuiWindowOffset(int offsetX, int offsetY);
     [[nodiscard]] inline bool getNeedsReRender() { bool tmp = needsReRender; needsReRender = false; return tmp; }
@@ -137,7 +138,7 @@ protected:
         NONE = 0, LEFT = 1, RIGHT = 2, BOTTOM = 4, TOP = 8,
         BOTTOM_LEFT = BOTTOM | LEFT, BOTTOM_RIGHT = BOTTOM | RIGHT, TOP_LEFT = TOP | LEFT, TOP_RIGHT = TOP | RIGHT
     };
-    inline ResizeDirection getResizeDirection() const { return resizeDirection; }
+     [[nodiscard]] inline ResizeDirection getResizeDirection() const { return resizeDirection; }
 
     // Dragging the window.
     bool isDraggingWindow = false;
@@ -153,11 +154,12 @@ protected:
     float resizeMargin = resizeMarginBase; // including scale factor
     int lastResizeMouseX = 0;
     int lastResizeMouseY = 0;
-    //Qt::CursorShape cursorShape = Qt::ArrowCursor;
+    sgl::CursorType cursorShape = sgl::CursorType::DEFAULT;
 
     // Offset for deducing mouse position.
     int imGuiWindowOffsetX = 0, imGuiWindowOffsetY = 0;
     bool isMouseGrabbed = false;
+    bool isWindowFixed = false; //< Is resize and grabbing disabled?
 
     // Variables can be selected by clicking on them.
     size_t numVariables = 0;
