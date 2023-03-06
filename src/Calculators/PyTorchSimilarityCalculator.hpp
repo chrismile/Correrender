@@ -112,8 +112,8 @@ private:
     NetworkType networkType = NetworkType::MINE;
 
     /// For networkType == NetworkType::{MINE,SRN_MINE}.
-    size_t cachedEnsembleSizeHost = 0;
-    size_t cachedEnsembleSizeDevice = 0;
+    size_t cachedEnsembleSizeHost = std::numeric_limits<size_t>::max();
+    size_t cachedEnsembleSizeDevice = std::numeric_limits<size_t>::max();
     size_t cachedVolumeDataSlice3dSize = 0;
 
     /// For networkType == NetworkType::MINE.

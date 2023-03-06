@@ -648,8 +648,8 @@ void HEBChart::updateData() {
 
             for (int j = 0; j < i; j++) {
                 if (cellDistanceThreshold > 0) {
-                    glm::vec3 pti(i % uint32_t(xsd), (i / uint32_t(xsd)) % uint32_t(ys), i / uint32_t(xsd * ysd));
-                    glm::vec3 ptj(j % uint32_t(xsd), (j / uint32_t(xsd)) % uint32_t(ys), j / uint32_t(xsd * ysd));
+                    glm::vec3 pti(i % uint32_t(xsd), (i / uint32_t(xsd)) % uint32_t(ysd), i / uint32_t(xsd * ysd));
+                    glm::vec3 ptj(j % uint32_t(xsd), (j / uint32_t(xsd)) % uint32_t(ysd), j / uint32_t(xsd * ysd));
                     if (glm::length(pti - ptj) < float(cellDistanceThreshold)) {
                         continue;
                     }

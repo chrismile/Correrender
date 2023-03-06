@@ -428,6 +428,24 @@ void TinyCudaNNSimilarityCalculator::runInferenceReference() {
                 stream, cacheWrapper->referenceInput, cacheWrapper->referenceEncoded);
 #endif
 
+    /*float* refInput = new float[3];
+    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyDtoHAsync(
+            refInput, (CUdeviceptr)cacheWrapper->referenceInput.data(),
+            sizeof(float) * 3, stream), "Error in cuMemcpyDtoHAsync: ");
+    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
+            stream), "Error in cuStreamSynchronize: ");
+    std::cout << "refInput:" << std::endl;
+    for (int i = 0; i < 3; i++) {
+        std::cout << float(refInput[i]);
+        if (i != 2) {
+            std::cout << ", ";
+        } else {
+            std::cout << std::endl;
+        }
+    }
+    std::cout << std::endl;
+    delete[] refInput;*/
+
     /*int copySize = batchSize * 40;
     int testSize = 160;
     __half* dataHalf = new __half[copySize];
@@ -485,6 +503,28 @@ void TinyCudaNNSimilarityCalculator::runInferenceBatch(uint32_t batchOffset, uin
     moduleWrapper->networkEncoder->inference(
                 stream, cacheWrapper->queryInput, cacheWrapper->queryEncoded);
 #endif
+
+    /*int copySize = 3 * 800;
+    int testSize = 160;
+    float* dataFloat = new float[copySize];
+    dataFloat[0] = 1000.0f;
+    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyDtoHAsync(
+            dataFloat, (CUdeviceptr)cacheWrapper->queryInput.data(),
+            sizeof(float) * copySize, stream), "Error in cuMemcpyDtoHAsync: ");
+    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
+            stream), "Error in cuStreamSynchronize: ");
+    std::cout << "queryInput:" << std::endl;
+    for (int i = 0; i < testSize; i++) {
+        std::cout << dataFloat[i];
+        if (i != testSize - 1) {
+            std::cout << ", ";
+        }
+        if (i % 20 == 19 && i != 0) {
+            std::cout << std::endl;
+        }
+    }
+    std::cout << std::endl;
+    delete[] dataFloat;*/
 
     /*int copySize = batchSize * 40;
     int testSize = 160;

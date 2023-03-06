@@ -212,6 +212,55 @@ bool PyTorchSimilarityCalculator::loadModelFromFile(int idx, const std::string& 
 
     wrapper->frozenModule = optimize_for_inference(wrapper->module);
 
+    auto it = extraFilesMap.find("model_info.json");
+    if (it != extraFilesMap.end()) {
+        Json::CharReaderBuilder builder;
+        std::unique_ptr<Json::CharReader> const charReader(builder.newCharReader());
+        JSONCPP_STRING errorString;
+        Json::Value root;
+        if (!charReader->parse(
+                it->second.c_str(), it->second.c_str() + it->second.size(), &root, &errorString)) {
+            sgl::Logfile::get()->writeError("Error in PyTorchSimilarityCalculator::loadModelFromFile: " + errorString);
+            wrapper = {};
+            return false;
+        }
+
+        /*
+         * Example: { "network_type": "MINE_SRN" }
+         */
+        if (root.isMember("network_type")) {
+            Json::Value& networkTypeNode = root["network_type"];
+            if (!networkTypeNode.isString()) {
+                sgl::Logfile::get()->writeError(
+                        "Error: Array 'network_type' could not be found in the model_info.json file of the PyTorch "
+                        "module loaded from \"" + modelPath + "\"!");
+                wrapper = {};
+                return false;
+            }
+
+            auto networkTypeName = networkTypeNode.asString();
+            bool foundNetworkType = false;
+            for (int i = 0; i < IM_ARRAYSIZE(NETWORK_TYPE_SHORT_NAMES); i++) {
+                if (NETWORK_TYPE_SHORT_NAMES[i] == networkTypeName) {
+                    networkType = NetworkType(i);
+                    foundNetworkType = true;
+                    break;
+                }
+            }
+            if (!foundNetworkType && networkTypeName == "MINE_SRN") {
+                networkType = NetworkType::SRN_MINE;
+                foundNetworkType = true;
+            }
+            if (!foundNetworkType) {
+                sgl::Logfile::get()->writeError(
+                        "Error in PyTorchSimilarityCalculator::loadModelFromFile: Invalid network type \""
+                        + networkTypeName + "\".");
+                wrapper = {};
+                return false;
+            }
+        }
+    }
+
     dirty = true;
     return true;
 }
@@ -233,7 +282,7 @@ void PyTorchSimilarityCalculator::calculateCpu(int timeStepIdx, int ensembleIdx,
     auto ues = uint32_t(es);
 
     if (cachedEnsembleSizeHost != size_t(es)) {
-        if (cachedEnsembleSizeHost != 0) {
+        if (cachedEnsembleSizeHost != std::numeric_limits<size_t>::max()) {
             delete[] referenceInputValues;
             delete[] batchInputValues;
         }
@@ -282,11 +331,9 @@ void PyTorchSimilarityCalculator::calculateCpu(int timeStepIdx, int ensembleIdx,
         referenceInputSizes = { 1, es, 4 };
         inputSizes = { mineBatchSize1D, es, 4 };
     } else {
-        for (int e = 0; e < es; e++) {
-            referenceInputValues[0] = referencePointNorm.x;
-            referenceInputValues[1] = referencePointNorm.y;
-            referenceInputValues[2] = referencePointNorm.z;
-        }
+        referenceInputValues[0] = referencePointNorm.x;
+        referenceInputValues[1] = referencePointNorm.y;
+        referenceInputValues[2] = referencePointNorm.z;
         referenceInputSizes = { 1, 3 };
         inputSizes = { srnBatchSize1D, 3 };
     }
