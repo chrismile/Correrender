@@ -402,6 +402,16 @@ void DeepLearningCudaSimilarityCalculator::calculateDevice(
         runInferenceBatch(batchOffset, batchSize);
     }
 
+    // For debugging purposes.
+    /*float miCenter = 0.0f;
+    CUdeviceptr offsetCenter = (referencePointIndex.x + referencePointIndex.y * xs + referencePointIndex.z * xs * ys) * sizeof(float);
+    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyDtoHAsync(
+            &miCenter, outputImageBufferCu + offsetCenter,
+            sizeof(float), stream), "Error in cuMemcpyDtoHAsync: ");
+    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
+            stream), "Error in cuStreamSynchronize: ");
+    std::cout << "MI center: " << miCenter << std::endl << std::endl;*/
+
     deviceCacheEntry->getImageCudaExternalMemory()->memcpyCudaDtoA3DAsync(outputImageBufferCu, stream);
 
     cudaFinishedSemaphore->signalSemaphoreCuda(stream, timelineValue);

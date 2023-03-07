@@ -346,8 +346,15 @@ void TinyCudaNNSimilarityCalculator::loadModelFromFile(const std::string& modelP
     numLayersInEncoder = uint32_t(moduleWrapper->networkEncoder->input_width());
     numLayersOutEncoder = uint32_t(moduleWrapper->networkEncoder->padded_output_width());
 #endif
+
     numLayersInDecoder = uint32_t(moduleWrapper->networkDecoder->input_width());
+#if TCNN_HALF_PRECISION
     numLayersOutDecoder = uint32_t(moduleWrapper->networkDecoder->padded_output_width());
+#else
+    // tcnn::DifferentiableObject<T,PARAMS_T,COMPUTE_T>::inference checks output.m() == output_width().
+    // For some reason, there is an incompatibility for the CutlassMLP class.
+    numLayersOutDecoder = uint32_t(moduleWrapper->networkDecoder->output_width());
+#endif
 
     if (numLayersOutEncoder * symmetrizerFactor != numLayersInDecoder) {
         sgl::Logfile::get()->throwError(
