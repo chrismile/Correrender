@@ -66,8 +66,10 @@ protected:
     void renderGuiImpl(sgl::PropertyEditor& propertyEditor) override;
 
 private:
+    void recreateDiagramSwapchain();
     VolumeDataPtr volumeData;
-    std::vector<std::shared_ptr<HEBChart>> diagrams;
+    uint32_t diagramViewIdx = 0;
+    std::shared_ptr<HEBChart> diagram;
 
     // UI renderer settings.
     int selectedFieldIdx = 0, oldSelectedFieldIdx = 0;
@@ -78,7 +80,8 @@ private:
     int downscalingFactor = 32;
     int lineCountFactor = 100;
     float curveOpacity = 0.4f;
-    int cellDistanceThreshold = 0;
+    glm::vec2 correlationRange{}, correlationRangeTotal{};
+    glm::ivec2 cellDistanceRange{}, cellDistanceRangeTotal{};
     int diagramRadius = 160;
     bool alignWithParentWindow = false;
     bool opacityByValue = false;

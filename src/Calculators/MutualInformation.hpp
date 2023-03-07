@@ -61,4 +61,6 @@ extern template
 float computeMutualInformationKraskov2<double>(
         const float* referenceValues, const float* queryValues, int k, int es);
 
+float computeMaximumMutualInformationKraskov(int k, int es);
+
 #endif //CORRERENDER_MUTUALINFORMATION_HPP

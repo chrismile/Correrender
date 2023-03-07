@@ -454,3 +454,8 @@ float computeMutualInformationKraskov2<float>(
 template
 float computeMutualInformationKraskov2<double>(
         const float* referenceValues, const float* queryValues, int k, int es);
+
+
+float computeMaximumMutualInformationKraskov(int k, int es) {
+    return float(boost::math::digamma(es) - boost::math::digamma(k));
+}

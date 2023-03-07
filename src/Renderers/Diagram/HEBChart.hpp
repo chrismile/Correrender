@@ -35,21 +35,17 @@
 #include <glm/vec3.hpp>
 
 #include "DiagramColorMap.hpp"
+#include "Octree.hpp"
 #include "DiagramBase.hpp"
 #include "../../Calculators/Similarity.hpp"
 
-struct HEBNode {
-    HEBNode() {
-        parentIdx = std::numeric_limits<uint32_t>::max();
-        std::fill_n(childIndices, 8, std::numeric_limits<uint32_t>::max());
-    }
-    explicit HEBNode(uint32_t parentIdx) : parentIdx(parentIdx) {
-        std::fill_n(childIndices, 8, std::numeric_limits<uint32_t>::max());
-    }
-    glm::vec2 normalizedPosition;
-    float angle = 0.0f;
-    uint32_t parentIdx;
-    uint32_t childIndices[8];
+struct MIFieldEntry {
+    float miValue;
+    uint32_t pointIndex0, pointIndex1;
+
+    MIFieldEntry(float miValue, uint32_t pointIndex0, uint32_t pointIndex1)
+            : miValue(miValue), pointIndex0(pointIndex0), pointIndex1(pointIndex1) {}
+    bool operator<(const MIFieldEntry& rhs) const { return miValue > rhs.miValue; }
 };
 
 /**
@@ -72,7 +68,6 @@ public:
     void setDownscalingFactor(int _df);
     void setLineCountFactor(int _factor);
     void setCurveOpacity(float _alpha);
-    void setCellDistanceThreshold(int _thresh);
     void setDiagramRadius(int radius);
     void setAlignWithParentWindow(bool _align);
     void setOpacityByValue(bool _opacityByValue);
@@ -84,6 +79,12 @@ public:
     uint32_t getSelectedPointIndexGrid(int idx);
     sgl::AABB3 getSelectedRegion(int idx);
     std::pair<glm::vec3, glm::vec3> getLinePositions();
+
+    // Range queries.
+    glm::vec2 getCorrelationRangeTotal();
+    glm::ivec2 getCellDistanceRangeTotal();
+    void setCorrelationRange(const glm::vec2& _range);
+    void setCellDistanceRange(const glm::ivec2& _range);
 
 protected:
     bool hasData() override {
@@ -121,12 +122,16 @@ private:
 
     // B-spline data.
     void updateData();
+    void computeDownscaledField(std::vector<float*>& downscaledEnsembleFields);
+    void computeDownscaledFieldVariance(std::vector<float*>& downscaledEnsembleFields);
+    void computeCorrelations(std::vector<float*>& downscaledEnsembleFields, std::vector<MIFieldEntry>& miFieldEntries);
     int NUM_LINES = 0;
     int MAX_NUM_LINES = 100;
     const int NUM_SUBDIVISIONS = 50;
     float beta = 0.75f;
     float curveOpacity = 0.4f;
-    int cellDistanceThreshold = 0;
+    glm::vec2 correlationRange{}, correlationRangeTotal{};
+    glm::ivec2 cellDistanceRange{}, cellDistanceRangeTotal{};
     std::vector<glm::vec2> curvePoints;
     std::vector<float> miValues; ///< per-line values.
     std::vector<std::pair<int, int>> connectedPointsArray; ///< points connected by lines.

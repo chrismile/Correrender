@@ -76,182 +76,6 @@
 #include "BSpline.hpp"
 #include "HEBChart.hpp"
 
-#define IDXSD(x,y,z) ((z)*xsd*ysd + (y)*xsd + (x))
-
-struct MIFieldEntry {
-    float miValue;
-    uint32_t pointIndex0, pointIndex1;
-
-    MIFieldEntry(float miValue, uint32_t pointIndex0, uint32_t pointIndex1)
-            : miValue(miValue), pointIndex0(pointIndex0), pointIndex1(pointIndex1) {}
-    bool operator<(const MIFieldEntry& rhs) const { return miValue > rhs.miValue; }
-};
-
-struct StackDomain {
-    StackDomain() {}
-    StackDomain(uint32_t nodeIdx, uint32_t depth, const glm::ivec3& min, const glm::ivec3& max)
-            : nodeIdx(nodeIdx), depth(depth), min(min), max(max) {}
-    uint32_t nodeIdx;
-    uint32_t depth;
-    glm::ivec3 min, max;
-};
-
-void buildTree(
-        std::vector<HEBNode>& nodesList, std::vector<uint32_t>& pointToNodeIndexMap, uint32_t& leafIdxOffset,
-        int xsd, int ysd, int zsd) {
-    auto treeHeightX = uint32_t(std::ceil(std::log2(xsd)));
-    auto treeHeightY = uint32_t(std::ceil(std::log2(ysd)));
-    auto treeHeightZ = uint32_t(std::ceil(std::log2(zsd)));
-    auto treeHeight = std::max(treeHeightX, std::max(treeHeightY, treeHeightZ));
-    nodesList.emplace_back();
-    nodesList[0].normalizedPosition = glm::vec3(0.0f);
-    pointToNodeIndexMap.resize(xsd * ysd * zsd);
-
-    std::queue<StackDomain> domainStack;
-    StackDomain rootDomain;
-    rootDomain.nodeIdx = 0;
-    rootDomain.depth = 0;
-    rootDomain.min = glm::ivec3(0, 0, 0);
-    rootDomain.max = glm::ivec3(xsd - 1, ysd - 1, zsd - 1);
-    domainStack.push(rootDomain);
-    leafIdxOffset = std::numeric_limits<uint32_t>::max();
-    while (!domainStack.empty()) {
-        auto stackEntry = domainStack.front();
-        domainStack.pop();
-        auto extent = stackEntry.max - stackEntry.min + glm::ivec3(1);
-        // Leaf?
-        //if (extent.x == 1 && extent.y == 1 && extent.z == 1) {
-        if (stackEntry.depth == treeHeight) {
-            pointToNodeIndexMap.at(IDXSD(stackEntry.min.x, stackEntry.min.y, stackEntry.min.z)) = stackEntry.nodeIdx;
-            if (leafIdxOffset == std::numeric_limits<uint32_t>::max()) {
-                leafIdxOffset = stackEntry.nodeIdx;
-            }
-            continue;
-        }
-        glm::ivec3 maxHalf = stackEntry.max, minHalf = stackEntry.min;
-        minHalf.x = stackEntry.min.x + sgl::iceil(extent.x, 2);
-        minHalf.y = stackEntry.min.y + sgl::iceil(extent.y, 2);
-        minHalf.z = stackEntry.min.z + sgl::iceil(extent.z, 2);
-        maxHalf.x = minHalf.x - 1;
-        maxHalf.y = minHalf.y - 1;
-        maxHalf.z = minHalf.z - 1;
-        auto childrenOffset = uint32_t(nodesList.size());
-        domainStack.emplace(
-                uint32_t(nodesList.size()), stackEntry.depth + 1,
-                glm::vec3(stackEntry.min.x, stackEntry.min.y, stackEntry.min.z),
-                glm::vec3(maxHalf.x, maxHalf.y, maxHalf.z));
-        HEBNode child(stackEntry.nodeIdx);
-        nodesList.push_back(child);
-        if (extent.x > 1) {
-            domainStack.emplace(
-                    uint32_t(nodesList.size()), stackEntry.depth + 1,
-                    glm::vec3(minHalf.x, stackEntry.min.y, stackEntry.min.z),
-                    glm::vec3(stackEntry.max.x, maxHalf.y, maxHalf.z));
-            HEBNode child(stackEntry.nodeIdx);
-            nodesList.push_back(child);
-        }
-        if (extent.y > 1) {
-            domainStack.emplace(
-                    uint32_t(nodesList.size()), stackEntry.depth + 1,
-                    glm::vec3(stackEntry.min.x, minHalf.y, stackEntry.min.z),
-                    glm::vec3(maxHalf.x, stackEntry.max.y, maxHalf.z));
-            HEBNode child(stackEntry.nodeIdx);
-            nodesList.push_back(child);
-        }
-        if (extent.x > 1 && extent.y > 1) {
-            domainStack.emplace(
-                    uint32_t(nodesList.size()), stackEntry.depth + 1,
-                    glm::vec3(minHalf.x, minHalf.y, stackEntry.min.z),
-                    glm::vec3(stackEntry.max.x, stackEntry.max.y, maxHalf.z));
-            HEBNode child(stackEntry.nodeIdx);
-            nodesList.push_back(child);
-        }
-        if (extent.z > 1) {
-            domainStack.emplace(
-                    uint32_t(nodesList.size()), stackEntry.depth + 1,
-                    glm::vec3(stackEntry.min.x, stackEntry.min.y, minHalf.z),
-                    glm::vec3(maxHalf.x, maxHalf.y, stackEntry.max.z));
-            HEBNode child(stackEntry.nodeIdx);
-            nodesList.push_back(child);
-            if (extent.x > 1) {
-                domainStack.emplace(
-                        uint32_t(nodesList.size()), stackEntry.depth + 1,
-                        glm::vec3(minHalf.x, stackEntry.min.y, minHalf.z),
-                        glm::vec3(stackEntry.max.x, maxHalf.y, stackEntry.max.z));
-                HEBNode child(stackEntry.nodeIdx);
-                nodesList.push_back(child);
-            }
-            if (extent.y > 1) {
-                domainStack.emplace(
-                        uint32_t(nodesList.size()), stackEntry.depth + 1,
-                        glm::vec3(stackEntry.min.x, minHalf.y, minHalf.z),
-                        glm::vec3(maxHalf.x, stackEntry.max.y, stackEntry.max.z));
-                HEBNode child(stackEntry.nodeIdx);
-                nodesList.push_back(child);
-            }
-            if (extent.x > 1 && extent.y > 1) {
-                domainStack.emplace(
-                        uint32_t(nodesList.size()), stackEntry.depth + 1,
-                        glm::vec3(minHalf.x, minHalf.y, minHalf.z),
-                        glm::vec3(stackEntry.max.x, stackEntry.max.y, stackEntry.max.z));
-                HEBNode child(stackEntry.nodeIdx);
-                nodesList.push_back(child);
-            }
-        }
-        uint32_t numChildren = uint32_t(nodesList.size()) - childrenOffset;
-        for (uint32_t i = 0; i < numChildren; i++) {
-            nodesList[stackEntry.nodeIdx].childIndices[i] = childrenOffset + i;
-        }
-    }
-
-
-
-    // Set node positions.
-    // Start with placing the leaves on a unit circle.
-    std::unordered_set<uint32_t> prevParentNodeIndices;
-    std::unordered_set<uint32_t> nextParentNodeIndices;
-    uint32_t leafCounter = 0;
-    for (uint32_t leafIdx = leafIdxOffset; leafIdx < uint32_t(nodesList.size()); leafIdx++) {
-        prevParentNodeIndices.insert(nodesList[leafIdx].parentIdx);
-        float angle = float(leafCounter) / float(pointToNodeIndexMap.size()) * sgl::TWO_PI;
-        nodesList[leafIdx].angle = angle;
-        nodesList[leafIdx].normalizedPosition = glm::vec2(std::cos(angle), std::sin(angle));
-        prevParentNodeIndices.insert(nodesList[leafIdx].parentIdx);
-        leafCounter++;
-    }
-    /*std::stack<uint32_t> traversalStack;
-    while (!traversalStack.empty()) {
-        uint32_t nodeIdx = traversalStack.top();
-        traversalStack.pop();
-    }*/
-
-    int currentDepth = int(treeHeight) - 1;
-    while (!prevParentNodeIndices.empty()) {
-        float radius = float(currentDepth) / float(treeHeight);
-        for (uint32_t nodeIdx : prevParentNodeIndices) {
-            auto& node = nodesList[nodeIdx];
-            float minChildAngle = std::numeric_limits<float>::max();
-            float maxChildAngle = std::numeric_limits<float>::lowest();
-            for (int i = 0; i < 8; i++) {
-                if (node.childIndices[i] == std::numeric_limits<uint32_t>::max()) {
-                    break;
-                }
-                minChildAngle = std::min(minChildAngle, nodesList[node.childIndices[i]].angle);
-                maxChildAngle = std::max(maxChildAngle, nodesList[node.childIndices[i]].angle);
-            }
-            node.angle = 0.5f * (minChildAngle + maxChildAngle);
-            node.normalizedPosition = radius * glm::vec2(std::cos(node.angle), std::sin(node.angle));
-            if (node.parentIdx != std::numeric_limits<uint32_t>::max()) {
-                nextParentNodeIndices.insert(node.parentIdx);
-            }
-        }
-
-        prevParentNodeIndices = nextParentNodeIndices;
-        nextParentNodeIndices.clear();
-        currentDepth--;
-    }
-}
-
 void getControlPoints(
         const std::vector<HEBNode>& nodesList, const std::vector<uint32_t>& pointToNodeIndexMap,
         uint32_t pointIndex0, uint32_t pointIndex1, std::vector<glm::vec2>& controlPoints) {
@@ -354,6 +178,12 @@ void HEBChart::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) {
         dataDirty = true;
     }
     if (isNewData) {
+        xs = volumeData->getGridSizeX();
+        ys = volumeData->getGridSizeY();
+        zs = volumeData->getGridSizeZ();
+        xsd = sgl::iceil(xs, df);
+        ysd = sgl::iceil(ys, df);
+        zsd = sgl::iceil(zs, df);
         resetSelectedPrimitives();
     }
 }
@@ -398,11 +228,6 @@ void HEBChart::setCurveOpacity(float _alpha) {
     curveOpacity = _alpha;
 }
 
-void HEBChart::setCellDistanceThreshold(int _thresh) {
-    cellDistanceThreshold = _thresh;
-    dataDirty = true;
-}
-
 void HEBChart::setDiagramRadius(int radius) {
     chartRadius = float(radius);
     windowWidth = (chartRadius + borderSizeX) * 2.0f;
@@ -439,30 +264,44 @@ void HEBChart::setUse2DField(bool _use2dField) {
     dataDirty = true;
 }
 
-void HEBChart::updateData() {
-    // Values downscaled by factor 32.
+
+glm::vec2 HEBChart::getCorrelationRangeTotal() {
+    if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV
+            || correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
+        int es = volumeData->getEnsembleMemberCount();
+        int k = std::max(sgl::iceil(3 * es, 100), 1);
+        correlationRangeTotal.x = 0.0f;
+        correlationRangeTotal.y = computeMaximumMutualInformationKraskov(k, es);
+    } else {
+        correlationRangeTotal.x = -1.0f;
+        correlationRangeTotal.y = 1.0f;
+    }
+    return correlationRangeTotal;
+}
+
+glm::ivec2 HEBChart::getCellDistanceRangeTotal() {
+    cellDistanceRangeTotal.x = 0;
+    //cellDistanceRangeTotal.y = xsd + ysd + zsd; //< Manhattan distance.
+    glm::vec3 pti(0, 0, 0);
+    glm::vec3 ptj(xsd - 1, ysd - 1, zsd - 1);
+    cellDistanceRangeTotal.y = int(std::ceil(glm::length(pti - ptj)));
+    return cellDistanceRangeTotal;
+}
+
+void HEBChart::setCorrelationRange(const glm::vec2& _range) {
+    correlationRange = _range;
+    dataDirty = true;
+}
+
+void HEBChart::setCellDistanceRange(const glm::ivec2& _range) {
+    cellDistanceRange = _range;
+    dataDirty = true;
+}
+
+
+void HEBChart::computeDownscaledField(std::vector<float*>& downscaledEnsembleFields) {
     int es = volumeData->getEnsembleMemberCount();
-    xs = volumeData->getGridSizeX();
-    ys = volumeData->getGridSizeY();
-    zs = volumeData->getGridSizeZ();
-    xsd = sgl::iceil(xs, df);
-    ysd = sgl::iceil(ys, df);
-    zsd = sgl::iceil(zs, df);
     int numPoints = xsd * ysd * zsd;
-
-    if (selectedLineIdx >= 0 || selectedPointIndices[0] >= 0 || selectedPointIndices[1] >= 0) {
-        needsReRender = true;
-    }
-    resetSelectedPrimitives();
-
-    if (use2dField) {
-        numPoints = xsd * ysd;
-        zsd = 1;
-    }
-
-    // Compute the downscaled field.
-    std::vector<float*> downscaledEnsembleFields;
-    downscaledEnsembleFields.resize(es);
     for (int ensembleIdx = 0; ensembleIdx < es; ensembleIdx++) {
         VolumeData::HostCacheEntry ensembleEntryField = volumeData->getFieldEntryCpu(
                 FieldType::SCALAR, selectedScalarFieldName, -1, ensembleIdx);
@@ -531,217 +370,12 @@ void HEBChart::updateData() {
 
         downscaledEnsembleFields.at(ensembleIdx) = dowsncaledField;
     }
+}
 
-    // Compute the mutual information matrix.
-    int k = std::max(sgl::iceil(3 * es, 100), 1); //< CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV
-    int numBins = 80; //< CorrelationMeasureType::MUTUAL_INFORMATION_BINNED
-#ifdef USE_TBB
-    std::vector<MIFieldEntry> miFieldEntries = tbb::parallel_reduce(
-            tbb::blocked_range<int>(0, numPoints), std::vector<MIFieldEntry>(),
-            [&](tbb::blocked_range<int> const& r, std::vector<MIFieldEntry> miFieldEntriesThread) -> std::vector<MIFieldEntry> {
-                std::vector<float> X(es);
-                std::vector<float> Y(es);
-
-                std::vector<std::pair<float, int>> ordinalRankArraySpearman;
-                float* referenceRanks = nullptr;
-                float* gridPointRanks = nullptr;
-                if (cmt == CorrelationMeasureType::SPEARMAN) {
-                    ordinalRankArraySpearman.reserve(es);
-                    referenceRanks = new float[es];
-                    gridPointRanks = new float[es];
-                }
-
-                std::vector<std::pair<float, float>> jointArray;
-                std::vector<float> ordinalRankArray;
-                std::vector<float> y;
-                if (cmt == CorrelationMeasureType::KENDALL) {
-                    jointArray.reserve(es);
-                    ordinalRankArray.reserve(es);
-                    y.reserve(es);
-                }
-
-                double* histogram0 = nullptr;
-                double* histogram1 = nullptr;
-                double* histogram2d = nullptr;
-                if (cmt == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
-                    histogram0 = new double[numBins];
-                    histogram1 = new double[numBins];
-                    histogram2d = new double[numBins * numBins];
-                }
-
-                float minEnsembleValRef, maxEnsembleValRef, minEnsembleVal, maxEnsembleVal;
-
-                for (int i = r.begin(); i != r.end(); i++) {
-#else
-    std::vector<MIFieldEntry> miFieldEntries;
-    miFieldEntries.reserve((numPoints * numPoints + numPoints) / 2);
-#if _OPENMP >= 201107
-    #pragma omp parallel default(none) shared(miFieldEntries, downscaledEnsembleFields, numPoints, es, k, numBins)
-#endif
-    {
-        const CorrelationMeasureType cmt = correlationMeasureType;
-        std::vector<MIFieldEntry> miFieldEntriesThread;
-        std::vector<float> X(es);
-        std::vector<float> Y(es);
-
-        std::vector<std::pair<float, int>> ordinalRankArraySpearman;
-        float* referenceRanks = nullptr;
-        float* gridPointRanks = nullptr;
-        if (cmt == CorrelationMeasureType::SPEARMAN) {
-            ordinalRankArraySpearman.reserve(es);
-            referenceRanks = new float[es];
-            gridPointRanks = new float[es];
-        }
-
-        std::vector<std::pair<float, float>> jointArray;
-        std::vector<float> ordinalRankArray;
-        std::vector<float> y;
-        if (cmt == CorrelationMeasureType::KENDALL) {
-            jointArray.reserve(es);
-            ordinalRankArray.reserve(es);
-            y.reserve(es);
-        }
-
-        double* histogram0 = nullptr;
-        double* histogram1 = nullptr;
-        double* histogram2d = nullptr;
-        if (cmt == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
-            histogram0 = new double[numBins];
-            histogram1 = new double[numBins];
-            histogram2d = new double[numBins * numBins];
-        }
-
-        float minEnsembleValRef, maxEnsembleValRef, minEnsembleVal, maxEnsembleVal;
-
-#if _OPENMP >= 201107
-        #pragma omp for schedule(dynamic)
-#endif
-        for (int i = 0; i < numPoints; i++) {
-#endif
-            bool isNan = false;
-            for (int e = 0; e < es; e++) {
-                X[e] = downscaledEnsembleFields.at(e)[i];
-                if (std::isnan(X[e])) {
-                    isNan = true;
-                    break;
-                }
-            }
-            if (isNan) {
-                continue;
-            }
-            if (correlationMeasureType == CorrelationMeasureType::SPEARMAN) {
-                std::vector<std::pair<float, int>> ordinalRankArrayRef;
-                ordinalRankArray.reserve(es);
-                computeRanks(X.data(), referenceRanks, ordinalRankArrayRef, es);
-            }
-            if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
-                minEnsembleValRef = std::numeric_limits<float>::max();
-                maxEnsembleValRef = std::numeric_limits<float>::lowest();
-                for (int e = 0; e < es; e++) {
-                    minEnsembleValRef = std::min(minEnsembleValRef, X[e]);
-                    maxEnsembleValRef = std::max(maxEnsembleValRef, X[e]);
-                }
-                for (int e = 0; e < es; e++) {
-                    X[e] = (downscaledEnsembleFields.at(e)[i] - minEnsembleValRef) / (maxEnsembleValRef - minEnsembleValRef);
-                }
-            }
-
-            for (int j = 0; j < i; j++) {
-                if (cellDistanceThreshold > 0) {
-                    glm::vec3 pti(i % uint32_t(xsd), (i / uint32_t(xsd)) % uint32_t(ysd), i / uint32_t(xsd * ysd));
-                    glm::vec3 ptj(j % uint32_t(xsd), (j / uint32_t(xsd)) % uint32_t(ysd), j / uint32_t(xsd * ysd));
-                    if (glm::length(pti - ptj) < float(cellDistanceThreshold)) {
-                        continue;
-                    }
-                }
-                for (int e = 0; e < es; e++) {
-                    Y[e] = downscaledEnsembleFields.at(e)[j];
-                    if (std::isnan(Y[e])) {
-                        isNan = true;
-                        break;
-                    }
-                }
-                if (!isNan) {
-                    if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
-                        minEnsembleVal = minEnsembleValRef;
-                        maxEnsembleVal = maxEnsembleValRef;
-                        for (int e = 0; e < es; e++) {
-                            minEnsembleVal = std::min(minEnsembleVal, Y[e]);
-                            maxEnsembleVal = std::max(maxEnsembleVal, Y[e]);
-                        }
-                        for (int e = 0; e < es; e++) {
-                            X[e] = (downscaledEnsembleFields.at(e)[i] - minEnsembleVal) / (maxEnsembleVal - minEnsembleVal);
-                            Y[e] = (downscaledEnsembleFields.at(e)[j] - minEnsembleVal) / (maxEnsembleVal - minEnsembleVal);
-                        }
-                    }
-
-                    float miValue = 0.0f;
-                    if (cmt == CorrelationMeasureType::PEARSON) {
-                        miValue = computePearson2<float>(X.data(), Y.data(), es);
-                    } else if (cmt == CorrelationMeasureType::SPEARMAN) {
-                        computeRanks(Y.data(), gridPointRanks, ordinalRankArraySpearman, es);
-                        miValue = computePearson2<float>(referenceRanks, gridPointRanks, es);
-                    } else if (cmt == CorrelationMeasureType::KENDALL) {
-                        miValue = computeKendall(
-                                X.data(), Y.data(), es, jointArray, ordinalRankArray, y);
-                    } else if (cmt == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
-                        miValue = computeMutualInformationBinned<double>(
-                                X.data(), Y.data(), numBins, es, histogram0, histogram1, histogram2d);
-                    } else if (cmt == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV) {
-                        miValue = computeMutualInformationKraskov<double>(X.data(), Y.data(), k, es);
-                    }
-                    miFieldEntriesThread.emplace_back(miValue, i, j);
-                }
-            }
-        }
-
-        if (cmt == CorrelationMeasureType::SPEARMAN) {
-            delete[] referenceRanks;
-            delete[] gridPointRanks;
-        }
-        if (cmt == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
-            delete[] histogram0;
-            delete[] histogram1;
-            delete[] histogram2d;
-        }
-#ifdef USE_TBB
-                return miFieldEntriesThread;
-            },
-            [&](std::vector<MIFieldEntry> lhs, std::vector<MIFieldEntry> rhs) -> std::vector<MIFieldEntry> {
-                std::vector<MIFieldEntry> listOut = std::move(lhs);
-                listOut.insert(listOut.end(), std::make_move_iterator(rhs.begin()), std::make_move_iterator(rhs.end()));
-                return listOut;
-            });
-#else
-
-#if _OPENMP >= 201107
-        #pragma omp for ordered schedule(static, 1)
-        for (int threadIdx = 0; threadIdx < omp_get_num_threads(); ++threadIdx) {
-#else
-        for (int threadIdx = 0; threadIdx < 1; ++threadIdx) {
-#endif
-            #pragma omp ordered
-            {
-                miFieldEntries.insert(miFieldEntries.end(), miFieldEntriesThread.begin(), miFieldEntriesThread.end());
-            }
-        }
-    }
-#endif
-
-#ifdef USE_TBB
-    tbb::parallel_sort(miFieldEntries.begin(), miFieldEntries.end());
-//#elif __cpp_lib_parallel_algorithm >= 201603L
-    //std::sort(std::execution::par_unseq, miFieldEntries.begin(), miFieldEntries.end());
-#else
-    std::sort(miFieldEntries.begin(), miFieldEntries.end());
-#endif
-
-    // Build the octree.
-    nodesList.clear();
-    pointToNodeIndexMap.clear();
-    buildTree(nodesList, pointToNodeIndexMap, leafIdxOffset, xsd, ysd, zsd);
-
+void HEBChart::computeDownscaledFieldVariance(std::vector<float*>& downscaledEnsembleFields) {
     // Compute the standard deviation inside the downscaled grids.
+    int es = volumeData->getEnsembleMemberCount();
+    int numPoints = xsd * ysd * zsd;
     leafStdDevArray.resize(numPoints);
     for (int pointIdx = 0; pointIdx < numPoints; pointIdx++) {
         int ensembleNumValid = 0;
@@ -815,6 +449,256 @@ void HEBChart::updateData() {
     auto [minVal, maxVal] = sgl::reduceFloatArrayMinMax(leafStdDevArray);
     minStdDev = minVal;
     maxStdDev = maxVal;
+}
+
+void HEBChart::computeCorrelations(
+        std::vector<float*>& downscaledEnsembleFields, std::vector<MIFieldEntry>& miFieldEntries) {
+    int es = volumeData->getEnsembleMemberCount();
+    int k = std::max(sgl::iceil(3 * es, 100), 1); //< CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV
+    int numBins = 80; //< CorrelationMeasureType::MUTUAL_INFORMATION_BINNED
+    int numPoints = xsd * ysd * zsd;
+#ifdef USE_TBB
+    miFieldEntries = tbb::parallel_reduce(
+            tbb::blocked_range<int>(0, numPoints), std::vector<MIFieldEntry>(),
+            [&](tbb::blocked_range<int> const& r, std::vector<MIFieldEntry> miFieldEntriesThread) -> std::vector<MIFieldEntry> {
+                std::vector<float> X(es);
+                std::vector<float> Y(es);
+
+                std::vector<std::pair<float, int>> ordinalRankArraySpearman;
+                float* referenceRanks = nullptr;
+                float* gridPointRanks = nullptr;
+                if (cmt == CorrelationMeasureType::SPEARMAN) {
+                    ordinalRankArraySpearman.reserve(es);
+                    referenceRanks = new float[es];
+                    gridPointRanks = new float[es];
+                }
+
+                std::vector<std::pair<float, float>> jointArray;
+                std::vector<float> ordinalRankArray;
+                std::vector<float> y;
+                if (cmt == CorrelationMeasureType::KENDALL) {
+                    jointArray.reserve(es);
+                    ordinalRankArray.reserve(es);
+                    y.reserve(es);
+                }
+
+                double* histogram0 = nullptr;
+                double* histogram1 = nullptr;
+                double* histogram2d = nullptr;
+                if (cmt == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
+                    histogram0 = new double[numBins];
+                    histogram1 = new double[numBins];
+                    histogram2d = new double[numBins * numBins];
+                }
+
+                float minEnsembleValRef, maxEnsembleValRef, minEnsembleVal, maxEnsembleVal;
+
+                for (int i = r.begin(); i != r.end(); i++) {
+#else
+    miFieldEntries.reserve((numPoints * numPoints + numPoints) / 2);
+#if _OPENMP >= 201107
+    #pragma omp parallel default(none) shared(miFieldEntries, downscaledEnsembleFields, numPoints, es, k, numBins)
+#endif
+    {
+        const CorrelationMeasureType cmt = correlationMeasureType;
+        std::vector<MIFieldEntry> miFieldEntriesThread;
+        std::vector<float> X(es);
+        std::vector<float> Y(es);
+
+        std::vector<std::pair<float, int>> ordinalRankArraySpearman;
+        float* referenceRanks = nullptr;
+        float* gridPointRanks = nullptr;
+        if (cmt == CorrelationMeasureType::SPEARMAN) {
+            ordinalRankArraySpearman.reserve(es);
+            referenceRanks = new float[es];
+            gridPointRanks = new float[es];
+        }
+
+        std::vector<std::pair<float, float>> jointArray;
+        std::vector<float> ordinalRankArray;
+        std::vector<float> y;
+        if (cmt == CorrelationMeasureType::KENDALL) {
+            jointArray.reserve(es);
+            ordinalRankArray.reserve(es);
+            y.reserve(es);
+        }
+
+        double* histogram0 = nullptr;
+        double* histogram1 = nullptr;
+        double* histogram2d = nullptr;
+        if (cmt == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
+            histogram0 = new double[numBins];
+            histogram1 = new double[numBins];
+            histogram2d = new double[numBins * numBins];
+        }
+
+        float minEnsembleValRef, maxEnsembleValRef, minEnsembleVal, maxEnsembleVal;
+
+#if _OPENMP >= 201107
+    #pragma omp for schedule(dynamic)
+#endif
+        for (int i = 0; i < numPoints; i++) {
+#endif
+            bool isNan = false;
+            for (int e = 0; e < es; e++) {
+                X[e] = downscaledEnsembleFields.at(e)[i];
+                if (std::isnan(X[e])) {
+                    isNan = true;
+                    break;
+                }
+            }
+            if (isNan) {
+                continue;
+            }
+            if (correlationMeasureType == CorrelationMeasureType::SPEARMAN) {
+                std::vector<std::pair<float, int>> ordinalRankArrayRef;
+                ordinalRankArray.reserve(es);
+                computeRanks(X.data(), referenceRanks, ordinalRankArrayRef, es);
+            }
+            if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
+                minEnsembleValRef = std::numeric_limits<float>::max();
+                maxEnsembleValRef = std::numeric_limits<float>::lowest();
+                for (int e = 0; e < es; e++) {
+                    minEnsembleValRef = std::min(minEnsembleValRef, X[e]);
+                    maxEnsembleValRef = std::max(maxEnsembleValRef, X[e]);
+                }
+                for (int e = 0; e < es; e++) {
+                    X[e] = (downscaledEnsembleFields.at(e)[i] - minEnsembleValRef) / (maxEnsembleValRef - minEnsembleValRef);
+                }
+            }
+
+            for (int j = 0; j < i; j++) {
+                if (cellDistanceRange.x > 0 || cellDistanceRange.y < cellDistanceRangeTotal.y) {
+                    glm::vec3 pti(i % uint32_t(xsd), (i / uint32_t(xsd)) % uint32_t(ysd), i / uint32_t(xsd * ysd));
+                    glm::vec3 ptj(j % uint32_t(xsd), (j / uint32_t(xsd)) % uint32_t(ysd), j / uint32_t(xsd * ysd));
+                    float cellDist = glm::length(pti - ptj);
+                    if (cellDist < float(cellDistanceRange.x) || cellDist > float(cellDistanceRange.y)) {
+                        continue;
+                    }
+                }
+                for (int e = 0; e < es; e++) {
+                    Y[e] = downscaledEnsembleFields.at(e)[j];
+                    if (std::isnan(Y[e])) {
+                        isNan = true;
+                        break;
+                    }
+                }
+                if (!isNan) {
+                    if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
+                        minEnsembleVal = minEnsembleValRef;
+                        maxEnsembleVal = maxEnsembleValRef;
+                        for (int e = 0; e < es; e++) {
+                            minEnsembleVal = std::min(minEnsembleVal, Y[e]);
+                            maxEnsembleVal = std::max(maxEnsembleVal, Y[e]);
+                        }
+                        for (int e = 0; e < es; e++) {
+                            X[e] = (downscaledEnsembleFields.at(e)[i] - minEnsembleVal) / (maxEnsembleVal - minEnsembleVal);
+                            Y[e] = (downscaledEnsembleFields.at(e)[j] - minEnsembleVal) / (maxEnsembleVal - minEnsembleVal);
+                        }
+                    }
+
+                    float miValue = 0.0f;
+                    if (cmt == CorrelationMeasureType::PEARSON) {
+                        miValue = computePearson2<float>(X.data(), Y.data(), es);
+                    } else if (cmt == CorrelationMeasureType::SPEARMAN) {
+                        computeRanks(Y.data(), gridPointRanks, ordinalRankArraySpearman, es);
+                        miValue = computePearson2<float>(referenceRanks, gridPointRanks, es);
+                    } else if (cmt == CorrelationMeasureType::KENDALL) {
+                        miValue = computeKendall(
+                                X.data(), Y.data(), es, jointArray, ordinalRankArray, y);
+                    } else if (cmt == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
+                        miValue = computeMutualInformationBinned<double>(
+                                X.data(), Y.data(), numBins, es, histogram0, histogram1, histogram2d);
+                    } else if (cmt == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV) {
+                        miValue = computeMutualInformationKraskov<double>(X.data(), Y.data(), k, es);
+                    }
+                    if (miValue < correlationRange.x || miValue > correlationRange.y) {
+                        continue;
+                    }
+                    miFieldEntriesThread.emplace_back(miValue, i, j);
+                }
+            }
+        }
+
+        if (cmt == CorrelationMeasureType::SPEARMAN) {
+            delete[] referenceRanks;
+            delete[] gridPointRanks;
+        }
+        if (cmt == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
+            delete[] histogram0;
+            delete[] histogram1;
+            delete[] histogram2d;
+        }
+#ifdef USE_TBB
+        return miFieldEntriesThread;
+            },
+            [&](std::vector<MIFieldEntry> lhs, std::vector<MIFieldEntry> rhs) -> std::vector<MIFieldEntry> {
+                std::vector<MIFieldEntry> listOut = std::move(lhs);
+                listOut.insert(listOut.end(), std::make_move_iterator(rhs.begin()), std::make_move_iterator(rhs.end()));
+                return listOut;
+            });
+#else
+
+#if _OPENMP >= 201107
+        #pragma omp for ordered schedule(static, 1)
+        for (int threadIdx = 0; threadIdx < omp_get_num_threads(); ++threadIdx) {
+#else
+            for (int threadIdx = 0; threadIdx < 1; ++threadIdx) {
+#endif
+            #pragma omp ordered
+            {
+                miFieldEntries.insert(miFieldEntries.end(), miFieldEntriesThread.begin(), miFieldEntriesThread.end());
+            }
+        }
+    }
+#endif
+
+#ifdef USE_TBB
+    tbb::parallel_sort(miFieldEntries.begin(), miFieldEntries.end());
+//#elif __cpp_lib_parallel_algorithm >= 201603L
+    //std::sort(std::execution::par_unseq, miFieldEntries.begin(), miFieldEntries.end());
+#else
+    std::sort(miFieldEntries.begin(), miFieldEntries.end());
+#endif
+}
+
+void HEBChart::updateData() {
+    // Values downscaled by factor 32.
+    int es = volumeData->getEnsembleMemberCount();
+    xs = volumeData->getGridSizeX();
+    ys = volumeData->getGridSizeY();
+    zs = volumeData->getGridSizeZ();
+    xsd = sgl::iceil(xs, df);
+    ysd = sgl::iceil(ys, df);
+    zsd = sgl::iceil(zs, df);
+    int numPoints = xsd * ysd * zsd;
+
+    if (selectedLineIdx >= 0 || selectedPointIndices[0] >= 0 || selectedPointIndices[1] >= 0) {
+        needsReRender = true;
+    }
+    resetSelectedPrimitives();
+
+    if (use2dField) {
+        numPoints = xsd * ysd;
+        zsd = 1;
+    }
+
+    // Compute the downscaled field.
+    std::vector<float*> downscaledEnsembleFields;
+    downscaledEnsembleFields.resize(es);
+    computeDownscaledField(downscaledEnsembleFields);
+
+    // Compute the correlation matrix.
+    std::vector<MIFieldEntry> miFieldEntries;
+    computeCorrelations(downscaledEnsembleFields, miFieldEntries);
+
+    // Build the octree.
+    nodesList.clear();
+    pointToNodeIndexMap.clear();
+    buildHebTree(nodesList, pointToNodeIndexMap, leafIdxOffset, xsd, ysd, zsd);
+
+    // Compute the standard deviation inside the downscaled grids.
+    computeDownscaledFieldVariance(downscaledEnsembleFields);
 
     // Delete the downscaled field, as it is no longer used.
     for (int ensembleIdx = 0; ensembleIdx < es; ensembleIdx++) {
@@ -1177,15 +1061,21 @@ void HEBChart::renderBaseNanoVG() {
             nvgStrokeWidth(vg, strokeWidth);
 
             if (colorByValue) {
-                float maxMi = miValues.front();
-                float minMi = miValues.back();
-                float factor = (miValues.at(lineIdx) - minMi) / (maxMi - minMi);
+                float factor = 1.0f;
+                if (miValues.size() > 1) {
+                    float maxMi = miValues.front();
+                    float minMi = miValues.back();
+                    factor = (miValues.at(lineIdx) - minMi) / (maxMi - minMi);
+                }
                 glm::vec4 color = evalColorMapVec4(factor);
                 curveStrokeColor = nvgRGBAf(color.x, color.y, color.z, color.w);
             } else if (opacityByValue) {
-                float maxMi = miValues.front();
-                float minMi = miValues.back();
-                float factor = (miValues.at(lineIdx) - minMi) / (maxMi - minMi) * 0.75f + 0.25f;
+                float factor = 1.0f;
+                if (miValues.size() > 1) {
+                    float maxMi = miValues.front();
+                    float minMi = miValues.back();
+                    factor = (miValues.at(lineIdx) - minMi) / (maxMi - minMi) * 0.75f + 0.25f;
+                }
                 curveStrokeColor.a = curveOpacity * factor;
             } else {
                 curveStrokeColor.a = curveOpacity;
@@ -1321,14 +1211,20 @@ void HEBChart::renderBaseSkia() {
             }
 
             if (colorByValue) {
-                float maxMi = miValues.front();
-                float minMi = miValues.back();
-                float factor = (miValues.at(lineIdx) - minMi) / (maxMi - minMi);
+                float factor = 1.0f;
+                if (miValues.size() > 1) {
+                    float maxMi = miValues.front();
+                    float minMi = miValues.back();
+                    factor = (miValues.at(lineIdx) - minMi) / (maxMi - minMi);
+                }
                 paint.setColor(toSkColor(evalColorMap(factor)));
             } else if (opacityByValue) {
-                float maxMi = miValues.front();
-                float minMi = miValues.back();
-                float factor = (miValues.at(lineIdx) - minMi) / (maxMi - minMi) * 0.75f + 0.25f;
+                float factor = 1.0f;
+                if (miValues.size() > 1) {
+                    float maxMi = miValues.front();
+                    float minMi = miValues.back();
+                    factor = (miValues.at(lineIdx) - minMi) / (maxMi - minMi) * 0.75f + 0.25f;
+                }
                 curveStrokeColor.setFloatA(curveOpacity * factor);
                 paint.setColor(toSkColor(curveStrokeColor));
             }
@@ -1397,19 +1293,25 @@ void HEBChart::renderBaseVkvg() {
         vkvg_set_source_color(context, curveStrokeColor.getColorRGBA());
 
         if (colorByValue || opacityByValue) {
-            float maxMi = miValues.front();
-            float minMi = miValues.back();
+            float maxMi = miValues.empty() ? 0.0f : miValues.front();
+            float minMi = miValues.empty() ? 0.0f : miValues.back();
             for (int lineIdx = 0; lineIdx < NUM_LINES; lineIdx++) {
                 if (lineIdx == selectedLineIdx) {
                     continue;
                 }
                 if (colorByValue) {
-                    float factor = (miValues.at(lineIdx) - minMi) / (maxMi - minMi);
+                    float factor = 1.0f;
+                    if (miValues.size() > 1) {
+                        factor = (miValues.at(lineIdx) - minMi) / (maxMi - minMi);
+                    }
                     auto color = evalColorMap(factor);
                     vkvg_set_source_color(context, color.getColorRGB());
                     vkvg_set_opacity(context, color.getFloatA());
                 } else if (opacityByValue) {
-                    float factor = (miValues.at(lineIdx) - minMi) / (maxMi - minMi) * 0.75f + 0.25f;
+                    float factor = 1.0f;
+                    if (miValues.size() > 1) {
+                        factor = (miValues.at(lineIdx) - minMi) / (maxMi - minMi) * 0.75f + 0.25f;
+                    }
                     vkvg_set_opacity(context, curveOpacity * factor);
                 }
 

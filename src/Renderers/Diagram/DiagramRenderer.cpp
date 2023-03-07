@@ -90,6 +90,28 @@ void DiagramRenderer::initialize() {
             }
         }
     }
+
+    diagram = std::make_shared<HEBChart>();
+    //auto diagram = std::make_shared<RadarBarChart>(true);
+    diagram->setRendererVk(renderer);
+    diagram->initialize();
+    //diagram->setDataTimeDependent(variableNames, variableValuesTimeDependent);
+    //diagram->setUseEqualArea(true);
+    if (volumeData) {
+        diagram->setVolumeData(volumeData, true);
+        diagram->setSelectedScalarField(selectedFieldIdx, selectedScalarFieldName);
+        diagram->setCorrelationMeasureType(correlationMeasureType);
+        diagram->setBeta(beta);
+        diagram->setDownscalingFactor(downscalingFactor);
+        diagram->setLineCountFactor(lineCountFactor);
+        diagram->setCurveOpacity(curveOpacity);
+        diagram->setDiagramRadius(diagramRadius);
+        diagram->setAlignWithParentWindow(alignWithParentWindow);
+        diagram->setOpacityByValue(opacityByValue);
+        diagram->setColorByValue(colorByValue);
+        diagram->setColorMap(colorMap);
+        diagram->setUse2DField(use2dField);
+    }
 }
 
 void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) {
@@ -104,6 +126,7 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
     const std::vector<std::string>& fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
     if (isNewData) {
         selectedFieldIdx = volumeData->getStandardScalarFieldIdx();
+
         int xs = volumeData->getGridSizeX();
         int ys = volumeData->getGridSizeY();
         int zs = volumeData->getGridSizeZ();
@@ -121,23 +144,25 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
     volumeData->acquireScalarField(this, selectedFieldIdx);
     oldSelectedFieldIdx = selectedFieldIdx;
 
-    for (auto& diagram : diagrams) {
-        diagram->setVolumeData(volumeData, isNewData);
-        if (isNewData) {
-            diagram->setSelectedScalarField(selectedFieldIdx, selectedScalarFieldName);
-            diagram->setCorrelationMeasureType(correlationMeasureType);
-            diagram->setBeta(beta);
-            diagram->setDownscalingFactor(downscalingFactor);
-            diagram->setLineCountFactor(lineCountFactor);
-            diagram->setCurveOpacity(curveOpacity);
-            diagram->setCellDistanceThreshold(cellDistanceThreshold);
-            diagram->setDiagramRadius(diagramRadius);
-            diagram->setAlignWithParentWindow(alignWithParentWindow);
-            diagram->setOpacityByValue(opacityByValue);
-            diagram->setColorByValue(colorByValue);
-            diagram->setColorMap(colorMap);
-            diagram->setUse2DField(use2dField);
-        }
+    diagram->setVolumeData(volumeData, isNewData);
+    if (isNewData) {
+        diagram->setSelectedScalarField(selectedFieldIdx, selectedScalarFieldName);
+        diagram->setCorrelationMeasureType(correlationMeasureType);
+        diagram->setBeta(beta);
+        diagram->setDownscalingFactor(downscalingFactor);
+        diagram->setLineCountFactor(lineCountFactor);
+        diagram->setCurveOpacity(curveOpacity);
+        diagram->setDiagramRadius(diagramRadius);
+        diagram->setAlignWithParentWindow(alignWithParentWindow);
+        diagram->setOpacityByValue(opacityByValue);
+        diagram->setColorByValue(colorByValue);
+        diagram->setColorMap(colorMap);
+        diagram->setUse2DField(use2dField);
+
+        correlationRangeTotal = correlationRange = diagram->getCorrelationRangeTotal();
+        cellDistanceRange = cellDistanceRangeTotal = diagram->getCellDistanceRangeTotal();
+        diagram->setCorrelationRange(correlationRangeTotal);
+        diagram->setCellDistanceRange(cellDistanceRange);
     }
 }
 
@@ -158,13 +183,8 @@ void DiagramRenderer::onFieldRemoved(FieldType fieldType, int fieldIdx) {
 }
 
 void DiagramRenderer::recreateSwapchainView(uint32_t viewIdx, uint32_t width, uint32_t height) {
-    SceneData* sceneData = viewManager->getViewSceneData(viewIdx);
-    diagrams.at(viewIdx)->setBlitTargetVk(
-            (*sceneData->sceneTexture)->getImageView(),
-            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-    if (alignWithParentWindow) {
-        diagrams.at(viewIdx)->updateSizeByParent();
+    if (viewIdx == diagramViewIdx) {
+        recreateDiagramSwapchain();
     }
     for (int idx = 0; idx < 2; idx++) {
         domainOutlineRasterPasses[idx].at(viewIdx)->recreateSwapchain(width, height);
@@ -173,9 +193,20 @@ void DiagramRenderer::recreateSwapchainView(uint32_t viewIdx, uint32_t width, ui
     connectingLineRasterPass.at(viewIdx)->recreateSwapchain(width, height);
 }
 
+void DiagramRenderer::recreateDiagramSwapchain() {
+    SceneData* sceneData = viewManager->getViewSceneData(diagramViewIdx);
+    diagram->setBlitTargetVk(
+            (*sceneData->sceneTexture)->getImageView(),
+            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    if (alignWithParentWindow) {
+        diagram->updateSizeByParent();
+    }
+}
+
 void DiagramRenderer::update(float dt, bool isMouseGrabbed) {
     uint32_t viewIdx = 0;
-    for (auto& diagram : diagrams) {
+    if (viewIdx == diagramViewIdx) {
         if (isVisibleInView(viewIdx)) {
             diagram->update(dt);
             if (diagram->getNeedsReRender()) {
@@ -187,16 +218,17 @@ void DiagramRenderer::update(float dt, bool isMouseGrabbed) {
 }
 
 bool DiagramRenderer::getHasGrabbedMouse() const {
-    for (auto& diagram : diagrams) {
-        if (diagram->getIsMouseGrabbed() || diagram->getIsMouseOverDiagramImGui()) {
-            return true;
-        }
+    if (diagram->getIsMouseGrabbed() || diagram->getIsMouseOverDiagramImGui()) {
+        return true;
     }
     return false;
 }
 
 void DiagramRenderer::renderViewImpl(uint32_t viewIdx) {
-    auto& diagram = diagrams.at(viewIdx);
+    if (viewIdx != diagramViewIdx) {
+        return;
+    }
+
     if (sgl::ImGuiWrapper::get()->getUseDockSpaceMode()) {
         ImVec2 pos = ImGui::GetCursorScreenPos();
         diagram->setImGuiWindowOffset(int(pos.x), int(pos.y));
@@ -211,7 +243,6 @@ void DiagramRenderer::renderViewImpl(uint32_t viewIdx) {
 }
 
 void DiagramRenderer::renderViewPreImpl(uint32_t viewIdx) {
-    auto& diagram = diagrams.at(viewIdx);
     for (int idx = 0; idx < 2; idx++) {
         if (diagram->getIsRegionSelected(idx)) {
             domainOutlineComputePasses[idx].at(viewIdx)->setOutlineSettings(diagram->getSelectedRegion(idx), lineWidth);
@@ -226,30 +257,6 @@ void DiagramRenderer::renderViewPreImpl(uint32_t viewIdx) {
 }
 
 void DiagramRenderer::addViewImpl(uint32_t viewIdx) {
-    auto diagram = std::make_shared<HEBChart>();
-    //auto diagram = std::make_shared<RadarBarChart>(true);
-    diagram->setRendererVk(renderer);
-    diagram->initialize();
-    //diagram->setDataTimeDependent(variableNames, variableValuesTimeDependent);
-    //diagram->setUseEqualArea(true);
-    if (volumeData) {
-        diagram->setVolumeData(volumeData, true);
-        diagram->setSelectedScalarField(selectedFieldIdx, selectedScalarFieldName);
-        diagram->setCorrelationMeasureType(correlationMeasureType);
-        diagram->setBeta(beta);
-        diagram->setDownscalingFactor(downscalingFactor);
-        diagram->setLineCountFactor(lineCountFactor);
-        diagram->setCurveOpacity(curveOpacity);
-        diagram->setCellDistanceThreshold(cellDistanceThreshold);
-        diagram->setDiagramRadius(diagramRadius);
-        diagram->setAlignWithParentWindow(alignWithParentWindow);
-        diagram->setOpacityByValue(opacityByValue);
-        diagram->setColorByValue(colorByValue);
-        diagram->setColorMap(colorMap);
-        diagram->setUse2DField(use2dField);
-    }
-    diagrams.push_back(diagram);
-
     const size_t numEdges = 12;
     for (int idx = 0; idx < 2; idx++) {
         OutlineRenderData outlineRenderData{};
@@ -279,7 +286,12 @@ void DiagramRenderer::addViewImpl(uint32_t viewIdx) {
 }
 
 void DiagramRenderer::removeViewImpl(uint32_t viewIdx) {
-    diagrams.erase(diagrams.begin() + viewIdx);
+    if (diagramViewIdx >= viewIdx && diagramViewIdx != 0) {
+        diagramViewIdx--;
+    } else if (viewManager->getNumViews() > 0) {
+        diagramViewIdx++;
+    }
+
     connectingLineRasterPass.erase(connectingLineRasterPass.begin() + viewIdx);
 
     for (int idx = 0; idx < 2; idx++) {
@@ -290,15 +302,32 @@ void DiagramRenderer::removeViewImpl(uint32_t viewIdx) {
 }
 
 void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
+    std::string textDefault = "View " + std::to_string(diagramViewIdx + 1);
+    if (propertyEditor.addBeginCombo(
+            "Diagram View", textDefault, ImGuiComboFlags_NoArrowButton)) {
+        for (size_t viewIdx = 0; viewIdx < viewVisibilityArray.size(); viewIdx++) {
+            std::string text = "View " + std::to_string(viewIdx + 1);
+            bool showInView = diagramViewIdx == uint32_t(viewIdx);
+            if (ImGui::Selectable(
+                    text.c_str(), &showInView, ImGuiSelectableFlags_::ImGuiSelectableFlags_DontClosePopups)) {
+                diagramViewIdx = uint32_t(viewIdx);
+                reRender = true;
+                recreateDiagramSwapchain();
+            }
+            if (showInView) {
+                ImGui::SetItemDefaultFocus();
+            }
+        }
+        propertyEditor.addEndCombo();
+    }
+
     if (volumeData) {
         const std::vector<std::string>& fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
         int selectedFieldIdxGui = selectedFieldIdx;
         if (propertyEditor.addCombo("Scalar Field", &selectedFieldIdxGui, fieldNames.data(), int(fieldNames.size()))) {
             selectedFieldIdx = selectedFieldIdxGui;
             selectedScalarFieldName = fieldNames.at(selectedFieldIdx);
-            for (auto& diagram : diagrams) {
-                diagram->setSelectedScalarField(selectedFieldIdx, selectedScalarFieldName);
-            }
+            diagram->setSelectedScalarField(selectedFieldIdx, selectedScalarFieldName);
             dirty = true;
             reRender = true;
         }
@@ -307,109 +336,83 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
     if (propertyEditor.addCombo(
             "Correlation Measure", (int*)&correlationMeasureType,
             CORRELATION_MEASURE_TYPE_NAMES, IM_ARRAYSIZE(CORRELATION_MEASURE_TYPE_NAMES))) {
-        for (auto& diagram : diagrams) {
-            diagram->setCorrelationMeasureType(correlationMeasureType);
-        }
+        diagram->setCorrelationMeasureType(correlationMeasureType);
+        correlationRangeTotal = correlationRange = diagram->getCorrelationRangeTotal();
+        diagram->setCorrelationRange(correlationRangeTotal);
         dirty = true;
         reRender = true;
     }
 
     if (propertyEditor.addSliderFloatEdit("beta", &beta, 0.0f, 1.0f) == ImGui::EditMode::INPUT_FINISHED) {
-        for (auto& diagram : diagrams) {
-            diagram->setBeta(beta);
-        }
+        diagram->setBeta(beta);
         reRender = true;
     }
 
     if (propertyEditor.addSliderIntPowerOfTwoEdit(
             "Downscaling", &downscalingFactor, minDownscalingFactor, maxDownscalingFactor)
                 == ImGui::EditMode::INPUT_FINISHED) {
-        for (auto& diagram : diagrams) {
-            diagram->setDownscalingFactor(downscalingFactor);
-        }
+        diagram->setDownscalingFactor(downscalingFactor);
         reRender = true;
     }
 
     if (propertyEditor.addSliderIntEdit(
             "#Line Factor", &lineCountFactor, 10, 1000) == ImGui::EditMode::INPUT_FINISHED) {
-        for (auto& diagram : diagrams) {
-            diagram->setLineCountFactor(lineCountFactor);
-        }
+        diagram->setLineCountFactor(lineCountFactor);
         reRender = true;
     }
 
     if (propertyEditor.addSliderFloat("Opacity", &curveOpacity, 0.0f, 1.0f)) {
-        for (auto& diagram : diagrams) {
-            diagram->setCurveOpacity(curveOpacity);
-        }
+        diagram->setCurveOpacity(curveOpacity);
         reRender = true;
     }
 
-    if (propertyEditor.addSliderInt("Dist. Thresh.", &cellDistanceThreshold, 0, 100)) {
-        for (auto& diagram : diagrams) {
-            diagram->setCellDistanceThreshold(cellDistanceThreshold);
-        }
+    if (propertyEditor.addSliderFloat2Edit(
+            "Correlation Range", &correlationRange.x,
+            correlationRangeTotal.x, correlationRangeTotal.y) == ImGui::EditMode::INPUT_FINISHED) {
+        diagram->setCorrelationRange(correlationRange);
+        reRender = true;
+    }
+
+    if (propertyEditor.addSliderInt2Edit(
+            "Cell Dist. Range", &cellDistanceRange.x,
+            cellDistanceRangeTotal.x, cellDistanceRangeTotal.y) == ImGui::EditMode::INPUT_FINISHED) {
+        diagram->setCellDistanceRange(cellDistanceRange);
         reRender = true;
     }
 
     if (propertyEditor.addSliderInt("Diagram Radius", &diagramRadius, 100, 400)) {
-        for (auto& diagram : diagrams) {
-            diagram->setDiagramRadius(diagramRadius);
-        }
+        diagram->setDiagramRadius(diagramRadius);
         reRender = true;
     }
 
     if (propertyEditor.addCheckbox("Align with Window", &alignWithParentWindow)) {
-        for (auto& diagram : diagrams) {
-            diagram->setAlignWithParentWindow(alignWithParentWindow);
-        }
+        diagram->setAlignWithParentWindow(alignWithParentWindow);
         reRender = true;
     }
 
     if (propertyEditor.addCheckbox("Value -> Opacity", &opacityByValue)) {
-        for (auto& diagram : diagrams) {
-            diagram->setOpacityByValue(opacityByValue);
-        }
+        diagram->setOpacityByValue(opacityByValue);
         reRender = true;
     }
 
     if (propertyEditor.addCheckbox("Value -> Color", &colorByValue)) {
-        for (auto& diagram : diagrams) {
-            diagram->setColorByValue(colorByValue);
-        }
+        diagram->setColorByValue(colorByValue);
         reRender = true;
     }
 
     if (colorByValue && propertyEditor.addCombo(
             "Color Map", (int*)&colorMap, DIAGRAM_COLOR_MAP_NAMES,
             IM_ARRAYSIZE(DIAGRAM_COLOR_MAP_NAMES))) {
-        for (auto& diagram : diagrams) {
-            diagram->setColorMap(colorMap);
-        }
+        diagram->setColorMap(colorMap);
         reRender = true;
     }
 
     if (propertyEditor.addCheckbox("Use 2D Field", &use2dField)) {
-        for (auto& diagram : diagrams) {
-            diagram->setUse2DField(use2dField);
-        }
+        diagram->setUse2DField(use2dField);
         reRender = true;
     }
 
-    if (diagrams.size() == 1) {
-        if (diagrams.front()->renderGuiPropertyEditor(propertyEditor)) {
-            reRender = true;
-        }
-    } else {
-        int i = 0;
-        for (auto& diagram : diagrams) {
-            if (propertyEditor.beginNode("Diagram " + std::to_string(i + 1))) {
-                if (diagram->renderGuiPropertyEditor(propertyEditor)) {
-                    reRender = true;
-                }
-                propertyEditor.endNode();
-            }
-            i++;
-        }
+    if (diagram->renderGuiPropertyEditor(propertyEditor)) {
+        reRender = true;
     }
 }

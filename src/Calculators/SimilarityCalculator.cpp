@@ -735,6 +735,19 @@ PccComputePass::PccComputePass(sgl::vk::Renderer* renderer) : ComputePass(render
 #endif
 }
 
+struct SimilarityCalculatorKernelCache {
+    ~SimilarityCalculatorKernelCache() {
+        if (cumodule) {
+            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleUnload(
+                    cumodule), "Error in cuModuleUnload: ");
+        }
+    }
+    std::string kernelString;
+    std::map<std::string, std::string> preprocessorDefines;
+    CUmodule cumodule{};
+    CUfunction kernel{};
+};
+
 PccComputePass::~PccComputePass() {
 #ifdef SUPPORT_CUDA_INTEROP
     if (outputImageBufferCu != 0) {
@@ -744,6 +757,10 @@ PccComputePass::~PccComputePass() {
     if (ensembleTextureArrayCu != 0) {
         sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFree(
                 ensembleTextureArrayCu), "Error in cuMemFree: ");
+    }
+    if (kernelCache) {
+        delete kernelCache;
+        kernelCache = nullptr;
     }
     if (stream) {
         sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamDestroy(
@@ -935,19 +952,6 @@ void PccComputePass::_render() {
     }
 }
 
-struct SimilarityCalculatorKernelCache {
-    ~SimilarityCalculatorKernelCache() {
-        if (cumodule) {
-            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleUnload(
-                    cumodule), "Error in cuModuleUnload: ");
-        }
-    }
-    std::string kernelString;
-    std::map<std::string, std::string> preprocessorDefines;
-    CUmodule cumodule{};
-    CUfunction kernel{};
-};
-
 struct CudaDeviceCoresInfo {
     uint32_t numMultiprocessors;
     uint32_t warpSize;
@@ -1128,7 +1132,7 @@ void PccComputePass::computeCuda(
 
     if (!kernelCache || kernelCache->preprocessorDefines != preprocessorDefines) {
         if (kernelCache) {
-            delete[] kernelCache;
+            delete kernelCache;
         }
         kernelCache = new SimilarityCalculatorKernelCache;
 
