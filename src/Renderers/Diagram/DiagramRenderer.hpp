@@ -34,6 +34,7 @@
 #include "../../Calculators/Similarity.hpp"
 #include "../Renderer.hpp"
 #include "DiagramColorMap.hpp"
+#include "Region.hpp"
 
 class HEBChart;
 class DomainOutlineRasterPass;
@@ -66,10 +67,13 @@ protected:
     void renderGuiImpl(sgl::PropertyEditor& propertyEditor) override;
 
 private:
-    void recreateDiagramSwapchain();
+    void recreateDiagramSwapchain(int diagramIdx = -1);
+    void resetSelections(int idx = 0);
     VolumeDataPtr volumeData;
     uint32_t diagramViewIdx = 0;
-    std::shared_ptr<HEBChart> diagram;
+    std::shared_ptr<HEBChart> parentDiagram; //< Parent diagram.
+    std::vector<std::shared_ptr<HEBChart>> diagrams; //< Diagram stack.
+    std::vector<std::pair<GridRegion, GridRegion>> selectedRegionStack; //< Selected regions stack.
 
     // UI renderer settings.
     int selectedFieldIdx = 0, oldSelectedFieldIdx = 0;

@@ -53,6 +53,7 @@ public:
     virtual void initialize();
     void update(float dt) override;
     [[nodiscard]] bool getIsMouseOverDiagramImGui() const;
+    void setIsMouseGrabbedByParent(bool _isMouseGrabbedByParent);
     virtual void updateSizeByParent() {}
     virtual DiagramType getDiagramType()=0;
     void setImGuiWindowOffset(int offsetX, int offsetY);
@@ -159,6 +160,7 @@ protected:
 
     // Offset for deducing mouse position.
     int imGuiWindowOffsetX = 0, imGuiWindowOffsetY = 0;
+    bool isMouseGrabbedByParent = false;
     bool isMouseGrabbed = false;
     bool isWindowFixed = false; //< Is resize and grabbing disabled?
 

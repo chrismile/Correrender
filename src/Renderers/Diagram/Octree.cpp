@@ -164,11 +164,12 @@ void buildHebTree(
     std::unordered_set<uint32_t> nextParentNodeIndices;
     uint32_t leafCounter = 0;
     for (uint32_t leafIdx = leafIdxOffset; leafIdx < uint32_t(nodesList.size()); leafIdx++) {
-        prevParentNodeIndices.insert(nodesList[leafIdx].parentIdx);
         float angle = float(leafCounter) / float(pointToNodeIndexMap.size()) * sgl::TWO_PI;
         nodesList[leafIdx].angle = angle;
         nodesList[leafIdx].normalizedPosition = glm::vec2(std::cos(angle), std::sin(angle));
-        prevParentNodeIndices.insert(nodesList[leafIdx].parentIdx);
+        if (nodesList[leafIdx].parentIdx != std::numeric_limits<uint32_t>::max()) {
+            prevParentNodeIndices.insert(nodesList[leafIdx].parentIdx);
+        }
         leafCounter++;
     }
 

@@ -215,7 +215,7 @@ void HEBChart::update(float dt) {
     sgl::AABB2 windowAabb(
             glm::vec2(borderWidth, borderWidth),
             glm::vec2(windowWidth - 2.0f * borderWidth, windowHeight - 2.0f * borderWidth));
-    bool isMouseInWindow = windowAabb.contains(mousePosition);
+    bool isMouseInWindow = windowAabb.contains(mousePosition) && !isMouseGrabbedByParent;
     if (!isMouseInWindow) {
         if (hoveredPointIdx != -1) {
             hoveredPointIdx = -1;
@@ -473,13 +473,13 @@ void HEBChart::renderBaseNanoVG() {
             nvgClosePath(vg);
 
             float stdev0 = leafStdDevArray.at(leafIdx - int(leafIdxOffset));
-            float t0 = (stdev0 - minStdDev) / (maxStdDev - minStdDev);
+            float t0 = minStdDev == maxStdDev ? 0.0f : (stdev0 - minStdDev) / (maxStdDev - minStdDev);
             glm::vec4 rgbColor0 = evalColorMapVec4(t0);
             //glm::vec4 rgbColor0 = evalColorMapVec4(leafCurr.angle / sgl::TWO_PI);
             rgbColor0.w = 1.0f;
             NVGcolor fillColor0 = nvgRGBAf(rgbColor0.x, rgbColor0.y, rgbColor0.z, rgbColor0.w);
             float stdev1 = leafStdDevArray.at(nextIdx - int(leafIdxOffset));
-            float t1 = (stdev1 - minStdDev) / (maxStdDev - minStdDev);
+            float t1 = minStdDev == maxStdDev ? 0.0f : (stdev1 - minStdDev) / (maxStdDev - minStdDev);
             glm::vec4 rgbColor1 = evalColorMapVec4(t1);
             //glm::vec4 rgbColor1 = evalColorMapVec4(leafNext.angle / sgl::TWO_PI);
             rgbColor1.w = 1.0f;

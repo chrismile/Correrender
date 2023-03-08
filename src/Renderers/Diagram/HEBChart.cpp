@@ -65,11 +65,20 @@ void HEBChart::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) {
         xs = volumeData->getGridSizeX();
         ys = volumeData->getGridSizeY();
         zs = volumeData->getGridSizeZ();
+        r = GridRegion(0, 0, 0, xs, ys, zs);
         xsd = sgl::iceil(xs, dfx);
         ysd = sgl::iceil(ys, dfy);
         zsd = sgl::iceil(zs, dfz);
         resetSelectedPrimitives();
     }
+}
+
+void HEBChart::setRegions(const std::pair<GridRegion, GridRegion>& _rs) {
+    // TODO
+    r = _rs.first;
+    xsd = sgl::iceil(r.xsr, dfx);
+    ysd = sgl::iceil(r.ysr, dfy);
+    zsd = sgl::iceil(r.zsr, dfz);
 }
 
 void HEBChart::resetSelectedPrimitives() {
@@ -80,6 +89,8 @@ void HEBChart::resetSelectedPrimitives() {
     hoveredLineIdx = -1;
     clickedLineIdx = -1;
     selectedLineIdx = -1;
+    clickedLineIdxOld = -1;
+    clickedPointIdxOld = -1;
 }
 
 void HEBChart::setSelectedScalarField(int _selectedFieldIdx, const std::string& _scalarFieldName) {
@@ -158,10 +169,10 @@ void HEBChart::computeDownscaledField(std::vector<float*>& downscaledEnsembleFie
                         for (int zo = 0; zo < dfz; zo++) {
                             for (int yo = 0; yo < dfy; yo++) {
                                 for (int xo = 0; xo < dfx; xo++) {
-                                    int x = xd * dfx + xo;
-                                    int y = yd * dfy + yo;
-                                    int z = zd * dfz + zo;
-                                    if (x < xs && y < ys && z < zs) {
+                                    int x = r.xoff + xd * dfx + xo;
+                                    int y = r.yoff + yd * dfy + yo;
+                                    int z = r.zoff + zd * dfz + zo;
+                                    if (x <= r.xmax && y <= r.ymax && z <= r.zmax) {
                                         float val = field[IDXS(x, y, z)];
                                         if (!std::isnan(val)) {
                                             valueMean += val;
@@ -188,9 +199,9 @@ void HEBChart::computeDownscaledField(std::vector<float*>& downscaledEnsembleFie
                     int numValid = 0;
                     for (int yo = 0; yo < dfy; yo++) {
                         for (int xo = 0; xo < dfx; xo++) {
-                            int x = xd * dfx + xo;
-                            int y = yd * dfy + yo;
-                            if (x < xs && y < ys) {
+                            int x = r.xoff + xd * dfx + xo;
+                            int y = r.yoff + yd * dfy + yo;
+                            if (x <= r.xmax && y <= r.ymax) {
                                 float val = field[IDXS(x, y, zCenter)];
                                 if (!std::isnan(val)) {
                                     valueMean += val;
@@ -218,73 +229,7 @@ void HEBChart::computeDownscaledFieldVariance(std::vector<float*>& downscaledEns
     int es = volumeData->getEnsembleMemberCount();
     int numPoints = xsd * ysd * zsd;
     leafStdDevArray.resize(numPoints);
-    /*for (int pointIdx = 0; pointIdx < numPoints; pointIdx++) {
-        int ensembleNumValid = 0;
-        float ensembleVarianceSum = 0.0f;
-        for (int ensembleIdx = 0; ensembleIdx < es; ensembleIdx++) {
-            VolumeData::HostCacheEntry ensembleEntryField = volumeData->getFieldEntryCpu(
-                    FieldType::SCALAR, selectedScalarFieldName, -1, ensembleIdx);
-            float* field = ensembleEntryField.get();
-            float* dowsncaledField = downscaledEnsembleFields.at(ensembleIdx);
-            int xd = pointIdx % xsd;
-            int yd = (pointIdx / xsd) % ysd;
-            int zd = pointIdx / (xsd * ysd);
 
-            int numValid = 0;
-            float valueMean = dowsncaledField[IDXSD(xd, yd, zd)];
-            float varianceSum = 0.0f;
-            float diff;
-            if (!use2dField) {
-                for (int zo = 0; zo < df; zo++) {
-                    for (int yo = 0; yo < df; yo++) {
-                        for (int xo = 0; xo < df; xo++) {
-                            int x = xd * df + xo;
-                            int y = yd * df + yo;
-                            int z = zd * df + zo;
-                            if (x < xs && y < ys && z < zs) {
-                                float val = field[IDXS(x, y, z)];
-                                if (!std::isnan(val)) {
-                                    diff = valueMean - val;
-                                    varianceSum += diff * diff;
-                                    numValid++;
-                                }
-                            }
-                        }
-                    }
-                }
-            } else {
-                int zCenter = zs / 2;
-                for (int yo = 0; yo < df; yo++) {
-                    for (int xo = 0; xo < df; xo++) {
-                        int x = xd * df + xo;
-                        int y = yd * df + yo;
-                        if (x < xs && y < ys) {
-                            float val = field[IDXS(x, y, zCenter)];
-                            if (!std::isnan(val)) {
-                                diff = valueMean - val;
-                                varianceSum += diff * diff;
-                                numValid++;
-                            }
-                        }
-                    }
-                }
-            }
-            if (numValid > 1) {
-                ensembleVarianceSum += varianceSum / float(numValid - 1);
-                ensembleNumValid += 1;
-            }
-        }
-        float stdDev = 0.0f;
-        if (ensembleNumValid > 0) {
-            ensembleVarianceSum /= float(ensembleNumValid);
-            stdDev = std::sqrt(ensembleVarianceSum);
-        } else {
-            stdDev = std::numeric_limits<float>::quiet_NaN();
-        }
-
-        uint32_t leafIdx = pointToNodeIndexMap.at(pointIdx) - leafIdxOffset;
-        leafStdDevArray.at(leafIdx) = stdDev;
-    }*/
     std::vector<VolumeData::HostCacheEntry> ensembleEntryFields;
     std::vector<float*> fields;
     for (int ensembleIdx = 0; ensembleIdx < es; ensembleIdx++) {
@@ -314,10 +259,10 @@ void HEBChart::computeDownscaledFieldVariance(std::vector<float*>& downscaledEns
             for (int zo = 0; zo < dfz; zo++) {
                 for (int yo = 0; yo < dfy; yo++) {
                     for (int xo = 0; xo < dfx; xo++) {
-                        int x = xd * dfx + xo;
-                        int y = yd * dfy + yo;
-                        int z = zd * dfz + zo;
-                        if (x < xs && y < ys && z < zs) {
+                        int x = r.xoff + xd * dfx + xo;
+                        int y = r.yoff + yd * dfy + yo;
+                        int z = r.zoff + zd * dfz + zo;
+                        if (x <= r.xmax && y <= r.ymax && z <= r.zmax) {
                             int numValid = 0;
                             float ensembleMean = 0.0f;
                             for (int ensembleIdx = 0; ensembleIdx < es; ensembleIdx++) {
@@ -350,9 +295,9 @@ void HEBChart::computeDownscaledFieldVariance(std::vector<float*>& downscaledEns
             int zCenter = zs / 2;
             for (int yo = 0; yo < dfy; yo++) {
                 for (int xo = 0; xo < dfx; xo++) {
-                    int x = xd * dfx + xo;
-                    int y = yd * dfy + yo;
-                    if (x < xs && y < ys) {
+                    int x = r.xoff + xd * dfx + xo;
+                    int y = r.yoff + yd * dfy + yo;
+                    if (x <= r.xmax && y <= r.ymax) {
                         int numValid = 0;
                         float ensembleMean = 0.0f;
                         for (int ensembleIdx = 0; ensembleIdx < es; ensembleIdx++) {
@@ -668,6 +613,9 @@ void smoothControlPoints(std::vector<glm::vec2>& controlPoints, float beta) {
 void HEBChart::updateData() {
     // Values downscaled by factor 32.
     int es = volumeData->getEnsembleMemberCount();
+    xsd = sgl::iceil(r.xsr, dfx);
+    ysd = sgl::iceil(r.ysr, dfy);
+    zsd = sgl::iceil(r.zsr, dfz);
     int numPoints = xsd * ysd * zsd;
 
     if (selectedLineIdx >= 0 || selectedPointIndices[0] >= 0 || selectedPointIndices[1] >= 0) {
@@ -757,6 +705,12 @@ bool HEBChart::getIsRegionSelected(int idx) {
     return selectedPointIndices[idx] >= 0;
 }
 
+uint32_t HEBChart::getPointIndexGrid(int pointIdx) {
+    return uint32_t(std::find(
+            pointToNodeIndexMap.begin(), pointToNodeIndexMap.end(),
+            int(leafIdxOffset) + pointIdx) - pointToNodeIndexMap.begin());
+}
+
 uint32_t HEBChart::getSelectedPointIndexGrid(int idx) {
     return uint32_t(std::find(
             pointToNodeIndexMap.begin(), pointToNodeIndexMap.end(),
@@ -772,17 +726,17 @@ sgl::AABB3 HEBChart::getSelectedRegion(int idx) {
     sgl::AABB3 aabb;
     if (use2dField) {
         int zCenter = zs / 2;
-        aabb.min = glm::vec3(xd * dfx, yd * dfy, zCenter);
+        aabb.min = glm::vec3(r.xoff + xd * dfx, r.yoff + yd * dfy, zCenter);
         aabb.max = glm::vec3(
-                float(std::min(int(xd + 1) * dfx, xs)),
-                float(std::min(int(yd + 1) * dfy, ys)),
+                float(std::min(r.xoff + int(xd + 1) * dfx, r.xmax + 1)),
+                float(std::min(r.yoff + int(yd + 1) * dfy, r.ymax + 1)),
                 float(std::min(zCenter + 1, zs)));
     } else {
-        aabb.min = glm::vec3(xd * dfx, yd * dfy, zd * dfz);
+        aabb.min = glm::vec3(r.xoff + xd * dfx, r.yoff + yd * dfy, r.zoff + zd * dfz);
         aabb.max = glm::vec3(
-                float(std::min(int(xd + 1) * dfx, xs)),
-                float(std::min(int(yd + 1) * dfy, ys)),
-                float(std::min(int(zd + 1) * dfz, zs)));
+                float(std::min(r.xoff + int(xd + 1) * dfx, r.xmax + 1)),
+                float(std::min(r.yoff + int(yd + 1) * dfy, r.ymax + 1)),
+                float(std::min(r.zoff + int(zd + 1) * dfz, r.zmax + 1)));
     }
     aabb.min /= glm::vec3(xs, ys, zs);
     aabb.max /= glm::vec3(xs, ys, zs);
@@ -815,4 +769,56 @@ std::pair<glm::vec3, glm::vec3> HEBChart::getLinePositions() {
     p1.y = c1.y < c0.y ? b1.max.y : (c1.y > c0.y ? b1.min.y : 0.5f * (b1.min.y + b1.max.y));
     p1.z = c1.z < c0.z ? b1.max.z : (c1.z > c0.z ? b1.min.z : 0.5f * (b1.min.z + b1.max.z));
     return std::make_pair(p0, p1);
+}
+
+bool HEBChart::getHasNewFocusSelection(bool& isDeselection) {
+    bool hasNewFocusSelection =
+            (clickedPointIdx >= 0 && clickedPointIdx != clickedPointIdxOld)
+            || (clickedLineIdx >= 0 && clickedLineIdx != clickedLineIdxOld);
+    if (hasNewFocusSelection) {
+        std::pair<GridRegion, GridRegion> regions = getFocusSelection();
+        if (regions.first.getNumCells() <= 1 && regions.second.getNumCells() <= 1) {
+            hasNewFocusSelection = false;
+        }
+    }
+    isDeselection =
+            !hasNewFocusSelection && (clickedPointIdx != clickedPointIdxOld || clickedLineIdx != clickedLineIdxOld);
+    clickedPointIdxOld = clickedPointIdx;
+    clickedLineIdxOld = clickedLineIdx;
+    return hasNewFocusSelection;
+}
+
+std::pair<GridRegion, GridRegion> HEBChart::getFocusSelection() {
+    if (clickedPointIdx != -1) {
+        uint32_t pointIdx = getPointIndexGrid(clickedPointIdx);
+        auto pointRegion = getGridRegionPointIdx(pointIdx);
+        return std::make_pair(pointRegion, pointRegion);
+    } else {
+        const auto& points = connectedPointsArray.at(clickedLineIdx);
+        uint32_t pointIdx0 = getPointIndexGrid(points.first);
+        uint32_t pointIdx1 = getPointIndexGrid(points.second);
+        return std::make_pair(getGridRegionPointIdx(pointIdx0), getGridRegionPointIdx(pointIdx1));
+    }
+}
+
+GridRegion HEBChart::getGridRegionPointIdx(uint32_t pointIdx) {
+    int xd = int(pointIdx % uint32_t(xsd));
+    int yd = int((pointIdx / uint32_t(xsd)) % uint32_t(ysd));
+    int zd = int(pointIdx / uint32_t(xsd * ysd));
+    GridRegion rf;
+    if (use2dField) {
+        int zCenter = zs / 2;
+        rf = GridRegion(
+                r.xoff + xd * dfx, r.yoff + yd * dfy, zCenter,
+                std::min((xd + 1) * dfx, r.xsr) - xd * dfx,
+                std::min((yd + 1) * dfy, r.ysr) - yd * dfy,
+                1);
+    } else {
+        rf = GridRegion(
+                r.xoff + xd * dfx, r.yoff + yd * dfy, r.zoff + zd * dfz,
+                std::min((xd + 1) * dfx, r.xsr) - xd * dfx,
+                std::min((yd + 1) * dfy, r.ysr) - yd * dfy,
+                std::min((zd + 1) * dfz, r.zsr) - zd * dfz);
+    }
+    return rf;
 }

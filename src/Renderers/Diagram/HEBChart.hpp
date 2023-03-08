@@ -35,6 +35,7 @@
 #include <glm/vec3.hpp>
 
 #include "DiagramColorMap.hpp"
+#include "Region.hpp"
 #include "Octree.hpp"
 #include "DiagramBase.hpp"
 #include "../../Calculators/Similarity.hpp"
@@ -62,6 +63,7 @@ public:
     void update(float dt) override;
     void updateSizeByParent();
     void setVolumeData(VolumeDataPtr& _volumeData, bool isNewData);
+    void setRegions(const std::pair<GridRegion, GridRegion>& _rs);
     void setSelectedScalarField(int selectedFieldIdx, const std::string& _scalarFieldName);
     void setCorrelationMeasureType(CorrelationMeasureType _correlationMeasureType);
     void setBeta(float _beta);
@@ -75,10 +77,17 @@ public:
     void setColorMap(DiagramColorMap _colorMap);
     void setUse2DField(bool _use2dField);
 
+    // Selection query.
     bool getIsRegionSelected(int idx);
+    uint32_t getPointIndexGrid(int pointIdx);
     uint32_t getSelectedPointIndexGrid(int idx);
     sgl::AABB3 getSelectedRegion(int idx);
     std::pair<glm::vec3, glm::vec3> getLinePositions();
+
+    // Queries for showing children.
+    bool getHasNewFocusSelection(bool& isDeselection);
+    std::pair<GridRegion, GridRegion> getFocusSelection();
+    GridRegion getGridRegionPointIdx(uint32_t pointIdx);
 
     // Range queries.
     glm::vec2 getCorrelationRangeTotal();
@@ -112,8 +121,9 @@ private:
     // Hierarchy data.
     CorrelationMeasureType correlationMeasureType = CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV;
     int dfx = 32, dfy = 32, dfz = 32; ///< Downscaling factors.
-    int xs = 0, ys = 0, zs = 0;
-    int xsd = 0, ysd = 0, zsd = 0;
+    int xs = 0, ys = 0, zs = 0; //< Grid size.
+    int xsd = 0, ysd = 0, zsd = 0; //< Downscaled grid size.
+    GridRegion r{};
     bool use2dField = true;
     std::vector<HEBNode> nodesList;
     std::vector<uint32_t> pointToNodeIndexMap;
@@ -144,6 +154,7 @@ private:
     int clickedLineIdx = -1;
     int selectedPointIndices[2] = { -1, -1 };
     int selectedLineIdx = -1;
+    int clickedPointIdxOld = -1, clickedLineIdxOld = -1; //< For getHasNewFocusSelection.
     float pointRadiusBase = 1.5f;
     sgl::Color circleFillColor = sgl::Color(180, 180, 180, 255);
     sgl::Color circleFillColorSelected = sgl::Color(180, 80, 80, 255);

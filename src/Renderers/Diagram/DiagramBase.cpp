@@ -73,6 +73,10 @@ void DiagramBase::setImGuiWindowOffset(int offsetX, int offsetY) {
     imGuiWindowOffsetY = offsetY;
 }
 
+void DiagramBase::setIsMouseGrabbedByParent(bool _isMouseGrabbedByParent) {
+    isMouseGrabbedByParent = _isMouseGrabbedByParent;
+}
+
 void DiagramBase::update(float dt) {
     glm::ivec2 mousePositionPx(sgl::Mouse->getX(), sgl::Mouse->getY());
     glm::vec2 mousePosition(sgl::Mouse->getX(), sgl::Mouse->getY());
@@ -83,7 +87,7 @@ void DiagramBase::update(float dt) {
     mousePosition -= glm::vec2(getWindowOffsetX(), getWindowOffsetY());
     mousePosition /= getScaleFactor();
 
-    bool isMouseOverDiagram = getIsMouseOverDiagram(mousePositionPx);
+    bool isMouseOverDiagram = getIsMouseOverDiagram(mousePositionPx) && !isMouseGrabbedByParent;
 
     // Mouse press event.
     if (isMouseOverDiagram && !isWindowFixed) {
