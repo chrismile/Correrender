@@ -65,7 +65,7 @@ public:
     void setSelectedScalarField(int selectedFieldIdx, const std::string& _scalarFieldName);
     void setCorrelationMeasureType(CorrelationMeasureType _correlationMeasureType);
     void setBeta(float _beta);
-    void setDownscalingFactor(int _df);
+    void setDownscalingFactors(int _dfx, int _dfy, int _dfz);
     void setLineCountFactor(int _factor);
     void setCurveOpacity(float _alpha);
     void setDiagramRadius(int radius);
@@ -111,7 +111,7 @@ private:
 
     // Hierarchy data.
     CorrelationMeasureType correlationMeasureType = CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV;
-    int df = 32; ///< Downscaling factor.
+    int dfx = 32, dfy = 32, dfz = 32; ///< Downscaling factors.
     int xs = 0, ys = 0, zs = 0;
     int xsd = 0, ysd = 0, zsd = 0;
     bool use2dField = true;

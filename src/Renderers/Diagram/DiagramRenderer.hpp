@@ -77,7 +77,8 @@ private:
     CorrelationMeasureType correlationMeasureType = CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV;
     float beta = 0.75f;
     int minDownscalingFactor = 16, maxDownscalingFactor = 64;
-    int downscalingFactor = 32;
+    int downscalingFactorX = 32, downscalingFactorY = 32, downscalingFactorZ = 32;
+    bool downscalingFactorUniform = true;
     int lineCountFactor = 100;
     float curveOpacity = 0.4f;
     glm::vec2 correlationRange{}, correlationRangeTotal{};

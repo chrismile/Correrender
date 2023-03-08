@@ -44,6 +44,10 @@ struct StackDomain {
     glm::ivec3 min, max;
 };
 
+void buildTree(int xs, int ys, int zs) {
+    ;
+}
+
 void buildHebTree(
         std::vector<HEBNode>& nodesList, std::vector<uint32_t>& pointToNodeIndexMap, uint32_t& leafIdxOffset,
         int xsd, int ysd, int zsd) {
@@ -167,11 +171,6 @@ void buildHebTree(
         prevParentNodeIndices.insert(nodesList[leafIdx].parentIdx);
         leafCounter++;
     }
-    /*std::stack<uint32_t> traversalStack;
-    while (!traversalStack.empty()) {
-        uint32_t nodeIdx = traversalStack.top();
-        traversalStack.pop();
-    }*/
 
     int currentDepth = int(treeHeight) - 1;
     while (!prevParentNodeIndices.empty()) {

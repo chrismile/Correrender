@@ -102,7 +102,7 @@ void DiagramRenderer::initialize() {
         diagram->setSelectedScalarField(selectedFieldIdx, selectedScalarFieldName);
         diagram->setCorrelationMeasureType(correlationMeasureType);
         diagram->setBeta(beta);
-        diagram->setDownscalingFactor(downscalingFactor);
+        diagram->setDownscalingFactors(downscalingFactorX, downscalingFactorY, downscalingFactorZ);
         diagram->setLineCountFactor(lineCountFactor);
         diagram->setCurveOpacity(curveOpacity);
         diagram->setDiagramRadius(diagramRadius);
@@ -130,14 +130,26 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
         int xs = volumeData->getGridSizeX();
         int ys = volumeData->getGridSizeY();
         int zs = volumeData->getGridSizeZ();
-        int dsx = int(std::ceil(std::cbrt(float(xs * ys * zs) / 100.0f)));
-        dsx = std::max(dsx, 1);
-        if (!sgl::isPowerOfTwo(dsx)) {
-            dsx = sgl::nextPowerOfTwo(dsx);
+
+        float minDelta = std::min(volumeData->getDx(), std::min(volumeData->getDy(), volumeData->getDz()));
+        int fx = int(std::round(volumeData->getDx() / minDelta));
+        int fy = int(std::round(volumeData->getDy() / minDelta));
+        int fz = int(std::round(volumeData->getDz() / minDelta));
+
+        downscalingFactorUniform = fx == fy && fy == fz;
+
+        int dsw = int(std::ceil(std::cbrt(float(xs * ys * zs) / 100.0f)));
+        dsw = std::max(dsw, 1);
+        if (!sgl::isPowerOfTwo(dsw)) {
+            dsw = sgl::nextPowerOfTwo(dsw);
         }
-        downscalingFactor = dsx;
-        minDownscalingFactor = std::max(downscalingFactor / 2, 1);
-        maxDownscalingFactor = downscalingFactor * 2;
+        minDownscalingFactor = std::max(dsw / 2, 1);
+        maxDownscalingFactor = dsw * 2;
+        if (downscalingFactorUniform) {
+            downscalingFactorX = downscalingFactorY = downscalingFactorZ = dsw;
+        } else {
+            downscalingFactorX = downscalingFactorY = downscalingFactorZ = dsw;
+        }
     }
     selectedScalarFieldName = fieldNames.at(selectedFieldIdx);
     volumeData->acquireTf(this, selectedFieldIdx);
@@ -149,7 +161,7 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
         diagram->setSelectedScalarField(selectedFieldIdx, selectedScalarFieldName);
         diagram->setCorrelationMeasureType(correlationMeasureType);
         diagram->setBeta(beta);
-        diagram->setDownscalingFactor(downscalingFactor);
+        diagram->setDownscalingFactors(downscalingFactorX, downscalingFactorY, downscalingFactorZ);
         diagram->setLineCountFactor(lineCountFactor);
         diagram->setCurveOpacity(curveOpacity);
         diagram->setDiagramRadius(diagramRadius);
@@ -348,11 +360,26 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         reRender = true;
     }
 
-    if (propertyEditor.addSliderIntPowerOfTwoEdit(
-            "Downscaling", &downscalingFactor, minDownscalingFactor, maxDownscalingFactor)
-                == ImGui::EditMode::INPUT_FINISHED) {
-        diagram->setDownscalingFactor(downscalingFactor);
-        reRender = true;
+    if (downscalingFactorUniform) {
+        if (propertyEditor.addSliderIntPowerOfTwoEdit(
+                "Downscaling", &downscalingFactorX, minDownscalingFactor, maxDownscalingFactor)
+                    == ImGui::EditMode::INPUT_FINISHED) {
+            downscalingFactorY = downscalingFactorX;
+            downscalingFactorZ = downscalingFactorX;
+            diagram->setDownscalingFactors(downscalingFactorX, downscalingFactorY, downscalingFactorZ);
+            reRender = true;
+        }
+    } else {
+        int dfs[3] = { downscalingFactorX, downscalingFactorY, downscalingFactorZ };
+        auto editMode = propertyEditor.addSliderInt3PowerOfTwoEdit(
+                "Downscaling", dfs, minDownscalingFactor, maxDownscalingFactor);
+        downscalingFactorX = dfs[0];
+        downscalingFactorY = dfs[1];
+        downscalingFactorZ = dfs[2];
+        if (editMode == ImGui::EditMode::INPUT_FINISHED) {
+            diagram->setDownscalingFactors(downscalingFactorX, downscalingFactorY, downscalingFactorZ);
+            reRender = true;
+        }
     }
 
     if (propertyEditor.addSliderIntEdit(

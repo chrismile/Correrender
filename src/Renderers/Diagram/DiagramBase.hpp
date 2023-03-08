@@ -33,6 +33,7 @@
 #include <sstream>
 #include <functional>
 
+#include <Graphics/Window.hpp>
 #include <Graphics/Vector/VectorWidget.hpp>
 
 struct NVGcontext;
