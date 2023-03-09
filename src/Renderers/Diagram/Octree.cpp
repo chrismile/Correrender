@@ -220,19 +220,48 @@ void buildHebTree(
 
 
     // Set node positions.
-    // Start with placing the leaves on a unit circle.
-    auto numLeaves = int(pointToNodeIndexMap0.size() + (regionsEqual ? 0 : pointToNodeIndexMap1.size()));
     std::unordered_set<uint32_t> prevParentNodeIndices;
     std::unordered_set<uint32_t> nextParentNodeIndices;
-    uint32_t leafCounter = 0;
-    for (uint32_t leafIdx = leafIdxOffset0; leafIdx < uint32_t(nodesList.size()); leafIdx++) {
-        float angle = float(leafCounter) / float(numLeaves) * sgl::TWO_PI;
-        nodesList[leafIdx].angle = angle;
-        nodesList[leafIdx].normalizedPosition = glm::vec2(std::cos(angle), std::sin(angle));
-        if (nodesList[leafIdx].parentIdx != std::numeric_limits<uint32_t>::max()) {
-            prevParentNodeIndices.insert(nodesList[leafIdx].parentIdx);
+    if (regionsEqual) {
+        // Start with placing the leaves on a unit circle.
+        auto numLeaves = int(pointToNodeIndexMap0.size() + (regionsEqual ? 0 : pointToNodeIndexMap1.size()));
+        uint32_t leafCounter = 0;
+        for (uint32_t leafIdx = leafIdxOffset0; leafIdx < uint32_t(nodesList.size()); leafIdx++) {
+            float angle = float(leafCounter) / float(numLeaves) * sgl::TWO_PI;
+            nodesList[leafIdx].angle = angle;
+            nodesList[leafIdx].normalizedPosition = glm::vec2(std::cos(angle), std::sin(angle));
+            if (nodesList[leafIdx].parentIdx != std::numeric_limits<uint32_t>::max()) {
+                prevParentNodeIndices.insert(nodesList[leafIdx].parentIdx);
+            }
+            leafCounter++;
         }
-        leafCounter++;
+    } else {
+        // Start with placing the leaves on a unit circle.
+        const float angleRangeHalf = sgl::PI * 0.95f;
+        const float angleOffset0 = 0.5f * (sgl::PI - angleRangeHalf);
+        auto numLeaves0 = int(pointToNodeIndexMap0.size());
+        uint32_t leafCounter0 = 0;
+        for (uint32_t leafIdx = leafIdxOffset0; leafIdx < leafIdxOffset1; leafIdx++) {
+            float angle = angleOffset0 + float(leafCounter0) / float(numLeaves0 - 1) * angleRangeHalf;
+            nodesList[leafIdx].angle = angle;
+            nodesList[leafIdx].normalizedPosition = glm::vec2(std::cos(angle), std::sin(angle));
+            if (nodesList[leafIdx].parentIdx != std::numeric_limits<uint32_t>::max()) {
+                prevParentNodeIndices.insert(nodesList[leafIdx].parentIdx);
+            }
+            leafCounter0++;
+        }
+        const float angleOffset1 = sgl::PI + angleOffset0;
+        auto numLeaves1 = int(pointToNodeIndexMap1.size());
+        uint32_t leafCounter1 = 0;
+        for (uint32_t leafIdx = leafIdxOffset1; leafIdx < uint32_t(nodesList.size()); leafIdx++) {
+            float angle = angleOffset1 + float(leafCounter1) / float(numLeaves1 - 1) * angleRangeHalf;
+            nodesList[leafIdx].angle = angle;
+            nodesList[leafIdx].normalizedPosition = glm::vec2(std::cos(angle), std::sin(angle));
+            if (nodesList[leafIdx].parentIdx != std::numeric_limits<uint32_t>::max()) {
+                prevParentNodeIndices.insert(nodesList[leafIdx].parentIdx);
+            }
+            leafCounter1++;
+        }
     }
 
     int currentDepth = int(treeHeight) - 1;

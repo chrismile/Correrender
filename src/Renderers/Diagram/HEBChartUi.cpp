@@ -229,7 +229,7 @@ void HEBChart::update(float dt) {
             needsReRender = true;
         }
     } else {
-        auto startTime = std::chrono::system_clock::now();
+        //auto startTime = std::chrono::system_clock::now();
         glm::vec2 centeredMousePos = mousePosition - glm::vec2(windowWidth / 2.0f, windowHeight / 2.0f);
         float radiusMouse = std::sqrt(centeredMousePos.x * centeredMousePos.x + centeredMousePos.y * centeredMousePos.y);
         float phiMouse = std::fmod(std::atan2(centeredMousePos.y, centeredMousePos.x) + sgl::TWO_PI, sgl::TWO_PI);
@@ -252,23 +252,30 @@ void HEBChart::update(float dt) {
                     hoveredPointIdx = -1;
                 }
             } else {
-                // TODO
-                /*float minAngleGroup0 = nodesList.at(leafIdxOffset).angle;
+                float minAngleGroup0 = nodesList.at(leafIdxOffset).angle;
                 float maxAngleGroup0 = nodesList.at(regionsEqual ? nodesList.size() - 1 : leafIdxOffset1 - 1).angle;
-                float angleDeltaGroup0 = maxAngleGroup0 - minAngleGroup0;
                 float minAngleGroup1 = nodesList.at(leafIdxOffset1).angle;
-                float maxAngleGroup1 = nodesList.at(nodesList.size()).angle;
-                float angleDeltaGroup1 = maxAngleGroup1 - minAngleGroup1;
-                int sectorIdx0 = int(std::round(phiMouse / sgl::TWO_PI * float(numLeaves))) % numLeaves;
-                int sectorIdx1 = int(std::round(phiMouse / sgl::TWO_PI * float(numLeaves))) % numLeaves;*/
-                auto numLeaves = int(pointToNodeIndexMap0.size() + pointToNodeIndexMap1.size());
-                int sectorIdx = int(std::round(phiMouse / sgl::TWO_PI * float(numLeaves))) % numLeaves;
-                float sectorCenterAngle = float(sectorIdx) / float(numLeaves) * sgl::TWO_PI;
+                float maxAngleGroup1 = nodesList.at(nodesList.size() - 1).angle;
+
+                auto numLeaves0 = int(pointToNodeIndexMap0.size());
+                auto numLeaves1 = int(pointToNodeIndexMap1.size());
+                int sectorIdx0 = int(std::round((phiMouse - minAngleGroup0) / (maxAngleGroup0 - minAngleGroup0) * float(numLeaves0 - 1)));
+                int sectorIdx1 = int(std::round((phiMouse - minAngleGroup1) / (maxAngleGroup1 - minAngleGroup1) * float(numLeaves1 - 1)));
+                int distanceSector0 = sectorIdx0 < 0 ? -sectorIdx0 : (sectorIdx0 > numLeaves0 - 1 ? sectorIdx0 - numLeaves0 + 1 : 0);
+                int distanceSector1 = sectorIdx1 < 0 ? -sectorIdx1 : (sectorIdx1 > numLeaves1 - 1 ? sectorIdx1 - numLeaves1 + 1 : 0);
+
+                int closestGroupIdx = distanceSector0 <= distanceSector1 ? 0 : 1;
+                int numLeaves = closestGroupIdx == 0 ? numLeaves0 : numLeaves1;
+                float minAngleGroup = closestGroupIdx == 0 ? minAngleGroup0 : minAngleGroup1;
+                float maxAngleGroup = closestGroupIdx == 0 ? maxAngleGroup0 : maxAngleGroup1;
+                int sectorIdx = std::clamp(closestGroupIdx == 0 ? sectorIdx0 : sectorIdx1, 0, numLeaves - 1);
+
+                float sectorCenterAngle = float(sectorIdx) / float(numLeaves - 1) * (maxAngleGroup - minAngleGroup) + minAngleGroup;
                 sgl::Circle circle(
                         chartRadius * glm::vec2(std::cos(sectorCenterAngle), std::sin(sectorCenterAngle)),
                         pointRadiusBase * 4.0f);
                 if (circle.contains(centeredMousePos)) {
-                    hoveredPointIdx = sectorIdx;
+                    hoveredPointIdx = sectorIdx + (closestGroupIdx == 0 ? 0 : int(leafIdxOffset1 - leafIdxOffset));
                 } else {
                     hoveredPointIdx = -1;
                 }
@@ -279,7 +286,7 @@ void HEBChart::update(float dt) {
 
         // Select a line.
         const float minDist = 4.0f;
-        if (!curvePoints.empty()) {
+        if (!curvePoints.empty() && hoveredPointIdx < 0) {
             // TODO: Test if point lies in convex hull of control points first (using @see isInsidePolygon).
             int closestLineIdx = -1;
             float closestLineDist = std::numeric_limits<float>::max();
@@ -306,9 +313,9 @@ void HEBChart::update(float dt) {
         } else {
             hoveredLineIdx = -1;
         }
-        auto endTime = std::chrono::system_clock::now();
-        auto elapsedLoad = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
-        std::cout << "Elapsed time update: " << elapsedLoad.count() << "ms" << std::endl;
+        //auto endTime = std::chrono::system_clock::now();
+        //auto elapsedLoad = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
+        //std::cout << "Elapsed time update: " << elapsedLoad.count() << "ms" << std::endl;
     }
 
     if (isMouseInWindow && sgl::Mouse->buttonPressed(1)) {

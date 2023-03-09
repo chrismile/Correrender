@@ -395,7 +395,7 @@ bool NetCdfLoader::setInputFiles(
         int ndims = 0;
         int natts = 0;
         nc_inq_var(ncid, varid, varname, &type, &ndims, dimids, &natts);
-        if ((type != NC_FLOAT && type != NC_DOUBLE) || ndims != numDims) {
+        if ((type != NC_FLOAT && type != NC_DOUBLE) || (ndims != 3 && ndims != 4)) {
             continue;
         }
 
