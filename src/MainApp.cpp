@@ -47,6 +47,7 @@
 #endif
 
 #include <Utils/Timer.hpp>
+#include <Utils/StringUtils.hpp>
 #include <Utils/AppSettings.hpp>
 #include <Utils/Dialog.hpp>
 #include <Utils/File/Logfile.hpp>
@@ -112,6 +113,17 @@ MainApp::MainApp()
     sgl::AppSettings::get()->getVulkanInstance()->setDebugCallback(&vulkanErrorCallback);
     clearColor = sgl::Color(0, 0, 0, 255);
     clearColorSelection = ImColor(0, 0, 0, 255);
+    std::string clearColorString;
+    if (sgl::AppSettings::get()->getSettings().getValueOpt("clearColor", clearColorString)) {
+        std::vector<std::string> clearColorStringParts;
+        sgl::splitString(clearColorString, ',', clearColorStringParts);
+        if (clearColorStringParts.size() == 3 || clearColorStringParts.size() == 4) {
+            clearColor.setR(uint8_t(sgl::fromString<int>(clearColorStringParts.at(0))));
+            clearColor.setG(uint8_t(sgl::fromString<int>(clearColorStringParts.at(1))));
+            clearColor.setB(uint8_t(sgl::fromString<int>(clearColorStringParts.at(2))));
+            clearColorSelection = ImColor(clearColor.getR(), clearColor.getG(), clearColor.getB(), 255);
+        }
+    }
 
 #ifdef SUPPORT_CUDA_INTEROP
     sgl::vk::Device* device = sgl::AppSettings::get()->getPrimaryDevice();
@@ -159,7 +171,7 @@ MainApp::MainApp()
     }
 #endif
 
-    viewManager = new ViewManager(rendererVk);
+    viewManager = new ViewManager(&clearColor, rendererVk);
 
 #ifdef USE_PYTHON
     sgl::ColorLegendWidget::setFontScaleStandard(1.0f);
@@ -445,6 +457,11 @@ MainApp::~MainApp() {
     }
     nonBlockingMsgBoxHandles.clear();
 
+    std::string clearColorString =
+            std::to_string(int(clearColor.getR())) + ","
+            + std::to_string(int(clearColor.getG())) + ","
+            + std::to_string(int(clearColor.getB()));
+    sgl::AppSettings::get()->getSettings().addKeyValue("clearColor", clearColorString);
     sgl::AppSettings::get()->getSettings().addKeyValue("useDockSpaceMode", useDockSpaceMode);
     if (!usePerformanceMeasurementMode) {
         sgl::AppSettings::get()->getSettings().addKeyValue("useFixedSizeViewport", useFixedSizeViewport);
@@ -1300,6 +1317,9 @@ void MainApp::renderGuiGeneralSettingsPropertyEditor() {
         }
         for (DataViewPtr& dataView : dataViews) {
             dataView->setClearColor(clearColor);
+        }
+        for (auto& volumeRenderer : volumeRenderers) {
+            volumeRenderer->setClearColor(clearColor);
         }
         reRender = true;
     }

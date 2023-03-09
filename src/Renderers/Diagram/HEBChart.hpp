@@ -87,7 +87,8 @@ public:
     // Queries for showing children.
     bool getHasNewFocusSelection(bool& isDeselection);
     std::pair<GridRegion, GridRegion> getFocusSelection();
-    GridRegion getGridRegionPointIdx(uint32_t pointIdx);
+    GridRegion getGridRegionPointIdx(int idx, uint32_t pointIdx);
+    int getLeafIdxGroup(int leafIdx);
 
     // Range queries.
     glm::vec2 getCorrelationRangeTotal();
@@ -122,19 +123,24 @@ private:
     CorrelationMeasureType correlationMeasureType = CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV;
     int dfx = 32, dfy = 32, dfz = 32; ///< Downscaling factors.
     int xs = 0, ys = 0, zs = 0; //< Grid size.
-    int xsd = 0, ysd = 0, zsd = 0; //< Downscaled grid size.
-    GridRegion r{};
+    int xsd0 = 0, ysd0 = 0, zsd0 = 0; //< Downscaled grid size.
+    int xsd1 = 0, ysd1 = 0, zsd1 = 0; //< Downscaled grid size.
+    GridRegion r0{}, r1{};
+    bool regionsEqual = true;
     bool use2dField = true;
     std::vector<HEBNode> nodesList;
-    std::vector<uint32_t> pointToNodeIndexMap;
-    uint32_t leafIdxOffset = 0;
+    std::vector<uint32_t> pointToNodeIndexMap0, pointToNodeIndexMap1;
+    uint32_t leafIdxOffset = 0, leafIdxOffset1 = 0;
     std::vector<float> leafStdDevArray;
 
     // B-spline data.
     void updateData();
-    void computeDownscaledField(std::vector<float*>& downscaledEnsembleFields);
-    void computeDownscaledFieldVariance(std::vector<float*>& downscaledEnsembleFields);
-    void computeCorrelations(std::vector<float*>& downscaledEnsembleFields, std::vector<MIFieldEntry>& miFieldEntries);
+    void computeDownscaledField(int idx, std::vector<float*>& downscaledEnsembleFields);
+    void computeDownscaledFieldVariance(int idx, std::vector<float*>& downscaledEnsembleFields);
+    void computeCorrelations(
+            std::vector<float*>& downscaledEnsembleFields0,
+            std::vector<float*>& downscaledEnsembleFields1,
+            std::vector<MIFieldEntry>& miFieldEntries);
     int NUM_LINES = 0;
     int MAX_NUM_LINES = 100;
     const int NUM_SUBDIVISIONS = 50;

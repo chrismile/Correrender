@@ -44,24 +44,12 @@ struct StackDomain {
     glm::ivec3 min, max;
 };
 
-void buildTree(int xs, int ys, int zs) {
-    ;
-}
-
-void buildHebTree(
+void buildHebTreeIterative(
         std::vector<HEBNode>& nodesList, std::vector<uint32_t>& pointToNodeIndexMap, uint32_t& leafIdxOffset,
-        int xsd, int ysd, int zsd) {
-    auto treeHeightX = uint32_t(std::ceil(std::log2(xsd)));
-    auto treeHeightY = uint32_t(std::ceil(std::log2(ysd)));
-    auto treeHeightZ = uint32_t(std::ceil(std::log2(zsd)));
-    auto treeHeight = std::max(treeHeightX, std::max(treeHeightY, treeHeightZ));
-    nodesList.emplace_back();
-    nodesList[0].normalizedPosition = glm::vec3(0.0f);
-    pointToNodeIndexMap.resize(xsd * ysd * zsd);
-
+        bool regionsEqual, int groupIdx, int xsd, int ysd, int zsd, uint32_t treeHeight) {
     std::queue<StackDomain> domainStack;
     StackDomain rootDomain;
-    rootDomain.nodeIdx = 0;
+    rootDomain.nodeIdx = regionsEqual ? 0 : (groupIdx == 0 ? 1 : 2);
     rootDomain.depth = 0;
     rootDomain.min = glm::ivec3(0, 0, 0);
     rootDomain.max = glm::ivec3(xsd - 1, ysd - 1, zsd - 1);
@@ -92,62 +80,54 @@ void buildHebTree(
                 uint32_t(nodesList.size()), stackEntry.depth + 1,
                 glm::vec3(stackEntry.min.x, stackEntry.min.y, stackEntry.min.z),
                 glm::vec3(maxHalf.x, maxHalf.y, maxHalf.z));
-        HEBNode child(stackEntry.nodeIdx);
-        nodesList.push_back(child);
+        nodesList.emplace_back(stackEntry.nodeIdx);
         if (extent.x > 1) {
             domainStack.emplace(
                     uint32_t(nodesList.size()), stackEntry.depth + 1,
                     glm::vec3(minHalf.x, stackEntry.min.y, stackEntry.min.z),
                     glm::vec3(stackEntry.max.x, maxHalf.y, maxHalf.z));
-            HEBNode child(stackEntry.nodeIdx);
-            nodesList.push_back(child);
+            nodesList.emplace_back(stackEntry.nodeIdx);
         }
         if (extent.y > 1) {
             domainStack.emplace(
                     uint32_t(nodesList.size()), stackEntry.depth + 1,
                     glm::vec3(stackEntry.min.x, minHalf.y, stackEntry.min.z),
                     glm::vec3(maxHalf.x, stackEntry.max.y, maxHalf.z));
-            HEBNode child(stackEntry.nodeIdx);
-            nodesList.push_back(child);
+            nodesList.emplace_back(stackEntry.nodeIdx);
         }
         if (extent.x > 1 && extent.y > 1) {
             domainStack.emplace(
                     uint32_t(nodesList.size()), stackEntry.depth + 1,
                     glm::vec3(minHalf.x, minHalf.y, stackEntry.min.z),
                     glm::vec3(stackEntry.max.x, stackEntry.max.y, maxHalf.z));
-            HEBNode child(stackEntry.nodeIdx);
-            nodesList.push_back(child);
+            nodesList.emplace_back(stackEntry.nodeIdx);
         }
         if (extent.z > 1) {
             domainStack.emplace(
                     uint32_t(nodesList.size()), stackEntry.depth + 1,
                     glm::vec3(stackEntry.min.x, stackEntry.min.y, minHalf.z),
                     glm::vec3(maxHalf.x, maxHalf.y, stackEntry.max.z));
-            HEBNode child(stackEntry.nodeIdx);
-            nodesList.push_back(child);
+            nodesList.emplace_back(stackEntry.nodeIdx);
             if (extent.x > 1) {
                 domainStack.emplace(
                         uint32_t(nodesList.size()), stackEntry.depth + 1,
                         glm::vec3(minHalf.x, stackEntry.min.y, minHalf.z),
                         glm::vec3(stackEntry.max.x, maxHalf.y, stackEntry.max.z));
-                HEBNode child(stackEntry.nodeIdx);
-                nodesList.push_back(child);
+                nodesList.emplace_back(stackEntry.nodeIdx);
             }
             if (extent.y > 1) {
                 domainStack.emplace(
                         uint32_t(nodesList.size()), stackEntry.depth + 1,
                         glm::vec3(stackEntry.min.x, minHalf.y, minHalf.z),
                         glm::vec3(maxHalf.x, stackEntry.max.y, stackEntry.max.z));
-                HEBNode child(stackEntry.nodeIdx);
-                nodesList.push_back(child);
+                nodesList.emplace_back(stackEntry.nodeIdx);
             }
             if (extent.x > 1 && extent.y > 1) {
                 domainStack.emplace(
                         uint32_t(nodesList.size()), stackEntry.depth + 1,
                         glm::vec3(minHalf.x, minHalf.y, minHalf.z),
                         glm::vec3(stackEntry.max.x, stackEntry.max.y, stackEntry.max.z));
-                HEBNode child(stackEntry.nodeIdx);
-                nodesList.push_back(child);
+                nodesList.emplace_back(stackEntry.nodeIdx);
             }
         }
         uint32_t numChildren = uint32_t(nodesList.size()) - childrenOffset;
@@ -155,16 +135,98 @@ void buildHebTree(
             nodesList[stackEntry.nodeIdx].childIndices[i] = childrenOffset + i;
         }
     }
+}
 
+void buildHebTree(
+        std::vector<HEBNode>& nodesList,
+        std::vector<uint32_t>& pointToNodeIndexMap0, std::vector<uint32_t>& pointToNodeIndexMap1,
+        uint32_t& leafIdxOffset0, uint32_t& leafIdxOffset1,
+        bool regionsEqual, int xsd0, int ysd0, int zsd0, int xsd1, int ysd1, int zsd1) {
+    auto treeHeight0X = uint32_t(std::ceil(std::log2(xsd0)));
+    auto treeHeight0Y = uint32_t(std::ceil(std::log2(ysd0)));
+    auto treeHeight0Z = uint32_t(std::ceil(std::log2(zsd0)));
+    auto treeHeight0 = std::max(treeHeight0X, std::max(treeHeight0Y, treeHeight0Z));
+    auto treeHeight1X = uint32_t(std::ceil(std::log2(xsd1)));
+    auto treeHeight1Y = uint32_t(std::ceil(std::log2(ysd1)));
+    auto treeHeight1Z = uint32_t(std::ceil(std::log2(zsd1)));
+    auto treeHeight1 = std::max(treeHeight1X, std::max(treeHeight1Y, treeHeight1Z));
+    auto treeHeight = std::max(treeHeight0, treeHeight1) + (regionsEqual ? 0 : 1);
+    nodesList.emplace_back();
+    nodesList[0].normalizedPosition = glm::vec3(0.0f);
+    if (!regionsEqual) {
+        nodesList.emplace_back();
+        nodesList.emplace_back();
+        nodesList[0].childIndices[0] = 1;
+        nodesList[0].childIndices[1] = 2;
+        nodesList[1].parentIdx = 0;
+        nodesList[2].parentIdx = 0;
+    }
+    pointToNodeIndexMap0.resize(xsd0 * ysd0 * zsd0);
+    pointToNodeIndexMap1.resize(xsd1 * ysd1 * zsd1);
+    buildHebTreeIterative(
+            nodesList, pointToNodeIndexMap0, leafIdxOffset0,
+            regionsEqual, 0, xsd0, ysd0, zsd0, treeHeight0);
+    if (!regionsEqual) {
+        std::vector<HEBNode> leaves0 = { nodesList.begin() + leafIdxOffset0, nodesList.end() };
+        nodesList.resize(leafIdxOffset0);
+        uint32_t leafIdxOffset0Old = leafIdxOffset0;
+        buildHebTreeIterative(
+                nodesList, pointToNodeIndexMap1, leafIdxOffset1,
+                regionsEqual, 1, xsd1, ysd1, zsd1, treeHeight1);
+        std::vector<HEBNode> leaves1 = { nodesList.begin() + leafIdxOffset1, nodesList.end() };
+        nodesList.resize(leafIdxOffset1);
+        uint32_t leafIdxOffset1Old = leafIdxOffset1;
+        leafIdxOffset0 = uint32_t(nodesList.size());
+        nodesList.insert(nodesList.end(), leaves0.begin(), leaves0.end());
+        leafIdxOffset1 = uint32_t(nodesList.size());
+        nodesList.insert(nodesList.end(), leaves1.begin(), leaves1.end());
+
+        uint32_t shift0 = leafIdxOffset0 - leafIdxOffset0Old;
+        std::unordered_set<uint32_t> parents0;
+        for (HEBNode& leaf : leaves0) {
+            parents0.insert(leaf.parentIdx);
+        }
+        for (uint32_t parentIdx : parents0) {
+            HEBNode& parent = nodesList[parentIdx];
+            for (uint32_t& childIdx : parent.childIndices) {
+                if (childIdx != std::numeric_limits<uint32_t>::max()) {
+                    childIdx += shift0;
+                }
+            }
+        }
+        for (uint32_t& nodeIdx : pointToNodeIndexMap0) {
+            nodeIdx += shift0;
+        }
+
+        uint32_t shift1 = leafIdxOffset1 - leafIdxOffset1Old;
+        std::unordered_set<uint32_t> parents1;
+        for (HEBNode& leaf : leaves1) {
+            parents1.insert(leaf.parentIdx);
+        }
+        for (uint32_t parentIdx : parents1) {
+            HEBNode& parent = nodesList[parentIdx];
+            for (uint32_t& childIdx : parent.childIndices) {
+                if (childIdx != std::numeric_limits<uint32_t>::max()) {
+                    childIdx += shift1;
+                }
+            }
+        }
+        for (uint32_t& nodeIdx : pointToNodeIndexMap1) {
+            nodeIdx += shift1;
+        }
+    } else {
+        pointToNodeIndexMap1 = pointToNodeIndexMap0;
+    }
 
 
     // Set node positions.
     // Start with placing the leaves on a unit circle.
+    auto numLeaves = int(pointToNodeIndexMap0.size() + (regionsEqual ? 0 : pointToNodeIndexMap1.size()));
     std::unordered_set<uint32_t> prevParentNodeIndices;
     std::unordered_set<uint32_t> nextParentNodeIndices;
     uint32_t leafCounter = 0;
-    for (uint32_t leafIdx = leafIdxOffset; leafIdx < uint32_t(nodesList.size()); leafIdx++) {
-        float angle = float(leafCounter) / float(pointToNodeIndexMap.size()) * sgl::TWO_PI;
+    for (uint32_t leafIdx = leafIdxOffset0; leafIdx < uint32_t(nodesList.size()); leafIdx++) {
+        float angle = float(leafCounter) / float(numLeaves) * sgl::TWO_PI;
         nodesList[leafIdx].angle = angle;
         nodesList[leafIdx].normalizedPosition = glm::vec2(std::cos(angle), std::sin(angle));
         if (nodesList[leafIdx].parentIdx != std::numeric_limits<uint32_t>::max()) {

@@ -73,6 +73,14 @@ void DiagramBase::setImGuiWindowOffset(int offsetX, int offsetY) {
     imGuiWindowOffsetY = offsetY;
 }
 
+void DiagramBase::setClearColor(const sgl::Color& clearColor) {
+    float r = clearColor.getFloatR();
+    float g = clearColor.getFloatG();
+    float b = clearColor.getFloatB();
+    float clearColorLuminance = 0.2126f * r + 0.7152f * g + 0.0722f * b;
+    isDarkMode = clearColorLuminance <= 0.5f;
+}
+
 void DiagramBase::setIsMouseGrabbedByParent(bool _isMouseGrabbedByParent) {
     isMouseGrabbedByParent = _isMouseGrabbedByParent;
 }
@@ -314,23 +322,23 @@ void DiagramBase::getNanoVGContext() {
 void DiagramBase::renderBaseNanoVG() {
     getNanoVGContext();
 
-    //NVGcolor backgroundFillColor = nvgRGBA(230, 230, 230, std::clamp(
-    //        int(backgroundOpacity * 255), 0, 255));
-    //NVGcolor backgroundStrokeColor = nvgRGBA(190, 190, 190, std::clamp(
-    //        int(backgroundOpacity * 255), 0, 255));
-    NVGcolor backgroundFillColor = nvgRGBA(20, 20, 20, std::clamp(
-            int(backgroundOpacity * 255), 0, 255));
-    NVGcolor backgroundStrokeColor = nvgRGBA(60, 60, 60, std::clamp(
-            int(backgroundOpacity * 255), 0, 255));
+    sgl::Color backgroundFillColor = isDarkMode ? backgroundFillColorDark : backgroundFillColorBright;
+    sgl::Color backgroundStrokeColor = isDarkMode ? backgroundStrokeColorDark : backgroundStrokeColorBright;
+    NVGcolor backgroundFillColorNvg = nvgRGBA(
+            backgroundFillColor.getR(), backgroundFillColor.getG(),
+            backgroundFillColor.getB(), std::clamp(int(backgroundOpacity * 255), 0, 255));
+    NVGcolor backgroundStrokeColorNvg = nvgRGBA(
+            backgroundStrokeColor.getR(), backgroundStrokeColor.getG(),
+            backgroundStrokeColor.getB(), std::clamp(int(backgroundOpacity * 255), 0, 255));
 
     // Render the render target-filling widget rectangle.
     nvgBeginPath(vg);
     nvgRoundedRect(
             vg, borderWidth, borderWidth, windowWidth - 2.0f * borderWidth, windowHeight - 2.0f * borderWidth,
             borderRoundingRadius);
-    nvgFillColor(vg, backgroundFillColor);
+    nvgFillColor(vg, backgroundFillColorNvg);
     nvgFill(vg);
-    nvgStrokeColor(vg, backgroundStrokeColor);
+    nvgStrokeColor(vg, backgroundStrokeColorNvg);
     nvgStroke(vg);
 }
 
@@ -344,10 +352,10 @@ void DiagramBase::renderBaseSkia() {
     getSkiaCanvas();
     s = scaleFactor * float(supersamplingFactor);
 
-    sgl::Color backgroundFillColor = sgl::Color(20, 20, 20, std::clamp(
-            int(backgroundOpacity * 255), 0, 255));
-    sgl::Color backgroundStrokeColor = sgl::Color(60, 60, 60, std::clamp(
-            int(backgroundOpacity * 255), 0, 255));
+    sgl::Color backgroundFillColor = isDarkMode ? backgroundFillColorDark : backgroundFillColorBright;
+    sgl::Color backgroundStrokeColor = isDarkMode ? backgroundStrokeColorDark : backgroundStrokeColorBright;
+    backgroundFillColor.setA(std::clamp(int(backgroundOpacity * 255), 0, 255));
+    backgroundStrokeColor.setA(std::clamp(int(backgroundOpacity * 255), 0, 255));
 
     // Render the render target-filling widget rectangle.
     SkPaint paint;
@@ -378,8 +386,8 @@ void DiagramBase::renderBaseVkvg() {
     getVkvgContext();
     s = scaleFactor * float(supersamplingFactor);
 
-    sgl::Color backgroundFillColor = sgl::Color(20, 20, 20, 255);
-    sgl::Color backgroundStrokeColor = sgl::Color(60, 60, 60, 255);
+    sgl::Color backgroundFillColor = isDarkMode ? backgroundFillColorDark : backgroundFillColorBright;
+    sgl::Color backgroundStrokeColor = isDarkMode ? backgroundStrokeColorDark : backgroundStrokeColorBright;
 
     // Render the render target-filling widget rectangle.
     vkvg_rounded_rectangle(

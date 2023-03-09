@@ -76,6 +76,7 @@
 #include "Calculators/VelocityCalculator.hpp"
 #include "Calculators/BinaryOperatorCalculator.hpp"
 #include "Calculators/NoiseReductionCalculator.hpp"
+#include "Calculators/EnsembleVarianceCalculator.hpp"
 #include "Calculators/SimilarityCalculator.hpp"
 #ifdef SUPPORT_PYTORCH
 #include "Calculators/PyTorchSimilarityCalculator.hpp"
@@ -176,6 +177,8 @@ VolumeData::VolumeData(sgl::vk::Renderer* renderer) : renderer(renderer), multiV
             "Binary Operator", [renderer]() { return new BinaryOperatorCalculator(renderer); });
     factoriesCalculator.emplace_back(
             "Noise Reduction", [renderer]() { return new NoiseReductionCalculator(renderer); });
+    factoriesCalculator.emplace_back(
+            "Ensemble Variance", [renderer]() { return new EnsembleVarianceCalculator(renderer); });
     factoriesCalculator.emplace_back(
             "Correlation Calculator", [renderer]() { return new PccCalculator(renderer); });
 #ifdef SUPPORT_PYTORCH

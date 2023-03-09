@@ -26,6 +26,9 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <iostream>
+#include <chrono>
+
 #ifdef SUPPORT_SKIA
 #include <core/SkCanvas.h>
 #include <core/SkPaint.h>
@@ -226,6 +229,7 @@ void HEBChart::update(float dt) {
             needsReRender = true;
         }
     } else {
+        auto startTime = std::chrono::system_clock::now();
         glm::vec2 centeredMousePos = mousePosition - glm::vec2(windowWidth / 2.0f, windowHeight / 2.0f);
         float radiusMouse = std::sqrt(centeredMousePos.x * centeredMousePos.x + centeredMousePos.y * centeredMousePos.y);
         float phiMouse = std::fmod(std::atan2(centeredMousePos.y, centeredMousePos.x) + sgl::TWO_PI, sgl::TWO_PI);
@@ -233,20 +237,41 @@ void HEBChart::update(float dt) {
         // Factor 4 is used so the user does not need to exactly hit the (potentially very small) points.
         float minRadius = chartRadius - pointRadiusBase * 4.0f;
         float maxRadius = chartRadius + pointRadiusBase * 4.0f;
-        auto numLeaves = int(pointToNodeIndexMap.size());
-        int sectorIdx = int(std::round(phiMouse / sgl::TWO_PI * float(numLeaves))) % numLeaves;
-
-        //std::cout << "sector idx: " << sectorIdx << std::endl;
 
         if (radiusMouse >= minRadius && radiusMouse <= maxRadius) {
-            float sectorCenterAngle = float(sectorIdx) / float(numLeaves) * sgl::TWO_PI;
-            sgl::Circle circle(
-                    chartRadius * glm::vec2(std::cos(sectorCenterAngle), std::sin(sectorCenterAngle)),
-                    pointRadiusBase * 4.0f);
-            if (circle.contains(centeredMousePos)) {
-                hoveredPointIdx = sectorIdx;
+            if (regionsEqual) {
+                auto numLeaves = int(pointToNodeIndexMap0.size());
+                int sectorIdx = int(std::round(phiMouse / sgl::TWO_PI * float(numLeaves))) % numLeaves;
+                float sectorCenterAngle = float(sectorIdx) / float(numLeaves) * sgl::TWO_PI;
+                sgl::Circle circle(
+                        chartRadius * glm::vec2(std::cos(sectorCenterAngle), std::sin(sectorCenterAngle)),
+                        pointRadiusBase * 4.0f);
+                if (circle.contains(centeredMousePos)) {
+                    hoveredPointIdx = sectorIdx;
+                } else {
+                    hoveredPointIdx = -1;
+                }
             } else {
-                hoveredPointIdx = -1;
+                // TODO
+                /*float minAngleGroup0 = nodesList.at(leafIdxOffset).angle;
+                float maxAngleGroup0 = nodesList.at(regionsEqual ? nodesList.size() - 1 : leafIdxOffset1 - 1).angle;
+                float angleDeltaGroup0 = maxAngleGroup0 - minAngleGroup0;
+                float minAngleGroup1 = nodesList.at(leafIdxOffset1).angle;
+                float maxAngleGroup1 = nodesList.at(nodesList.size()).angle;
+                float angleDeltaGroup1 = maxAngleGroup1 - minAngleGroup1;
+                int sectorIdx0 = int(std::round(phiMouse / sgl::TWO_PI * float(numLeaves))) % numLeaves;
+                int sectorIdx1 = int(std::round(phiMouse / sgl::TWO_PI * float(numLeaves))) % numLeaves;*/
+                auto numLeaves = int(pointToNodeIndexMap0.size() + pointToNodeIndexMap1.size());
+                int sectorIdx = int(std::round(phiMouse / sgl::TWO_PI * float(numLeaves))) % numLeaves;
+                float sectorCenterAngle = float(sectorIdx) / float(numLeaves) * sgl::TWO_PI;
+                sgl::Circle circle(
+                        chartRadius * glm::vec2(std::cos(sectorCenterAngle), std::sin(sectorCenterAngle)),
+                        pointRadiusBase * 4.0f);
+                if (circle.contains(centeredMousePos)) {
+                    hoveredPointIdx = sectorIdx;
+                } else {
+                    hoveredPointIdx = -1;
+                }
             }
         } else {
             hoveredPointIdx = -1;
@@ -281,6 +306,9 @@ void HEBChart::update(float dt) {
         } else {
             hoveredLineIdx = -1;
         }
+        auto endTime = std::chrono::system_clock::now();
+        auto elapsedLoad = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
+        std::cout << "Elapsed time update: " << elapsedLoad.count() << "ms" << std::endl;
     }
 
     if (isMouseInWindow && sgl::Mouse->buttonPressed(1)) {
@@ -362,7 +390,7 @@ void HEBChart::renderBaseNanoVG() {
         dataDirty = false;
     }
 
-    // Draw the B-spline curves. TODO: Port to Vulkan or OpenGL.
+    // Draw the B-spline curves.
     NVGcolor curveStrokeColor = nvgRGBA(
             100, 255, 100, uint8_t(std::clamp(int(std::ceil(curveOpacity * 255.0f)), 0, 255)));
     if (!curvePoints.empty()) {
@@ -454,8 +482,6 @@ void HEBChart::renderBaseNanoVG() {
             int nextIdx = (leafIdx + 1 - int(leafIdxOffset)) % numLeaves + int(leafIdxOffset);
             const auto& leafCurr = nodesList.at(leafIdx);
             const auto& leafNext = nodesList.at(nextIdx);
-            //float angle0 = float(leafIdx - int(leafIdxOffset)) / float(numLeaves) * sgl::TWO_PI;
-            //float angle1 = float(leafIdx + 1 - int(leafIdxOffset)) / float(numLeaves) * sgl::TWO_PI;
             float angle0 = leafCurr.angle;
             float angle1 = leafNext.angle + 0.01f;
             float cos0 = std::cos(angle0), sin0 = std::sin(angle0), cos1 = std::cos(angle1), sin1 = std::sin(angle1);

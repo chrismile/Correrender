@@ -40,8 +40,13 @@ struct GridRegion {
         ymax = yoff + ysr - 1;
         zmax = zoff + zsr - 1;
     }
-    inline int getNumCells() {
+    [[nodiscard]] inline int getNumCells() const {
         return xsr * ysr * zsr;
+    }
+    inline bool operator==(const GridRegion& rhs) const {
+        return
+                xoff == rhs.xoff && yoff == rhs.yoff && zoff == rhs.zoff
+                && xsr == rhs.xsr && ysr == rhs.ysr && zsr == rhs.zsr;
     }
     int xoff = 0, yoff = 0, zoff = 0; //< Offset.
     int xsr = 0, ysr = 0, zsr = 0; //< Region size.

@@ -57,8 +57,9 @@ public:
     virtual void updateSizeByParent() {}
     virtual DiagramType getDiagramType()=0;
     void setImGuiWindowOffset(int offsetX, int offsetY);
+    void setClearColor(const sgl::Color& clearColor);
     [[nodiscard]] inline bool getNeedsReRender() { bool tmp = needsReRender; needsReRender = false; return tmp; }
-    [[nodiscard]] inline bool getIsMouseGrabbed() { return isMouseGrabbed; }
+    [[nodiscard]] inline bool getIsMouseGrabbed() const { return isMouseGrabbed; }
 
     [[nodiscard]] inline bool getSelectedVariablesChanged() const { return selectedVariablesChanged; };
     [[nodiscard]] inline const std::set<size_t>& getSelectedVariableIndices() const { return selectedVariableIndices; };
@@ -135,6 +136,14 @@ protected:
     const float borderRoundingRadius = 4.0f;
     float backgroundOpacity = 1.0f;
     float textSizeLegend = 12.0f;
+
+    // Color palette.
+    bool isDarkMode = true;
+    sgl::Color backgroundFillColorDark = sgl::Color(20, 20, 20, 255);
+    //sgl::Color backgroundFillColorBright = sgl::Color(230, 230, 230, 255);
+    sgl::Color backgroundFillColorBright = sgl::Color(245, 245, 245, 255);
+    sgl::Color backgroundStrokeColorDark = sgl::Color(60, 60, 60, 255);
+    sgl::Color backgroundStrokeColorBright = sgl::Color(190, 190, 190, 255);
 
     enum ResizeDirection {
         NONE = 0, LEFT = 1, RIGHT = 2, BOTTOM = 4, TOP = 8,

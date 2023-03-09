@@ -57,6 +57,7 @@ public:
     void onFieldRemoved(FieldType fieldType, int fieldIdx) override;
     void recreateSwapchainView(uint32_t viewIdx, uint32_t width, uint32_t height) override;
     void update(float dt, bool isMouseGrabbed) override;
+    void setClearColor(const sgl::Color& clearColor) override;
     bool getHasGrabbedMouse() const override;
 
 protected:

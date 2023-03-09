@@ -111,6 +111,7 @@ void DiagramRenderer::initialize() {
         parentDiagram->setColorByValue(colorByValue);
         parentDiagram->setColorMap(colorMap);
         parentDiagram->setUse2DField(use2dField);
+        parentDiagram->setClearColor(viewManager->getClearColor());
     }
     diagrams.push_back(parentDiagram);
 }
@@ -171,6 +172,7 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
         parentDiagram->setColorByValue(colorByValue);
         parentDiagram->setColorMap(colorMap);
         parentDiagram->setUse2DField(use2dField);
+        parentDiagram->setClearColor(viewManager->getClearColor());
 
         correlationRangeTotal = correlationRange = parentDiagram->getCorrelationRangeTotal();
         cellDistanceRange = cellDistanceRangeTotal = parentDiagram->getCellDistanceRangeTotal();
@@ -265,6 +267,7 @@ void DiagramRenderer::resetSelections(int idx) {
             diagram->setColorByValue(colorByValue);
             diagram->setColorMap(colorMap);
             diagram->setUse2DField(use2dField);
+            diagram->setClearColor(viewManager->getClearColor());
             diagram->getCorrelationRangeTotal();
             diagram->getCellDistanceRangeTotal();
             //diagram->setCorrelationRange(parentDiagram->getCorrelationRangeTotal());
@@ -305,6 +308,12 @@ bool DiagramRenderer::getHasGrabbedMouse() const {
         }
     }
     return false;
+}
+
+void DiagramRenderer::setClearColor(const sgl::Color& clearColor) {
+    for (auto& diagram : diagrams) {
+        diagram->setClearColor(clearColor);
+    }
 }
 
 void DiagramRenderer::renderViewImpl(uint32_t viewIdx) {

@@ -83,6 +83,8 @@ public:
     virtual void onHasMoved(uint32_t viewIdx) {}
     /// If the re-rendering was triggered from an outside source, frame accumulation cannot be used.
     virtual void notifyReRenderTriggeredExternally() { internalReRender = false; }
+    /// Called when the clear color changed.
+    virtual void setClearColor(const sgl::Color& clearColor) {}
     /**
      * Sets whether linear RGB or sRGB should be used for rendering. Most renderers won't need to do anything special,
      * as the transfer function data is automatically updated to use the correct format.

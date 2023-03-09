@@ -123,18 +123,15 @@ void BinaryOperatorCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, fl
         binaryOperator = [](float val0, float val1) { return std::min(val0, val1); };
     }
 
+    int numPoints = xs * ys * zs;
 #ifdef USE_TBB
-    tbb::parallel_for(tbb::blocked_range<int>(0, zs), [&](auto const& r) {
-        for (auto z = r.begin(); z != r.end(); z++) {
+    tbb::parallel_for(tbb::blocked_range<int>(0, numPoints), [&](auto const& r) {
+        for (auto pointIdx = r.begin(); pointIdx != r.end(); pointIdx++) {
 #else
-    #pragma omp parallel for shared(xs, ys, zs, scalarField0, scalarField1, binaryOperator, buffer) default(none)
-    for (int z = 0; z < zs; z++) {
+#pragma omp parallel for shared(numPoints, scalarField0, scalarField1, binaryOperator, buffer) default(none)
+    for (int pointIdx = 0; pointIdx < numPoints; pointIdx++) {
 #endif
-        for (int y = 0; y < ys; y++) {
-            for (int x = 0; x < xs; x++) {
-                buffer[IDXS(x, y, z)] = binaryOperator(scalarField0[IDXS(x, y, z)], scalarField1[IDXS(x, y, z)]);
-            }
-        }
+        buffer[pointIdx] = binaryOperator(scalarField0[pointIdx], scalarField1[pointIdx]);
     }
 #ifdef USE_TBB
     });

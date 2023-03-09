@@ -33,6 +33,10 @@
 #include <cstdint>
 #include <cstddef>
 
+namespace sgl {
+class Color;
+}
+
 namespace sgl { namespace vk {
 class Renderer;
 }}
@@ -41,11 +45,12 @@ struct SceneData;
 
 class ViewManager {
 public:
-    explicit ViewManager(sgl::vk::Renderer* renderer) : renderer(renderer) {}
+    ViewManager(sgl::Color* clearColor, sgl::vk::Renderer* renderer) : clearColor(clearColor), renderer(renderer) {}
     [[nodiscard]] size_t getNumViews() const { return sceneDataArray.size(); }
     SceneData* getViewSceneData(uint32_t viewIdx);
     void addView(SceneData* viewSceneData);
     void removeView(uint32_t viewIdx);
+    [[nodiscard]] inline const sgl::Color& getClearColor() const { return *clearColor; }
     [[nodiscard]] inline sgl::vk::Renderer* getRenderer() { return renderer; }
 
     // For querying the state of the mouse in the views.
@@ -53,6 +58,7 @@ public:
     inline void setMouseHoverWindowIndex(int idx) { mouseHoverWindowIndex = idx; }
 
 private:
+    sgl::Color* clearColor;
     sgl::vk::Renderer* renderer;
     std::vector<SceneData*> sceneDataArray;
     int mouseHoverWindowIndex = -1;

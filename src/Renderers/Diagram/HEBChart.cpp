@@ -65,20 +65,25 @@ void HEBChart::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) {
         xs = volumeData->getGridSizeX();
         ys = volumeData->getGridSizeY();
         zs = volumeData->getGridSizeZ();
-        r = GridRegion(0, 0, 0, xs, ys, zs);
-        xsd = sgl::iceil(xs, dfx);
-        ysd = sgl::iceil(ys, dfy);
-        zsd = sgl::iceil(zs, dfz);
+        r0 = r1 = GridRegion(0, 0, 0, xs, ys, zs);
+        regionsEqual = true;
+        xsd0 = xsd1 = sgl::iceil(xs, dfx);
+        ysd0 = ysd1 = sgl::iceil(ys, dfy);
+        zsd0 = zsd1 = sgl::iceil(zs, dfz);
         resetSelectedPrimitives();
     }
 }
 
 void HEBChart::setRegions(const std::pair<GridRegion, GridRegion>& _rs) {
-    // TODO
-    r = _rs.first;
-    xsd = sgl::iceil(r.xsr, dfx);
-    ysd = sgl::iceil(r.ysr, dfy);
-    zsd = sgl::iceil(r.zsr, dfz);
+    r0 = _rs.first;
+    r1 = _rs.second;
+    regionsEqual = r0 == r1;
+    xsd0 = sgl::iceil(r0.xsr, dfx);
+    ysd0 = sgl::iceil(r0.ysr, dfy);
+    zsd0 = sgl::iceil(r0.zsr, dfz);
+    xsd1 = sgl::iceil(r1.xsr, dfx);
+    ysd1 = sgl::iceil(r1.ysr, dfy);
+    zsd1 = sgl::iceil(r1.zsr, dfz);
 }
 
 void HEBChart::resetSelectedPrimitives() {
@@ -135,8 +140,9 @@ glm::ivec2 HEBChart::getCellDistanceRangeTotal() {
     cellDistanceRangeTotal.x = 0;
     //cellDistanceRangeTotal.y = xsd + ysd + zsd; //< Manhattan distance.
     glm::vec3 pti(0, 0, 0);
-    glm::vec3 ptj(xsd - 1, ysd - 1, zsd - 1);
-    cellDistanceRangeTotal.y = int(std::ceil(glm::length(pti - ptj)));
+    glm::vec3 ptj0(xsd0 - 1, ysd0 - 1, zsd0 - 1);
+    glm::vec3 ptj1(xsd1 - 1, ysd1 - 1, zsd1 - 1);
+    cellDistanceRangeTotal.y = int(std::ceil(std::max(glm::length(pti - ptj0), glm::length(pti - ptj1))));
     return cellDistanceRangeTotal;
 }
 
@@ -151,9 +157,13 @@ void HEBChart::setCellDistanceRange(const glm::ivec2& _range) {
 }
 
 
-void HEBChart::computeDownscaledField(std::vector<float*>& downscaledEnsembleFields) {
+void HEBChart::computeDownscaledField(int idx, std::vector<float*>& downscaledEnsembleFields) {
     int es = volumeData->getEnsembleMemberCount();
+    int xsd = idx == 0 ? xsd0 : xsd1;
+    int ysd = idx == 0 ? ysd0 : ysd1;
+    int zsd = idx == 0 ? zsd0 : zsd1;
     int numPoints = xsd * ysd * zsd;
+    GridRegion r = idx == 0 ? r0 : r1;
     for (int ensembleIdx = 0; ensembleIdx < es; ensembleIdx++) {
         VolumeData::HostCacheEntry ensembleEntryField = volumeData->getFieldEntryCpu(
                 FieldType::SCALAR, selectedScalarFieldName, -1, ensembleIdx);
@@ -224,11 +234,16 @@ void HEBChart::computeDownscaledField(std::vector<float*>& downscaledEnsembleFie
     }
 }
 
-void HEBChart::computeDownscaledFieldVariance(std::vector<float*>& downscaledEnsembleFields) {
+void HEBChart::computeDownscaledFieldVariance(int idx, std::vector<float*>& downscaledEnsembleFields) {
     // Compute the standard deviation inside the downscaled grids.
     int es = volumeData->getEnsembleMemberCount();
+    int xsd = idx == 0 ? xsd0 : xsd1;
+    int ysd = idx == 0 ? ysd0 : ysd1;
+    int zsd = idx == 0 ? zsd0 : zsd1;
     int numPoints = xsd * ysd * zsd;
-    leafStdDevArray.resize(numPoints);
+    GridRegion r = idx == 0 ? r0 : r1;
+    auto& pointToNodeIndexMap = idx == 0 ? pointToNodeIndexMap0 : pointToNodeIndexMap1;
+    leafStdDevArray.resize(xsd0 * ysd0 * zsd0 + (idx == 0 ? 0 : + xsd1 * ysd1 * zsd1));
 
     std::vector<VolumeData::HostCacheEntry> ensembleEntryFields;
     std::vector<float*> fields;
@@ -245,7 +260,7 @@ void HEBChart::computeDownscaledFieldVariance(std::vector<float*>& downscaledEns
             for (auto pointIdx = r.begin(); pointIdx != r.end(); pointIdx++) {
 #else
 #if _OPENMP >= 200805
-    #pragma omp parallel for default(none) shared(fields, numPoints, es)
+    #pragma omp parallel for default(none) shared(fields, pointToNodeIndexMap, xsd, ysd, zsd, r, numPoints, es)
 #endif
     for (int pointIdx = 0; pointIdx < numPoints; pointIdx++) {
 #endif
@@ -341,22 +356,20 @@ void HEBChart::computeDownscaledFieldVariance(std::vector<float*>& downscaledEns
 #ifdef USE_TBB
     });
 #endif
-
-    // Normalize standard deviations for visualization.
-    auto [minVal, maxVal] = sgl::reduceFloatArrayMinMax(leafStdDevArray);
-    minStdDev = minVal;
-    maxStdDev = maxVal;
 }
 
 void HEBChart::computeCorrelations(
-        std::vector<float*>& downscaledEnsembleFields, std::vector<MIFieldEntry>& miFieldEntries) {
+        std::vector<float*>& downscaledEnsembleFields0,
+        std::vector<float*>& downscaledEnsembleFields1,
+        std::vector<MIFieldEntry>& miFieldEntries) {
     int es = volumeData->getEnsembleMemberCount();
     int k = std::max(sgl::iceil(3 * es, 100), 1); //< CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV
     int numBins = 80; //< CorrelationMeasureType::MUTUAL_INFORMATION_BINNED
-    int numPoints = xsd * ysd * zsd;
+    int numPoints0 = xsd0 * ysd0 * zsd0;
+    int numPoints1 = xsd1 * ysd1 * zsd1;
 #ifdef USE_TBB
     miFieldEntries = tbb::parallel_reduce(
-            tbb::blocked_range<int>(0, numPoints), std::vector<MIFieldEntry>(),
+            tbb::blocked_range<int>(0, numPoints0), std::vector<MIFieldEntry>(),
             [&](tbb::blocked_range<int> const& r, std::vector<MIFieldEntry> miFieldEntriesThread) -> std::vector<MIFieldEntry> {
                 std::vector<float> X(es);
                 std::vector<float> Y(es);
@@ -392,9 +405,10 @@ void HEBChart::computeCorrelations(
 
                 for (int i = r.begin(); i != r.end(); i++) {
 #else
-    miFieldEntries.reserve((numPoints * numPoints + numPoints) / 2);
+    miFieldEntries.reserve(regionsEqual ? (numPoints0 * numPoints0 + numPoints0) / 2 : numPoints0 * numPoints1);
 #if _OPENMP >= 201107
-    #pragma omp parallel default(none) shared(miFieldEntries, downscaledEnsembleFields, numPoints, es, k, numBins)
+    #pragma omp parallel default(none) shared(miFieldEntries, numPoints0, numPoints1, es, k, numBins) \
+    shared(downscaledEnsembleFields0, downscaledEnsembleFields1)
 #endif
     {
         const CorrelationMeasureType cmt = correlationMeasureType;
@@ -432,13 +446,13 @@ void HEBChart::computeCorrelations(
         float minEnsembleValRef, maxEnsembleValRef, minEnsembleVal, maxEnsembleVal;
 
 #if _OPENMP >= 201107
-    #pragma omp for schedule(dynamic)
+        #pragma omp for schedule(dynamic)
 #endif
-        for (int i = 0; i < numPoints; i++) {
+        for (int i = 0; i < numPoints0; i++) {
 #endif
             bool isNan = false;
             for (int e = 0; e < es; e++) {
-                X[e] = downscaledEnsembleFields.at(e)[i];
+                X[e] = downscaledEnsembleFields0.at(e)[i];
                 if (std::isnan(X[e])) {
                     isNan = true;
                     break;
@@ -460,21 +474,22 @@ void HEBChart::computeCorrelations(
                     maxEnsembleValRef = std::max(maxEnsembleValRef, X[e]);
                 }
                 for (int e = 0; e < es; e++) {
-                    X[e] = (downscaledEnsembleFields.at(e)[i] - minEnsembleValRef) / (maxEnsembleValRef - minEnsembleValRef);
+                    X[e] = (downscaledEnsembleFields0.at(e)[i] - minEnsembleValRef) / (maxEnsembleValRef - minEnsembleValRef);
                 }
             }
 
-            for (int j = 0; j < i; j++) {
+            int upperBounds = regionsEqual ? i : numPoints1;
+            for (int j = 0; j < upperBounds; j++) {
                 if (cellDistanceRange.x > 0 || cellDistanceRange.y < cellDistanceRangeTotal.y) {
-                    glm::vec3 pti(i % uint32_t(xsd), (i / uint32_t(xsd)) % uint32_t(ysd), i / uint32_t(xsd * ysd));
-                    glm::vec3 ptj(j % uint32_t(xsd), (j / uint32_t(xsd)) % uint32_t(ysd), j / uint32_t(xsd * ysd));
+                    glm::vec3 pti(i % uint32_t(xsd0), (i / uint32_t(xsd0)) % uint32_t(ysd0), i / uint32_t(xsd0 * ysd0));
+                    glm::vec3 ptj(j % uint32_t(xsd1), (j / uint32_t(xsd1)) % uint32_t(ysd1), j / uint32_t(xsd1 * ysd1));
                     float cellDist = glm::length(pti - ptj);
                     if (cellDist < float(cellDistanceRange.x) || cellDist > float(cellDistanceRange.y)) {
                         continue;
                     }
                 }
                 for (int e = 0; e < es; e++) {
-                    Y[e] = downscaledEnsembleFields.at(e)[j];
+                    Y[e] = downscaledEnsembleFields1.at(e)[j];
                     if (std::isnan(Y[e])) {
                         isNan = true;
                         break;
@@ -489,8 +504,8 @@ void HEBChart::computeCorrelations(
                             maxEnsembleVal = std::max(maxEnsembleVal, Y[e]);
                         }
                         for (int e = 0; e < es; e++) {
-                            X[e] = (downscaledEnsembleFields.at(e)[i] - minEnsembleVal) / (maxEnsembleVal - minEnsembleVal);
-                            Y[e] = (downscaledEnsembleFields.at(e)[j] - minEnsembleVal) / (maxEnsembleVal - minEnsembleVal);
+                            X[e] = (downscaledEnsembleFields0.at(e)[i] - minEnsembleVal) / (maxEnsembleVal - minEnsembleVal);
+                            Y[e] = (downscaledEnsembleFields1.at(e)[j] - minEnsembleVal) / (maxEnsembleVal - minEnsembleVal);
                         }
                     }
 
@@ -560,11 +575,12 @@ void HEBChart::computeCorrelations(
 }
 
 void getControlPoints(
-        const std::vector<HEBNode>& nodesList, const std::vector<uint32_t>& pointToNodeIndexMap,
+        const std::vector<HEBNode>& nodesList,
+        const std::vector<uint32_t>& pointToNodeIndexMap0, const std::vector<uint32_t>& pointToNodeIndexMap1,
         uint32_t pointIndex0, uint32_t pointIndex1, std::vector<glm::vec2>& controlPoints) {
     // The start nodes are leaves at the same level.
-    uint32_t nidx0 = pointToNodeIndexMap.at(pointIndex0);
-    uint32_t nidx1 = pointToNodeIndexMap.at(pointIndex1);
+    uint32_t nidx0 = pointToNodeIndexMap0.at(pointIndex0);
+    uint32_t nidx1 = pointToNodeIndexMap1.at(pointIndex1);
 
     // Go until lowest common ancestor (LCA).
     std::vector<uint32_t> ancestors0;
@@ -613,10 +629,13 @@ void smoothControlPoints(std::vector<glm::vec2>& controlPoints, float beta) {
 void HEBChart::updateData() {
     // Values downscaled by factor 32.
     int es = volumeData->getEnsembleMemberCount();
-    xsd = sgl::iceil(r.xsr, dfx);
-    ysd = sgl::iceil(r.ysr, dfy);
-    zsd = sgl::iceil(r.zsr, dfz);
-    int numPoints = xsd * ysd * zsd;
+    xsd0 = sgl::iceil(r0.xsr, dfx);
+    ysd0 = sgl::iceil(r0.ysr, dfy);
+    zsd0 = sgl::iceil(r0.zsr, dfz);
+    xsd1 = sgl::iceil(r1.xsr, dfx);
+    ysd1 = sgl::iceil(r1.ysr, dfy);
+    zsd1 = sgl::iceil(r1.zsr, dfz);
+    int numPoints = xsd0 * ysd0 * zsd0 + (regionsEqual ? 0 : xsd1 * ysd1 * zsd1);
 
     if (selectedLineIdx >= 0 || selectedPointIndices[0] >= 0 || selectedPointIndices[1] >= 0) {
         needsReRender = true;
@@ -624,33 +643,58 @@ void HEBChart::updateData() {
     resetSelectedPrimitives();
 
     if (use2dField) {
-        numPoints = xsd * ysd;
-        zsd = 1;
+        numPoints = xsd0 * ysd0;
+        zsd0 = zsd1 = 1;
     }
 
     // Compute the downscaled field.
-    std::vector<float*> downscaledEnsembleFields;
-    downscaledEnsembleFields.resize(es);
-    computeDownscaledField(downscaledEnsembleFields);
+    std::vector<float*> downscaledEnsembleFields0, downscaledEnsembleFields1;
+    downscaledEnsembleFields0.resize(es);
+    computeDownscaledField(0, downscaledEnsembleFields0);
+    if (!regionsEqual) {
+        downscaledEnsembleFields1.resize(es);
+        computeDownscaledField(1, downscaledEnsembleFields1);
+    }
 
     // Compute the correlation matrix.
     std::vector<MIFieldEntry> miFieldEntries;
-    computeCorrelations(downscaledEnsembleFields, miFieldEntries);
+    if (regionsEqual) {
+        computeCorrelations(downscaledEnsembleFields0, downscaledEnsembleFields0, miFieldEntries);
+    } else {
+        computeCorrelations(downscaledEnsembleFields0, downscaledEnsembleFields1, miFieldEntries);
+    }
 
     // Build the octree.
     nodesList.clear();
-    pointToNodeIndexMap.clear();
-    buildHebTree(nodesList, pointToNodeIndexMap, leafIdxOffset, xsd, ysd, zsd);
+    pointToNodeIndexMap0.clear();
+    pointToNodeIndexMap1.clear();
+    buildHebTree(
+            nodesList, pointToNodeIndexMap0, pointToNodeIndexMap1, leafIdxOffset, leafIdxOffset1, regionsEqual,
+            xsd0, ysd0, zsd0, xsd1, ysd1, zsd1);
 
     // Compute the standard deviation inside the downscaled grids.
-    computeDownscaledFieldVariance(downscaledEnsembleFields);
+    computeDownscaledFieldVariance(0, downscaledEnsembleFields0);
+    if (!regionsEqual) {
+        computeDownscaledFieldVariance(1, downscaledEnsembleFields1);
+    }
+    // Normalize standard deviations for visualization.
+    auto [minVal, maxVal] = sgl::reduceFloatArrayMinMax(leafStdDevArray);
+    minStdDev = minVal;
+    maxStdDev = maxVal;
 
     // Delete the downscaled field, as it is no longer used.
     for (int ensembleIdx = 0; ensembleIdx < es; ensembleIdx++) {
-        float* dowsncaledField = downscaledEnsembleFields.at(ensembleIdx);
+        float* dowsncaledField = downscaledEnsembleFields0.at(ensembleIdx);
         delete[] dowsncaledField;
     }
-    downscaledEnsembleFields.clear();
+    downscaledEnsembleFields0.clear();
+    if (!regionsEqual) {
+        for (int ensembleIdx = 0; ensembleIdx < es; ensembleIdx++) {
+            float* dowsncaledField = downscaledEnsembleFields1.at(ensembleIdx);
+            delete[] dowsncaledField;
+        }
+        downscaledEnsembleFields1.clear();
+    }
 
     int maxNumLines = numPoints * MAX_NUM_LINES / 100;
     NUM_LINES = std::min(maxNumLines, int(miFieldEntries.size()));
@@ -676,12 +720,14 @@ void HEBChart::updateData() {
             const auto& miEntry = miFieldEntries.at(NUM_LINES - lineIdx - 1);
             miValues.at(lineIdx) = miEntry.miValue;
 
-            auto idx0 = int(pointToNodeIndexMap.at(miEntry.pointIndex0) - leafIdxOffset);
-            auto idx1 = int(pointToNodeIndexMap.at(miEntry.pointIndex1) - leafIdxOffset);
+            auto idx0 = int(pointToNodeIndexMap0.at(miEntry.pointIndex0) - leafIdxOffset);
+            auto idx1 = int(pointToNodeIndexMap1.at(miEntry.pointIndex1) - leafIdxOffset);
             connectedPointsArray.at(lineIdx) = std::make_pair(idx0, idx1);
 
             controlPoints.clear();
-            getControlPoints(nodesList, pointToNodeIndexMap, miEntry.pointIndex0, miEntry.pointIndex1, controlPoints);
+            getControlPoints(
+                    nodesList, pointToNodeIndexMap0, pointToNodeIndexMap1,
+                    miEntry.pointIndex0, miEntry.pointIndex1, controlPoints);
             if (beta < 1.0f) {
                 smoothControlPoints(controlPoints, beta);
             }
@@ -706,12 +752,16 @@ bool HEBChart::getIsRegionSelected(int idx) {
 }
 
 uint32_t HEBChart::getPointIndexGrid(int pointIdx) {
+    int groupIdx = getLeafIdxGroup(pointIdx);
+    auto& pointToNodeIndexMap = groupIdx == 0 ? pointToNodeIndexMap0 : pointToNodeIndexMap1;
     return uint32_t(std::find(
             pointToNodeIndexMap.begin(), pointToNodeIndexMap.end(),
             int(leafIdxOffset) + pointIdx) - pointToNodeIndexMap.begin());
 }
 
 uint32_t HEBChart::getSelectedPointIndexGrid(int idx) {
+    int groupIdx = getLeafIdxGroup(selectedPointIndices[idx]);
+    auto& pointToNodeIndexMap = groupIdx == 0 ? pointToNodeIndexMap0 : pointToNodeIndexMap1;
     return uint32_t(std::find(
             pointToNodeIndexMap.begin(), pointToNodeIndexMap.end(),
             int(leafIdxOffset) + selectedPointIndices[idx]) - pointToNodeIndexMap.begin());
@@ -719,6 +769,12 @@ uint32_t HEBChart::getSelectedPointIndexGrid(int idx) {
 
 sgl::AABB3 HEBChart::getSelectedRegion(int idx) {
     //const auto& leaf = nodesList.at(int(leafIdxOffset) + selectedCircleIdx);
+    int groupIdx = getLeafIdxGroup(selectedPointIndices[idx]);
+    int xsd = groupIdx == 0 ? xsd0 : xsd1;
+    int ysd = groupIdx == 0 ? ysd0 : ysd1;
+    //int zsd = groupIdx == 0 ? zsd0 : zsd1;
+    GridRegion r = groupIdx == 0 ? r0 : r1;
+
     auto pointIdx = getSelectedPointIndexGrid(idx);
     uint32_t xd = pointIdx % uint32_t(xsd);
     uint32_t yd = (pointIdx / uint32_t(xsd)) % uint32_t(ysd);
@@ -747,15 +803,24 @@ sgl::AABB3 HEBChart::getSelectedRegion(int idx) {
 }
 
 std::pair<glm::vec3, glm::vec3> HEBChart::getLinePositions() {
+    int groupIdx0 = getLeafIdxGroup(selectedPointIndices[0]);
+    int xsdg0 = groupIdx0 == 0 ? xsd0 : xsd1;
+    int ysdg0 = groupIdx0 == 0 ? ysd0 : ysd1;
+    //int zsdg0 = groupIdx0 == 0 ? zsd0 : zsd1;
+    int groupIdx1 = getLeafIdxGroup(selectedPointIndices[1]);
+    int xsdg1 = groupIdx1 == 0 ? xsd0 : xsd1;
+    int ysdg1 = groupIdx1 == 0 ? ysd0 : ysd1;
+    //int zsdg1 = groupIdx1 == 0 ? zsd0 : zsd1;
+
     auto pointIdx0 = getSelectedPointIndexGrid(0);
-    uint32_t xd0 = pointIdx0 % uint32_t(xsd);
-    uint32_t yd0 = (pointIdx0 / uint32_t(xsd)) % uint32_t(ysd);
-    uint32_t zd0 = pointIdx0 / uint32_t(xsd * ysd);
+    uint32_t xd0 = pointIdx0 % uint32_t(xsdg0);
+    uint32_t yd0 = (pointIdx0 / uint32_t(xsdg0)) % uint32_t(ysdg0);
+    uint32_t zd0 = pointIdx0 / uint32_t(xsdg0 * ysdg0);
     glm::ivec3 c0((int)xd0, (int)yd0, (int)zd0);
     auto pointIdx1 = getSelectedPointIndexGrid(1);
-    uint32_t xd1 = pointIdx1 % uint32_t(xsd);
-    uint32_t yd1 = (pointIdx1 / uint32_t(xsd)) % uint32_t(ysd);
-    uint32_t zd1 = pointIdx1 / uint32_t(xsd * ysd);
+    uint32_t xd1 = pointIdx1 % uint32_t(xsdg1);
+    uint32_t yd1 = (pointIdx1 / uint32_t(xsdg1)) % uint32_t(ysdg1);
+    uint32_t zd1 = pointIdx1 / uint32_t(xsdg1 * ysdg1);
     glm::ivec3 c1((int)xd1, (int)yd1, (int)zd1);
 
     auto b0 = getSelectedRegion(0);
@@ -791,20 +856,27 @@ bool HEBChart::getHasNewFocusSelection(bool& isDeselection) {
 std::pair<GridRegion, GridRegion> HEBChart::getFocusSelection() {
     if (clickedPointIdx != -1) {
         uint32_t pointIdx = getPointIndexGrid(clickedPointIdx);
-        auto pointRegion = getGridRegionPointIdx(pointIdx);
+        auto pointRegion = getGridRegionPointIdx(getLeafIdxGroup(clickedPointIdx), pointIdx);
         return std::make_pair(pointRegion, pointRegion);
     } else {
-        const auto& points = connectedPointsArray.at(clickedLineIdx);
+        auto points = connectedPointsArray.at(clickedLineIdx);
         uint32_t pointIdx0 = getPointIndexGrid(points.first);
         uint32_t pointIdx1 = getPointIndexGrid(points.second);
-        return std::make_pair(getGridRegionPointIdx(pointIdx0), getGridRegionPointIdx(pointIdx1));
+        return std::make_pair(
+                getGridRegionPointIdx(getLeafIdxGroup(points.first), pointIdx0),
+                getGridRegionPointIdx(getLeafIdxGroup(points.second), pointIdx1));
     }
 }
 
-GridRegion HEBChart::getGridRegionPointIdx(uint32_t pointIdx) {
+GridRegion HEBChart::getGridRegionPointIdx(int idx, uint32_t pointIdx) {
+    int xsd = idx == 0 ? xsd0 : xsd1;
+    int ysd = idx == 0 ? ysd0 : ysd1;
+    //int zsd = idx == 0 ? zsd0 : zsd1;
     int xd = int(pointIdx % uint32_t(xsd));
     int yd = int((pointIdx / uint32_t(xsd)) % uint32_t(ysd));
     int zd = int(pointIdx / uint32_t(xsd * ysd));
+    GridRegion r = idx == 0 ? r0 : r1;
+
     GridRegion rf;
     if (use2dField) {
         int zCenter = zs / 2;
@@ -821,4 +893,11 @@ GridRegion HEBChart::getGridRegionPointIdx(uint32_t pointIdx) {
                 std::min((zd + 1) * dfz, r.zsr) - zd * dfz);
     }
     return rf;
+}
+
+int HEBChart::getLeafIdxGroup(int leafIdx) {
+    if (regionsEqual) {
+        return 0;
+    }
+    return leafIdx >= int(leafIdxOffset1 - leafIdxOffset) ? 1 : 0;
 }

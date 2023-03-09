@@ -49,7 +49,9 @@ struct HEBNode {
 };
 
 void buildHebTree(
-        std::vector<HEBNode>& nodesList, std::vector<uint32_t>& pointToNodeIndexMap, uint32_t& leafIdxOffset,
-        int xsd, int ysd, int zsd);
+        std::vector<HEBNode>& nodesList,
+        std::vector<uint32_t>& pointToNodeIndexMap0, std::vector<uint32_t>& pointToNodeIndexMap1,
+        uint32_t& leafIdxOffset0, uint32_t& leafIdxOffset1,
+        bool regionsEqual, int xsd0, int ysd0, int zsd0, int xsd1, int ysd1, int zsd1);
 
 #endif //CORRERENDER_OCTREE_HPP
