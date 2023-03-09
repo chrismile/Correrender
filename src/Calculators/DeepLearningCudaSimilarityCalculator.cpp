@@ -51,7 +51,7 @@
 
 DeepLearningCudaSimilarityCalculator::DeepLearningCudaSimilarityCalculator(
         const std::string& implName, const std::string& implNameKey, sgl::vk::Renderer* renderer)
-        : EnsembleSimilarityCalculator(renderer), implName(implName), implNameKey(implNameKey) {
+        : ICorrelationCalculator(renderer), implName(implName), implNameKey(implNameKey) {
     implNameKeyUpper = implNameKey;
     std::string firstCharUpper = boost::to_upper_copy(implNameKeyUpper);
     implNameKeyUpper.at(0) = firstCharUpper.at(0);
@@ -121,7 +121,7 @@ DeepLearningCudaSimilarityCalculator::~DeepLearningCudaSimilarityCalculator() {
 }
 
 void DeepLearningCudaSimilarityCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
-    EnsembleSimilarityCalculator::renderGuiImpl(propertyEditor);
+    ICorrelationCalculator::renderGuiImpl(propertyEditor);
     if (IGFD_DisplayDialog(
             fileDialogInstance,
             fileDialogKey.c_str(), ImGuiWindowFlags_NoCollapse,

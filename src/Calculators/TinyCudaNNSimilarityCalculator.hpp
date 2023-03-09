@@ -38,6 +38,7 @@ class TinyCudaNNSimilarityCalculator : public DeepLearningCudaSimilarityCalculat
 public:
     explicit TinyCudaNNSimilarityCalculator(sgl::vk::Renderer* renderer);
     ~TinyCudaNNSimilarityCalculator() override;
+    [[nodiscard]] CalculatorType getCalculatorType() const override { return CalculatorType::TINY_CUDA_NN; }
     void setVolumeData(VolumeData* _volumeData, bool isNewData) override;
 
 protected:

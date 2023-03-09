@@ -35,6 +35,7 @@
 #include <ImGui/Widgets/PropertyEditor.hpp>
 
 #include "Renderers/DomainOutlineRenderer.hpp"
+#include "Calculators/CorrelationCalculator.hpp"
 #include "Widgets/ViewManager.hpp"
 #include "Volume/VolumeData.hpp"
 #include "../RenderingModes.hpp"
@@ -299,6 +300,41 @@ void DiagramRenderer::update(float dt, bool isMouseGrabbed) {
             diagrams.resize(i + 1);
         }
     }
+
+    HEBChart* diagram = nullptr;
+    for (auto it = diagrams.rbegin(); it != diagrams.rend(); it++) {
+        diagram = it->get();
+        if (diagram->getIsRegionSelected(0)) {
+            break;
+        }
+        diagram = nullptr;
+    }
+    if (diagram) {
+        auto correlationCalculators = volumeData->getCorrelationCalculatorsUsed();
+        auto selectedRegion0 = diagram->getSelectedRegion(0);
+        if (diagram->getIsRegionSelected(1)) {
+            std::vector<std::vector<ICorrelationCalculator*>> calculatorMap;
+            calculatorMap.resize(int(lastCorrelationCalculatorType) - int(firstCorrelationCalculatorType) + 1);
+            auto selectedRegion1 = diagram->getSelectedRegion(1);
+            for (auto& calculator : correlationCalculators) {
+                int idx = int(calculator->getCalculatorType()) - int(firstCorrelationCalculatorType);
+                calculatorMap.at(idx).push_back(calculator.get());
+            }
+            for (auto& calculators : calculatorMap) {
+                if (calculators.empty() || calculators.size() % 2 != 0) {
+                    continue;
+                }
+                for (size_t calculatorIdx = 0; calculatorIdx < calculators.size(); calculatorIdx++) {
+                    auto selectedRegion = calculatorIdx % 2 == 0 ? selectedRegion0 : selectedRegion1;
+                    calculators.at(calculatorIdx)->setReferencePointFromWorld(selectedRegion.getCenter());
+                }
+            }
+        } else {
+            for (auto& calculator : correlationCalculators) {
+                calculator->setReferencePointFromWorld(selectedRegion0.getCenter());
+            }
+        }
+    }
 }
 
 bool DiagramRenderer::getHasGrabbedMouse() const {
@@ -415,7 +451,7 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
             std::string text = "View " + std::to_string(viewIdx + 1);
             bool showInView = diagramViewIdx == uint32_t(viewIdx);
             if (ImGui::Selectable(
-                    text.c_str(), &showInView, ImGuiSelectableFlags_::ImGuiSelectableFlags_DontClosePopups)) {
+                    text.c_str(), &showInView, ImGuiSelectableFlags_::ImGuiSelectableFlags_None)) {
                 diagramViewIdx = uint32_t(viewIdx);
                 reRender = true;
                 recreateDiagramSwapchain();

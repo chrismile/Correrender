@@ -71,6 +71,7 @@ class Renderer;
 class Calculator;
 typedef std::shared_ptr<Calculator> CalculatorPtr;
 enum class CalculatorType : uint32_t;
+class ICorrelationCalculator;
 
 class VolumeData {
 public:
@@ -197,7 +198,9 @@ public:
     void acquireScalarField(Calculator* calculator, int varIdx);
     void releaseScalarField(Calculator* calculator, int varIdx);
     bool getIsScalarFieldUsedInView(uint32_t viewIdx, uint32_t varIdx, Calculator* calculator = nullptr);
+    bool getIsScalarFieldUsedInAnyView(uint32_t varIdx, Calculator* calculator = nullptr);
     uint32_t getVarIdxForCalculator(Calculator* calculator);
+    std::vector<std::shared_ptr<ICorrelationCalculator>> getCorrelationCalculatorsUsed();
     [[nodiscard]] inline int getStandardScalarFieldIdx() const { return standardScalarFieldIdx; }
 
     /// Sets data bindings used across renderers.

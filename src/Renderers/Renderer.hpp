@@ -101,6 +101,7 @@ public:
     virtual void onFieldRemoved(FieldType fieldType, int fieldIdx) {}
 
     bool isVisibleInView(uint32_t viewIdx);
+    bool isVisibleInAnyView();
     virtual void renderView(uint32_t viewIdx) final;
     virtual void renderViewPre(uint32_t viewIdx) final;
     virtual void addView(uint32_t viewIdx) final;

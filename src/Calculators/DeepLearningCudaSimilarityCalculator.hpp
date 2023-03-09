@@ -31,7 +31,7 @@
 
 #include <Graphics/Vulkan/Utils/InteropCuda.hpp>
 #include <Graphics/Vulkan/Render/CommandBuffer.hpp>
-#include "SimilarityCalculator.hpp"
+#include "CorrelationCalculator.hpp"
 #include "SymmetrizerType.hpp"
 
 /// Symmetrizer operation used between encoder and decoder (@see SymmetrizerType.hpp).
@@ -39,7 +39,7 @@ const char* const SYMMETRIZER_TYPE_SHORT_NAMES[] = {
         "Add", "AddDiff"
 };
 
-class DeepLearningCudaSimilarityCalculator : public EnsembleSimilarityCalculator {
+class DeepLearningCudaSimilarityCalculator : public ICorrelationCalculator {
 public:
     /**
      * @param implName E.g., "tiny-cuda-nn" or "QuickMLP".

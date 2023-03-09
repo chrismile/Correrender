@@ -38,7 +38,7 @@
 #include "Region.hpp"
 #include "Octree.hpp"
 #include "DiagramBase.hpp"
-#include "../../Calculators/Similarity.hpp"
+#include "../../Calculators/CorrelationDefines.hpp"
 
 struct MIFieldEntry {
     float miValue;
@@ -61,7 +61,7 @@ public:
     DiagramType getDiagramType() override { return DiagramType::HEB_CHART; }
     void initialize() override;
     void update(float dt) override;
-    void updateSizeByParent();
+    void updateSizeByParent() override;
     void setVolumeData(VolumeDataPtr& _volumeData, bool isNewData);
     void setRegions(const std::pair<GridRegion, GridRegion>& _rs);
     void setSelectedScalarField(int selectedFieldIdx, const std::string& _scalarFieldName);

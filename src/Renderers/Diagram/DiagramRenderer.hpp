@@ -31,7 +31,7 @@
 
 #include <Graphics/Vulkan/Render/Passes/Pass.hpp>
 
-#include "../../Calculators/Similarity.hpp"
+#include "../../Calculators/CorrelationDefines.hpp"
 #include "../Renderer.hpp"
 #include "DiagramColorMap.hpp"
 #include "Region.hpp"
@@ -58,7 +58,7 @@ public:
     void recreateSwapchainView(uint32_t viewIdx, uint32_t width, uint32_t height) override;
     void update(float dt, bool isMouseGrabbed) override;
     void setClearColor(const sgl::Color& clearColor) override;
-    bool getHasGrabbedMouse() const override;
+    [[nodiscard]] bool getHasGrabbedMouse() const override;
 
 protected:
     void renderViewImpl(uint32_t viewIdx) override;

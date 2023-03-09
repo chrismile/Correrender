@@ -33,7 +33,7 @@
 #include <unordered_map>
 #include <Graphics/Vulkan/Render/Passes/Pass.hpp>
 
-#include "SimilarityCalculator.hpp"
+#include "CorrelationCalculator.hpp"
 
 enum class PyTorchDevice {
     CPU,
@@ -76,10 +76,11 @@ class ReferenceEnsembleCombinePass;
  * extra_files = { 'model_info.json': '{ "metric_name": "Mutual Information (MI)", "input_format": "concat_value_position" }' }
  * torch.jit.save(script_module, 'model_name.pt', _extra_files=extra_files)
  */
-class PyTorchSimilarityCalculator : public EnsembleSimilarityCalculator {
+class PyTorchSimilarityCalculator : public ICorrelationCalculator {
 public:
     explicit PyTorchSimilarityCalculator(sgl::vk::Renderer* renderer);
     ~PyTorchSimilarityCalculator() override;
+    [[nodiscard]] CalculatorType getCalculatorType() const override { return CalculatorType::TORCH; }
     void setVolumeData(VolumeData* _volumeData, bool isNewData) override;
     std::string getOutputFieldName() override {
         std::string outputFieldName = "Similarity Torch";

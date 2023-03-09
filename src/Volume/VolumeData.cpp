@@ -77,7 +77,7 @@
 #include "Calculators/BinaryOperatorCalculator.hpp"
 #include "Calculators/NoiseReductionCalculator.hpp"
 #include "Calculators/EnsembleVarianceCalculator.hpp"
-#include "Calculators/SimilarityCalculator.hpp"
+#include "Calculators/CorrelationCalculator.hpp"
 #ifdef SUPPORT_PYTORCH
 #include "Calculators/PyTorchSimilarityCalculator.hpp"
 #endif
@@ -180,7 +180,7 @@ VolumeData::VolumeData(sgl::vk::Renderer* renderer) : renderer(renderer), multiV
     factoriesCalculator.emplace_back(
             "Ensemble Variance", [renderer]() { return new EnsembleVarianceCalculator(renderer); });
     factoriesCalculator.emplace_back(
-            "Correlation Calculator", [renderer]() { return new PccCalculator(renderer); });
+            "Correlation Calculator", [renderer]() { return new CorrelationCalculator(renderer); });
 #ifdef SUPPORT_PYTORCH
     factoriesCalculator.emplace_back(
             "PyTorch Similarity Calculator", [renderer]() { return new PyTorchSimilarityCalculator(renderer); });
@@ -547,7 +547,7 @@ bool VolumeData::setInputFiles(
     }
 
     if (es > 1) {
-        addCalculator(std::make_shared<PccCalculator>(renderer));
+        addCalculator(std::make_shared<CorrelationCalculator>(renderer));
 #ifdef SUPPORT_PYTORCH
         addCalculator(std::make_shared<PyTorchSimilarityCalculator>(renderer));
 #endif
@@ -1223,6 +1223,39 @@ bool VolumeData::getIsScalarFieldUsedInView(uint32_t viewIdx, uint32_t varIdx, C
     return false;
 }
 
+bool VolumeData::getIsScalarFieldUsedInAnyView(uint32_t varIdx, Calculator* calculator) {
+    auto iterRange = scalarFieldToRendererMap.equal_range(int(varIdx));
+    auto itRend = iterRange.first;
+    while (itRend != iterRange.second) {
+        if (itRend->second->isVisibleInAnyView()) {
+            return true;
+        }
+        itRend++;
+    }
+
+    auto fieldBaseCount = int(typeToFieldNamesMapBase[calculator->getOutputFieldType()].size());
+    auto fieldCount = int(typeToFieldNamesMap[calculator->getOutputFieldType()].size());
+    auto& fieldNames = typeToFieldNamesMap[calculator->getOutputFieldType()];
+    if (int(varIdx) >= fieldBaseCount) {
+        auto iterRangeToRef = calculatorUseMapRefToParent.equal_range(calculator);
+        auto it = iterRangeToRef.first;
+        while (it != iterRangeToRef.second) {
+            for (int varIdxNew = fieldBaseCount; varIdxNew < fieldCount; varIdxNew++) {
+                if (it->second->getOutputFieldName() == fieldNames.at(varIdxNew)) {
+                    bool isScalarFieldUsed = getIsScalarFieldUsedInAnyView(varIdxNew, it->second);
+                    if (isScalarFieldUsed) {
+                        return true;
+                    }
+                }
+            }
+            std::string calculatorRefName = typeToFieldNamesMap[calculator->getOutputFieldType()][varIdx];
+            it++;
+        }
+    }
+
+    return false;
+}
+
 uint32_t VolumeData::getVarIdxForCalculator(Calculator* calculator) {
     recomputeColorLegend();
     auto varIdx = uint32_t(typeToFieldNamesMapBase[calculator->getOutputFieldType()].size());
@@ -1236,6 +1269,20 @@ uint32_t VolumeData::getVarIdxForCalculator(Calculator* calculator) {
     }
     sgl::Logfile::get()->throwError("Error in VolumeData::getVarIdxForCalculator: Encountered unknown calculator.");
     return varIdx;
+}
+
+std::vector<std::shared_ptr<ICorrelationCalculator>> VolumeData::getCorrelationCalculatorsUsed() {
+    std::vector<std::shared_ptr<ICorrelationCalculator>> correlationCalculators;
+    auto varIdx = uint32_t(typeToFieldNamesMapBase[FieldType::SCALAR].size());
+    for (CalculatorPtr& calculator : calculators) {
+        if (calculator->getComputesCorrelation() && getIsScalarFieldUsedInAnyView(varIdx, calculator.get())) {
+            correlationCalculators.push_back(std::static_pointer_cast<ICorrelationCalculator>(calculator));
+        }
+        if (calculator->getOutputFieldType() == FieldType::SCALAR) {
+            varIdx++;
+        }
+    }
+    return correlationCalculators;
 }
 
 void VolumeData::onTransferFunctionMapRebuilt() {

@@ -26,24 +26,34 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef CORRERENDER_SIMILARITYCALCULATOR_HPP
-#define CORRERENDER_SIMILARITYCALCULATOR_HPP
+#ifndef CORRERENDER_CORRELATIONCALCULATOR_HPP
+#define CORRERENDER_CORRELATIONCALCULATOR_HPP
 
 #include <vector>
 #include <glm/vec3.hpp>
 #include <Graphics/Vulkan/Render/Passes/Pass.hpp>
 
 #include "Calculator.hpp"
-#include "Similarity.hpp"
+#include "CorrelationDefines.hpp"
+
+#ifdef SUPPORT_CUDA_INTEROP
+#include <cuda.h>
+
+namespace sgl { namespace vk {
+class SemaphoreVkCudaDriverApiInterop;
+typedef std::shared_ptr<SemaphoreVkCudaDriverApiInterop> SemaphoreVkCudaDriverApiInteropPtr;
+}}
+#endif
 
 class ReferencePointSelectionRenderer;
 
-class EnsembleSimilarityCalculator : public Calculator {
+class ICorrelationCalculator : public Calculator {
 public:
-    explicit EnsembleSimilarityCalculator(sgl::vk::Renderer* renderer);
+    explicit ICorrelationCalculator(sgl::vk::Renderer* renderer);
     void setViewManager(ViewManager* _viewManager) override;
     void setVolumeData(VolumeData* _volumeData, bool isNewData) override;
     void onFieldRemoved(FieldType fieldType, int fieldIdx) override;
+    [[nodiscard]] bool getComputesCorrelation() const override { return true; }
     [[nodiscard]] virtual bool getIsRealtime() const { return false; }
     [[nodiscard]] bool getShouldRenderGui() const override { return true; }
     FieldType getOutputFieldType() override { return FieldType::SCALAR; }
@@ -51,6 +61,8 @@ public:
     [[nodiscard]] bool getHasFixedRange() const override { return false; }
     RendererPtr getCalculatorRenderer() override { return calculatorRenderer; }
     void update(float dt) override;
+    void setReferencePoint(const glm::ivec3& referencePoint);
+    void setReferencePointFromWorld(const glm::vec3& worldPosition);
 
 protected:
     void renderGuiImpl(sgl::PropertyEditor& propertyEditor) override;
@@ -74,14 +86,20 @@ protected:
 };
 
 
-class PccComputePass;
+class CorrelationComputePass;
 
 /**
- * Pearson correlation coefficient (PCC) calculator.
+ * Correlation calculator with support for computing:
+ * - Pearson correlation coefficient (PCC)
+ * - Spearman correlation coefficient
+ * - Kendal's tau
+ * - Binned mutual information estimator
+ * - Kraskov mutual information estimator
  */
-class PccCalculator : public EnsembleSimilarityCalculator {
+class CorrelationCalculator : public ICorrelationCalculator {
 public:
-    explicit PccCalculator(sgl::vk::Renderer* renderer);
+    explicit CorrelationCalculator(sgl::vk::Renderer* renderer);
+    [[nodiscard]] CalculatorType getCalculatorType() const override { return CalculatorType::CORRELATION; }
     std::string getOutputFieldName() override {
         std::string outputFieldName = CORRELATION_MEASURE_TYPE_NAMES[int(correlationMeasureType)];
         if (int(correlationMeasureType) <= int(CorrelationMeasureType::KENDALL)) {
@@ -115,7 +133,7 @@ protected:
     void renderGuiImpl(sgl::PropertyEditor& propertyEditor) override;
 
 private:
-    std::shared_ptr<PccComputePass> pccComputePass;
+    std::shared_ptr<CorrelationComputePass> pccComputePass;
     CorrelationMeasureType correlationMeasureType = CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV;
     bool useGpu = true;
     bool useCuda = false; ///< Currently only for CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV.
@@ -128,10 +146,10 @@ private:
 class SpearmanReferenceRankComputePass;
 struct SimilarityCalculatorKernelCache;
 
-class PccComputePass : public sgl::vk::ComputePass {
+class CorrelationComputePass : public sgl::vk::ComputePass {
 public:
-    explicit PccComputePass(sgl::vk::Renderer* renderer);
-    ~PccComputePass() override;
+    explicit CorrelationComputePass(sgl::vk::Renderer* renderer);
+    ~CorrelationComputePass() override;
     void setVolumeData(VolumeData* _volumeData, bool isNewData);
     void setEnsembleImageViews(const std::vector<sgl::vk::ImageViewPtr>& _ensembleImageViews);
     void setOutputImage(const sgl::vk::ImageViewPtr& _outputImage);
@@ -216,4 +234,4 @@ private:
     sgl::vk::BufferPtr referenceRankBuffer;
 };
 
-#endif //CORRERENDER_SIMILARITYCALCULATOR_HPP
+#endif //CORRERENDER_CORRELATIONCALCULATOR_HPP

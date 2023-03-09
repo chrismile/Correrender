@@ -47,6 +47,7 @@ class BinaryOperatorComputePass;
 class BinaryOperatorCalculator : public Calculator {
 public:
     explicit BinaryOperatorCalculator(sgl::vk::Renderer* renderer);
+    [[nodiscard]] CalculatorType getCalculatorType() const override { return CalculatorType::BINARY_OPERATOR; }
     void setVolumeData(VolumeData* _volumeData, bool isNewData) override;
     void onFieldRemoved(FieldType fieldType, int fieldIdx) override;
     [[nodiscard]] bool getShouldRenderGui() const override { return true; }

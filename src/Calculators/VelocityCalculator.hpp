@@ -34,6 +34,7 @@
 class VelocityCalculator : public Calculator {
 public:
     explicit VelocityCalculator(sgl::vk::Renderer* renderer);
+    [[nodiscard]] CalculatorType getCalculatorType() const override { return CalculatorType::VELOCITY; }
     void setVolumeData(VolumeData* _volumeData, bool isNewData) override;
     FieldType getOutputFieldType() override { return FieldType::VECTOR; }
     std::string getOutputFieldName() override { return "Velocity"; }
@@ -44,6 +45,7 @@ public:
 class VectorMagnitudeCalculator : public Calculator {
 public:
     explicit VectorMagnitudeCalculator(sgl::vk::Renderer* renderer, const std::string& vectorFieldName);
+    [[nodiscard]] CalculatorType getCalculatorType() const override { return CalculatorType::VECTOR_MAGNITUDE; }
     void setVolumeData(VolumeData* _volumeData, bool isNewData) override;
     FieldType getOutputFieldType() override { return FieldType::SCALAR; }
     std::string getOutputFieldName() override { return magnitudeFieldName; }
@@ -57,6 +59,7 @@ private:
 class VorticityCalculator : public Calculator {
 public:
     explicit VorticityCalculator(sgl::vk::Renderer* renderer);
+    [[nodiscard]] CalculatorType getCalculatorType() const override { return CalculatorType::VORTICITY; }
     void setVolumeData(VolumeData* _volumeData, bool isNewData) override;
     FieldType getOutputFieldType() override { return FieldType::VECTOR; }
     std::string getOutputFieldName() override { return "Vorticity"; }
@@ -67,6 +70,7 @@ public:
 class HelicityCalculator : public Calculator {
 public:
     explicit HelicityCalculator(sgl::vk::Renderer* renderer);
+    [[nodiscard]] CalculatorType getCalculatorType() const override { return CalculatorType::HELICITY; }
     void setVolumeData(VolumeData* _volumeData, bool isNewData) override;
     FieldType getOutputFieldType() override { return FieldType::SCALAR; }
     std::string getOutputFieldName() override { return "Helicity"; }

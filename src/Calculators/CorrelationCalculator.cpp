@@ -49,19 +49,19 @@
 #include "Correlation.hpp"
 #include "MutualInformation.hpp"
 #include "ReferencePointSelectionRenderer.hpp"
-#include "SimilarityCalculator.hpp"
+#include "CorrelationCalculator.hpp"
 
-EnsembleSimilarityCalculator::EnsembleSimilarityCalculator(sgl::vk::Renderer* renderer) : Calculator(renderer) {
+ICorrelationCalculator::ICorrelationCalculator(sgl::vk::Renderer* renderer) : Calculator(renderer) {
 }
 
-void EnsembleSimilarityCalculator::setViewManager(ViewManager* _viewManager) {
+void ICorrelationCalculator::setViewManager(ViewManager* _viewManager) {
     viewManager = _viewManager;
     referencePointSelectionRenderer = new ReferencePointSelectionRenderer(viewManager);
     calculatorRenderer = RendererPtr(referencePointSelectionRenderer);
     referencePointSelectionRenderer->initialize();
 }
 
-void EnsembleSimilarityCalculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
+void ICorrelationCalculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
     Calculator::setVolumeData(_volumeData, isNewData);
     referencePointSelectionRenderer->setVolumeDataPtr(volumeData, isNewData);
 
@@ -88,7 +88,7 @@ void EnsembleSimilarityCalculator::setVolumeData(VolumeData* _volumeData, bool i
     }
 }
 
-void EnsembleSimilarityCalculator::onFieldRemoved(FieldType fieldType, int fieldIdx) {
+void ICorrelationCalculator::onFieldRemoved(FieldType fieldType, int fieldIdx) {
     if (fieldType == FieldType::SCALAR) {
         if (fieldIndex == fieldIdx) {
             fieldIndex = 0;
@@ -101,7 +101,7 @@ void EnsembleSimilarityCalculator::onFieldRemoved(FieldType fieldType, int field
     }
 }
 
-void EnsembleSimilarityCalculator::update(float dt) {
+void ICorrelationCalculator::update(float dt) {
     // Use mouse for selection of reference point.
     int mouseHoverWindowIndex = viewManager->getMouseHoverWindowIndex();
     if (mouseHoverWindowIndex >= 0) {
@@ -172,22 +172,48 @@ void EnsembleSimilarityCalculator::update(float dt) {
     }
 }
 
-void EnsembleSimilarityCalculator::setReferencePointFromFocusPoint() {
-    glm::ivec3 newReferencePointIndex = glm::ivec3(glm::round(focusPoint));
-    if (referencePointIndex != newReferencePointIndex) {
+void ICorrelationCalculator::setReferencePoint(const glm::ivec3& referencePoint) {
+    if (referencePointIndex != referencePoint) {
         glm::ivec3 maxCoord(
                 volumeData->getGridSizeX() - 1, volumeData->getGridSizeY() - 1, volumeData->getGridSizeZ() - 1);
-        sgl::AABB3 gridAabb = volumeData->getBoundingBoxRendering();
-        glm::vec3 position = (focusPoint - gridAabb.min) / (gridAabb.max - gridAabb.min);
-        position *= glm::vec3(maxCoord);
-        referencePointIndex = glm::ivec3(glm::round(position));
+        referencePointIndex = referencePoint;
         referencePointIndex = glm::clamp(referencePointIndex, glm::ivec3(0), maxCoord);
         referencePointSelectionRenderer->setReferencePosition(referencePointIndex);
         dirty = true;
     }
 }
 
-void EnsembleSimilarityCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
+void ICorrelationCalculator::setReferencePointFromWorld(const glm::vec3& worldPosition) {
+    glm::ivec3 maxCoord(
+            volumeData->getGridSizeX() - 1, volumeData->getGridSizeY() - 1, volumeData->getGridSizeZ() - 1);
+    sgl::AABB3 gridAabb = volumeData->getBoundingBoxRendering();
+    glm::vec3 position = (worldPosition - gridAabb.min) / (gridAabb.max - gridAabb.min);
+    position *= glm::vec3(maxCoord);
+    glm::ivec3 referencePointNew = glm::ivec3(glm::round(position));
+    referencePointNew = glm::clamp(referencePointNew, glm::ivec3(0), maxCoord);
+    if (referencePointIndex != referencePointNew) {
+        referencePointIndex = referencePointNew;
+        referencePointSelectionRenderer->setReferencePosition(referencePointIndex);
+        dirty = true;
+    }
+}
+
+void ICorrelationCalculator::setReferencePointFromFocusPoint() {
+    glm::ivec3 maxCoord(
+            volumeData->getGridSizeX() - 1, volumeData->getGridSizeY() - 1, volumeData->getGridSizeZ() - 1);
+    sgl::AABB3 gridAabb = volumeData->getBoundingBoxRendering();
+    glm::vec3 position = (focusPoint - gridAabb.min) / (gridAabb.max - gridAabb.min);
+    position *= glm::vec3(maxCoord);
+    glm::ivec3 referencePointNew = glm::ivec3(glm::round(position));
+    referencePointNew = glm::clamp(referencePointNew, glm::ivec3(0), maxCoord);
+    if (referencePointIndex != referencePointNew) {
+        referencePointIndex = referencePointNew;
+        referencePointSelectionRenderer->setReferencePosition(referencePointIndex);
+        dirty = true;
+    }
+}
+
+void ICorrelationCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
     if (propertyEditor.addCombo(
             "Scalar Field", &fieldIndexGui, scalarFieldNames.data(), int(scalarFieldNames.size()))) {
         fieldIndex = int(scalarFieldIndexArray.at(fieldIndexGui));
@@ -220,18 +246,18 @@ void EnsembleSimilarityCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEd
 
 
 
-PccCalculator::PccCalculator(sgl::vk::Renderer* renderer) : EnsembleSimilarityCalculator(renderer) {
+CorrelationCalculator::CorrelationCalculator(sgl::vk::Renderer* renderer) : ICorrelationCalculator(renderer) {
     useCuda = sgl::vk::getIsCudaDeviceApiFunctionTableInitialized() && sgl::vk::getIsNvrtcFunctionTableInitialized();
 
-    pccComputePass = std::make_shared<PccComputePass>(renderer);
+    pccComputePass = std::make_shared<CorrelationComputePass>(renderer);
     pccComputePass->setCorrelationMeasureType(correlationMeasureType);
     pccComputePass->setNumBins(numBins);
     pccComputePass->setKraskovNumNeighbors(k);
     pccComputePass->setKraskovEstimatorIndex(kraskovEstimatorIndex);
 }
 
-void PccCalculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
-    EnsembleSimilarityCalculator::setVolumeData(_volumeData, isNewData);
+void CorrelationCalculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
+    ICorrelationCalculator::setVolumeData(_volumeData, isNewData);
     calculatorConstructorUseCount = volumeData->getNewCalculatorUseCount(CalculatorType::CORRELATION);
     pccComputePass->setVolumeData(volumeData, isNewData);
 
@@ -241,7 +267,7 @@ void PccCalculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
     pccComputePass->setKraskovNumNeighbors(k);
 }
 
-FilterDevice PccCalculator::getFilterDevice() {
+FilterDevice CorrelationCalculator::getFilterDevice() {
     if (useGpu) {
         if (useCuda) {
             return FilterDevice::CUDA;
@@ -252,8 +278,8 @@ FilterDevice PccCalculator::getFilterDevice() {
     return FilterDevice::CPU;
 }
 
-void PccCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
-    EnsembleSimilarityCalculator::renderGuiImpl(propertyEditor);
+void CorrelationCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
+    ICorrelationCalculator::renderGuiImpl(propertyEditor);
     if (propertyEditor.addCombo(
             "Correlation Measure", (int*)&correlationMeasureType,
             CORRELATION_MEASURE_TYPE_NAMES, IM_ARRAYSIZE(CORRELATION_MEASURE_TYPE_NAMES))) {
@@ -311,7 +337,7 @@ void PccCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
 #endif
 }
 
-void PccCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float* buffer) {
+void CorrelationCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float* buffer) {
     int xs = volumeData->getGridSizeX();
     int ys = volumeData->getGridSizeY();
     int zs = volumeData->getGridSizeZ();
@@ -641,7 +667,7 @@ void PccCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float* buffer
 #endif
 }
 
-void PccCalculator::calculateDevice(int timeStepIdx, int ensembleIdx, const DeviceCacheEntry& deviceCacheEntry) {
+void CorrelationCalculator::calculateDevice(int timeStepIdx, int ensembleIdx, const DeviceCacheEntry& deviceCacheEntry) {
     // We write to the descriptor set, so wait until the device is idle.
     renderer->getDevice()->waitIdle();
 
@@ -720,7 +746,7 @@ void PccCalculator::calculateDevice(int timeStepIdx, int ensembleIdx, const Devi
 
 
 
-PccComputePass::PccComputePass(sgl::vk::Renderer* renderer) : ComputePass(renderer) {
+CorrelationComputePass::CorrelationComputePass(sgl::vk::Renderer* renderer) : ComputePass(renderer) {
     uniformBuffer = std::make_shared<sgl::vk::Buffer>(
             device, sizeof(UniformData),
             VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
@@ -748,7 +774,7 @@ struct SimilarityCalculatorKernelCache {
     CUfunction kernel{};
 };
 
-PccComputePass::~PccComputePass() {
+CorrelationComputePass::~CorrelationComputePass() {
 #ifdef SUPPORT_CUDA_INTEROP
     if (outputImageBufferCu != 0) {
         sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFree(
@@ -769,7 +795,7 @@ PccComputePass::~PccComputePass() {
 #endif
 }
 
-void PccComputePass::setVolumeData(VolumeData *_volumeData, bool isNewData) {
+void CorrelationComputePass::setVolumeData(VolumeData *_volumeData, bool isNewData) {
     volumeData = _volumeData;
     uniformData.xs = uint32_t(volumeData->getGridSizeX());
     uniformData.ys = uint32_t(volumeData->getGridSizeY());
@@ -788,7 +814,7 @@ void PccComputePass::setVolumeData(VolumeData *_volumeData, bool isNewData) {
     }
 }
 
-void PccComputePass::setEnsembleImageViews(const std::vector<sgl::vk::ImageViewPtr>& _ensembleImageViews) {
+void CorrelationComputePass::setEnsembleImageViews(const std::vector<sgl::vk::ImageViewPtr>& _ensembleImageViews) {
     if (ensembleImageViews == _ensembleImageViews) {
         return;
     }
@@ -799,14 +825,14 @@ void PccComputePass::setEnsembleImageViews(const std::vector<sgl::vk::ImageViewP
     spearmanReferenceRankComputePass->setEnsembleImageViews(_ensembleImageViews);
 }
 
-void PccComputePass::setOutputImage(const sgl::vk::ImageViewPtr& _outputImage) {
+void CorrelationComputePass::setOutputImage(const sgl::vk::ImageViewPtr& _outputImage) {
     outputImage = _outputImage;
     if (computeData) {
         computeData->setStaticImageView(outputImage, "outputImage");
     }
 }
 
-void PccComputePass::setReferencePoint(const glm::ivec3& referencePointIndex) {
+void CorrelationComputePass::setReferencePoint(const glm::ivec3& referencePointIndex) {
     if (correlationMeasureType == CorrelationMeasureType::PEARSON
             || correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED
             || correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV) {
@@ -819,28 +845,28 @@ void PccComputePass::setReferencePoint(const glm::ivec3& referencePointIndex) {
     }
 }
 
-void PccComputePass::setCorrelationMeasureType(CorrelationMeasureType _correlationMeasureType) {
+void CorrelationComputePass::setCorrelationMeasureType(CorrelationMeasureType _correlationMeasureType) {
     if (correlationMeasureType != _correlationMeasureType) {
         correlationMeasureType = _correlationMeasureType;
         setShaderDirty();
     }
 }
 
-void PccComputePass::setNumBins(int _numBins) {
+void CorrelationComputePass::setNumBins(int _numBins) {
     if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED && numBins != _numBins) {
         setShaderDirty();
     }
     numBins = _numBins;
 }
 
-void PccComputePass::setKraskovNumNeighbors(int _k) {
+void CorrelationComputePass::setKraskovNumNeighbors(int _k) {
     if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV && k != _k) {
         setShaderDirty();
     }
     k = _k;
 }
 
-void PccComputePass::setKraskovEstimatorIndex(int _kraskovEstimatorIndex) {
+void CorrelationComputePass::setKraskovEstimatorIndex(int _kraskovEstimatorIndex) {
     if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV
             && kraskovEstimatorIndex != _kraskovEstimatorIndex) {
         setShaderDirty();
@@ -848,7 +874,7 @@ void PccComputePass::setKraskovEstimatorIndex(int _kraskovEstimatorIndex) {
     kraskovEstimatorIndex = _kraskovEstimatorIndex;
 }
 
-void PccComputePass::loadShader() {
+void CorrelationComputePass::loadShader() {
     sgl::vk::ShaderManager->invalidateShaderCache();
     std::map<std::string, std::string> preprocessorDefines;
     preprocessorDefines.insert(std::make_pair("BLOCK_SIZE_X", std::to_string(computeBlockSizeX)));
@@ -880,7 +906,7 @@ void PccComputePass::loadShader() {
     shaderStages = sgl::vk::ShaderManager->getShaderStages({ shaderName }, preprocessorDefines);
 }
 
-void PccComputePass::createComputeData(sgl::vk::Renderer* renderer, sgl::vk::ComputePipelinePtr& computePipeline) {
+void CorrelationComputePass::createComputeData(sgl::vk::Renderer* renderer, sgl::vk::ComputePipelinePtr& computePipeline) {
     computeData = std::make_shared<sgl::vk::ComputeData>(renderer, computePipeline);
     computeData->setStaticBuffer(uniformBuffer, "UniformBuffer");
     computeData->setImageSampler(volumeData->getImageSampler(), "scalarFieldSampler");
@@ -892,7 +918,7 @@ void PccComputePass::createComputeData(sgl::vk::Renderer* renderer, sgl::vk::Com
     }
 }
 
-void PccComputePass::_render() {
+void CorrelationComputePass::_render() {
     if (correlationMeasureType == CorrelationMeasureType::SPEARMAN) {
         spearmanReferenceRankComputePass->render();
         renderer->insertBufferMemoryBarrier(
@@ -1031,7 +1057,7 @@ CudaDeviceCoresInfo getNumCudaCores(CUdevice cuDevice) {
     return info;
 }
 
-void PccComputePass::computeCuda(
+void CorrelationComputePass::computeCuda(
         const std::string& fieldName, int timeStepIdx, const DeviceCacheEntry& deviceCacheEntry,
         glm::ivec3& referencePointIndex) {
     int xs = volumeData->getGridSizeX();

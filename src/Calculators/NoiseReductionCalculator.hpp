@@ -47,6 +47,7 @@ class SmoothingComputePass;
 class NoiseReductionCalculator : public Calculator {
 public:
     explicit NoiseReductionCalculator(sgl::vk::Renderer* renderer);
+    [[nodiscard]] CalculatorType getCalculatorType() const override { return CalculatorType::NOISE_REDUCTION; }
     void setVolumeData(VolumeData* _volumeData, bool isNewData) override;
     void onFieldRemoved(FieldType fieldType, int fieldIdx) override;
     [[nodiscard]] bool getShouldRenderGui() const override { return true; }

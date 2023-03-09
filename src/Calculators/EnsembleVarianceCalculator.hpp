@@ -38,6 +38,7 @@ class EnsembleVarianceComputePass;
 class EnsembleVarianceCalculator : public Calculator {
 public:
     explicit EnsembleVarianceCalculator(sgl::vk::Renderer* renderer);
+    [[nodiscard]] CalculatorType getCalculatorType() const override { return CalculatorType::ENSEMBLE_VARIANCE; }
     void setVolumeData(VolumeData* _volumeData, bool isNewData) override;
     void onFieldRemoved(FieldType fieldType, int fieldIdx) override;
     [[nodiscard]] bool getShouldRenderGui() const override { return true; }

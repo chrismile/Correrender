@@ -53,7 +53,7 @@ std::string EnsembleVarianceCalculator::getOutputFieldName() {
 
 void EnsembleVarianceCalculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
     Calculator::setVolumeData(_volumeData, isNewData);
-    calculatorConstructorUseCount = volumeData->getNewCalculatorUseCount(CalculatorType::BINARY_OPERATOR);
+    calculatorConstructorUseCount = volumeData->getNewCalculatorUseCount(CalculatorType::ENSEMBLE_VARIANCE);
     ensembleVarianceComputePass->setVolumeData(volumeData, isNewData);
 
     scalarFieldNames = {};

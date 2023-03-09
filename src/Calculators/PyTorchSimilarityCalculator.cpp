@@ -81,7 +81,7 @@ static torch::DeviceType getTorchDeviceType(PyTorchDevice pyTorchDevice) {
 }
 
 PyTorchSimilarityCalculator::PyTorchSimilarityCalculator(sgl::vk::Renderer* renderer)
-        : EnsembleSimilarityCalculator(renderer) {
+        : ICorrelationCalculator(renderer) {
     sgl::vk::Device* device = renderer->getDevice();
 
 #ifdef SUPPORT_CUDA_INTEROP
@@ -160,7 +160,7 @@ PyTorchSimilarityCalculator::~PyTorchSimilarityCalculator() {
 }
 
 void PyTorchSimilarityCalculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
-    EnsembleSimilarityCalculator::setVolumeData(_volumeData, isNewData);
+    ICorrelationCalculator::setVolumeData(_volumeData, isNewData);
 
     referenceEnsembleCombinePass->setVolumeData(volumeData, isNewData);
     ensembleCombinePass->setVolumeData(volumeData, isNewData);
@@ -796,7 +796,7 @@ void PyTorchSimilarityCalculator::setPyTorchDevice(PyTorchDevice pyTorchDeviceNe
 }
 
 void PyTorchSimilarityCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
-    EnsembleSimilarityCalculator::renderGuiImpl(propertyEditor);
+    ICorrelationCalculator::renderGuiImpl(propertyEditor);
     if (IGFD_DisplayDialog(
             fileDialogInstance,
             "ChoosePyTorchModelFile", ImGuiWindowFlags_NoCollapse,

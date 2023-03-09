@@ -56,9 +56,11 @@ typedef std::shared_ptr<DeviceCacheEntryType> DeviceCacheEntry;
 
 enum class CalculatorType : uint32_t {
     VELOCITY, VECTOR_MAGNITUDE, VORTICITY, HELICITY,
-    BINARY_OPERATOR, NOISE_REDUCTION,
+    BINARY_OPERATOR, NOISE_REDUCTION, ENSEMBLE_VARIANCE,
     CORRELATION, TORCH, TINY_CUDA_NN, QUICK_MLP
 };
+const CalculatorType firstCorrelationCalculatorType = CalculatorType::CORRELATION;
+const CalculatorType lastCorrelationCalculatorType = CalculatorType::QUICK_MLP;
 
 enum class FilterDevice {
     CPU, VULKAN, CUDA
@@ -74,6 +76,8 @@ public:
     virtual void initialize() {}
     inline void setCalculatorId(size_t _calculatorId) { calculatorId = _calculatorId; }
     [[nodiscard]] inline size_t getCalculatorId() const { return calculatorId; }
+    [[nodiscard]] virtual bool getComputesCorrelation() const { return false; }
+    [[nodiscard]] virtual CalculatorType getCalculatorType() const = 0;
     virtual void setViewManager(ViewManager* _viewManager) {}
     virtual void setVolumeData(VolumeData* _volumeData, bool isNewData);
     virtual void onFieldRemoved(FieldType fieldType, int fieldIdx) {}

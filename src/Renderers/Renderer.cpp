@@ -72,6 +72,15 @@ bool Renderer::isVisibleInView(uint32_t viewIdx) {
     return viewVisibilityArray.at(viewIdx);
 }
 
+bool Renderer::isVisibleInAnyView() {
+    for (bool visible : viewVisibilityArray) {
+        if (visible) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void Renderer::renderView(uint32_t viewIdx) {
     if (viewVisibilityArray.at(viewIdx)) {
         renderViewImpl(viewIdx);
