@@ -26,37 +26,40 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef CORRERENDER_QUICKMLPSIMILARITYCALCULATOR_HPP
-#define CORRERENDER_QUICKMLPSIMILARITYCALCULATOR_HPP
+#ifndef CORRERENDER_TINYCUDANNCORRELATIONCALCULATOR_HPP
+#define CORRERENDER_TINYCUDANNCORRELATIONCALCULATOR_HPP
 
-#include "DeepLearningCudaSimilarityCalculator.hpp"
+#include "DeepLearningCudaCorrelationCalculator.hpp"
 
-struct QuickMLPModuleWrapper;
-struct QuickMLPCacheWrapper;
+struct TinyCudaNNModuleWrapper;
+struct TinyCudaNNCacheWrapper;
 
-class QuickMLPSimilarityCalculator : public DeepLearningCudaSimilarityCalculator {
+class TinyCudaNNCorrelationCalculator : public DeepLearningCudaCorrelationCalculator {
 public:
-    explicit QuickMLPSimilarityCalculator(sgl::vk::Renderer* renderer);
-    ~QuickMLPSimilarityCalculator() override;
-    [[nodiscard]] CalculatorType getCalculatorType() const override { return CalculatorType::QUICK_MLP; }
+    explicit TinyCudaNNCorrelationCalculator(sgl::vk::Renderer* renderer);
+    ~TinyCudaNNCorrelationCalculator() override;
+    [[nodiscard]] CalculatorType getCalculatorType() const override { return CalculatorType::TINY_CUDA_NN; }
     void setVolumeData(VolumeData* _volumeData, bool isNewData) override;
 
 protected:
     void loadModelFromFile(const std::string& modelPath) override;
 
+    void callbackBeginCompute() override;
+    void callbackEndCompute() override;
     bool getIsModuleLoaded() override { return moduleWrapper != nullptr; }
     void recreateCache(int batchSize) override;
     CUdeviceptr getReferenceInputPointer() override;
     CUdeviceptr getQueryInputPointer() override;
     void runInferenceReference() override;
     void runInferenceBatch(uint32_t batchOffset, uint32_t batchSize) override;
-    uint32_t getInputChannelAlignment() override { return 16; }
-    uint32_t getSrnStride() override { return 16; }
+    uint32_t getInputChannelAlignment() override { return isInputEncodingIdentity ? 16 : 4; }
+    uint32_t getSrnStride() override { return isInputEncodingIdentity ? 16 : 3; }
 
 private:
     uint32_t numLayersInEncoder = 0, numLayersOutEncoder = 0, numLayersInDecoder = 0, numLayersOutDecoder = 0;
-    std::shared_ptr<QuickMLPModuleWrapper> moduleWrapper;
-    std::shared_ptr<QuickMLPCacheWrapper> cacheWrapper;
+    bool isInputEncodingIdentity = false;
+    std::shared_ptr<TinyCudaNNModuleWrapper> moduleWrapper;
+    std::shared_ptr<TinyCudaNNCacheWrapper> cacheWrapper;
 };
 
-#endif //CORRERENDER_QUICKMLPSIMILARITYCALCULATOR_HPP
+#endif //CORRERENDER_TINYCUDANNCORRELATIONCALCULATOR_HPP

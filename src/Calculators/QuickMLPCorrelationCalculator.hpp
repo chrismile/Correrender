@@ -26,40 +26,37 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef CORRERENDER_TINYCUDANNSIMILARITYCALCULATOR_HPP
-#define CORRERENDER_TINYCUDANNSIMILARITYCALCULATOR_HPP
+#ifndef CORRERENDER_QUICKMLPCORRELATIONCALCULATOR_HPP
+#define CORRERENDER_QUICKMLPCORRELATIONCALCULATOR_HPP
 
-#include "DeepLearningCudaSimilarityCalculator.hpp"
+#include "DeepLearningCudaCorrelationCalculator.hpp"
 
-struct TinyCudaNNModuleWrapper;
-struct TinyCudaNNCacheWrapper;
+struct QuickMLPModuleWrapper;
+struct QuickMLPCacheWrapper;
 
-class TinyCudaNNSimilarityCalculator : public DeepLearningCudaSimilarityCalculator {
+class QuickMLPCorrelationCalculator : public DeepLearningCudaCorrelationCalculator {
 public:
-    explicit TinyCudaNNSimilarityCalculator(sgl::vk::Renderer* renderer);
-    ~TinyCudaNNSimilarityCalculator() override;
-    [[nodiscard]] CalculatorType getCalculatorType() const override { return CalculatorType::TINY_CUDA_NN; }
+    explicit QuickMLPCorrelationCalculator(sgl::vk::Renderer* renderer);
+    ~QuickMLPCorrelationCalculator() override;
+    [[nodiscard]] CalculatorType getCalculatorType() const override { return CalculatorType::QUICK_MLP; }
     void setVolumeData(VolumeData* _volumeData, bool isNewData) override;
 
 protected:
     void loadModelFromFile(const std::string& modelPath) override;
 
-    void callbackBeginCompute() override;
-    void callbackEndCompute() override;
     bool getIsModuleLoaded() override { return moduleWrapper != nullptr; }
     void recreateCache(int batchSize) override;
     CUdeviceptr getReferenceInputPointer() override;
     CUdeviceptr getQueryInputPointer() override;
     void runInferenceReference() override;
     void runInferenceBatch(uint32_t batchOffset, uint32_t batchSize) override;
-    uint32_t getInputChannelAlignment() override { return isInputEncodingIdentity ? 16 : 4; }
-    uint32_t getSrnStride() override { return isInputEncodingIdentity ? 16 : 3; }
+    uint32_t getInputChannelAlignment() override { return 16; }
+    uint32_t getSrnStride() override { return 16; }
 
 private:
     uint32_t numLayersInEncoder = 0, numLayersOutEncoder = 0, numLayersInDecoder = 0, numLayersOutDecoder = 0;
-    bool isInputEncodingIdentity = false;
-    std::shared_ptr<TinyCudaNNModuleWrapper> moduleWrapper;
-    std::shared_ptr<TinyCudaNNCacheWrapper> cacheWrapper;
+    std::shared_ptr<QuickMLPModuleWrapper> moduleWrapper;
+    std::shared_ptr<QuickMLPCacheWrapper> cacheWrapper;
 };
 
-#endif //CORRERENDER_TINYCUDANNSIMILARITYCALCULATOR_HPP
+#endif //CORRERENDER_QUICKMLPCORRELATIONCALCULATOR_HPP

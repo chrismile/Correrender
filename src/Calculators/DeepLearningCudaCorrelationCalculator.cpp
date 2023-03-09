@@ -43,13 +43,13 @@
 
 #include "Volume/VolumeData.hpp"
 #include "Volume/Cache/DeviceCacheEntry.hpp"
-#include "DeepLearningCudaSimilarityCalculator.hpp"
+#include "DeepLearningCudaCorrelationCalculator.hpp"
 
 #if CUDA_VERSION < 11020
 #error CUDA >= 11.2 is required for timeline semaphore support.
 #endif
 
-DeepLearningCudaSimilarityCalculator::DeepLearningCudaSimilarityCalculator(
+DeepLearningCudaCorrelationCalculator::DeepLearningCudaCorrelationCalculator(
         const std::string& implName, const std::string& implNameKey, sgl::vk::Renderer* renderer)
         : ICorrelationCalculator(renderer), implName(implName), implNameKey(implNameKey) {
     implNameKeyUpper = implNameKey;
@@ -68,7 +68,7 @@ DeepLearningCudaSimilarityCalculator::DeepLearningCudaSimilarityCalculator(
     }
 }
 
-void DeepLearningCudaSimilarityCalculator::initialize() {
+void DeepLearningCudaCorrelationCalculator::initialize() {
     sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamCreate(
             &stream, 0), "Error in cuStreamCreate: ");
 
@@ -99,7 +99,7 @@ void DeepLearningCudaSimilarityCalculator::initialize() {
     }
 }
 
-DeepLearningCudaSimilarityCalculator::~DeepLearningCudaSimilarityCalculator() {
+DeepLearningCudaCorrelationCalculator::~DeepLearningCudaCorrelationCalculator() {
     sgl::AppSettings::get()->getSettings().addKeyValue(modelFilePathSettingsKey.c_str(), modelFilePath);
 
     if (permutationIndicesBufferCu != 0) {
@@ -120,7 +120,7 @@ DeepLearningCudaSimilarityCalculator::~DeepLearningCudaSimilarityCalculator() {
             stream), "Error in cuStreamDestroy: ");
 }
 
-void DeepLearningCudaSimilarityCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
+void DeepLearningCudaCorrelationCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
     ICorrelationCalculator::renderGuiImpl(propertyEditor);
     if (IGFD_DisplayDialog(
             fileDialogInstance,
@@ -186,7 +186,7 @@ void DeepLearningCudaSimilarityCalculator::renderGuiImpl(sgl::PropertyEditor& pr
     //propertyEditor.addText("Data type:", "Float");
 }
 
-void DeepLearningCudaSimilarityCalculator::calculateDevice(
+void DeepLearningCudaCorrelationCalculator::calculateDevice(
         int timeStepIdx, int ensembleIdx, const DeviceCacheEntry& deviceCacheEntry) {
     renderer->insertImageMemoryBarrier(
             deviceCacheEntry->getVulkanImage(),

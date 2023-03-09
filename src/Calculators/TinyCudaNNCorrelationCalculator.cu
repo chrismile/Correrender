@@ -41,7 +41,7 @@
 
 #include "Volume/VolumeData.hpp"
 #include "MutualInformation.cuh"
-#include "TinyCudaNNSimilarityCalculator.hpp"
+#include "TinyCudaNNCorrelationCalculator.hpp"
 #include "tiny-cuda-nn/networks/fully_fused_mlp.h"
 
 using precision_t = tcnn::network_precision_t;
@@ -84,15 +84,15 @@ struct TinyCudaNNDataHeader {
     uint32_t numParams = 0;
 };
 
-TinyCudaNNSimilarityCalculator::TinyCudaNNSimilarityCalculator(sgl::vk::Renderer* renderer)
-        : DeepLearningCudaSimilarityCalculator("tiny-cuda-nn", "tinyCudaNN", renderer) {
+TinyCudaNNCorrelationCalculator::TinyCudaNNCorrelationCalculator(sgl::vk::Renderer* renderer)
+        : DeepLearningCudaCorrelationCalculator("tiny-cuda-nn", "tinyCudaNN", renderer) {
     cacheWrapper = std::make_shared<TinyCudaNNCacheWrapper>();
 }
 
-TinyCudaNNSimilarityCalculator::~TinyCudaNNSimilarityCalculator() = default;
+TinyCudaNNCorrelationCalculator::~TinyCudaNNCorrelationCalculator() = default;
 
-void TinyCudaNNSimilarityCalculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
-    DeepLearningCudaSimilarityCalculator::setVolumeData(_volumeData, isNewData);
+void TinyCudaNNCorrelationCalculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
+    DeepLearningCudaCorrelationCalculator::setVolumeData(_volumeData, isNewData);
     calculatorConstructorUseCount = volumeData->getNewCalculatorUseCount(CalculatorType::TINY_CUDA_NN);
 }
 
@@ -184,7 +184,7 @@ template<class T, class PARAMS_T> static void loadNetwork(
     // TODO: Support trainer->serialize()
 }
 
-void TinyCudaNNSimilarityCalculator::loadModelFromFile(const std::string& modelPath) {
+void TinyCudaNNCorrelationCalculator::loadModelFromFile(const std::string& modelPath) {
     moduleWrapper = std::make_shared<TinyCudaNNModuleWrapper>();
     cacheWrapper = std::make_shared<TinyCudaNNCacheWrapper>();
 
@@ -365,7 +365,7 @@ void TinyCudaNNSimilarityCalculator::loadModelFromFile(const std::string& modelP
     cacheNeedsRecreate = true;
 }
 
-void TinyCudaNNSimilarityCalculator::recreateCache(int batchSize) {
+void TinyCudaNNCorrelationCalculator::recreateCache(int batchSize) {
     int es = networkType == NetworkType::MINE ? volumeData->getEnsembleMemberCount() : 1;
 
     cacheWrapper->referenceInput = tcnn::GPUMatrix<float>();
@@ -410,15 +410,15 @@ void TinyCudaNNSimilarityCalculator::recreateCache(int batchSize) {
     cacheWrapper->queryDecoded = tcnn::GPUMatrix<precision_t>(numLayersOutDecoder, uint32_t(es) * batchSize);
 }
 
-CUdeviceptr TinyCudaNNSimilarityCalculator::getReferenceInputPointer()  {
+CUdeviceptr TinyCudaNNCorrelationCalculator::getReferenceInputPointer()  {
     return reinterpret_cast<CUdeviceptr>(cacheWrapper->referenceInput.data());
 }
 
-CUdeviceptr TinyCudaNNSimilarityCalculator::getQueryInputPointer()  {
+CUdeviceptr TinyCudaNNCorrelationCalculator::getQueryInputPointer()  {
     return reinterpret_cast<CUdeviceptr>(cacheWrapper->queryInput.data());
 }
 
-void TinyCudaNNSimilarityCalculator::runInferenceReference() {
+void TinyCudaNNCorrelationCalculator::runInferenceReference() {
 #if TCNN_HALF_PRECISION
     if (moduleWrapper->networkEncoderHalf) {
         uint32_t arraySize = cacheWrapper->referenceInputHalf.n() * cacheWrapper->referenceInputHalf.m();
@@ -492,7 +492,7 @@ void TinyCudaNNSimilarityCalculator::runInferenceReference() {
     delete[] dataEnc;*/
 }
 
-void TinyCudaNNSimilarityCalculator::runInferenceBatch(uint32_t batchOffset, uint32_t batchSize)  {
+void TinyCudaNNCorrelationCalculator::runInferenceBatch(uint32_t batchOffset, uint32_t batchSize)  {
     int es = volumeData->getEnsembleMemberCount();
 
 #if TCNN_HALF_PRECISION
@@ -793,13 +793,13 @@ void TinyCudaNNSimilarityCalculator::runInferenceBatch(uint32_t batchOffset, uin
     std::cout << std::endl << "END" << std::endl << std::endl;*/
 }
 
-void TinyCudaNNSimilarityCalculator::callbackBeginCompute() {
+void TinyCudaNNCorrelationCalculator::callbackBeginCompute() {
 #ifdef TEST_INFERENCE_SPEED
     cudaProfilerStart();
 #endif
 }
 
-void TinyCudaNNSimilarityCalculator::callbackEndCompute() {
+void TinyCudaNNCorrelationCalculator::callbackEndCompute() {
 #ifdef TEST_INFERENCE_SPEED
     cudaProfilerStop();
 #endif

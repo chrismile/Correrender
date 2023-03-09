@@ -79,13 +79,13 @@
 #include "Calculators/EnsembleVarianceCalculator.hpp"
 #include "Calculators/CorrelationCalculator.hpp"
 #ifdef SUPPORT_PYTORCH
-#include "Calculators/PyTorchSimilarityCalculator.hpp"
+#include "Calculators/PyTorchCorrelationCalculator.hpp"
 #endif
 #ifdef SUPPORT_TINY_CUDA_NN
-#include "Calculators/TinyCudaNNSimilarityCalculator.hpp"
+#include "Calculators/TinyCudaNNCorrelationCalculator.hpp"
 #endif
 #ifdef SUPPORT_QUICK_MLP
-#include "Calculators/QuickMLPSimilarityCalculator.hpp"
+#include "Calculators/QuickMLPCorrelationCalculator.hpp"
 #endif
 #include "Renderers/RenderingModes.hpp"
 #include "Renderers/Renderer.hpp"
@@ -183,18 +183,18 @@ VolumeData::VolumeData(sgl::vk::Renderer* renderer) : renderer(renderer), multiV
             "Correlation Calculator", [renderer]() { return new CorrelationCalculator(renderer); });
 #ifdef SUPPORT_PYTORCH
     factoriesCalculator.emplace_back(
-            "PyTorch Similarity Calculator", [renderer]() { return new PyTorchSimilarityCalculator(renderer); });
+            "PyTorch Similarity Calculator", [renderer]() { return new PyTorchCorrelationCalculator(renderer); });
 #endif
 #ifdef SUPPORT_CUDA_INTEROP
     if (device->getDeviceDriverId() == VK_DRIVER_ID_NVIDIA_PROPRIETARY
             && sgl::vk::getIsCudaDeviceApiFunctionTableInitialized()) {
 #ifdef SUPPORT_TINY_CUDA_NN
         factoriesCalculator.emplace_back(
-                "tiny-cuda-nn Similarity Calculator", [renderer]() { return new TinyCudaNNSimilarityCalculator(renderer); });
+                "tiny-cuda-nn Similarity Calculator", [renderer]() { return new TinyCudaNNCorrelationCalculator(renderer); });
 #endif
 #ifdef SUPPORT_QUICK_MLP
         factoriesCalculator.emplace_back(
-                "QuickMLP Similarity Calculator", [renderer]() { return new QuickMLPSimilarityCalculator(renderer); });
+                "QuickMLP Similarity Calculator", [renderer]() { return new QuickMLPCorrelationCalculator(renderer); });
 #endif
     }
 #endif
@@ -549,16 +549,16 @@ bool VolumeData::setInputFiles(
     if (es > 1) {
         addCalculator(std::make_shared<CorrelationCalculator>(renderer));
 #ifdef SUPPORT_PYTORCH
-        addCalculator(std::make_shared<PyTorchSimilarityCalculator>(renderer));
+        addCalculator(std::make_shared<PyTorchCorrelationCalculator>(renderer));
 #endif
 #ifdef SUPPORT_CUDA_INTEROP
         if (device->getDeviceDriverId() == VK_DRIVER_ID_NVIDIA_PROPRIETARY
             && sgl::vk::getIsCudaDeviceApiFunctionTableInitialized()) {
 #ifdef SUPPORT_TINY_CUDA_NN
-            addCalculator(std::make_shared<TinyCudaNNSimilarityCalculator>(renderer));
+            addCalculator(std::make_shared<TinyCudaNNCorrelationCalculator>(renderer));
 #endif
 #ifdef SUPPORT_QUICK_MLP
-            addCalculator(std::make_shared<QuickMLPSimilarityCalculator>(renderer));
+            addCalculator(std::make_shared<QuickMLPCorrelationCalculator>(renderer));
 #endif
         }
 #endif

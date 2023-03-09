@@ -38,7 +38,7 @@
 
 #include "Volume/VolumeData.hpp"
 #include "MutualInformation.cuh"
-#include "QuickMLPSimilarityCalculator.hpp"
+#include "QuickMLPCorrelationCalculator.hpp"
 
 struct QuickMLPModuleWrapper {
     nlohmann::json configGeneral;
@@ -68,15 +68,15 @@ struct QuickMLPDataHeader {
 };
 
 
-QuickMLPSimilarityCalculator::QuickMLPSimilarityCalculator(sgl::vk::Renderer* renderer)
-        : DeepLearningCudaSimilarityCalculator("QuickMLP", "quickMLP", renderer) {
+QuickMLPCorrelationCalculator::QuickMLPCorrelationCalculator(sgl::vk::Renderer* renderer)
+        : DeepLearningCudaCorrelationCalculator("QuickMLP", "quickMLP", renderer) {
     cacheWrapper = std::make_shared<QuickMLPCacheWrapper>();
 }
 
-QuickMLPSimilarityCalculator::~QuickMLPSimilarityCalculator() = default;
+QuickMLPCorrelationCalculator::~QuickMLPCorrelationCalculator() = default;
 
-void QuickMLPSimilarityCalculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
-    DeepLearningCudaSimilarityCalculator::setVolumeData(_volumeData, isNewData);
+void QuickMLPCorrelationCalculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
+    DeepLearningCudaCorrelationCalculator::setVolumeData(_volumeData, isNewData);
     calculatorConstructorUseCount = volumeData->getNewCalculatorUseCount(CalculatorType::QUICK_MLP);
 }
 
@@ -156,7 +156,7 @@ void loadNetwork(
     }
 }
 
-void QuickMLPSimilarityCalculator::loadModelFromFile(const std::string& modelPath) {
+void QuickMLPCorrelationCalculator::loadModelFromFile(const std::string& modelPath) {
     moduleWrapper = std::make_shared<QuickMLPModuleWrapper>();
 
     std::unordered_map<std::string, sgl::ArchiveEntry> archiveFiles;
@@ -244,7 +244,7 @@ void QuickMLPSimilarityCalculator::loadModelFromFile(const std::string& modelPat
     cacheNeedsRecreate = true;
 }
 
-void QuickMLPSimilarityCalculator::recreateCache(int batchSize) {
+void QuickMLPCorrelationCalculator::recreateCache(int batchSize) {
     int es = networkType == NetworkType::MINE ? volumeData->getEnsembleMemberCount() : 1;
     if (moduleWrapper->networkEncoder->precisionIn() != qmlp::Tensor::Precision::FLOAT) {
         sgl::Logfile::get()->throwError(
@@ -275,19 +275,19 @@ void QuickMLPSimilarityCalculator::recreateCache(int batchSize) {
             moduleWrapper->networkDecoder->precisionOut(), { es * int(batchSize), int(numLayersOutDecoder) });
 }
 
-CUdeviceptr QuickMLPSimilarityCalculator::getReferenceInputPointer() {
+CUdeviceptr QuickMLPCorrelationCalculator::getReferenceInputPointer() {
     return reinterpret_cast<CUdeviceptr>(cacheWrapper->referenceInput.rawPtr());
 }
 
-CUdeviceptr QuickMLPSimilarityCalculator::getQueryInputPointer() {
+CUdeviceptr QuickMLPCorrelationCalculator::getQueryInputPointer() {
     return reinterpret_cast<CUdeviceptr>(cacheWrapper->queryInput.rawPtr());
 }
 
-void QuickMLPSimilarityCalculator::runInferenceReference() {
+void QuickMLPCorrelationCalculator::runInferenceReference() {
     moduleWrapper->networkEncoder->inference(cacheWrapper->referenceInput, cacheWrapper->referenceEncoded, stream);
 }
 
-void QuickMLPSimilarityCalculator::runInferenceBatch(uint32_t batchOffset, uint32_t batchSize) {
+void QuickMLPCorrelationCalculator::runInferenceBatch(uint32_t batchOffset, uint32_t batchSize) {
     int es = volumeData->getEnsembleMemberCount();
 
     moduleWrapper->networkEncoder->inference(cacheWrapper->queryInput, cacheWrapper->queryEncoded, stream);

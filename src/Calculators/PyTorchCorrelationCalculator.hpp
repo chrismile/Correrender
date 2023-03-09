@@ -26,8 +26,8 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef CORRERENDER_PYTORCHSIMILARITYCALCULATOR_HPP
-#define CORRERENDER_PYTORCHSIMILARITYCALCULATOR_HPP
+#ifndef CORRERENDER_PYTORCHCORRELATIONCALCULATOR_HPP
+#define CORRERENDER_PYTORCHCORRELATIONCALCULATOR_HPP
 
 #include <vector>
 #include <unordered_map>
@@ -76,10 +76,10 @@ class ReferenceEnsembleCombinePass;
  * extra_files = { 'model_info.json': '{ "metric_name": "Mutual Information (MI)", "input_format": "concat_value_position" }' }
  * torch.jit.save(script_module, 'model_name.pt', _extra_files=extra_files)
  */
-class PyTorchSimilarityCalculator : public ICorrelationCalculator {
+class PyTorchCorrelationCalculator : public ICorrelationCalculator {
 public:
-    explicit PyTorchSimilarityCalculator(sgl::vk::Renderer* renderer);
-    ~PyTorchSimilarityCalculator() override;
+    explicit PyTorchCorrelationCalculator(sgl::vk::Renderer* renderer);
+    ~PyTorchCorrelationCalculator() override;
     [[nodiscard]] CalculatorType getCalculatorType() const override { return CalculatorType::TORCH; }
     void setVolumeData(VolumeData* _volumeData, bool isNewData) override;
     std::string getOutputFieldName() override {
@@ -217,4 +217,4 @@ private:
     sgl::vk::BufferPtr outputBuffer;
 };
 
-#endif //CORRERENDER_PYTORCHSIMILARITYCALCULATOR_HPP
+#endif //CORRERENDER_PYTORCHCORRELATIONCALCULATOR_HPP

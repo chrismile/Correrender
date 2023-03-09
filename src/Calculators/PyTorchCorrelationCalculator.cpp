@@ -54,7 +54,7 @@
 
 #include "Loaders/DataSet.hpp"
 #include "Volume/VolumeData.hpp"
-#include "PyTorchSimilarityCalculator.hpp"
+#include "PyTorchCorrelationCalculator.hpp"
 
 #if CUDA_VERSION < 11020
 #error CUDA >= 11.2 is required for timeline semaphore support.
@@ -80,7 +80,7 @@ static torch::DeviceType getTorchDeviceType(PyTorchDevice pyTorchDevice) {
     }
 }
 
-PyTorchSimilarityCalculator::PyTorchSimilarityCalculator(sgl::vk::Renderer* renderer)
+PyTorchCorrelationCalculator::PyTorchCorrelationCalculator(sgl::vk::Renderer* renderer)
         : ICorrelationCalculator(renderer) {
     sgl::vk::Device* device = renderer->getDevice();
 
@@ -129,7 +129,7 @@ PyTorchSimilarityCalculator::PyTorchSimilarityCalculator(sgl::vk::Renderer* rend
     ensembleCombinePass = std::make_shared<EnsembleCombinePass>(renderer);
 }
 
-PyTorchSimilarityCalculator::~PyTorchSimilarityCalculator() {
+PyTorchCorrelationCalculator::~PyTorchCorrelationCalculator() {
     calculatorConstructorUseCount = volumeData->getNewCalculatorUseCount(CalculatorType::TORCH);
 
     sgl::AppSettings::get()->getSettings().addKeyValue(
@@ -159,7 +159,7 @@ PyTorchSimilarityCalculator::~PyTorchSimilarityCalculator() {
     }
 }
 
-void PyTorchSimilarityCalculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
+void PyTorchCorrelationCalculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
     ICorrelationCalculator::setVolumeData(_volumeData, isNewData);
 
     referenceEnsembleCombinePass->setVolumeData(volumeData, isNewData);
@@ -186,7 +186,7 @@ void PyTorchSimilarityCalculator::setVolumeData(VolumeData* _volumeData, bool is
 #endif*/
 }
 
-bool PyTorchSimilarityCalculator::loadModelFromFile(int idx, const std::string& modelPath) {
+bool PyTorchCorrelationCalculator::loadModelFromFile(int idx, const std::string& modelPath) {
     torch::DeviceType deviceType = getTorchDeviceType(pyTorchDevice);
     torch::jit::ExtraFilesMap extraFilesMap;
     extraFilesMap["model_info.json"] = "";
@@ -265,7 +265,7 @@ bool PyTorchSimilarityCalculator::loadModelFromFile(int idx, const std::string& 
     return true;
 }
 
-void PyTorchSimilarityCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float* buffer) {
+void PyTorchCorrelationCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float* buffer) {
     torch::NoGradGuard noGradGuard{};
 
     if (!encoderWrapper || !decoderWrapper) {
@@ -439,7 +439,7 @@ void PyTorchSimilarityCalculator::calculateCpu(int timeStepIdx, int ensembleIdx,
 }
 
 #ifdef SUPPORT_CUDA_INTEROP
-void PyTorchSimilarityCalculator::calculateDevice(
+void PyTorchCorrelationCalculator::calculateDevice(
         int timeStepIdx, int ensembleIdx, const DeviceCacheEntry& deviceCacheEntry) {
     torch::NoGradGuard noGradGuard{};
 
@@ -768,7 +768,7 @@ void PyTorchSimilarityCalculator::calculateDevice(
 }
 #endif
 
-FilterDevice PyTorchSimilarityCalculator::PyTorchSimilarityCalculator::getFilterDevice() {
+FilterDevice PyTorchCorrelationCalculator::PyTorchCorrelationCalculator::getFilterDevice() {
 #ifdef SUPPORT_CUDA_INTEROP
     if (pyTorchDevice == PyTorchDevice::CUDA) {
         return FilterDevice::CUDA;
@@ -777,7 +777,7 @@ FilterDevice PyTorchSimilarityCalculator::PyTorchSimilarityCalculator::getFilter
     return FilterDevice::CPU;
 }
 
-void PyTorchSimilarityCalculator::setPyTorchDevice(PyTorchDevice pyTorchDeviceNew) {
+void PyTorchCorrelationCalculator::setPyTorchDevice(PyTorchDevice pyTorchDeviceNew) {
     if (pyTorchDeviceNew == pyTorchDevice) {
         return;
     }
@@ -795,7 +795,7 @@ void PyTorchSimilarityCalculator::setPyTorchDevice(PyTorchDevice pyTorchDeviceNe
    }
 }
 
-void PyTorchSimilarityCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
+void PyTorchCorrelationCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
     ICorrelationCalculator::renderGuiImpl(propertyEditor);
     if (IGFD_DisplayDialog(
             fileDialogInstance,
@@ -863,7 +863,7 @@ void PyTorchSimilarityCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEdi
     }
 }
 
-void PyTorchSimilarityCalculator::openModelSelectionDialog() {
+void PyTorchCorrelationCalculator::openModelSelectionDialog() {
     if (fileDialogDirectory.empty() || !sgl::FileUtils::get()->directoryExists(fileDialogDirectory)) {
         fileDialogDirectory = sgl::AppSettings::get()->getDataDirectory() + "PyTorch/";
         if (!sgl::FileUtils::get()->exists(fileDialogDirectory)) {

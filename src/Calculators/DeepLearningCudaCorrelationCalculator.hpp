@@ -26,8 +26,8 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef CORRERENDER_DEEPLEARNINGCUDASIMILARITYCALCULATOR_HPP
-#define CORRERENDER_DEEPLEARNINGCUDASIMILARITYCALCULATOR_HPP
+#ifndef CORRERENDER_DEEPLEARNINGCUDACORRELATIONCALCULATOR_HPP
+#define CORRERENDER_DEEPLEARNINGCUDACORRELATIONCALCULATOR_HPP
 
 #include <Graphics/Vulkan/Utils/InteropCuda.hpp>
 #include <Graphics/Vulkan/Render/CommandBuffer.hpp>
@@ -39,17 +39,17 @@ const char* const SYMMETRIZER_TYPE_SHORT_NAMES[] = {
         "Add", "AddDiff"
 };
 
-class DeepLearningCudaSimilarityCalculator : public ICorrelationCalculator {
+class DeepLearningCudaCorrelationCalculator : public ICorrelationCalculator {
 public:
     /**
      * @param implName E.g., "tiny-cuda-nn" or "QuickMLP".
      * @param implNameKey E.g., "tinyCudaNN" or "quickMLP".
      * @param renderer The renderer object.
      */
-    explicit DeepLearningCudaSimilarityCalculator(
+    explicit DeepLearningCudaCorrelationCalculator(
             const std::string& implName, const std::string& implNameKey, sgl::vk::Renderer* renderer);
     void initialize() override;
-    ~DeepLearningCudaSimilarityCalculator() override;
+    ~DeepLearningCudaCorrelationCalculator() override;
     std::string getOutputFieldName() override {
         std::string outputFieldName = "Similarity " + implName;
         if (calculatorConstructorUseCount > 1) {
@@ -113,4 +113,4 @@ private:
     std::string implName, implNameKey, implNameKeyUpper, fileDialogKey, fileDialogDescription, modelFilePathSettingsKey;
 };
 
-#endif //CORRERENDER_DEEPLEARNINGCUDASIMILARITYCALCULATOR_HPP
+#endif //CORRERENDER_DEEPLEARNINGCUDACORRELATIONCALCULATOR_HPP
