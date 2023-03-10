@@ -36,6 +36,7 @@
 
 #include "Renderers/DomainOutlineRenderer.hpp"
 #include "Calculators/CorrelationCalculator.hpp"
+#include "Widgets/DataView.hpp"
 #include "Widgets/ViewManager.hpp"
 #include "Volume/VolumeData.hpp"
 #include "../RenderingModes.hpp"
@@ -386,6 +387,7 @@ void DiagramRenderer::renderViewImpl(uint32_t viewIdx) {
             diagram->setImGuiWindowOffset(0, 0);
         }
         diagram->render();
+        diagram->setBlitTargetSupersamplingFactor(viewManager->getDataView(diagramViewIdx)->getSupersamplingFactor());
         diagram->blitToTargetVk();
     }
 }

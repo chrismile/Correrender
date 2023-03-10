@@ -619,7 +619,7 @@ void VolumeData::addCalculator(const CalculatorPtr& calculator) {
             SceneData* viewSceneData = viewManager->getViewSceneData(uint32_t(viewIdx));
             if (*viewSceneData->sceneTexture) {
                 calculatorRenderer->recreateSwapchainView(
-                        uint32_t(viewIdx), *viewSceneData->viewportWidth, *viewSceneData->viewportHeight);
+                        uint32_t(viewIdx), *viewSceneData->viewportWidthVirtual, *viewSceneData->viewportHeightVirtual);
             }
         }
     }

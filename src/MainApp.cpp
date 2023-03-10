@@ -101,8 +101,9 @@ void signalHandler(int signum) {
 MainApp::MainApp()
         : sceneData(
                 &rendererVk, &sceneTextureVk, &sceneDepthTextureVk,
-                &viewportPositionX, &viewportPositionY, &viewportWidth, &viewportHeight, camera,
-                &clearColor, &screenshotTransparentBackground,
+                &viewportPositionX, &viewportPositionY,
+                &viewportWidth, &viewportHeight, &viewportWidth, &viewportHeight,
+                camera, &clearColor, &screenshotTransparentBackground,
                 &performanceMeasurer, &continuousRendering, &recording,
                 &useCameraFlight, &MOVE_SPEED, &MOUSE_ROT_SPEED,
                 &nonBlockingMsgBoxHandles),
@@ -685,7 +686,7 @@ void MainApp::setRenderer(RenderingMode newRenderingMode, RendererPtr& newVolume
         auto& viewSceneData = dataViews.at(viewIdx)->sceneData;
         if (*viewSceneData.sceneTexture) {
             newVolumeRenderer->recreateSwapchainView(
-                    uint32_t(viewIdx), *viewSceneData.viewportWidth, *viewSceneData.viewportHeight);
+                    uint32_t(viewIdx), *viewSceneData.viewportWidthVirtual, *viewSceneData.viewportHeightVirtual);
         }
     }
 }
@@ -1060,11 +1061,11 @@ void MainApp::renderGui() {
                         if (dataView->viewportWidth > 0 && dataView->viewportHeight > 0) {
                             for (auto& volumeRenderer : volumeRenderers) {
                                 volumeRenderer->recreateSwapchainView(
-                                        viewIdx, dataView->viewportWidth, dataView->viewportHeight);
+                                        viewIdx, dataView->viewportWidthVirtual, dataView->viewportHeightVirtual);
                             }
                             if (volumeData) {
                                 volumeData->recreateSwapchainView(
-                                        viewIdx, dataView->viewportWidth, dataView->viewportHeight);
+                                        viewIdx, dataView->viewportWidthVirtual, dataView->viewportHeightVirtual);
                             }
                         }
                         dataView->reRender = true;
@@ -1153,8 +1154,8 @@ void MainApp::renderGui() {
                 ImGui::End();
 
                 if (!isViewOpen) {
-                    dataViews.erase(dataViews.begin() + i);
                     viewManager->removeView(i);
+                    dataViews.erase(dataViews.begin() + i);
                     for (auto& volumeRenderer : volumeRenderers) {
                         volumeRenderer->removeView(viewIdx);
                     }
@@ -1330,6 +1331,14 @@ void MainApp::renderGuiGeneralSettingsPropertyEditor() {
         scheduledDockSpaceModeChange = true;
     }*/
 
+    if (useDockSpaceMode && propertyEditor.addSliderInt("Supersampling Factor", &supersamplingFactor, 1, 4)) {
+        for (DataViewPtr& dataView : dataViews) {
+            dataView->supersamplingFactor = supersamplingFactor;
+            dataView->viewportWidth = 0;
+            dataView->viewportHeight = 0;
+        }
+    }
+
     if (propertyEditor.addCheckbox("Fixed Size Viewport", &useFixedSizeViewport)) {
         reRender = true;
     }
@@ -1344,10 +1353,11 @@ void MainApp::renderGuiGeneralSettingsPropertyEditor() {
 
 void MainApp::addNewDataView() {
     DataViewPtr dataView = std::make_shared<DataView>(&sceneData);
+    dataView->supersamplingFactor = supersamplingFactor;
     dataView->useLinearRGB = useLinearRGB;
     dataView->clearColor = clearColor;
     dataViews.push_back(dataView);
-    viewManager->addView(&dataView->sceneData);
+    viewManager->addView(dataView.get(), &dataView->sceneData);
     auto viewIdx = uint32_t(dataViews.size() - 1);
     for (auto& volumeRenderer : volumeRenderers) {
         volumeRenderer->addView(viewIdx);
@@ -1950,7 +1960,7 @@ void MainApp::loadVolumeDataSet(const std::vector<std::string>& fileNames) {
             auto& viewSceneData = dataViews.at(viewIdx)->sceneData;
             if (*viewSceneData.sceneTexture) {
                 volumeData->recreateSwapchainView(
-                        uint32_t(viewIdx), *viewSceneData.viewportWidth, *viewSceneData.viewportHeight);
+                        uint32_t(viewIdx), *viewSceneData.viewportWidthVirtual, *viewSceneData.viewportHeightVirtual);
             }
         }
         newDataLoaded = true;

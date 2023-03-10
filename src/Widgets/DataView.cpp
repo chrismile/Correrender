@@ -50,6 +50,8 @@ DataView::DataView(SceneData* parentSceneData)
     sceneData.viewportPositionY = &viewportPositionY;
     sceneData.viewportWidth = &viewportWidth;
     sceneData.viewportHeight = &viewportHeight;
+    sceneData.viewportWidthVirtual = &viewportWidthVirtual;
+    sceneData.viewportHeightVirtual = &viewportHeightVirtual;
 
     const sgl::CameraPtr& parentCamera = parentSceneData->camera;
 
@@ -58,8 +60,12 @@ DataView::DataView(SceneData* parentSceneData)
     sceneData.camera = camera;
 
     sceneTextureBlitPass = std::make_shared<sgl::vk::BlitRenderPass>(renderer);
+    sceneTextureBlitDownscalePass = sgl::vk::BlitRenderPassPtr(new sgl::vk::BlitRenderPass(
+            renderer, { "Blit.Vertex", "Blit.FragmentDownscale" }));
     sceneTextureGammaCorrectionPass = sgl::vk::BlitRenderPassPtr(new sgl::vk::BlitRenderPass(
-            renderer, {"GammaCorrection.Vertex", "GammaCorrection.Fragment"}));
+            renderer, { "GammaCorrection.Vertex", "GammaCorrection.Fragment" }));
+    sceneTextureGammaCorrectionDownscalePass = sgl::vk::BlitRenderPassPtr(new sgl::vk::BlitRenderPass(
+            renderer, { "GammaCorrection.Vertex", "GammaCorrection.FragmentDownscale" }));
 
     screenshotReadbackHelper = std::make_shared<sgl::vk::ScreenshotReadbackHelper>(renderer);
 }
@@ -74,6 +80,8 @@ DataView::~DataView() {
 void DataView::resize(int newWidth, int newHeight) {
     viewportWidth = uint32_t(std::max(newWidth, 0));
     viewportHeight = uint32_t(std::max(newHeight, 0));
+    viewportWidthVirtual = viewportWidth * uint32_t(supersamplingFactor);
+    viewportHeightVirtual = viewportHeight * uint32_t(supersamplingFactor);
 
     if (viewportWidth == 0 || viewportHeight == 0) {
         sceneTextureVk = {};
@@ -83,8 +91,8 @@ void DataView::resize(int newWidth, int newHeight) {
     }
 
     sgl::vk::ImageSettings imageSettings;
-    imageSettings.width = viewportWidth;
-    imageSettings.height = viewportHeight;
+    imageSettings.width = viewportWidthVirtual;
+    imageSettings.height = viewportHeightVirtual;
 
     // Create scene texture.
     imageSettings.usage =
@@ -114,6 +122,8 @@ void DataView::resize(int newWidth, int newHeight) {
     sceneData.initDepthColor();
 
     // Create composited (gamma-resolved, if VK_FORMAT_R16G16B16A16_UNORM for scene texture) scene texture.
+    imageSettings.width = viewportWidth;
+    imageSettings.height = viewportHeight;
     imageSettings.usage =
             VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
     imageSettings.format = VK_FORMAT_R8G8B8A8_UNORM;
@@ -125,10 +135,15 @@ void DataView::resize(int newWidth, int newHeight) {
     sceneTextureBlitPass->setInputTexture(sceneTextureVk);
     sceneTextureBlitPass->setOutputImage(compositedTextureVk->getImageView());
     sceneTextureBlitPass->recreateSwapchain(viewportWidth, viewportHeight);
-
+    sceneTextureBlitDownscalePass->setInputTexture(sceneTextureVk);
+    sceneTextureBlitDownscalePass->setOutputImage(compositedTextureVk->getImageView());
+    sceneTextureBlitDownscalePass->recreateSwapchain(viewportWidth, viewportHeight);
     sceneTextureGammaCorrectionPass->setInputTexture(sceneTextureVk);
     sceneTextureGammaCorrectionPass->setOutputImage(compositedTextureVk->getImageView());
     sceneTextureGammaCorrectionPass->recreateSwapchain(viewportWidth, viewportHeight);
+    sceneTextureGammaCorrectionDownscalePass->setInputTexture(sceneTextureVk);
+    sceneTextureGammaCorrectionDownscalePass->setOutputImage(compositedTextureVk->getImageView());
+    sceneTextureGammaCorrectionDownscalePass->recreateSwapchain(viewportWidth, viewportHeight);
 
     screenshotReadbackHelper->onSwapchainRecreated(viewportWidth, viewportHeight);
 
@@ -142,7 +157,7 @@ void DataView::resize(int newWidth, int newHeight) {
             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
     auto renderTarget = std::make_shared<sgl::RenderTarget>(
-            int(viewportWidth), int(viewportHeight));
+            int(viewportWidthVirtual), int(viewportHeightVirtual));
     camera->setRenderTarget(renderTarget, false);
     camera->onResolutionChanged({});
 }
@@ -171,11 +186,26 @@ void DataView::endRender() {
     sceneData.switchColorState(RenderTargetAccess::SAMPLED_FRAGMENT_SHADER);
     //renderer->transitionImageLayout(
     //        sceneTextureVk->getImage(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    sgl::vk::BlitRenderPass* renderPass;
     if (useLinearRGB) {
-        sceneTextureGammaCorrectionPass->render();
+        if (supersamplingFactor > 1) {
+            renderPass = sceneTextureGammaCorrectionDownscalePass.get();
+        } else {
+            renderPass = sceneTextureGammaCorrectionPass.get();
+        }
     } else {
-        sceneTextureBlitPass->render();
+        if (supersamplingFactor > 1) {
+            renderPass = sceneTextureBlitDownscalePass.get();
+        } else {
+            renderPass = sceneTextureBlitPass.get();
+        }
     }
+    if (supersamplingFactor > 1) {
+        renderPass->buildIfNecessary();
+        renderer->pushConstants(
+                renderPass->getGraphicsPipeline(), VK_SHADER_STAGE_FRAGMENT_BIT, 0, supersamplingFactor);
+    }
+    renderPass->render();
 }
 
 void DataView::syncCamera() {

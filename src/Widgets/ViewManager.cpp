@@ -32,7 +32,12 @@ SceneData* ViewManager::getViewSceneData(uint32_t viewIdx) {
     return sceneDataArray.at(viewIdx);
 }
 
-void ViewManager::addView(SceneData* viewSceneData) {
+DataView* ViewManager::getDataView(uint32_t viewIdx) {
+    return dataViewArray.at(viewIdx);
+}
+
+void ViewManager::addView(DataView* dataView, SceneData* viewSceneData) {
+    dataViewArray.push_back(dataView);
     sceneDataArray.push_back(viewSceneData);
 }
 

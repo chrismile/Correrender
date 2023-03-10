@@ -89,7 +89,9 @@ enum class RenderTargetAccess {
 struct SceneData {
     SceneData(
             sgl::vk::Renderer** renderer, sgl::vk::TexturePtr* sceneTexture, sgl::vk::TexturePtr* sceneDepthTexture,
-            int32_t* viewportPositionX, int32_t* viewportPositionY, uint32_t* viewportWidth, uint32_t* viewportHeight,
+            int32_t* viewportPositionX, int32_t* viewportPositionY,
+            uint32_t* viewportWidth, uint32_t* viewportHeight,
+            uint32_t* viewportWidthVirtual, uint32_t* viewportHeightVirtual,
             sgl::CameraPtr camera, sgl::Color* clearColor, bool* screenshotTransparentBackground,
             AutomaticPerformanceMeasurer** performanceMeasurer,
             bool* continuousRendering, bool* recordingMode, bool* useCameraFlight,
@@ -98,6 +100,7 @@ struct SceneData {
             : renderer(renderer), sceneTexture(sceneTexture), sceneDepthTexture(sceneDepthTexture),
               viewportPositionX(viewportPositionX), viewportPositionY(viewportPositionY),
               viewportWidth(viewportWidth), viewportHeight(viewportHeight),
+              viewportWidthVirtual(viewportWidthVirtual), viewportHeightVirtual(viewportHeightVirtual),
               camera(std::move(camera)), clearColor(clearColor),
               screenshotTransparentBackground(screenshotTransparentBackground),
               performanceMeasurer(performanceMeasurer),
@@ -113,6 +116,8 @@ struct SceneData {
     int32_t* viewportPositionY;
     uint32_t* viewportWidth;
     uint32_t* viewportHeight;
+    uint32_t* viewportWidthVirtual;
+    uint32_t* viewportHeightVirtual;
 
     sgl::CameraPtr camera;
     sgl::Color* clearColor;

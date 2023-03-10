@@ -42,13 +42,15 @@ class Renderer;
 }}
 
 struct SceneData;
+class DataView;
 
 class ViewManager {
 public:
     ViewManager(sgl::Color* clearColor, sgl::vk::Renderer* renderer) : clearColor(clearColor), renderer(renderer) {}
     [[nodiscard]] size_t getNumViews() const { return sceneDataArray.size(); }
     SceneData* getViewSceneData(uint32_t viewIdx);
-    void addView(SceneData* viewSceneData);
+    DataView* getDataView(uint32_t viewIdx);
+    void addView(DataView* dataView, SceneData* viewSceneData);
     void removeView(uint32_t viewIdx);
     [[nodiscard]] inline const sgl::Color& getClearColor() const { return *clearColor; }
     [[nodiscard]] inline sgl::vk::Renderer* getRenderer() { return renderer; }
@@ -61,6 +63,7 @@ private:
     sgl::Color* clearColor;
     sgl::vk::Renderer* renderer;
     std::vector<SceneData*> sceneDataArray;
+    std::vector<DataView*> dataViewArray;
     int mouseHoverWindowIndex = -1;
 };
 #endif //CORRERENDER_VIEWMANAGER_HPP

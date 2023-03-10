@@ -118,6 +118,7 @@ private:
     int32_t viewportPositionY = 0;
     uint32_t viewportWidth = 0;
     uint32_t viewportHeight = 0;
+    int supersamplingFactor = 1;
     SceneData sceneData;
 
     // This setting lets all data views use the same viewport resolution.

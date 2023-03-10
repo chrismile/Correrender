@@ -59,3 +59,40 @@ void main() {
     vec4 linearColor = texture(inputTexture, fragTexCoord);
     fragColor = vec4(toSRGB(linearColor.rgb), linearColor.a);
 }
+
+-- FragmentDownscale
+
+#version 450 core
+
+layout(binding = 0) uniform sampler2D inputTexture;
+layout(push_constant) uniform PushConstants {
+    int supersamplingFactor;
+};
+layout(location = 0) in vec2 fragTexCoord;
+layout(location = 0) out vec4 fragColor;
+
+/**
+ * Converts linear RGB to sRGB.
+ * For more details see: https://en.wikipedia.org/wiki/SRGB
+ */
+vec3 toSRGB(vec3 u) {
+    return mix(1.055 * pow(u, vec3(1.0 / 2.4)) - 0.055, u * 12.92, lessThanEqual(u, vec3(0.0031308)));
+}
+
+void main() {
+    ivec2 inputSize = textureSize(inputTexture, 0);
+    ivec2 outputSize = inputSize / supersamplingFactor;
+    ivec2 outputLocation = ivec2(int(fragTexCoord.x * outputSize.x), int(fragTexCoord.y * outputSize.y));
+    vec4 color = vec4(0.0);
+    for (int sampleIdxY = 0; sampleIdxY < supersamplingFactor; sampleIdxY++) {
+        for (int sampleIdxX = 0; sampleIdxX < supersamplingFactor; sampleIdxX++) {
+            ivec2 inputLocation = outputLocation * supersamplingFactor + ivec2(sampleIdxX, sampleIdxY);
+            vec4 sampleColor = texelFetch(inputTexture, inputLocation, 0);
+            color += sampleColor;
+        }
+    }
+
+    int totalNumSamples = supersamplingFactor * supersamplingFactor;
+    color /= float(totalNumSamples);
+    fragColor = toSRGB(toSRGB(linearColor.rgb), color.a);
+}

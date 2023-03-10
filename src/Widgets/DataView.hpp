@@ -57,10 +57,12 @@ public:
     void saveScreenshotDataIfAvailable();
     [[nodiscard]] ImTextureID getImGuiTextureId() const;
     void setClearColor(const sgl::Color& color);
+    [[nodiscard]] inline int getSupersamplingFactor() const { return supersamplingFactor; }
 
     [[nodiscard]] inline std::string getWindowName(int index) const {
         return "Data View (" + std::to_string(index + 1) + ")###data_view_" + std::to_string(index);
     }
+
 
     SceneData* parentSceneData = nullptr;
     bool showWindow = true;
@@ -75,8 +77,8 @@ public:
     sgl::vk::TexturePtr sceneTextureVk;
     sgl::vk::TexturePtr sceneDepthTextureVk;
     sgl::vk::TexturePtr compositedTextureVk; ///< The final RGBA8 texture.
-    sgl::vk::BlitRenderPassPtr sceneTextureBlitPass;
-    sgl::vk::BlitRenderPassPtr sceneTextureGammaCorrectionPass;
+    sgl::vk::BlitRenderPassPtr sceneTextureBlitPass, sceneTextureBlitDownscalePass;
+    sgl::vk::BlitRenderPassPtr sceneTextureGammaCorrectionPass, sceneTextureGammaCorrectionDownscalePass;
 
     sgl::vk::ScreenshotReadbackHelperPtr screenshotReadbackHelper; ///< For reading back screenshots from the GPU.
 
@@ -89,6 +91,9 @@ public:
     int32_t viewportPositionY = 0;
     uint32_t viewportWidth = 0;
     uint32_t viewportHeight = 0;
+    uint32_t viewportWidthVirtual = 0; //< Includes the supersampling factor.
+    uint32_t viewportHeightVirtual = 0; //< Includes the supersampling factor.
+    int supersamplingFactor = 1;
     SceneData sceneData;
 };
 
