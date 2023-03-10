@@ -182,7 +182,7 @@ void HEBChart::computeDownscaledField(int idx, std::vector<float*>& downscaledFi
     for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
         VolumeData::HostCacheEntry fieldEntry = getFieldEntryCpu(selectedScalarFieldName, fieldIdx);
         float* field = fieldEntry.get();
-        auto* dowsncaledField = new float[numPoints];
+        auto* downscaledField = new float[numPoints];
 
         if (!use2dField) {
             for (int zd = 0; zd < zsd; zd++) {
@@ -211,7 +211,7 @@ void HEBChart::computeDownscaledField(int idx, std::vector<float*>& downscaledFi
                         } else {
                             valueMean = std::numeric_limits<float>::quiet_NaN();
                         }
-                        dowsncaledField[IDXSD(xd, yd, zd)] = valueMean;
+                        downscaledField[IDXSD(xd, yd, zd)] = valueMean;
                     }
                 }
             }
@@ -239,12 +239,12 @@ void HEBChart::computeDownscaledField(int idx, std::vector<float*>& downscaledFi
                     } else {
                         valueMean = std::numeric_limits<float>::quiet_NaN();
                     }
-                    dowsncaledField[IDXSD(xd, yd, 0)] = valueMean;
+                    downscaledField[IDXSD(xd, yd, 0)] = valueMean;
                 }
             }
         }
 
-        downscaledFields.at(fieldIdx) = dowsncaledField;
+        downscaledFields.at(fieldIdx) = downscaledField;
     }
 }
 
@@ -696,14 +696,14 @@ void HEBChart::updateData() {
 
     // Delete the downscaled field, as it is no longer used.
     for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
-        float* dowsncaledField = downscaledFields0.at(fieldIdx);
-        delete[] dowsncaledField;
+        float* downscaledField = downscaledFields0.at(fieldIdx);
+        delete[] downscaledField;
     }
     downscaledFields0.clear();
     if (!regionsEqual) {
         for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
-            float* dowsncaledField = downscaledFields1.at(fieldIdx);
-            delete[] dowsncaledField;
+            float* downscaledField = downscaledFields1.at(fieldIdx);
+            delete[] downscaledField;
         }
         downscaledFields1.clear();
     }
