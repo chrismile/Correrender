@@ -86,6 +86,7 @@ public:
     uint32_t getSelectedPointIndexGrid(int idx);
     sgl::AABB3 getSelectedRegion(int idx);
     std::pair<glm::vec3, glm::vec3> getLinePositions();
+    glm::vec3 getLineDirection();
 
     // Queries for showing children.
     bool getHasNewFocusSelection(bool& isDeselection);
@@ -173,6 +174,7 @@ private:
     float pointRadiusBase = 1.5f;
     sgl::Color circleFillColor = sgl::Color(180, 180, 180, 255);
     sgl::Color circleFillColorSelected = sgl::Color(180, 80, 80, 255);
+    sgl::Color circleStrokeColor = sgl::Color(60, 60, 60, 255);
     bool alignWithParentWindow = false;
     bool opacityByValue = false;
     bool colorByValue = true;

@@ -26,6 +26,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <iostream>
 #include <random>
 
 #include <Graphics/Window.hpp>
@@ -306,6 +307,7 @@ void DiagramRenderer::update(float dt, bool isMouseGrabbed) {
         auto diagram = diagrams.at(i);
         bool isDeselection = false;
         if (diagram->getHasNewFocusSelection(isDeselection)) {
+            renderer->getDevice()->waitIdle();
             resetSelections(int(i + 1));
         }
         if (isDeselection) {
@@ -326,6 +328,10 @@ void DiagramRenderer::update(float dt, bool isMouseGrabbed) {
         auto correlationCalculators = volumeData->getCorrelationCalculatorsUsed();
         auto selectedRegion0 = diagram->getSelectedRegion(0);
         if (diagram->getIsRegionSelected(1)) {
+            if (useAlignmentRotation) {
+                updateAlignmentRotation(dt, diagram);
+            }
+
             std::vector<std::vector<ICorrelationCalculator*>> calculatorMap;
             calculatorMap.resize(int(lastCorrelationCalculatorType) - int(firstCorrelationCalculatorType) + 1);
             auto selectedRegion1 = diagram->getSelectedRegion(1);
@@ -354,6 +360,84 @@ void DiagramRenderer::update(float dt, bool isMouseGrabbed) {
             }
         }
     }
+}
+
+void DiagramRenderer::onHasMoved(uint32_t viewIdx) {
+    cachedAlignmentRotationDiagram = nullptr;
+}
+
+void DiagramRenderer::updateAlignmentRotation(float dt, HEBChart* diagram) {
+    sgl::Camera* camera;
+    auto* dataView = viewManager->getDataView(diagramViewIdx);
+    if (dataView->syncWithParentCamera) {
+        camera = dataView->parentSceneData->camera.get();
+    } else {
+        camera = viewManager->getViewSceneData(diagramViewIdx)->camera.get();
+    }
+
+    bool needsRestart = false;
+    if (diagram != cachedAlignmentRotationDiagram) {
+        cachedAlignmentRotationDiagram = diagram;
+        needsRestart = true;
+    } else {
+        uint32_t pointIndex0 = diagram->getSelectedPointIndexGrid(0);
+        uint32_t pointIndex1 = diagram->getSelectedPointIndexGrid(1);
+        if (pointIndex0 != cachedPointIdx0 || pointIndex1 != cachedPointIdx1) {
+            cachedPointIdx0 = pointIndex0;
+            cachedPointIdx1 = pointIndex1;
+            needsRestart = true;
+        }
+    }
+
+    if (needsRestart) {
+        cameraUpStart = camera->getCameraUp();
+        cameraLookAtStart = camera->getLookAtLocation();
+        cameraPositionStart = camera->getPosition();
+        alignmentRotationTime = 0.0f;
+
+        auto lineDirection = diagram->getLineDirection();
+        glm::vec3 lineDirProj = lineDirection - glm::dot(lineDirection, cameraUpStart) * cameraUpStart;
+        float lineDirProjLength = glm::length(lineDirProj);
+        if (lineDirProjLength < 1e-2f) {
+            // All angles are perpendicular, so we can stop.
+            alignmentRotationTime = alignmentRotationTotalTime;
+        } else {
+            lineDirProj /= lineDirProjLength;
+            glm::vec3 lineDirProjNormal = glm::cross(cameraUpStart, lineDirProj);
+            if (glm::dot(lineDirProjNormal, camera->getCameraFront()) < 0.0f) {
+                lineDirProjNormal = -lineDirProjNormal;
+            }
+            float y = glm::dot(glm::cross(lineDirProjNormal, camera->getCameraFront()), camera->getCameraUp());
+            float x = glm::dot(lineDirProjNormal, camera->getCameraFront());
+            rotationAngleTotal = std::atan2(y, x);
+        }
+    }
+
+    if (alignmentRotationTime >= alignmentRotationTotalTime) {
+        return;
+    }
+    alignmentRotationTime += dt;
+    alignmentRotationTime = std::min(alignmentRotationTime, alignmentRotationTotalTime);
+    float t = alignmentRotationTime / alignmentRotationTotalTime;
+
+    glm::vec3 cameraUp = cameraUpStart;
+    glm::vec3 cameraLookAt = cameraLookAtStart;
+    glm::vec3 cameraPosition = cameraPositionStart;
+
+    float theta = t * rotationAngleTotal;
+    glm::mat4 rotTheta = glm::rotate(glm::mat4(1.0f), -theta, {0.0f, 1.0f, 0.0f});
+    cameraPosition = cameraPosition - cameraLookAt;
+    cameraPosition = glm::vec3(rotTheta * glm::vec4(cameraPosition, 1.0f));
+    cameraUp = glm::vec3(rotTheta * glm::vec4(cameraUp, 1.0f));
+    cameraPosition = cameraPosition + cameraLookAt;
+
+    if (std::isnan(cameraPosition.x) || std::isnan(cameraPosition.y) || std::isnan(cameraPosition.z)) {
+        std::cout << "HERE2" << std::endl;
+        return;
+    }
+
+    camera->setLookAtViewMatrix(cameraPosition, cameraLookAt, cameraUp);
+    reRender = true;
 }
 
 bool DiagramRenderer::getHasGrabbedMouse() const {

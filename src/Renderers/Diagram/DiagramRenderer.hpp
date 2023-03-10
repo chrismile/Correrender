@@ -57,6 +57,7 @@ public:
     void onFieldRemoved(FieldType fieldType, int fieldIdx) override;
     void recreateSwapchainView(uint32_t viewIdx, uint32_t width, uint32_t height) override;
     void update(float dt, bool isMouseGrabbed) override;
+    void onHasMoved(uint32_t viewIdx) override;
     void setClearColor(const sgl::Color& clearColor) override;
     [[nodiscard]] bool getHasGrabbedMouse() const override;
 
@@ -107,6 +108,18 @@ private:
     std::vector<std::shared_ptr<DomainOutlineRasterPass>> domainOutlineRasterPasses[2];
     std::vector<std::shared_ptr<DomainOutlineComputePass>> domainOutlineComputePasses[2];
     std::vector<std::shared_ptr<ConnectingLineRasterPass>> connectingLineRasterPass;
+
+    // Camera alignment rotation.
+    void updateAlignmentRotation(float dt, HEBChart* diagram);
+    bool useAlignmentRotation = false;
+    HEBChart* cachedAlignmentRotationDiagram = nullptr;
+    uint32_t cachedPointIdx0 = 0, cachedPointIdx1 = 0;
+    const float alignmentRotationTotalTime = 2.0f;
+    float alignmentRotationTime = 0.0f;
+    float rotationAngleTotal = 0.0f;
+    glm::vec3 cameraUpStart{};
+    glm::vec3 cameraLookAtStart{};
+    glm::vec3 cameraPositionStart{};
 };
 
 #endif //CORRERENDER_DIAGRAMRENDERER_HPP

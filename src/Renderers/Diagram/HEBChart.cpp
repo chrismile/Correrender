@@ -848,6 +848,20 @@ std::pair<glm::vec3, glm::vec3> HEBChart::getLinePositions() {
     return std::make_pair(p0, p1);
 }
 
+glm::vec3 HEBChart::getLineDirection() {
+    auto linePoints = getLinePositions();
+    glm::vec3 diffVector = linePoints.second - linePoints.first;
+    float lineLength = glm::length(diffVector);
+    if (lineLength > 1e-5f) {
+        return diffVector / lineLength;
+    } else {
+        auto b0 = getSelectedRegion(0);
+        auto b1 = getSelectedRegion(1);
+        return glm::normalize(b1.getCenter() - b0.getCenter());
+    }
+}
+
+
 bool HEBChart::getHasNewFocusSelection(bool& isDeselection) {
     bool hasNewFocusSelection =
             (clickedPointIdx >= 0 && clickedPointIdx != clickedPointIdxOld)
