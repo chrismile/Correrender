@@ -173,7 +173,7 @@ template<class T, class PARAMS_T> static void loadNetwork(
         trainer->set_params(reinterpret_cast<float*>(paramsData), numParams, false);
     } else {
         sgl::Logfile::get()->throwError(
-                "Error in TinyCudaNNSimilarityCalculator::loadNetwork: Half precision build was disabled.");
+                "Error in TinyCudaNNCorrelationCalculator::loadNetwork: Half precision build was disabled.");
     }
 #endif
 
@@ -192,7 +192,7 @@ void TinyCudaNNCorrelationCalculator::loadModelFromFile(const std::string& model
     sgl::ArchiveFileLoadReturnType retVal = sgl::loadAllFilesFromArchive(modelPath, archiveFiles, true);
     if (retVal != sgl::ArchiveFileLoadReturnType::ARCHIVE_FILE_LOAD_SUCCESSFUL) {
         sgl::Logfile::get()->writeError(
-                "Error in TinyCudaNNSimilarityCalculator::loadModelFromFile: Could not load data from model \""
+                "Error in TinyCudaNNCorrelationCalculator::loadModelFromFile: Could not load data from model \""
                 + modelPath + "\".");
         return;
     }
@@ -216,7 +216,7 @@ void TinyCudaNNCorrelationCalculator::loadModelFromFile(const std::string& model
         }
         if (!foundSymmetrizerType) {
             sgl::Logfile::get()->writeError(
-                    "Error in TinyCudaNNSimilarityCalculator::loadModelFromFile: Invalid symmetrizer type \""
+                    "Error in TinyCudaNNCorrelationCalculator::loadModelFromFile: Invalid symmetrizer type \""
                     + symmetrizerTypeName + "\".");
             return;
         }
@@ -237,7 +237,7 @@ void TinyCudaNNCorrelationCalculator::loadModelFromFile(const std::string& model
         }
         if (!foundNetworkType) {
             sgl::Logfile::get()->writeError(
-                    "Error in TinyCudaNNSimilarityCalculator::loadModelFromFile: Invalid network type \""
+                    "Error in TinyCudaNNCorrelationCalculator::loadModelFromFile: Invalid network type \""
                     + networkTypeName + "\".");
             return;
         }
@@ -255,7 +255,7 @@ void TinyCudaNNCorrelationCalculator::loadModelFromFile(const std::string& model
                 reinterpret_cast<char*>(entryDecoder.bufferData.get()), entryDecoder.bufferSize));
     } else {
         sgl::Logfile::get()->writeError(
-                "Error in TinyCudaNNSimilarityCalculator::loadModelFromFile: Could not load encoder or decoder "
+                "Error in TinyCudaNNCorrelationCalculator::loadModelFromFile: Could not load encoder or decoder "
                 "configuration from model \"" + modelPath + "\".");
         return;
     }
@@ -298,13 +298,13 @@ void TinyCudaNNCorrelationCalculator::loadModelFromFile(const std::string& model
     auto itNetworkDecoder = archiveFiles.find("network_decoder.bin");
     if (itNetworkEncoder == archiveFiles.end()) {
         sgl::Logfile::get()->writeError(
-                "Error in TinyCudaNNSimilarityCalculator::loadModelFromFile: Missing network_encoder.bin in file \""
+                "Error in TinyCudaNNCorrelationCalculator::loadModelFromFile: Missing network_encoder.bin in file \""
                 + modelPath + "\".");
         return;
     }
     if (itNetworkDecoder == archiveFiles.end()) {
         sgl::Logfile::get()->writeError(
-                "Error in TinyCudaNNSimilarityCalculator::loadModelFromFile: Missing network_decoder.bin in file \""
+                "Error in TinyCudaNNCorrelationCalculator::loadModelFromFile: Missing network_decoder.bin in file \""
                 + modelPath + "\".");
         return;
     }
@@ -358,7 +358,7 @@ void TinyCudaNNCorrelationCalculator::loadModelFromFile(const std::string& model
 
     if (numLayersOutEncoder * symmetrizerFactor != numLayersInDecoder) {
         sgl::Logfile::get()->throwError(
-                "Error in TinyCudaNNSimilarityCalculator::loadModelFromFile: Mismatch between encoder output and "
+                "Error in TinyCudaNNCorrelationCalculator::loadModelFromFile: Mismatch between encoder output and "
                 "decoder input dimensions.");
     }
 
@@ -366,7 +366,7 @@ void TinyCudaNNCorrelationCalculator::loadModelFromFile(const std::string& model
 }
 
 void TinyCudaNNCorrelationCalculator::recreateCache(int batchSize) {
-    int es = networkType == NetworkType::MINE ? volumeData->getEnsembleMemberCount() : 1;
+    int cs = networkType == NetworkType::MINE ? getCorrelationMemberCount() : 1;
 
     cacheWrapper->referenceInput = tcnn::GPUMatrix<float>();
 #if TCNN_HALF_PRECISION
@@ -393,21 +393,21 @@ void TinyCudaNNCorrelationCalculator::recreateCache(int batchSize) {
         }
     }
     uint32_t referenceInputBatchSize =
-            sgl::uiceil(uint32_t(es), tcnn::batch_size_granularity) * tcnn::batch_size_granularity;
+            sgl::uiceil(uint32_t(cs), tcnn::batch_size_granularity) * tcnn::batch_size_granularity;
 #if TCNN_HALF_PRECISION
     if (moduleWrapper->networkEncoderHalf) {
         cacheWrapper->referenceInputHalf = tcnn::GPUMatrix<precision_t>(numInputLayers, referenceInputBatchSize);
-        cacheWrapper->queryInputHalf = tcnn::GPUMatrix<precision_t>(numInputLayers, uint32_t(es) * batchSize);
+        cacheWrapper->queryInputHalf = tcnn::GPUMatrix<precision_t>(numInputLayers, uint32_t(cs) * batchSize);
     }
 #endif
     cacheWrapper->referenceInput = tcnn::GPUMatrix<float>(numInputLayers, referenceInputBatchSize);
-    cacheWrapper->queryInput = tcnn::GPUMatrix<float>(numInputLayers, uint32_t(es) * batchSize);
+    cacheWrapper->queryInput = tcnn::GPUMatrix<float>(numInputLayers, uint32_t(cs) * batchSize);
     cacheWrapper->referenceEncoded = tcnn::GPUMatrix<precision_t>(numLayersOutEncoder, referenceInputBatchSize);
-    cacheWrapper->queryEncoded = tcnn::GPUMatrix<precision_t>(numLayersOutEncoder, uint32_t(es) * batchSize);
-    cacheWrapper->symmetrizedReferenceInput = tcnn::GPUMatrix<precision_t>(numLayersInDecoder, uint32_t(es) * batchSize);
-    cacheWrapper->symmetrizedQueryInput = tcnn::GPUMatrix<precision_t>(numLayersInDecoder, uint32_t(es) * batchSize);
-    cacheWrapper->referenceDecoded = tcnn::GPUMatrix<precision_t>(numLayersOutDecoder, uint32_t(es) * batchSize);
-    cacheWrapper->queryDecoded = tcnn::GPUMatrix<precision_t>(numLayersOutDecoder, uint32_t(es) * batchSize);
+    cacheWrapper->queryEncoded = tcnn::GPUMatrix<precision_t>(numLayersOutEncoder, uint32_t(cs) * batchSize);
+    cacheWrapper->symmetrizedReferenceInput = tcnn::GPUMatrix<precision_t>(numLayersInDecoder, uint32_t(cs) * batchSize);
+    cacheWrapper->symmetrizedQueryInput = tcnn::GPUMatrix<precision_t>(numLayersInDecoder, uint32_t(cs) * batchSize);
+    cacheWrapper->referenceDecoded = tcnn::GPUMatrix<precision_t>(numLayersOutDecoder, uint32_t(cs) * batchSize);
+    cacheWrapper->queryDecoded = tcnn::GPUMatrix<precision_t>(numLayersOutDecoder, uint32_t(cs) * batchSize);
 }
 
 CUdeviceptr TinyCudaNNCorrelationCalculator::getReferenceInputPointer()  {
@@ -493,7 +493,7 @@ void TinyCudaNNCorrelationCalculator::runInferenceReference() {
 }
 
 void TinyCudaNNCorrelationCalculator::runInferenceBatch(uint32_t batchOffset, uint32_t batchSize)  {
-    int es = volumeData->getEnsembleMemberCount();
+    int cs = getCorrelationMemberCount();
 
 #if TCNN_HALF_PRECISION
     if (moduleWrapper->networkEncoderHalf) {
@@ -604,14 +604,14 @@ void TinyCudaNNCorrelationCalculator::runInferenceBatch(uint32_t batchOffset, ui
     if (networkType == NetworkType::MINE) {
         uint32_t* permutationIndicesBuffer = reinterpret_cast<uint32_t*>(permutationIndicesBufferCu);
         generateRandomPermutations<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
-                permutationIndicesBuffer, uint32_t(es), batchOffset);
+                permutationIndicesBuffer, uint32_t(cs), batchOffset);
         //randomShuffleFisherYates<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
         //        cacheWrapper->queryEncodedPermuted.data(), cacheWrapper->queryEncoded.data(),
         //        permutationIndicesBuffer, uint32_t(es), numLayersOutEncoder);
         symmetrizer(
                 cacheWrapper->referenceEncoded.data(), cacheWrapper->queryEncoded.data(),
                 cacheWrapper->symmetrizedReferenceInput.data(), cacheWrapper->symmetrizedQueryInput.data(),
-                permutationIndicesBuffer, batchSize, uint32_t(es), numLayersOutEncoder, symmetrizerType, stream);
+                permutationIndicesBuffer, batchSize, uint32_t(cs), numLayersOutEncoder, symmetrizerType, stream);
     } else {
         symmetrizerSrn(
                 cacheWrapper->referenceEncoded.data(), cacheWrapper->queryEncoded.data(),
@@ -763,7 +763,7 @@ void TinyCudaNNCorrelationCalculator::runInferenceBatch(uint32_t batchOffset, ui
     if (networkType == NetworkType::MINE) {
         combineDecoderOutput<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
                 cacheWrapper->referenceDecoded.data(), cacheWrapper->queryDecoded.data(), miOutput,
-                uint32_t(es), numLayersOutDecoder);
+                uint32_t(cs), numLayersOutDecoder);
     } else {
         copyDecoderOutputSrn<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
                 cacheWrapper->queryDecoded.data(), miOutput, numLayersOutDecoder);

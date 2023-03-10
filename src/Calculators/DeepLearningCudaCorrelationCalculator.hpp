@@ -51,7 +51,7 @@ public:
     void initialize() override;
     ~DeepLearningCudaCorrelationCalculator() override;
     std::string getOutputFieldName() override {
-        std::string outputFieldName = "Similarity " + implName;
+        std::string outputFieldName = "Correlation " + implName;
         if (calculatorConstructorUseCount > 1) {
             outputFieldName += " (" + std::to_string(calculatorConstructorUseCount) + ")";
         }
@@ -91,7 +91,7 @@ protected:
     const int srnGpuBatchSize1DBase = 131072;
     size_t cachedVolumeDataSlice3dSize = 0;
 
-    size_t cachedEnsembleSizeDevice = std::numeric_limits<size_t>::max();
+    size_t cachedCorrelationMemberCountDevice = std::numeric_limits<size_t>::max();
     bool cacheNeedsRecreate = false;
 
     size_t cachedNumSwapchainImages = 0;
@@ -100,12 +100,12 @@ protected:
     uint64_t timelineValue = 0;
     CUdeviceptr permutationIndicesBufferCu{};
     CUdeviceptr outputImageBufferCu{};
-    CUdeviceptr ensembleTextureArrayCu{};
-    std::vector<CUtexObject> cachedEnsembleTexturesCu;
+    CUdeviceptr fieldTextureArrayCu{};
+    std::vector<CUtexObject> cachedFieldTexturesCu;
     CUstream stream{};
-    CUmodule combineEnsemblesModuleCu{};
-    CUfunction combineEnsemblesFunctionCu{}, combineEnsemblesReferenceFunctionCu{};
-    CUfunction combineEnsemblesAlignedFunctionCu{}, combineEnsemblesReferenceAlignedFunctionCu{};
+    CUmodule combineCorrelationMembersModuleCu{};
+    CUfunction combineCorrelationMembersFunctionCu{}, combineCorrelationMembersReferenceFunctionCu{};
+    CUfunction combineCorrelationMembersAlignedFunctionCu{}, combineCorrelationMembersReferenceAlignedFunctionCu{};
     // For networkType == NetworkType::SRN_MINE.
     CUfunction writeGridPositionsFunctionCu{}, writeGridPositionReferenceFunctionCu{};
 

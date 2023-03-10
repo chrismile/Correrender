@@ -29,13 +29,16 @@
 #ifndef CORRERENDER_CORRELATIONDEFINES_HPP
 #define CORRERENDER_CORRELATIONDEFINES_HPP
 
+const char* const CORRELATION_MODE_NAMES[2] = {
+        "Ensemble", "Time"
+};
+
 enum class CorrelationMeasureType {
     PEARSON, SPEARMAN, KENDALL, MUTUAL_INFORMATION_BINNED, MUTUAL_INFORMATION_KRASKOV
 };
 const char* const CORRELATION_MEASURE_TYPE_NAMES[] = {
         "Pearson", "Spearman", "Kendall", "Mutual Information (Binned)", "Mutual Information (Kraskov)"
 };
-
 
 enum class NetworkType {
     /*

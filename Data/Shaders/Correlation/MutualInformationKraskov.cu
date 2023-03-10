@@ -38,10 +38,10 @@ typedef float2 vec2;
  * - https://journals.aps.org/pre/abstract/10.1103/PhysRevE.69.066138
  *
  * Global defines:
- * - ENSEMBLE_MEMBER_COUNT: Number of ensemble members.
+ * - MEMBER_COUNT: Number of ensemble members.
  * - k: Number of neighbors used in search.
- * - MAX_STACK_SIZE_BUILD: 2 * uint32_t(ceil(log(ENSEMBLE_MEMBER_COUNT + 1))); 2*10 for 1000 ensemble members.
- * - MAX_STACK_SIZE_KN: uint32_t(ceil(log(ENSEMBLE_MEMBER_COUNT + 1))); 10 for 1000 ensemble members.
+ * - MAX_STACK_SIZE_BUILD: 2 * uint32_t(ceil(log(MEMBER_COUNT + 1))); 2*10 for 1000 ensemble members.
+ * - MAX_STACK_SIZE_KN: uint32_t(ceil(log(MEMBER_COUNT + 1))); 10 for 1000 ensemble members.
  */
 
 const float EPSILON = 1e-6;
@@ -190,27 +190,27 @@ __device__ void heapify(
 __device__ void heapSort(float* kthNeighborDistances, float* valueArray) {
     // We can't use "i >= 0" with uint, thus adapt range and subtract 1 from i.
     uint i;
-    for (i = ENSEMBLE_MEMBER_COUNT / 2; i > 0; i--) {
-        heapify(kthNeighborDistances, valueArray, i - 1, ENSEMBLE_MEMBER_COUNT);
+    for (i = MEMBER_COUNT / 2; i > 0; i--) {
+        heapify(kthNeighborDistances, valueArray, i - 1, MEMBER_COUNT);
     }
     // Largest element is at index 0. Swap it to the end of the processed array portion iteratively.
-    for (i = 1; i < ENSEMBLE_MEMBER_COUNT; i++) {
-        swapElements(kthNeighborDistances, valueArray, 0, ENSEMBLE_MEMBER_COUNT - i);
-        heapify(kthNeighborDistances, valueArray, 0, ENSEMBLE_MEMBER_COUNT - i);
+    for (i = 1; i < MEMBER_COUNT; i++) {
+        swapElements(kthNeighborDistances, valueArray, 0, MEMBER_COUNT - i);
+        heapify(kthNeighborDistances, valueArray, 0, MEMBER_COUNT - i);
     }
 }
 
 __device__ float averageDigamma(float* kthNeighborDistances, float* valueArray) {
     heapSort(kthNeighborDistances, valueArray);
-    float factor = 1.0 / float(ENSEMBLE_MEMBER_COUNT);
+    float factor = 1.0 / float(MEMBER_COUNT);
     float meanDigammaValue = 0.0;
-    for (uint e = 0; e < ENSEMBLE_MEMBER_COUNT; e++) {
-        float kthDist = kthNeighborDistances[e] - EPSILON;
-        float currentValue = valueArray[e];
+    for (uint c = 0; c < MEMBER_COUNT; c++) {
+        float kthDist = kthNeighborDistances[c] - EPSILON;
+        float currentValue = valueArray[c];
         float searchValueLower = currentValue - kthDist;
         float searchValueUpper = currentValue + kthDist;
         int lower = 0;
-        int upper = ENSEMBLE_MEMBER_COUNT;
+        int upper = MEMBER_COUNT;
         int middle = 0;
         // Binary search.
         while (lower < upper) {
@@ -225,7 +225,7 @@ __device__ float averageDigamma(float* kthNeighborDistances, float* valueArray) 
 
         int startRange = upper;
         lower = startRange;
-        upper = ENSEMBLE_MEMBER_COUNT;
+        upper = MEMBER_COUNT;
 
         // Binary search.
         while (lower < upper) {
@@ -277,7 +277,7 @@ __device__ void buildKdTree(KdNode* nodes, float* referenceValues, float* queryV
     uint nodeCounter = 0;
     StackEntryBuild stack[MAX_STACK_SIZE_BUILD];
     uint stackSize = 1u;
-    stack[0] = StackEntryBuild(0u, ENSEMBLE_MEMBER_COUNT, 0u);
+    stack[0] = StackEntryBuild(0u, MEMBER_COUNT, 0u);
     StackEntryBuild stackEntry;
     while (stackSize > 0u) {
         stackSize--;
@@ -373,7 +373,7 @@ __device__ float findKNearestNeighbors(KdNode* nodes, float point[2], uint e) {
 
 
 __global__ void mutualInformationKraskov(
-        cudaTextureObject_t* scalarFieldEnsembles, float* __restrict__ miArray,
+        cudaTextureObject_t* scalarFields, float* __restrict__ miArray,
         uint32_t xs, uint32_t ys, uint32_t zs, uint3 referencePointIdx,
         const uint32_t batchOffset, const uint32_t batchSize) {
     uint globalThreadIdx = blockIdx.x * blockDim.x + threadIdx.x + batchOffset;
@@ -385,8 +385,8 @@ __global__ void mutualInformationKraskov(
     uint32_t y = (globalThreadIdx / xs) % ys;
     uint32_t z = globalThreadIdx / (xs * ys);
 
-    float referenceValues[ENSEMBLE_MEMBER_COUNT];
-    float queryValues[ENSEMBLE_MEMBER_COUNT];
+    float referenceValues[MEMBER_COUNT];
+    float queryValues[MEMBER_COUNT];
 
 #ifdef KRASKOV_USE_RANDOM_NOISE
     // Optionally add noise.
@@ -401,24 +401,24 @@ __global__ void mutualInformationKraskov(
 
     float nanValue = 0.0;
     float referenceValue, queryValue;
-    for (uint e = 0; e < ENSEMBLE_MEMBER_COUNT; e++) {
+    for (uint c = 0; c < MEMBER_COUNT; c++) {
 #ifdef USE_NORMALIZED_COORDINATES
         referenceValue = tex3D<float>(
-                scalarFieldEnsembles[e],
+                scalarFields[e],
                 (float(referencePointIdx.x) + 0.5f) / float(xs),
                 (float(referencePointIdx.y) + 0.5f) / float(ys),
                 (float(referencePointIdx.z) + 0.5f) / float(zs));
         queryValue = tex3D<float>(
-                scalarFieldEnsembles[e],
+                scalarFields[e],
                 (float(x) + 0.5f) / float(xs),
                 (float(y) + 0.5f) / float(ys),
                 (float(z) + 0.5f) / float(zs));
 #else
         referenceValue = tex3D<float>(
-                scalarFieldEnsembles[e], float(referencePointIdx.x) + 0.5f,
+                scalarFields[c], float(referencePointIdx.x) + 0.5f,
                 float(referencePointIdx.y) + 0.5f, float(referencePointIdx.z) + 0.5f);
         queryValue = tex3D<float>(
-                scalarFieldEnsembles[e], float(x) + 0.5f, float(y) + 0.5f, float(z) + 0.5f);
+                scalarFields[c], float(x) + 0.5f, float(y) + 0.5f, float(z) + 0.5f);
 #endif
 #ifdef KRASKOV_USE_RANDOM_NOISE
         referenceValue += EPSILON_NOISE * getRandomFloatNorm(rngState);
@@ -427,28 +427,28 @@ __global__ void mutualInformationKraskov(
         if (isnan(queryValue)) {
             nanValue = queryValue;
         }
-        referenceValues[e] = referenceValue;
-        queryValues[e] = queryValue;
+        referenceValues[c] = referenceValue;
+        queryValues[c] = queryValue;
     }
 
-    KdNode nodes[ENSEMBLE_MEMBER_COUNT];
+    KdNode nodes[MEMBER_COUNT];
     buildKdTree(nodes, referenceValues, queryValues);
 
     float point[2];
-    float kthNeighborDistances0[ENSEMBLE_MEMBER_COUNT];
-    float kthNeighborDistances1[ENSEMBLE_MEMBER_COUNT];
-    for (uint e = 0; e < ENSEMBLE_MEMBER_COUNT; e++) {
-        point[0] = referenceValues[e];
-        point[1] = queryValues[e];
-        float val = findKNearestNeighbors(nodes, point, e);
-        kthNeighborDistances0[e] = val;
-        kthNeighborDistances1[e] = val;
+    float kthNeighborDistances0[MEMBER_COUNT];
+    float kthNeighborDistances1[MEMBER_COUNT];
+    for (uint c = 0; c < MEMBER_COUNT; c++) {
+        point[0] = referenceValues[c];
+        point[1] = queryValues[c];
+        float val = findKNearestNeighbors(nodes, point, c);
+        kthNeighborDistances0[c] = val;
+        kthNeighborDistances1[c] = val;
     }
 
     float a = averageDigamma(kthNeighborDistances0, referenceValues);
     float b = averageDigamma(kthNeighborDistances1, queryValues);
     float c = digamma(k);
-    float d = digamma(ENSEMBLE_MEMBER_COUNT);
+    float d = digamma(MEMBER_COUNT);
     //float mi = (-a - b + c + d) / log(base);
     float mi = -a - b + c + d;
 

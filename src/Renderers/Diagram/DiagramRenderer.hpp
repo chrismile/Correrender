@@ -77,8 +77,10 @@ private:
     std::vector<std::pair<GridRegion, GridRegion>> selectedRegionStack; //< Selected regions stack.
 
     // UI renderer settings.
+    void onCorrelationMemberCountChanged();
     int selectedFieldIdx = 0, oldSelectedFieldIdx = 0;
     std::string selectedScalarFieldName;
+    bool isEnsembleMode = true; //< Ensemble or time mode?
     CorrelationMeasureType correlationMeasureType = CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV;
     float beta = 0.75f;
     int minDownscalingFactor = 16, maxDownscalingFactor = 64;

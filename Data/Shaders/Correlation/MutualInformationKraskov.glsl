@@ -113,13 +113,13 @@ void heapify(uint i, uint numElements) {
 void heapSort() {
     // We can't use "i >= 0" with uint, thus adapt range and subtract 1 from i.
     uint i;
-    for (i = ENSEMBLE_MEMBER_COUNT / 2; i > 0; i--) {
-        heapify(i - 1, ENSEMBLE_MEMBER_COUNT);
+    for (i = MEMBER_COUNT / 2; i > 0; i--) {
+        heapify(i - 1, MEMBER_COUNT);
     }
     // Largest element is at index 0. Swap it to the end of the processed array portion iteratively.
-    for (i = 1; i < ENSEMBLE_MEMBER_COUNT; i++) {
-        swapElements(0, ENSEMBLE_MEMBER_COUNT - i);
-        heapify(0, ENSEMBLE_MEMBER_COUNT - i);
+    for (i = 1; i < MEMBER_COUNT; i++) {
+        swapElements(0, MEMBER_COUNT - i);
+        heapify(0, MEMBER_COUNT - i);
     }
 }
 
@@ -128,15 +128,15 @@ float averageDigamma() {
     //if (gl_GlobalInvocationID.x == 29 && gl_GlobalInvocationID.y == 176 && gl_GlobalInvocationID.z == 10) {
     //    debugPrintfEXT("refs %f %f %f %f", referenceValues[0], referenceValues[1], referenceValues[2], referenceValues[3]);
     //}
-    float factor = 1.0 / float(es);
+    float factor = 1.0 / float(cs);
     float meanDigammaValue = 0.0;
-    for (uint e = 0; e < es; e++) {
-        float kthDist = kthNeighborDistances[e] - EPSILON;
-        float currentValue = valueArray[e];
+    for (uint c = 0; c < cs; c++) {
+        float kthDist = kthNeighborDistances[c] - EPSILON;
+        float currentValue = valueArray[c];
         float searchValueLower = currentValue - kthDist;
         float searchValueUpper = currentValue + kthDist;
         int lower = 0;
-        int upper = ENSEMBLE_MEMBER_COUNT;
+        int upper = MEMBER_COUNT;
         int middle = 0;
         // Binary search.
         while (lower < upper) {
@@ -151,7 +151,7 @@ float averageDigamma() {
 
         int startRange = upper;
         lower = startRange;
-        upper = ENSEMBLE_MEMBER_COUNT;
+        upper = MEMBER_COUNT;
 
         // Binary search.
         while (lower < upper) {
@@ -184,11 +184,11 @@ float averageDigamma() {
 layout(local_size_x = BLOCK_SIZE_X, local_size_y = BLOCK_SIZE_Y, local_size_z = BLOCK_SIZE_Z) in;
 
 layout (binding = 0) uniform UniformBuffer {
-    uint xs, ys, zs, es;
+    uint xs, ys, zs, cs;
 };
 layout (binding = 1, r32f) uniform writeonly image3D outputImage;
 layout (binding = 2) uniform sampler scalarFieldSampler;
-layout (binding = 3) uniform texture3D scalarFieldEnsembles[ENSEMBLE_MEMBER_COUNT];
+layout (binding = 3) uniform texture3D scalarFields[MEMBER_COUNT];
 
 layout(push_constant) uniform PushConstants {
     ivec3 referencePointIdx;
@@ -206,17 +206,17 @@ layout(push_constant) uniform PushConstants {
 
 /*
  * Global defines:
- * - ENSEMBLE_MEMBER_COUNT
- * - MAX_STACK_SIZE_BUILD: 2 * uint32_t(ceil(log(ENSEMBLE_MEMBER_COUNT + 1))); 2*10 for 1000 ensemble members.
- * - MAX_STACK_SIZE_KN: uint32_t(ceil(log(ENSEMBLE_MEMBER_COUNT + 1))); 10 for 1000 ensemble members.
+ * - MEMBER_COUNT
+ * - MAX_STACK_SIZE_BUILD: 2 * uint32_t(ceil(log(MEMBER_COUNT + 1))); 2*10 for 1000 ensemble members.
+ * - MAX_STACK_SIZE_KN: uint32_t(ceil(log(MEMBER_COUNT + 1))); 10 for 1000 ensemble members.
  */
 
 //const uint k = 3; //< Set via define.
 //const uint base = 2;
 
-float referenceValues[ENSEMBLE_MEMBER_COUNT];
-float queryValues[ENSEMBLE_MEMBER_COUNT];
-float kthNeighborDistances[ENSEMBLE_MEMBER_COUNT];
+float referenceValues[MEMBER_COUNT];
+float queryValues[MEMBER_COUNT];
+float kthNeighborDistances[MEMBER_COUNT];
 
 const uint INVALID_NODE = 0xFFFFu;
 #define FLT_MAX 3.402823466e+38
@@ -226,7 +226,7 @@ struct KdNode {
     uint axis;
     uint leftRightIdx;
 };
-KdNode nodes[ENSEMBLE_MEMBER_COUNT];
+KdNode nodes[MEMBER_COUNT];
 
 struct StackEntryBuild {
     uint startIdx;
@@ -240,7 +240,7 @@ void buildKdTree() {
     uint nodeCounter = 0;
     StackEntryBuild stack[MAX_STACK_SIZE_BUILD];
     uint stackSize = 1u;
-    stack[0] = StackEntryBuild(0u, ENSEMBLE_MEMBER_COUNT, 0u);
+    stack[0] = StackEntryBuild(0u, MEMBER_COUNT, 0u);
     StackEntryBuild stackEntry;
     while (stackSize > 0u) {
         stackSize--;
@@ -290,7 +290,7 @@ void buildKdTree() {
     }
 }
 
-float findKNearestNeighbors(vec2 point, uint e) {
+float findKNearestNeighbors(vec2 point, uint c) {
     float distances[k + 1];
     [[unroll]] for (int i = 0; i <= k; i++) {
         distances[i] = FLT_MAX;
@@ -467,29 +467,29 @@ void main() {
     // Optionally add noise.
     float nanValue = 0.0;
     float value;
-    for (uint e = 0; e < es; e++) {
-        referenceValues[e] =
-                texelFetch(sampler3D(scalarFieldEnsembles[nonuniformEXT(e)], scalarFieldSampler), referencePointIdx, 0).r
+    for (uint c = 0; c < cs; c++) {
+        referenceValues[c] =
+                texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), referencePointIdx, 0).r
                 + EPSILON_NOISE * getRandomFloatNorm(rngState);
         value =
-                texelFetch(sampler3D(scalarFieldEnsembles[nonuniformEXT(e)], scalarFieldSampler), currentPointIdx, 0).r
+                texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), currentPointIdx, 0).r
                 + EPSILON_NOISE * getRandomFloatNorm(rngState);
         if (isnan(value)) {
             nanValue = value;
         }
-        queryValues[e] = value;
+        queryValues[c] = value;
     }
 #else
     float nanValue = 0.0;
     float value;
-    for (uint e = 0; e < es; e++) {
-        referenceValues[e] = texelFetch(sampler3D(scalarFieldEnsembles[nonuniformEXT(e)], scalarFieldSampler), referencePointIdx, 0).r;
-        //queryValues[e] = texelFetch(sampler3D(scalarFieldEnsembles[nonuniformEXT(e)], scalarFieldSampler), currentPointIdx, 0).r;
-        value = texelFetch(sampler3D(scalarFieldEnsembles[nonuniformEXT(e)], scalarFieldSampler), currentPointIdx, 0).r;
+    for (uint c = 0; c < cs; c++) {
+        referenceValues[c] = texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), referencePointIdx, 0).r;
+        //queryValues[c] = texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), currentPointIdx, 0).r;
+        value = texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), currentPointIdx, 0).r;
         if (isnan(value)) {
             nanValue = value;
         }
-        queryValues[e] = value;
+        queryValues[c] = value;
     }
 #endif
 
@@ -498,20 +498,20 @@ void main() {
     //rngState.x = 123456789u ^ seed;
     //rngState.y = 362436069u ^ seed;
     //rngState.z = 521288629u ^ seed;
-    //for (uint e = 0; e < es; e++) {
-    //    referenceValues[e] =
-    //            texelFetch(sampler3D(scalarFieldEnsembles[nonuniformEXT(e)], scalarFieldSampler), referencePointIdx, 0).r
+    //for (uint c = 0; c < cs; c++) {
+    //    referenceValues[c] =
+    //            texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), referencePointIdx, 0).r
     //            + EPSILON_NOISE * getRandomFloatNorm(rngState);
-    //    queryValues[e] =
-    //            texelFetch(sampler3D(scalarFieldEnsembles[nonuniformEXT(e)], scalarFieldSampler), currentPointIdx, 0).r
+    //    queryValues[c] =
+    //            texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), currentPointIdx, 0).r
     //            + EPSILON_NOISE * getRandomFloatNorm(rngState);
     //}
 
-    for (uint e = 0; e < es; e++) {
+    for (uint c = 0; c < cs; c++) {
         //if (gl_GlobalInvocationID.x == 29 && gl_GlobalInvocationID.y == 176 && gl_GlobalInvocationID.z == 10) {
         //    debugPrintfEXT("kref %f, kquery %f", referenceValues[e], queryValues[e]);
         //}
-        kthNeighborDistances[e] = findKNearestNeighbors(vec2(referenceValues[e], queryValues[e]), e);
+        kthNeighborDistances[c] = findKNearestNeighbors(vec2(referenceValues[c], queryValues[c]), c);
         //if (gl_GlobalInvocationID.x == 29 && gl_GlobalInvocationID.y == 176 && gl_GlobalInvocationID.z == 10) {
         //    debugPrintfEXT("kn (%u): %f", e, kthNeighborDistances[e]);
         //}
@@ -520,7 +520,7 @@ void main() {
     float a = averageDigammaReference();
     float b = averageDigammaQuery();
     float c = digamma(k);
-    float d = digamma(es);
+    float d = digamma(cs);
     //float mi = (-a - b + c + d) / log(base);
     float mi = -a - b + c + d;
 

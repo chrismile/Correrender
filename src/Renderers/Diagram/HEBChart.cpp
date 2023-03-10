@@ -74,6 +74,16 @@ void HEBChart::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) {
     }
 }
 
+int HEBChart::getCorrelationMemberCount() {
+    return isEnsembleMode ? volumeData->getEnsembleMemberCount() : volumeData->getTimeStepCount();
+}
+
+VolumeData::HostCacheEntry HEBChart::getFieldEntryCpu(const std::string& fieldName, int fieldIdx) {
+    VolumeData::HostCacheEntry ensembleEntryField = volumeData->getFieldEntryCpu(
+            FieldType::SCALAR, fieldName, isEnsembleMode ? -1 : fieldIdx, isEnsembleMode ? fieldIdx : -1);
+    return ensembleEntryField;
+}
+
 void HEBChart::setRegions(const std::pair<GridRegion, GridRegion>& _rs) {
     r0 = _rs.first;
     r1 = _rs.second;
@@ -104,6 +114,11 @@ void HEBChart::setSelectedScalarField(int _selectedFieldIdx, const std::string& 
     dataDirty = true;
 }
 
+void HEBChart::setIsEnsembleMode(bool _isEnsembleMode) {
+    isEnsembleMode = _isEnsembleMode;
+    dataDirty = true;
+}
+
 void HEBChart::setCorrelationMeasureType(CorrelationMeasureType _correlationMeasureType) {
     correlationMeasureType = _correlationMeasureType;
     dataDirty = true;
@@ -125,10 +140,10 @@ void HEBChart::setUse2DField(bool _use2dField) {
 glm::vec2 HEBChart::getCorrelationRangeTotal() {
     if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV
             || correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
-        int es = volumeData->getEnsembleMemberCount();
-        int k = std::max(sgl::iceil(3 * es, 100), 1);
+        int cs = getCorrelationMemberCount();
+        int k = std::max(sgl::iceil(3 * cs, 100), 1);
         correlationRangeTotal.x = 0.0f;
-        correlationRangeTotal.y = computeMaximumMutualInformationKraskov(k, es);
+        correlationRangeTotal.y = computeMaximumMutualInformationKraskov(k, cs);
     } else {
         correlationRangeTotal.x = -1.0f;
         correlationRangeTotal.y = 1.0f;
@@ -157,17 +172,16 @@ void HEBChart::setCellDistanceRange(const glm::ivec2& _range) {
 }
 
 
-void HEBChart::computeDownscaledField(int idx, std::vector<float*>& downscaledEnsembleFields) {
-    int es = volumeData->getEnsembleMemberCount();
+void HEBChart::computeDownscaledField(int idx, std::vector<float*>& downscaledFields) {
+    int cs = getCorrelationMemberCount();
     int xsd = idx == 0 ? xsd0 : xsd1;
     int ysd = idx == 0 ? ysd0 : ysd1;
     int zsd = idx == 0 ? zsd0 : zsd1;
     int numPoints = xsd * ysd * zsd;
     GridRegion r = idx == 0 ? r0 : r1;
-    for (int ensembleIdx = 0; ensembleIdx < es; ensembleIdx++) {
-        VolumeData::HostCacheEntry ensembleEntryField = volumeData->getFieldEntryCpu(
-                FieldType::SCALAR, selectedScalarFieldName, -1, ensembleIdx);
-        float* field = ensembleEntryField.get();
+    for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
+        VolumeData::HostCacheEntry fieldEntry = getFieldEntryCpu(selectedScalarFieldName, fieldIdx);
+        float* field = fieldEntry.get();
         auto* dowsncaledField = new float[numPoints];
 
         if (!use2dField) {
@@ -230,13 +244,13 @@ void HEBChart::computeDownscaledField(int idx, std::vector<float*>& downscaledEn
             }
         }
 
-        downscaledEnsembleFields.at(ensembleIdx) = dowsncaledField;
+        downscaledFields.at(fieldIdx) = dowsncaledField;
     }
 }
 
-void HEBChart::computeDownscaledFieldVariance(int idx, std::vector<float*>& downscaledEnsembleFields) {
+void HEBChart::computeDownscaledFieldVariance(int idx, std::vector<float*>& downscaledFields) {
     // Compute the standard deviation inside the downscaled grids.
-    int es = volumeData->getEnsembleMemberCount();
+    int cs = getCorrelationMemberCount();
     int xsd = idx == 0 ? xsd0 : xsd1;
     int ysd = idx == 0 ? ysd0 : ysd1;
     int zsd = idx == 0 ? zsd0 : zsd1;
@@ -245,13 +259,12 @@ void HEBChart::computeDownscaledFieldVariance(int idx, std::vector<float*>& down
     auto& pointToNodeIndexMap = idx == 0 ? pointToNodeIndexMap0 : pointToNodeIndexMap1;
     leafStdDevArray.resize(xsd0 * ysd0 * zsd0 + (idx == 0 ? 0 : + xsd1 * ysd1 * zsd1));
 
-    std::vector<VolumeData::HostCacheEntry> ensembleEntryFields;
+    std::vector<VolumeData::HostCacheEntry> fieldEntries;
     std::vector<float*> fields;
-    for (int ensembleIdx = 0; ensembleIdx < es; ensembleIdx++) {
-        VolumeData::HostCacheEntry ensembleEntryField = volumeData->getFieldEntryCpu(
-                FieldType::SCALAR, selectedScalarFieldName, -1, ensembleIdx);
-        float* field = ensembleEntryField.get();
-        ensembleEntryFields.push_back(ensembleEntryField);
+    for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
+        VolumeData::HostCacheEntry fieldEntry = getFieldEntryCpu(selectedScalarFieldName, fieldIdx);
+        float* field = fieldEntry.get();
+        fieldEntries.push_back(fieldEntry);
         fields.push_back(field);
     }
 
@@ -260,7 +273,7 @@ void HEBChart::computeDownscaledFieldVariance(int idx, std::vector<float*>& down
             for (auto pointIdx = r.begin(); pointIdx != r.end(); pointIdx++) {
 #else
 #if _OPENMP >= 200805
-    #pragma omp parallel for default(none) shared(fields, pointToNodeIndexMap, xsd, ysd, zsd, r, numPoints, es)
+    #pragma omp parallel for default(none) shared(fields, pointToNodeIndexMap, xsd, ysd, zsd, r, numPoints, cs)
 #endif
     for (int pointIdx = 0; pointIdx < numPoints; pointIdx++) {
 #endif
@@ -279,27 +292,27 @@ void HEBChart::computeDownscaledFieldVariance(int idx, std::vector<float*>& down
                         int z = r.zoff + zd * dfz + zo;
                         if (x <= r.xmax && y <= r.ymax && z <= r.zmax) {
                             int numValid = 0;
-                            float ensembleMean = 0.0f;
-                            for (int ensembleIdx = 0; ensembleIdx < es; ensembleIdx++) {
-                                float* field = fields.at(ensembleIdx);
+                            float fieldMean = 0.0f;
+                            for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
+                                float* field = fields.at(fieldIdx);
                                 float val = field[IDXS(x, y, z)];
                                 if (!std::isnan(val)) {
-                                    ensembleMean += val;
+                                    fieldMean += val;
                                     numValid++;
                                 }
                             }
                             if (numValid > 1) {
-                                ensembleMean = ensembleMean / float(numValid);
-                                float ensembleVarianceSum = 0.0f;
-                                for (int ensembleIdx = 0; ensembleIdx < es; ensembleIdx++) {
-                                    float* field = fields.at(ensembleIdx);
+                                fieldMean = fieldMean / float(numValid);
+                                float fieldVarianceSum = 0.0f;
+                                for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
+                                    float* field = fields.at(fieldIdx);
                                     float val = field[IDXS(x, y, z)];
                                     if (!std::isnan(val)) {
-                                        float diff = ensembleMean - val;
-                                        ensembleVarianceSum += diff * diff;
+                                        float diff = fieldMean - val;
+                                        fieldVarianceSum += diff * diff;
                                     }
                                 }
-                                gridVarianceSum += ensembleVarianceSum / float(numValid - 1);
+                                gridVarianceSum += fieldVarianceSum / float(numValid - 1);
                                 gridNumValid += 1;
                             }
                         }
@@ -314,27 +327,27 @@ void HEBChart::computeDownscaledFieldVariance(int idx, std::vector<float*>& down
                     int y = r.yoff + yd * dfy + yo;
                     if (x <= r.xmax && y <= r.ymax) {
                         int numValid = 0;
-                        float ensembleMean = 0.0f;
-                        for (int ensembleIdx = 0; ensembleIdx < es; ensembleIdx++) {
-                            float* field = fields.at(ensembleIdx);
+                        float fieldMean = 0.0f;
+                        for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
+                            float* field = fields.at(fieldIdx);
                             float val = field[IDXS(x, y, zCenter)];
                             if (!std::isnan(val)) {
-                                ensembleMean += val;
+                                fieldMean += val;
                                 numValid++;
                             }
                         }
                         if (numValid > 1) {
-                            ensembleMean = ensembleMean / float(numValid);
-                            float ensembleVarianceSum = 0.0f;
-                            for (int ensembleIdx = 0; ensembleIdx < es; ensembleIdx++) {
-                                float* field = fields.at(ensembleIdx);
+                            fieldMean = fieldMean / float(numValid);
+                            float fieldVarianceSum = 0.0f;
+                            for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
+                                float* field = fields.at(fieldIdx);
                                 float val = field[IDXS(x, y, zCenter)];
                                 if (!std::isnan(val)) {
-                                    float diff = ensembleMean - val;
-                                    ensembleVarianceSum += diff * diff;
+                                    float diff = fieldMean - val;
+                                    fieldVarianceSum += diff * diff;
                                 }
                             }
-                            gridVarianceSum += ensembleVarianceSum / float(numValid - 1);
+                            gridVarianceSum += fieldVarianceSum / float(numValid - 1);
                             gridNumValid += 1;
                         }
                     }
@@ -359,11 +372,10 @@ void HEBChart::computeDownscaledFieldVariance(int idx, std::vector<float*>& down
 }
 
 void HEBChart::computeCorrelations(
-        std::vector<float*>& downscaledEnsembleFields0,
-        std::vector<float*>& downscaledEnsembleFields1,
+        std::vector<float*>& downscaledFields0, std::vector<float*>& downscaledFields1,
         std::vector<MIFieldEntry>& miFieldEntries) {
-    int es = volumeData->getEnsembleMemberCount();
-    int k = std::max(sgl::iceil(3 * es, 100), 1); //< CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV
+    int cs = getCorrelationMemberCount();
+    int k = std::max(sgl::iceil(3 * cs, 100), 1); //< CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV
     int numBins = 80; //< CorrelationMeasureType::MUTUAL_INFORMATION_BINNED
     int numPoints0 = xsd0 * ysd0 * zsd0;
     int numPoints1 = xsd1 * ysd1 * zsd1;
@@ -401,37 +413,37 @@ void HEBChart::computeCorrelations(
                     histogram2d = new double[numBins * numBins];
                 }
 
-                float minEnsembleValRef, maxEnsembleValRef, minEnsembleVal, maxEnsembleVal;
+                float minFieldValRef, maxFieldValRef, minFieldVal, maxFieldVal;
 
                 for (int i = r.begin(); i != r.end(); i++) {
 #else
     miFieldEntries.reserve(regionsEqual ? (numPoints0 * numPoints0 + numPoints0) / 2 : numPoints0 * numPoints1);
 #if _OPENMP >= 201107
-    #pragma omp parallel default(none) shared(miFieldEntries, numPoints0, numPoints1, es, k, numBins) \
-    shared(downscaledEnsembleFields0, downscaledEnsembleFields1)
+    #pragma omp parallel default(none) shared(miFieldEntries, numPoints0, numPoints1, cs, k, numBins) \
+    shared(downscaledFields0, downscaledFields1)
 #endif
     {
         const CorrelationMeasureType cmt = correlationMeasureType;
         std::vector<MIFieldEntry> miFieldEntriesThread;
-        std::vector<float> X(es);
-        std::vector<float> Y(es);
+        std::vector<float> X(cs);
+        std::vector<float> Y(cs);
 
         std::vector<std::pair<float, int>> ordinalRankArraySpearman;
         float* referenceRanks = nullptr;
         float* gridPointRanks = nullptr;
         if (cmt == CorrelationMeasureType::SPEARMAN) {
-            ordinalRankArraySpearman.reserve(es);
-            referenceRanks = new float[es];
-            gridPointRanks = new float[es];
+            ordinalRankArraySpearman.reserve(cs);
+            referenceRanks = new float[cs];
+            gridPointRanks = new float[cs];
         }
 
         std::vector<std::pair<float, float>> jointArray;
         std::vector<float> ordinalRankArray;
         std::vector<float> y;
         if (cmt == CorrelationMeasureType::KENDALL) {
-            jointArray.reserve(es);
-            ordinalRankArray.reserve(es);
-            y.reserve(es);
+            jointArray.reserve(cs);
+            ordinalRankArray.reserve(cs);
+            y.reserve(cs);
         }
 
         double* histogram0 = nullptr;
@@ -443,7 +455,7 @@ void HEBChart::computeCorrelations(
             histogram2d = new double[numBins * numBins];
         }
 
-        float minEnsembleValRef, maxEnsembleValRef, minEnsembleVal, maxEnsembleVal;
+        float minFieldValRef, maxFieldValRef, minFieldVal, maxFieldVal;
 
 #if _OPENMP >= 201107
         #pragma omp for schedule(dynamic)
@@ -451,8 +463,8 @@ void HEBChart::computeCorrelations(
         for (int i = 0; i < numPoints0; i++) {
 #endif
             bool isNan = false;
-            for (int e = 0; e < es; e++) {
-                X[e] = downscaledEnsembleFields0.at(e)[i];
+            for (int e = 0; e < cs; e++) {
+                X[e] = downscaledFields0.at(e)[i];
                 if (std::isnan(X[e])) {
                     isNan = true;
                     break;
@@ -463,18 +475,18 @@ void HEBChart::computeCorrelations(
             }
             if (correlationMeasureType == CorrelationMeasureType::SPEARMAN) {
                 std::vector<std::pair<float, int>> ordinalRankArrayRef;
-                ordinalRankArray.reserve(es);
-                computeRanks(X.data(), referenceRanks, ordinalRankArrayRef, es);
+                ordinalRankArray.reserve(cs);
+                computeRanks(X.data(), referenceRanks, ordinalRankArrayRef, cs);
             }
             if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
-                minEnsembleValRef = std::numeric_limits<float>::max();
-                maxEnsembleValRef = std::numeric_limits<float>::lowest();
-                for (int e = 0; e < es; e++) {
-                    minEnsembleValRef = std::min(minEnsembleValRef, X[e]);
-                    maxEnsembleValRef = std::max(maxEnsembleValRef, X[e]);
+                minFieldValRef = std::numeric_limits<float>::max();
+                maxFieldValRef = std::numeric_limits<float>::lowest();
+                for (int e = 0; e < cs; e++) {
+                    minFieldValRef = std::min(minFieldValRef, X[e]);
+                    maxFieldValRef = std::max(maxFieldValRef, X[e]);
                 }
-                for (int e = 0; e < es; e++) {
-                    X[e] = (downscaledEnsembleFields0.at(e)[i] - minEnsembleValRef) / (maxEnsembleValRef - minEnsembleValRef);
+                for (int e = 0; e < cs; e++) {
+                    X[e] = (downscaledFields0.at(e)[i] - minFieldValRef) / (maxFieldValRef - minFieldValRef);
                 }
             }
 
@@ -488,8 +500,8 @@ void HEBChart::computeCorrelations(
                         continue;
                     }
                 }
-                for (int e = 0; e < es; e++) {
-                    Y[e] = downscaledEnsembleFields1.at(e)[j];
+                for (int e = 0; e < cs; e++) {
+                    Y[e] = downscaledFields1.at(e)[j];
                     if (std::isnan(Y[e])) {
                         isNan = true;
                         break;
@@ -497,32 +509,32 @@ void HEBChart::computeCorrelations(
                 }
                 if (!isNan) {
                     if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
-                        minEnsembleVal = minEnsembleValRef;
-                        maxEnsembleVal = maxEnsembleValRef;
-                        for (int e = 0; e < es; e++) {
-                            minEnsembleVal = std::min(minEnsembleVal, Y[e]);
-                            maxEnsembleVal = std::max(maxEnsembleVal, Y[e]);
+                        minFieldVal = minFieldValRef;
+                        maxFieldVal = maxFieldValRef;
+                        for (int e = 0; e < cs; e++) {
+                            minFieldVal = std::min(minFieldVal, Y[e]);
+                            maxFieldVal = std::max(maxFieldVal, Y[e]);
                         }
-                        for (int e = 0; e < es; e++) {
-                            X[e] = (downscaledEnsembleFields0.at(e)[i] - minEnsembleVal) / (maxEnsembleVal - minEnsembleVal);
-                            Y[e] = (downscaledEnsembleFields1.at(e)[j] - minEnsembleVal) / (maxEnsembleVal - minEnsembleVal);
+                        for (int e = 0; e < cs; e++) {
+                            X[e] = (downscaledFields0.at(e)[i] - minFieldVal) / (maxFieldVal - minFieldVal);
+                            Y[e] = (downscaledFields1.at(e)[j] - minFieldVal) / (maxFieldVal - minFieldVal);
                         }
                     }
 
                     float miValue = 0.0f;
                     if (cmt == CorrelationMeasureType::PEARSON) {
-                        miValue = computePearson2<float>(X.data(), Y.data(), es);
+                        miValue = computePearson2<float>(X.data(), Y.data(), cs);
                     } else if (cmt == CorrelationMeasureType::SPEARMAN) {
-                        computeRanks(Y.data(), gridPointRanks, ordinalRankArraySpearman, es);
-                        miValue = computePearson2<float>(referenceRanks, gridPointRanks, es);
+                        computeRanks(Y.data(), gridPointRanks, ordinalRankArraySpearman, cs);
+                        miValue = computePearson2<float>(referenceRanks, gridPointRanks, cs);
                     } else if (cmt == CorrelationMeasureType::KENDALL) {
                         miValue = computeKendall(
-                                X.data(), Y.data(), es, jointArray, ordinalRankArray, y);
+                                X.data(), Y.data(), cs, jointArray, ordinalRankArray, y);
                     } else if (cmt == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
                         miValue = computeMutualInformationBinned<double>(
-                                X.data(), Y.data(), numBins, es, histogram0, histogram1, histogram2d);
+                                X.data(), Y.data(), numBins, cs, histogram0, histogram1, histogram2d);
                     } else if (cmt == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV) {
-                        miValue = computeMutualInformationKraskov<double>(X.data(), Y.data(), k, es);
+                        miValue = computeMutualInformationKraskov<double>(X.data(), Y.data(), k, cs);
                     }
                     if (miValue < correlationRange.x || miValue > correlationRange.y) {
                         continue;
@@ -628,7 +640,7 @@ void smoothControlPoints(std::vector<glm::vec2>& controlPoints, float beta) {
 
 void HEBChart::updateData() {
     // Values downscaled by factor 32.
-    int es = volumeData->getEnsembleMemberCount();
+    int cs = getCorrelationMemberCount();
     xsd0 = sgl::iceil(r0.xsr, dfx);
     ysd0 = sgl::iceil(r0.ysr, dfy);
     zsd0 = sgl::iceil(r0.zsr, dfz);
@@ -648,20 +660,20 @@ void HEBChart::updateData() {
     }
 
     // Compute the downscaled field.
-    std::vector<float*> downscaledEnsembleFields0, downscaledEnsembleFields1;
-    downscaledEnsembleFields0.resize(es);
-    computeDownscaledField(0, downscaledEnsembleFields0);
+    std::vector<float*> downscaledFields0, downscaledFields1;
+    downscaledFields0.resize(cs);
+    computeDownscaledField(0, downscaledFields0);
     if (!regionsEqual) {
-        downscaledEnsembleFields1.resize(es);
-        computeDownscaledField(1, downscaledEnsembleFields1);
+        downscaledFields1.resize(cs);
+        computeDownscaledField(1, downscaledFields1);
     }
 
     // Compute the correlation matrix.
     std::vector<MIFieldEntry> miFieldEntries;
     if (regionsEqual) {
-        computeCorrelations(downscaledEnsembleFields0, downscaledEnsembleFields0, miFieldEntries);
+        computeCorrelations(downscaledFields0, downscaledFields0, miFieldEntries);
     } else {
-        computeCorrelations(downscaledEnsembleFields0, downscaledEnsembleFields1, miFieldEntries);
+        computeCorrelations(downscaledFields0, downscaledFields1, miFieldEntries);
     }
 
     // Build the octree.
@@ -673,9 +685,9 @@ void HEBChart::updateData() {
             xsd0, ysd0, zsd0, xsd1, ysd1, zsd1);
 
     // Compute the standard deviation inside the downscaled grids.
-    computeDownscaledFieldVariance(0, downscaledEnsembleFields0);
+    computeDownscaledFieldVariance(0, downscaledFields0);
     if (!regionsEqual) {
-        computeDownscaledFieldVariance(1, downscaledEnsembleFields1);
+        computeDownscaledFieldVariance(1, downscaledFields1);
     }
     // Normalize standard deviations for visualization.
     auto [minVal, maxVal] = sgl::reduceFloatArrayMinMax(leafStdDevArray);
@@ -683,17 +695,17 @@ void HEBChart::updateData() {
     maxStdDev = maxVal;
 
     // Delete the downscaled field, as it is no longer used.
-    for (int ensembleIdx = 0; ensembleIdx < es; ensembleIdx++) {
-        float* dowsncaledField = downscaledEnsembleFields0.at(ensembleIdx);
+    for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
+        float* dowsncaledField = downscaledFields0.at(fieldIdx);
         delete[] dowsncaledField;
     }
-    downscaledEnsembleFields0.clear();
+    downscaledFields0.clear();
     if (!regionsEqual) {
-        for (int ensembleIdx = 0; ensembleIdx < es; ensembleIdx++) {
-            float* dowsncaledField = downscaledEnsembleFields1.at(ensembleIdx);
+        for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
+            float* dowsncaledField = downscaledFields1.at(fieldIdx);
             delete[] dowsncaledField;
         }
-        downscaledEnsembleFields1.clear();
+        downscaledFields1.clear();
     }
 
     int maxNumLines = numPoints * MAX_NUM_LINES / 100;

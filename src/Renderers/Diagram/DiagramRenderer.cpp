@@ -101,6 +101,7 @@ void DiagramRenderer::initialize() {
     if (volumeData) {
         parentDiagram->setVolumeData(volumeData, true);
         parentDiagram->setSelectedScalarField(selectedFieldIdx, selectedScalarFieldName);
+        parentDiagram->setIsEnsembleMode(isEnsembleMode);
         parentDiagram->setCorrelationMeasureType(correlationMeasureType);
         parentDiagram->setBeta(beta);
         parentDiagram->setDownscalingFactors(downscalingFactorX, downscalingFactorY, downscalingFactorZ);
@@ -122,6 +123,15 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
         isNewData = true;
     }
     volumeData = _volumeData;
+
+    int es = _volumeData->getEnsembleMemberCount();
+    int ts = _volumeData->getTimeStepCount();
+    if (isEnsembleMode && es <= 1 && ts > 1) {
+        isEnsembleMode = false;
+    } else if (!isEnsembleMode && ts <= 1 && es > 1) {
+        isEnsembleMode = true;
+    }
+
     if (!selectedScalarFieldName.empty()) {
         volumeData->releaseTf(this, oldSelectedFieldIdx);
         volumeData->releaseScalarField(this, oldSelectedFieldIdx);
@@ -162,6 +172,7 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
     parentDiagram->setVolumeData(volumeData, isNewData);
     if (isNewData) {
         parentDiagram->setSelectedScalarField(selectedFieldIdx, selectedScalarFieldName);
+        parentDiagram->setIsEnsembleMode(isEnsembleMode);
         parentDiagram->setCorrelationMeasureType(correlationMeasureType);
         parentDiagram->setBeta(beta);
         parentDiagram->setDownscalingFactors(downscalingFactorX, downscalingFactorY, downscalingFactorZ);
@@ -258,6 +269,7 @@ void DiagramRenderer::resetSelections(int idx) {
             diagram->setDownscalingFactors(dfx, dfy, dfz);
             diagram->setRegions(selectedRegionStack.at(idx - 1));
             diagram->setSelectedScalarField(selectedFieldIdx, selectedScalarFieldName);
+            diagram->setIsEnsembleMode(isEnsembleMode);
             diagram->setCorrelationMeasureType(correlationMeasureType);
             diagram->setBeta(beta);
             diagram->setLineCountFactor(lineCountFactor);
@@ -317,6 +329,9 @@ void DiagramRenderer::update(float dt, bool isMouseGrabbed) {
             calculatorMap.resize(int(lastCorrelationCalculatorType) - int(firstCorrelationCalculatorType) + 1);
             auto selectedRegion1 = diagram->getSelectedRegion(1);
             for (auto& calculator : correlationCalculators) {
+                if (calculator->getIsEnsembleMode() != isEnsembleMode) {
+                    continue;
+                }
                 int idx = int(calculator->getCalculatorType()) - int(firstCorrelationCalculatorType);
                 calculatorMap.at(idx).push_back(calculator.get());
             }
@@ -331,6 +346,9 @@ void DiagramRenderer::update(float dt, bool isMouseGrabbed) {
             }
         } else {
             for (auto& calculator : correlationCalculators) {
+                if (calculator->getIsEnsembleMode() != isEnsembleMode) {
+                    continue;
+                }
                 calculator->setReferencePointFromWorld(selectedRegion0.getCenter());
             }
         }
@@ -477,12 +495,29 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         }
     }
 
+    if (volumeData->getEnsembleMemberCount() > 1 && volumeData->getTimeStepCount() > 1) {
+        int modeIdx = isEnsembleMode ? 0 : 1;
+        if (propertyEditor.addCombo("Correlation Mode", &modeIdx, CORRELATION_MODE_NAMES, 2)) {
+            isEnsembleMode = modeIdx == 0;
+            for (auto& diagram : diagrams) {
+                diagram->setIsEnsembleMode(isEnsembleMode);
+            }
+            correlationRangeTotal = correlationRange = parentDiagram->getCorrelationRangeTotal();
+            dirty = true;
+            reRender = true;
+        }
+    }
+
     if (propertyEditor.addCombo(
             "Correlation Measure", (int*)&correlationMeasureType,
             CORRELATION_MEASURE_TYPE_NAMES, IM_ARRAYSIZE(CORRELATION_MEASURE_TYPE_NAMES))) {
-        parentDiagram->setCorrelationMeasureType(correlationMeasureType);
+        for (auto& diagram : diagrams) {
+            diagram->setCorrelationMeasureType(correlationMeasureType);
+        }
         correlationRangeTotal = correlationRange = parentDiagram->getCorrelationRangeTotal();
-        parentDiagram->setCorrelationRange(correlationRangeTotal);
+        for (auto& diagram : diagrams) {
+            diagram->setCorrelationRange(correlationRangeTotal);
+        }
         resetSelections();
         dirty = true;
         reRender = true;

@@ -57,13 +57,13 @@ DeepLearningCudaCorrelationCalculator::DeepLearningCudaCorrelationCalculator(
     implNameKeyUpper.at(0) = firstCharUpper.at(0);
     fileDialogKey = "Choose" + implNameKeyUpper + "ModelFile";
     fileDialogDescription = "Choose " + implName + " Model File";
-    modelFilePathSettingsKey = implNameKey + "SimilarityCalculatorModelFilePath";
+    modelFilePathSettingsKey = implNameKey + "CorrelationCalculatorModelFilePath";
 
     sgl::vk::Device* device = renderer->getDevice();
     if (device->getDeviceDriverId() != VK_DRIVER_ID_NVIDIA_PROPRIETARY
             || !sgl::vk::getIsCudaDeviceApiFunctionTableInitialized()) {
         sgl::Logfile::get()->throwError(
-                "Error in DeepLearningCudaSimilarityCalculator::DeepLearningCudaSimilarityCalculator: "
+                "Error in DeepLearningCudaCorrelationCalculator::DeepLearningCudaCorrelationCalculator: "
                 "sgl::vk::getIsCudaDeviceApiFunctionTableInitialized() returned false.");
     }
 }
@@ -75,22 +75,28 @@ void DeepLearningCudaCorrelationCalculator::initialize() {
     uint8_t* moduleBuffer = nullptr;
     size_t bufferSize = 0;
     sgl::loadFileFromSource(
-            sgl::AppSettings::get()->getDataDirectory() + "/__cudacache__/CombineEnsembles.fatbin",
+            sgl::AppSettings::get()->getDataDirectory() + "/__cudacache__/CombineCorrelationMembers.fatbin",
             moduleBuffer, bufferSize, true);
     sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleLoadFatBinary(
-            &combineEnsemblesModuleCu, moduleBuffer), "Error in cuModuleLoadFatBinary: ");
+            &combineCorrelationMembersModuleCu, moduleBuffer), "Error in cuModuleLoadFatBinary: ");
     sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
-            &combineEnsemblesFunctionCu, combineEnsemblesModuleCu, "combineEnsembles"), "Error in cuModuleGetFunction: ");
+            &combineCorrelationMembersFunctionCu, combineCorrelationMembersModuleCu,
+            "combineCorrelationMembers"), "Error in cuModuleGetFunction: ");
     sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
-            &combineEnsemblesReferenceFunctionCu, combineEnsemblesModuleCu, "combineEnsemblesReference"), "Error in cuModuleGetFunction: ");
+            &combineCorrelationMembersReferenceFunctionCu, combineCorrelationMembersModuleCu,
+            "combineCorrelationMembersReference"), "Error in cuModuleGetFunction: ");
     sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
-            &combineEnsemblesAlignedFunctionCu, combineEnsemblesModuleCu, "combineEnsemblesAligned"), "Error in cuModuleGetFunction: ");
+            &combineCorrelationMembersAlignedFunctionCu, combineCorrelationMembersModuleCu,
+            "combineCorrelationMembersAligned"), "Error in cuModuleGetFunction: ");
     sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
-            &combineEnsemblesReferenceAlignedFunctionCu, combineEnsemblesModuleCu, "combineEnsemblesReferenceAligned"), "Error in cuModuleGetFunction: ");
+            &combineCorrelationMembersReferenceAlignedFunctionCu, combineCorrelationMembersModuleCu,
+            "combineCorrelationMembersReferenceAligned"), "Error in cuModuleGetFunction: ");
     sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
-            &writeGridPositionsFunctionCu, combineEnsemblesModuleCu, "writeGridPositions"), "Error in cuModuleGetFunction: ");
+            &writeGridPositionsFunctionCu, combineCorrelationMembersModuleCu,
+            "writeGridPositions"), "Error in cuModuleGetFunction: ");
     sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
-            &writeGridPositionReferenceFunctionCu, combineEnsemblesModuleCu, "writeGridPositionReference"), "Error in cuModuleGetFunction: ");
+            &writeGridPositionReferenceFunctionCu, combineCorrelationMembersModuleCu,
+            "writeGridPositionReference"), "Error in cuModuleGetFunction: ");
     delete[] moduleBuffer;
 
     sgl::AppSettings::get()->getSettings().getValueOpt(modelFilePathSettingsKey.c_str(), modelFilePath);
@@ -100,7 +106,7 @@ void DeepLearningCudaCorrelationCalculator::initialize() {
 }
 
 DeepLearningCudaCorrelationCalculator::~DeepLearningCudaCorrelationCalculator() {
-    sgl::AppSettings::get()->getSettings().addKeyValue(modelFilePathSettingsKey.c_str(), modelFilePath);
+    sgl::AppSettings::get()->getSettings().addKeyValue(modelFilePathSettingsKey, modelFilePath);
 
     if (permutationIndicesBufferCu != 0) {
         sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFree(
@@ -110,12 +116,12 @@ DeepLearningCudaCorrelationCalculator::~DeepLearningCudaCorrelationCalculator() 
         sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFree(
                 outputImageBufferCu), "Error in cuMemFree: ");
     }
-    if (ensembleTextureArrayCu != 0) {
+    if (fieldTextureArrayCu != 0) {
         sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFree(
-                ensembleTextureArrayCu), "Error in cuMemFree: ");
+                fieldTextureArrayCu), "Error in cuMemFree: ");
     }
     sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleUnload(
-            combineEnsemblesModuleCu), "Error in cuModuleUnload: ");
+            combineCorrelationMembersModuleCu), "Error in cuModuleUnload: ");
     sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamDestroy(
             stream), "Error in cuStreamDestroy: ");
 }
@@ -197,7 +203,7 @@ void DeepLearningCudaCorrelationCalculator::calculateDevice(
     if (!getIsModuleLoaded()) {
         deviceCacheEntry->getVulkanImage()->clearColor(glm::vec4(0.0f), renderer->getVkCommandBuffer());
         sgl::Logfile::get()->writeWarning(
-                "Warning in DeepLearningCudaSimilarityCalculator::calculateDevice: Network modules are not loaded.",
+                "Warning in DeepLearningCudaCorrelationCalculator::calculateDevice: Network modules are not loaded.",
                 true);
         return;
     }
@@ -205,18 +211,18 @@ void DeepLearningCudaCorrelationCalculator::calculateDevice(
     int xs = volumeData->getGridSizeX();
     int ys = volumeData->getGridSizeY();
     int zs = volumeData->getGridSizeZ();
-    int es = networkType == NetworkType::MINE ? volumeData->getEnsembleMemberCount() : 0;
+    int cs = networkType == NetworkType::MINE ? getCorrelationMemberCount() : 0;
 
     int gpuBatchSize1D;
     if (networkType == NetworkType::MINE) {
         gpuBatchSize1D = gpuBatchSize1DBase;
-        if (es >= 200) {
+        if (cs >= 200) {
             gpuBatchSize1D /= 2;
         }
-        if (es >= 400) {
+        if (cs >= 400) {
             gpuBatchSize1D /= 2;
         }
-        if (es >= 800) {
+        if (cs >= 800) {
             gpuBatchSize1D /= 2;
         }
     } else {
@@ -234,21 +240,21 @@ void DeepLearningCudaCorrelationCalculator::calculateDevice(
                 &outputImageBufferCu, volumeDataSlice3dSize, stream), "Error in cuMemAllocAsync: ");
     }
 
-    if (cachedEnsembleSizeDevice != size_t(es)) {
+    if (cachedCorrelationMemberCountDevice != size_t(cs)) {
         if (permutationIndicesBufferCu != 0) {
             sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
                     permutationIndicesBufferCu, stream), "Error in cuMemFreeAsync: ");
         }
-        if (ensembleTextureArrayCu != 0) {
+        if (fieldTextureArrayCu != 0) {
             sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
-                    ensembleTextureArrayCu, stream), "Error in cuMemFreeAsync: ");
+                    fieldTextureArrayCu, stream), "Error in cuMemFreeAsync: ");
         }
-        cachedEnsembleSizeDevice = size_t(es);
+        cachedCorrelationMemberCountDevice = size_t(cs);
         if (networkType == NetworkType::MINE) {
             sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
-                    &permutationIndicesBufferCu, gpuBatchSize1D * es * sizeof(uint32_t), stream), "Error in cuMemAllocAsync: ");
+                    &permutationIndicesBufferCu, gpuBatchSize1D * cs * sizeof(uint32_t), stream), "Error in cuMemAllocAsync: ");
             sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
-                    &ensembleTextureArrayCu, es * sizeof(CUtexObject), stream), "Error in cuMemAllocAsync: ");
+                    &fieldTextureArrayCu, cs * sizeof(CUtexObject), stream), "Error in cuMemAllocAsync: ");
         }
         cacheNeedsRecreate = true;
     }
@@ -278,38 +284,38 @@ void DeepLearningCudaCorrelationCalculator::calculateDevice(
     }
     timelineValue++;
 
-    float minEnsembleVal = std::numeric_limits<float>::max();
-    float maxEnsembleVal = std::numeric_limits<float>::lowest();
-    std::vector<VolumeData::DeviceCacheEntry> ensembleEntryFields;
-    std::vector<CUtexObject> ensembleTexturesCu;
+    float minFieldVal = std::numeric_limits<float>::max();
+    float maxFieldVal = std::numeric_limits<float>::lowest();
+    std::vector<VolumeData::DeviceCacheEntry> fieldEntries;
+    std::vector<CUtexObject> fieldTexturesCu;
     if (networkType == NetworkType::MINE) {
 #ifdef TEST_INFERENCE_SPEED
         auto startLoad = std::chrono::system_clock::now();
 #endif
 
-        ensembleEntryFields.reserve(es);
-        ensembleTexturesCu.reserve(es);
-        for (ensembleIdx = 0; ensembleIdx < es; ensembleIdx++) {
-            VolumeData::DeviceCacheEntry ensembleEntryField = volumeData->getFieldEntryDevice(
-                    FieldType::SCALAR, scalarFieldNames.at(fieldIndexGui), timeStepIdx, ensembleIdx);
-            ensembleEntryFields.push_back(ensembleEntryField);
-            ensembleTexturesCu.push_back(ensembleEntryField->getCudaTexture());
-            if (ensembleEntryField->getVulkanImage()->getVkImageLayout() != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+        fieldEntries.reserve(cs);
+        fieldTexturesCu.reserve(cs);
+        for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
+            VolumeData::DeviceCacheEntry fieldEntry = getFieldEntryDevice(
+                    scalarFieldNames.at(fieldIndexGui), fieldIdx, timeStepIdx, ensembleIdx);
+            fieldEntries.push_back(fieldEntry);
+            fieldTexturesCu.push_back(fieldEntry->getCudaTexture());
+            if (fieldEntry->getVulkanImage()->getVkImageLayout() != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
                 deviceCacheEntry->getVulkanImage()->transitionImageLayout(
                         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, renderer->getVkCommandBuffer());
             }
-            auto [minVal, maxVal] = volumeData->getMinMaxScalarFieldValue(
-                    scalarFieldNames.at(fieldIndexGui), timeStepIdx, ensembleIdx);
-            minEnsembleVal = std::min(minEnsembleVal, minVal);
-            maxEnsembleVal = std::max(maxEnsembleVal, maxVal);
+            auto [minVal, maxVal] = getMinMaxScalarFieldValue(
+                    scalarFieldNames.at(fieldIndexGui), fieldIdx, timeStepIdx, ensembleIdx);
+            minFieldVal = std::min(minFieldVal, minVal);
+            maxFieldVal = std::max(maxFieldVal, maxVal);
         }
 
-        if (cachedEnsembleTexturesCu != ensembleTexturesCu) {
-            cachedEnsembleTexturesCu = ensembleTexturesCu;
+        if (cachedFieldTexturesCu != fieldTexturesCu) {
+            cachedFieldTexturesCu = fieldTexturesCu;
             sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
                     stream), "Error in cuStreamSynchronize: ");
             sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyHtoD(
-                    ensembleTextureArrayCu, ensembleTexturesCu.data(), sizeof(CUtexObject) * es), "Error in cuMemcpyHtoD: ");
+                    fieldTextureArrayCu, fieldTexturesCu.data(), sizeof(CUtexObject) * cs), "Error in cuMemcpyHtoD: ");
         }
 
 #ifdef TEST_INFERENCE_SPEED
@@ -338,17 +344,17 @@ void DeepLearningCudaCorrelationCalculator::calculateDevice(
 
     std::vector<void*> kernelParametersRef;
     CUfunction referenceInputAssemblyFunction;
-    CUdeviceptr scalarFieldEnsembles = {};
+    CUdeviceptr scalarFields = {};
     CUdeviceptr outputBufferRef = getReferenceInputPointer();
     uint32_t srnStride = 0;
     if (networkType == NetworkType::MINE) {
-        scalarFieldEnsembles = ensembleTextureArrayCu;
+        scalarFields = fieldTextureArrayCu;
         kernelParametersRef = {
-                &xs, &ys, &zs, &es, &referencePointIndex.x, &minEnsembleVal, &maxEnsembleVal,
-                &outputBufferRef, &scalarFieldEnsembles, &alignmentVec4
+                &xs, &ys, &zs, &cs, &referencePointIndex.x, &minFieldVal, &maxFieldVal,
+                &outputBufferRef, &scalarFields, &alignmentVec4
         };
         referenceInputAssemblyFunction =
-                alignmentVec4 == 1 ? combineEnsemblesReferenceFunctionCu : combineEnsemblesReferenceAlignedFunctionCu;
+                alignmentVec4 == 1 ? combineCorrelationMembersReferenceFunctionCu : combineCorrelationMembersReferenceAlignedFunctionCu;
     } else {
         srnStride = getSrnStride();
         kernelParametersRef = {
@@ -358,7 +364,7 @@ void DeepLearningCudaCorrelationCalculator::calculateDevice(
     }
     sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuLaunchKernel(
             referenceInputAssemblyFunction,
-            networkType == NetworkType::MINE ? sgl::uiceil(es, 256) : 1, 1, 1, //< Grid size.
+            networkType == NetworkType::MINE ? sgl::uiceil(cs, 256) : 1, 1, 1, //< Grid size.
             networkType == NetworkType::MINE ? 256 : 1, 1, 1, //< Block size.
             0, //< Dynamic shared memory size.
             stream,
@@ -378,11 +384,11 @@ void DeepLearningCudaCorrelationCalculator::calculateDevice(
         CUfunction queryInputAssemblyFunction;
         if (networkType == NetworkType::MINE) {
             kernelParameters = {
-                    &xs, &ys, &zs, &es, &batchOffset, &batchSize, &minEnsembleVal, &maxEnsembleVal,
-                    &outputBuffer, &scalarFieldEnsembles, &alignmentVec4
+                    &xs, &ys, &zs, &cs, &batchOffset, &batchSize, &minFieldVal, &maxFieldVal,
+                    &outputBuffer, &scalarFields, &alignmentVec4
             };
             queryInputAssemblyFunction =
-                    alignmentVec4 == 1 ? combineEnsemblesFunctionCu : combineEnsemblesAlignedFunctionCu;
+                    alignmentVec4 == 1 ? combineCorrelationMembersFunctionCu : combineCorrelationMembersAlignedFunctionCu;
         } else {
             kernelParameters = {
                     &xs, &ys, &zs, &batchOffset, &batchSize, &outputBuffer, &srnStride

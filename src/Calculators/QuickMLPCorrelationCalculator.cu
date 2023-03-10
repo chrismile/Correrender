@@ -163,7 +163,7 @@ void QuickMLPCorrelationCalculator::loadModelFromFile(const std::string& modelPa
     sgl::ArchiveFileLoadReturnType retVal = sgl::loadAllFilesFromArchive(modelPath, archiveFiles, true);
     if (retVal != sgl::ArchiveFileLoadReturnType::ARCHIVE_FILE_LOAD_SUCCESSFUL) {
         sgl::Logfile::get()->writeError(
-                "Error in QuickMLPSimilarityCalculator::loadModelFromFile: Could not load data from model \""
+                "Error in QuickMLPCorrelationCalculator::loadModelFromFile: Could not load data from model \""
                 + modelPath + "\".");
         return;
     }
@@ -186,7 +186,7 @@ void QuickMLPCorrelationCalculator::loadModelFromFile(const std::string& modelPa
         }
         if (!foundSymmetrizerType) {
             sgl::Logfile::get()->writeError(
-                    "Error in QuickMLPSimilarityCalculator::loadModelFromFile: Invalid symmetrizer type \""
+                    "Error in QuickMLPCorrelationCalculator::loadModelFromFile: Invalid symmetrizer type \""
                     + symmetrizerTypeName + "\".");
             return;
         }
@@ -204,7 +204,7 @@ void QuickMLPCorrelationCalculator::loadModelFromFile(const std::string& modelPa
                 reinterpret_cast<char*>(entryDecoder.bufferData.get()), entryDecoder.bufferSize));
     } else {
         sgl::Logfile::get()->writeError(
-                "Error in QuickMLPSimilarityCalculator::loadModelFromFile: Could not load encoder or decoder "
+                "Error in QuickMLPCorrelationCalculator::loadModelFromFile: Could not load encoder or decoder "
                 "configuration from model \"" + modelPath + "\".");
         return;
     }
@@ -213,13 +213,13 @@ void QuickMLPCorrelationCalculator::loadModelFromFile(const std::string& modelPa
     auto itNetworkDecoder = archiveFiles.find("network_decoder.bin");
     if (itNetworkEncoder == archiveFiles.end()) {
         sgl::Logfile::get()->writeError(
-                "Error in QuickMLPSimilarityCalculator::loadModelFromFile: Missing network_encoder.bin in file \""
+                "Error in QuickMLPCorrelationCalculator::loadModelFromFile: Missing network_encoder.bin in file \""
                 + modelPath + "\".");
         return;
     }
     if (itNetworkDecoder == archiveFiles.end()) {
         sgl::Logfile::get()->writeError(
-                "Error in QuickMLPSimilarityCalculator::loadModelFromFile: Missing network_decoder.bin in file \""
+                "Error in QuickMLPCorrelationCalculator::loadModelFromFile: Missing network_decoder.bin in file \""
                 + modelPath + "\".");
         return;
     }
@@ -237,7 +237,7 @@ void QuickMLPCorrelationCalculator::loadModelFromFile(const std::string& modelPa
     uint32_t symmetrizerFactor = symmetrizerType == SymmetrizerType::Add ? 1 : 2;
     if (numLayersOutEncoder * symmetrizerFactor != numLayersInDecoder) {
         sgl::Logfile::get()->throwError(
-                "Error in QuickMLPSimilarityCalculator::loadModelFromFile: Mismatch between encoder output and "
+                "Error in QuickMLPCorrelationCalculator::loadModelFromFile: Mismatch between encoder output and "
                 "decoder input dimensions.");
     }
 
@@ -245,10 +245,10 @@ void QuickMLPCorrelationCalculator::loadModelFromFile(const std::string& modelPa
 }
 
 void QuickMLPCorrelationCalculator::recreateCache(int batchSize) {
-    int es = networkType == NetworkType::MINE ? volumeData->getEnsembleMemberCount() : 1;
+    int cs = networkType == NetworkType::MINE ? getCorrelationMemberCount() : 1;
     if (moduleWrapper->networkEncoder->precisionIn() != qmlp::Tensor::Precision::FLOAT) {
         sgl::Logfile::get()->throwError(
-                "Error in QuickMLPSimilarityCalculator::recreateCache: "
+                "Error in QuickMLPCorrelationCalculator::recreateCache: "
                 "Encoder input precision is expected to be float.");
     }
 
@@ -256,23 +256,23 @@ void QuickMLPCorrelationCalculator::recreateCache(int batchSize) {
     //int numInputLayers = 16;
 
     cacheWrapper->referenceInput = qmlp::Tensor(
-            moduleWrapper->networkEncoder->precisionIn(), { es, int(numLayersInEncoder) });
+            moduleWrapper->networkEncoder->precisionIn(), {cs, int(numLayersInEncoder) });
     cacheWrapper->referenceEncoded = qmlp::Tensor(
-            moduleWrapper->networkEncoder->precisionOut(), { es, int(numLayersOutEncoder) });
+            moduleWrapper->networkEncoder->precisionOut(), {cs, int(numLayersOutEncoder) });
     cacheWrapper->queryInput = qmlp::Tensor(
-            moduleWrapper->networkEncoder->precisionIn(), { es * int(batchSize), int(numLayersInEncoder) });
+            moduleWrapper->networkEncoder->precisionIn(), {cs * int(batchSize), int(numLayersInEncoder) });
     cacheWrapper->queryEncoded = qmlp::Tensor(
-            moduleWrapper->networkEncoder->precisionOut(), { es * int(batchSize), int(numLayersOutEncoder) });
+            moduleWrapper->networkEncoder->precisionOut(), {cs * int(batchSize), int(numLayersOutEncoder) });
     cacheWrapper->queryEncodedPermuted = qmlp::Tensor(
-            moduleWrapper->networkEncoder->precisionOut(), { es * int(batchSize), int(numLayersOutEncoder) });
+            moduleWrapper->networkEncoder->precisionOut(), {cs * int(batchSize), int(numLayersOutEncoder) });
     cacheWrapper->symmetrizedReferenceInput = qmlp::Tensor(
-            moduleWrapper->networkDecoder->precisionIn(), { es * int(batchSize), int(numLayersInDecoder) });
+            moduleWrapper->networkDecoder->precisionIn(), {cs * int(batchSize), int(numLayersInDecoder) });
     cacheWrapper->symmetrizedQueryInput = qmlp::Tensor(
-            moduleWrapper->networkDecoder->precisionIn(), { es * int(batchSize), int(numLayersInDecoder) });
+            moduleWrapper->networkDecoder->precisionIn(), {cs * int(batchSize), int(numLayersInDecoder) });
     cacheWrapper->referenceDecoded = qmlp::Tensor(
-            moduleWrapper->networkDecoder->precisionOut(), { es * int(batchSize), int(numLayersOutDecoder) });
+            moduleWrapper->networkDecoder->precisionOut(), {cs * int(batchSize), int(numLayersOutDecoder) });
     cacheWrapper->queryDecoded = qmlp::Tensor(
-            moduleWrapper->networkDecoder->precisionOut(), { es * int(batchSize), int(numLayersOutDecoder) });
+            moduleWrapper->networkDecoder->precisionOut(), {cs * int(batchSize), int(numLayersOutDecoder) });
 }
 
 CUdeviceptr QuickMLPCorrelationCalculator::getReferenceInputPointer() {
@@ -288,7 +288,7 @@ void QuickMLPCorrelationCalculator::runInferenceReference() {
 }
 
 void QuickMLPCorrelationCalculator::runInferenceBatch(uint32_t batchOffset, uint32_t batchSize) {
-    int es = volumeData->getEnsembleMemberCount();
+    int cs = getCorrelationMemberCount();
 
     moduleWrapper->networkEncoder->inference(cacheWrapper->queryInput, cacheWrapper->queryEncoded, stream);
 
@@ -300,19 +300,19 @@ void QuickMLPCorrelationCalculator::runInferenceBatch(uint32_t batchOffset, uint
     if (networkType == NetworkType::MINE) {
         uint32_t* permutationIndicesBuffer = reinterpret_cast<uint32_t*>(permutationIndicesBufferCu);
         generateRandomPermutations<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
-                permutationIndicesBuffer, uint32_t(es), batchOffset);
+                permutationIndicesBuffer, uint32_t(cs), batchOffset);
         if (moduleWrapper->networkEncoder->precisionOut() == qmlp::Tensor::Precision::FLOAT) {
             symmetrizer(
                     cacheWrapper->referenceEncoded.dataPtr<float>(), cacheWrapper->queryEncoded.dataPtr<float>(),
                     cacheWrapper->symmetrizedReferenceInput.dataPtr<float>(),
                     cacheWrapper->symmetrizedQueryInput.dataPtr<float>(),
-                    permutationIndicesBuffer, batchSize, uint32_t(es), numLayersOutEncoder, symmetrizerType, stream);
+                    permutationIndicesBuffer, batchSize, uint32_t(cs), numLayersOutEncoder, symmetrizerType, stream);
         } else if (moduleWrapper->networkEncoder->precisionOut() == qmlp::Tensor::Precision::HALF) {
             symmetrizer(
                     cacheWrapper->referenceEncoded.dataPtr<half>(), cacheWrapper->queryEncoded.dataPtr<half>(),
                     cacheWrapper->symmetrizedReferenceInput.dataPtr<half>(),
                     cacheWrapper->symmetrizedQueryInput.dataPtr<half>(),
-                    permutationIndicesBuffer, batchSize, uint32_t(es), numLayersOutEncoder, symmetrizerType, stream);
+                    permutationIndicesBuffer, batchSize, uint32_t(cs), numLayersOutEncoder, symmetrizerType, stream);
         }
     } else {
         if (moduleWrapper->networkEncoder->precisionOut() == qmlp::Tensor::Precision::FLOAT) {
@@ -340,11 +340,11 @@ void QuickMLPCorrelationCalculator::runInferenceBatch(uint32_t batchOffset, uint
         if (moduleWrapper->networkEncoder->precisionOut() == qmlp::Tensor::Precision::FLOAT) {
             combineDecoderOutput<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
                     cacheWrapper->referenceDecoded.dataPtr<float>(), cacheWrapper->queryDecoded.dataPtr<float>(),
-                    miOutput, uint32_t(es), numLayersOutDecoder);
+                    miOutput, uint32_t(cs), numLayersOutDecoder);
         } else if (moduleWrapper->networkEncoder->precisionOut() == qmlp::Tensor::Precision::HALF) {
             combineDecoderOutput<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
                     cacheWrapper->referenceDecoded.dataPtr<half>(), cacheWrapper->queryDecoded.dataPtr<half>(),
-                    miOutput, uint32_t(es), numLayersOutDecoder);
+                    miOutput, uint32_t(cs), numLayersOutDecoder);
         }
     } else {
         if (moduleWrapper->networkEncoder->precisionOut() == qmlp::Tensor::Precision::FLOAT) {

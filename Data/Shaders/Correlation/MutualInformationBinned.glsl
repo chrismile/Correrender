@@ -34,16 +34,16 @@
 layout(local_size_x = BLOCK_SIZE_X, local_size_y = BLOCK_SIZE_Y, local_size_z = BLOCK_SIZE_Z) in;
 
 layout (binding = 0) uniform UniformBuffer {
-    uint xs, ys, zs, es;
+    uint xs, ys, zs, cs;
 };
 layout (binding = 1, r32f) uniform writeonly image3D outputImage;
 layout (binding = 2) uniform sampler scalarFieldSampler;
-layout (binding = 3) uniform texture3D scalarFieldEnsembles[ENSEMBLE_MEMBER_COUNT];
+layout (binding = 3) uniform texture3D scalarFields[MEMBER_COUNT];
 
 layout(push_constant) uniform PushConstants {
     ivec3 referencePointIdx;
     int paddingPushConstants;
-    float minEnsembleVal, maxEnsembleVal;
+    float minFieldVal, maxFieldVal;
 };
 
 void main() {
@@ -69,12 +69,12 @@ void main() {
 
     // Compute the 2D joint histogram.
     float nanValue = 0.0;
-    for (int e = 0; e < es; e++) {
-        float val0 = texelFetch(sampler3D(scalarFieldEnsembles[nonuniformEXT(e)], scalarFieldSampler), referencePointIdx, 0).r;
-        float val1 = texelFetch(sampler3D(scalarFieldEnsembles[nonuniformEXT(e)], scalarFieldSampler), currentPointIdx, 0).r;
+    for (int c = 0; c < cs; c++) {
+        float val0 = texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), referencePointIdx, 0).r;
+        float val1 = texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), currentPointIdx, 0).r;
         if (!isnan(val0) && !isnan(val1)) {
-            val0 = (val0 - minEnsembleVal) / (maxEnsembleVal - minEnsembleVal);
-            val1 = (val1 - minEnsembleVal) / (maxEnsembleVal - minEnsembleVal);
+            val0 = (val0 - minFieldVal) / (maxFieldVal - minFieldVal);
+            val1 = (val1 - minFieldVal) / (maxFieldVal - minFieldVal);
             int binIdx0 = clamp(int(val0 * float(numBins)), 0, numBins - 1);
             int binIdx1 = clamp(int(val1 * float(numBins)), 0, numBins - 1);
             histogram2d[binIdx0 * numBins + binIdx1] += 1;
@@ -111,8 +111,8 @@ void main() {
      * and the joint entropy $H(x, y) = -\sum_i \sum_j p_{xy}(i, j) \log p_{xy}(i, j)$
      * b) $MI = \sum_i \sum_j p_{xy}(i, j) \log \frac{p_{xy}(i, j)}{p_x(i) p_y(j)}$
      */
-    const float EPSILON_1D = 0.5 / float(es);
-    const float EPSILON_2D = 0.5 / float(es * es);
+    const float EPSILON_1D = 0.5 / float(cs);
+    const float EPSILON_2D = 0.5 / float(cs * cs);
     float mi = 0.0;
     for (int binIdx = 0; binIdx < numBins; binIdx++) {
         float p_x = histogram0[binIdx];

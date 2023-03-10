@@ -46,8 +46,8 @@ const char* const PYTORCH_DEVICE_NAMES[] = {
 };
 
 struct ModuleWrapper;
-class EnsembleCombinePass;
-class ReferenceEnsembleCombinePass;
+class CorrelationMembersCombinePass;
+class ReferenceCorrelationMembersCombinePass;
 
 /**
  * Calls a PyTorch model using TorchScript to compute the ensemble similarity between a reference point and the volume.
@@ -98,6 +98,7 @@ public:
 protected:
     bool loadModelFromFile(int idx, const std::string& modelPath);
     void setPyTorchDevice(PyTorchDevice pyTorchDeviceNew);
+    void onCorrelationMemberCountChanged() override;
 
     /// Renders the GUI. Returns whether re-rendering has become necessary due to the user's actions.
     void renderGuiImpl(sgl::PropertyEditor& propertyEditor) override;
@@ -113,8 +114,8 @@ private:
     NetworkType networkType = NetworkType::MINE;
 
     /// For networkType == NetworkType::{MINE,SRN_MINE}.
-    size_t cachedEnsembleSizeHost = std::numeric_limits<size_t>::max();
-    size_t cachedEnsembleSizeDevice = std::numeric_limits<size_t>::max();
+    size_t cachedCorrelationMemberCountHost = std::numeric_limits<size_t>::max();
+    size_t cachedCorrelationMemberCountDevice = std::numeric_limits<size_t>::max();
     size_t cachedVolumeDataSlice3dSize = 0;
 
     /// For networkType == NetworkType::MINE.
@@ -139,25 +140,26 @@ private:
     sgl::vk::SemaphoreVkCudaDriverApiInteropPtr vulkanFinishedSemaphore, cudaFinishedSemaphore;
     uint64_t timelineValue = 0;
     CUdeviceptr outputImageBufferCu{};
-    CUdeviceptr ensembleTextureArrayCu{};
-    std::vector<CUtexObject> cachedEnsembleTexturesCu;
-    CUmodule combineEnsemblesModuleCu{};
-    CUfunction combineEnsemblesFunctionCu{};
+    CUdeviceptr fieldTextureArrayCu{};
+    std::vector<CUtexObject> cachedFieldTexturesCu;
+    CUmodule combineCorrelationMembersModuleCu{};
+    CUfunction combineCorrelationMembersFunctionCu{};
     CUfunction memcpyFloatClampToZeroFunctionCu{};
     // For networkType == NetworkType::SRN_MINE.
     CUfunction writeGridPositionsFunctionCu{}, writeGridPositionReferenceFunctionCu{};
 #endif
-    std::shared_ptr<ReferenceEnsembleCombinePass> referenceEnsembleCombinePass;
-    std::shared_ptr<EnsembleCombinePass> ensembleCombinePass;
+    std::shared_ptr<ReferenceCorrelationMembersCombinePass> referenceCorrelationMembersCombinePass;
+    std::shared_ptr<CorrelationMembersCombinePass> correlationMembersCombinePass;
 };
 
-class EnsembleCombinePass : public sgl::vk::ComputePass {
+class CorrelationMembersCombinePass : public sgl::vk::ComputePass {
 public:
-    explicit EnsembleCombinePass(sgl::vk::Renderer* renderer);
-    void setVolumeData(VolumeData* _volumeData, bool isNewData);
-    void setEnsembleImageViews(const std::vector<sgl::vk::ImageViewPtr>& _ensembleImageViews);
+    explicit CorrelationMembersCombinePass(sgl::vk::Renderer* renderer);
+    void setVolumeData(VolumeData* _volumeData, int correlationMemberCount, bool isNewData);
+    void setCorrelationMemberCount(int correlationMemberCount);
+    void setFieldImageViews(const std::vector<sgl::vk::ImageViewPtr>& _fieldImageViews);
     void setOutputBuffer(const sgl::vk::BufferPtr& _outputBuffer);
-    void setEnsembleMinMax(float minEnsembleVal, float maxEnsembleVal);
+    void setFieldMinMax(float minFieldVal, float maxFieldVal);
     inline void setBatchSize(int _batchSize) { batchSize = _batchSize; }
 
 protected:
@@ -167,31 +169,32 @@ protected:
 
 private:
     VolumeData* volumeData = nullptr;
-    int cachedEnsembleMemberCount = 0;
+    int cachedCorrelationMemberCount = 0;
 
     const int computeBlockSize = 256;
     int batchSize = 0;
     struct UniformData {
-        uint32_t xs, ys, zs, es;
+        uint32_t xs, ys, zs, cs;
         glm::vec3 boundingBoxMin;
-        float minEnsembleVal;
+        float minFieldVal;
         glm::vec3 boundingBoxMax;
-        float maxEnsembleVal;
+        float maxFieldVal;
     };
     UniformData uniformData{};
     sgl::vk::BufferPtr uniformBuffer;
 
-    std::vector<sgl::vk::ImageViewPtr> ensembleImageViews;
+    std::vector<sgl::vk::ImageViewPtr> fieldImageViews;
     sgl::vk::BufferPtr outputBuffer;
 };
 
-class ReferenceEnsembleCombinePass : public sgl::vk::ComputePass {
+class ReferenceCorrelationMembersCombinePass : public sgl::vk::ComputePass {
 public:
-    explicit ReferenceEnsembleCombinePass(sgl::vk::Renderer* renderer);
-    void setVolumeData(VolumeData* _volumeData, bool isNewData);
-    void setEnsembleImageViews(const std::vector<sgl::vk::ImageViewPtr>& _ensembleImageViews);
+    explicit ReferenceCorrelationMembersCombinePass(sgl::vk::Renderer* renderer);
+    void setVolumeData(VolumeData* _volumeData, int correlationMemberCount, bool isNewData);
+    void setCorrelationMemberCount(int correlationMemberCount);
+    void setFieldImageViews(const std::vector<sgl::vk::ImageViewPtr>& _fieldImageViews);
     void setOutputBuffer(const sgl::vk::BufferPtr& _outputBuffer);
-    void setEnsembleMinMax(float minEnsembleVal, float maxEnsembleVal);
+    void setFieldMinMax(float minFieldVal, float maxFieldVal);
 
 protected:
     void loadShader() override;
@@ -200,20 +203,20 @@ protected:
 
 private:
     VolumeData* volumeData = nullptr;
-    int cachedEnsembleMemberCount = 0;
+    int cachedCorrelationMemberCount = 0;
 
     const int computeBlockSize = 256;
     struct UniformData {
-        uint32_t xs, ys, zs, es;
+        uint32_t xs, ys, zs, cs;
         glm::vec3 boundingBoxMin;
-        float minEnsembleVal;
+        float minFieldVal;
         glm::vec3 boundingBoxMax;
-        float maxEnsembleVal;
+        float maxFieldVal;
     };
     UniformData uniformData{};
     sgl::vk::BufferPtr uniformBuffer;
 
-    std::vector<sgl::vk::ImageViewPtr> ensembleImageViews;
+    std::vector<sgl::vk::ImageViewPtr> fieldImageViews;
     sgl::vk::BufferPtr outputBuffer;
 };
 

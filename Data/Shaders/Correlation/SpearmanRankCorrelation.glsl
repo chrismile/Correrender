@@ -60,23 +60,23 @@ void heapify(uint i, uint numElements) {
 void heapSort() {
     // We can't use "i >= 0" with uint, thus adapt range and subtract 1 from i.
     uint i;
-    for (i = ENSEMBLE_MEMBER_COUNT / 2; i > 0; i--) {
-        heapify(i - 1, ENSEMBLE_MEMBER_COUNT);
+    for (i = MEMBER_COUNT / 2; i > 0; i--) {
+        heapify(i - 1, MEMBER_COUNT);
     }
     // Largest element is at index 0. Swap it to the end of the processed array portion iteratively.
-    for (i = 1; i < ENSEMBLE_MEMBER_COUNT; i++) {
-        swapElements(0, ENSEMBLE_MEMBER_COUNT - i);
-        heapify(0, ENSEMBLE_MEMBER_COUNT - i);
+    for (i = 1; i < MEMBER_COUNT; i++) {
+        swapElements(0, MEMBER_COUNT - i);
+        heapify(0, MEMBER_COUNT - i);
     }
 }
 
 void computeFractionalRanking() {
     float currentRank = 1.0f;
     int idx = 0;
-    while (idx < es) {
+    while (idx < cs) {
         float value = valueArray[idx];
         int idxEqualEnd = idx + 1;
-        while (idxEqualEnd < es && value == valueArray[idxEqualEnd]) {
+        while (idxEqualEnd < cs && value == valueArray[idxEqualEnd]) {
             idxEqualEnd++;
         }
 
@@ -100,39 +100,39 @@ void computeFractionalRanking() {
 layout(local_size_x = BLOCK_SIZE_X, local_size_y = BLOCK_SIZE_Y, local_size_z = BLOCK_SIZE_Z) in;
 
 layout(binding = 0) uniform UniformBuffer {
-    uint xs, ys, zs, es;
+    uint xs, ys, zs, cs;
 };
 layout(binding = 1, r32f) uniform writeonly image3D outputImage;
 layout(binding = 2) uniform sampler scalarFieldSampler;
-layout(binding = 3) uniform texture3D scalarFieldEnsembles[ENSEMBLE_MEMBER_COUNT];
+layout(binding = 3) uniform texture3D scalarFields[MEMBER_COUNT];
 
 layout(binding = 4) readonly buffer ReferenceRankBuffer {
-    float referenceRankArray[ENSEMBLE_MEMBER_COUNT];
+    float referenceRankArray[MEMBER_COUNT];
 };
 
-float valueArray[ENSEMBLE_MEMBER_COUNT];
-uint ordinalRankArray[ENSEMBLE_MEMBER_COUNT];
-float rankArray[ENSEMBLE_MEMBER_COUNT];
+float valueArray[MEMBER_COUNT];
+uint ordinalRankArray[MEMBER_COUNT];
+float rankArray[MEMBER_COUNT];
 
 #import ".Common"
 
 float pearsonCorrelation() {
-    float n = float(es);
+    float n = float(cs);
     float meanX = 0;
     float meanY = 0;
     float invN = float(1) / n;
-    for (uint e = 0; e < es; e++) {
-        float x = referenceRankArray[e];
-        float y = rankArray[e];
+    for (uint c = 0; c < cs; c++) {
+        float x = referenceRankArray[c];
+        float y = rankArray[c];
         meanX += invN * x;
         meanY += invN * y;
     }
     float varX = 0;
     float varY = 0;
     float invNm1 = float(1) / (n - float(1));
-    for (uint e = 0; e < es; e++) {
-        float x = referenceRankArray[e];
-        float y = rankArray[e];
+    for (uint c = 0; c < cs; c++) {
+        float x = referenceRankArray[c];
+        float y = rankArray[c];
         float diffX = x - meanX;
         float diffY = y - meanY;
         varX += invNm1 * diffX * diffX;
@@ -141,9 +141,9 @@ float pearsonCorrelation() {
     float stdDevX = sqrt(varX);
     float stdDevY = sqrt(varY);
     float pearsonCorrelation = 0;
-    for (uint e = 0; e < es; e++) {
-        float x = referenceRankArray[e];
-        float y = rankArray[e];
+    for (uint c = 0; c < cs; c++) {
+        float x = referenceRankArray[c];
+        float y = rankArray[c];
         pearsonCorrelation += invNm1 * ((x - meanX) / stdDevX) * ((y - meanY) / stdDevY);
     }
     return pearsonCorrelation;
@@ -158,13 +158,13 @@ void main() {
     // 1. Fill the value array.
     float nanValue = 0.0;
     float value;
-    for (uint e = 0; e < es; e++) {
-        value = texelFetch(sampler3D(scalarFieldEnsembles[nonuniformEXT(e)], scalarFieldSampler), currentPointIdx, 0).r;
+    for (uint c = 0; c < cs; c++) {
+        value = texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), currentPointIdx, 0).r;
         if (isnan(value)) {
             nanValue = value;
         }
-        valueArray[e] = value;
-        ordinalRankArray[e] = e;
+        valueArray[c] = value;
+        ordinalRankArray[c] = c;
     }
 
     // 2. Sort both arrays.
@@ -188,21 +188,21 @@ void main() {
 layout(local_size_x = BLOCK_SIZE_X, local_size_y = BLOCK_SIZE_Y, local_size_z = BLOCK_SIZE_Z) in;
 
 layout(binding = 0) uniform UniformBuffer {
-    uint xs, ys, zs, es;
+    uint xs, ys, zs, cs;
 };
 layout(binding = 2) uniform sampler scalarFieldSampler;
-layout(binding = 3) uniform texture3D scalarFieldEnsembles[ENSEMBLE_MEMBER_COUNT];
+layout(binding = 3) uniform texture3D scalarFields[MEMBER_COUNT];
 
 layout(binding = 4) writeonly buffer ReferenceRankBuffer {
-    float rankArray[ENSEMBLE_MEMBER_COUNT];
+    float rankArray[MEMBER_COUNT];
 };
 
 layout(push_constant) uniform PushConstants {
     ivec3 referencePointIdx;
 };
 
-float valueArray[ENSEMBLE_MEMBER_COUNT];
-uint ordinalRankArray[ENSEMBLE_MEMBER_COUNT];
+float valueArray[MEMBER_COUNT];
+uint ordinalRankArray[MEMBER_COUNT];
 
 #import ".Common"
 
@@ -213,9 +213,9 @@ void main() {
     }
 
     // 1. Fill the value array.
-    for (uint e = 0; e < es; e++) {
-        valueArray[e] = texelFetch(sampler3D(scalarFieldEnsembles[nonuniformEXT(e)], scalarFieldSampler), referencePointIdx, 0).r;
-        ordinalRankArray[e] = e;
+    for (uint c = 0; c < cs; c++) {
+        valueArray[c] = texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), referencePointIdx, 0).r;
+        ordinalRankArray[c] = c;
     }
 
     // 2. Sort both arrays.

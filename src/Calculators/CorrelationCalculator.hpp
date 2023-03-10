@@ -47,6 +47,9 @@ typedef std::shared_ptr<SemaphoreVkCudaDriverApiInterop> SemaphoreVkCudaDriverAp
 
 class ReferencePointSelectionRenderer;
 
+typedef std::shared_ptr<float[]> HostCacheEntry;
+typedef std::shared_ptr<DeviceCacheEntryType> DeviceCacheEntry;
+
 class ICorrelationCalculator : public Calculator {
 public:
     explicit ICorrelationCalculator(sgl::vk::Renderer* renderer);
@@ -64,6 +67,16 @@ public:
     void setReferencePoint(const glm::ivec3& referencePoint);
     void setReferencePointFromWorld(const glm::vec3& worldPosition);
 
+    /// Returns whether ensemble or time correlation mode is used.
+    [[nodiscard]] inline bool getIsEnsembleMode() const { return isEnsembleMode; }
+    int getCorrelationMemberCount();
+    HostCacheEntry getFieldEntryCpu(
+            const std::string& fieldName, int fieldIdx, int timeStepIdx, int ensembleIdx);
+    DeviceCacheEntry getFieldEntryDevice(
+            const std::string& fieldName, int fieldIdx, int timeStepIdx, int ensembleIdx);
+    std::pair<float, float> getMinMaxScalarFieldValue(
+            const std::string& fieldName, int fieldIdx, int timeStepIdx, int ensembleIdx);
+
 protected:
     void renderGuiImpl(sgl::PropertyEditor& propertyEditor) override;
 
@@ -75,6 +88,9 @@ protected:
     RendererPtr calculatorRenderer;
     ReferencePointSelectionRenderer* referencePointSelectionRenderer = nullptr;
     bool continuousRecompute = false; ///< Debug option.
+
+    virtual void onCorrelationMemberCountChanged() {}
+    bool isEnsembleMode = true; //< Ensemble or time mode?
 
     // Focus point picking/moving information.
     void setReferencePointFromFocusPoint();
@@ -131,9 +147,10 @@ public:
 protected:
     /// Renders the GUI. Returns whether re-rendering has become necessary due to the user's actions.
     void renderGuiImpl(sgl::PropertyEditor& propertyEditor) override;
+    void onCorrelationMemberCountChanged() override;
 
 private:
-    std::shared_ptr<CorrelationComputePass> pccComputePass;
+    std::shared_ptr<CorrelationComputePass> correlationComputePass;
     CorrelationMeasureType correlationMeasureType = CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV;
     bool useGpu = true;
     bool useCuda = false; ///< Currently only for CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV.
@@ -144,14 +161,15 @@ private:
 };
 
 class SpearmanReferenceRankComputePass;
-struct SimilarityCalculatorKernelCache;
+struct CorrelationCalculatorKernelCache;
 
 class CorrelationComputePass : public sgl::vk::ComputePass {
 public:
     explicit CorrelationComputePass(sgl::vk::Renderer* renderer);
     ~CorrelationComputePass() override;
-    void setVolumeData(VolumeData* _volumeData, bool isNewData);
-    void setEnsembleImageViews(const std::vector<sgl::vk::ImageViewPtr>& _ensembleImageViews);
+    void setVolumeData(VolumeData* _volumeData, int correlationMemberCount, bool isNewData);
+    void setCorrelationMemberCount(int correlationMemberCount);
+    void setFieldImageViews(const std::vector<sgl::vk::ImageViewPtr>& _fieldImageViews);
     void setOutputImage(const sgl::vk::ImageViewPtr& _outputImage);
     void setReferencePoint(const glm::ivec3& referencePointIndex);
     void setCorrelationMeasureType(CorrelationMeasureType _correlationMeasureType);
@@ -159,7 +177,8 @@ public:
     void setKraskovNumNeighbors(int _k);
     void setKraskovEstimatorIndex(int _kraskovEstimatorIndex);
     void computeCuda(
-            const std::string& fieldName, int timeStepIdx, const DeviceCacheEntry& deviceCacheEntry,
+            CorrelationCalculator* correlationCalculator,
+            const std::string& fieldName, int timeStepIdx, int ensembleIdx, const DeviceCacheEntry& deviceCacheEntry,
             glm::ivec3& referencePointIndex);
 
 protected:
@@ -169,18 +188,18 @@ protected:
 
 private:
     VolumeData* volumeData = nullptr;
-    int cachedEnsembleMemberCount = 0;
+    int cachedCorrelationMemberCount = 0;
     CorrelationMeasureType correlationMeasureType = CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV;
 
-    const uint32_t batchEnsembleCountThreshold = 10;
+    const uint32_t batchCorrelationMemberCountThreshold = 10;
     const int computeBlockSizeX = 8, computeBlockSizeY = 8, computeBlockSizeZ = 4;
     struct UniformData {
-        uint32_t xs, ys, zs, es;
+        uint32_t xs, ys, zs, cs;
     };
     UniformData uniformData{};
     sgl::vk::BufferPtr uniformBuffer;
 
-    std::vector<sgl::vk::ImageViewPtr> ensembleImageViews;
+    std::vector<sgl::vk::ImageViewPtr> fieldImageViews;
     sgl::vk::ImageViewPtr outputImage;
 
     // For Spearman correlation.
@@ -200,13 +219,13 @@ private:
     std::vector<sgl::vk::CommandBufferPtr> postRenderCommandBuffers;
     sgl::vk::SemaphoreVkCudaDriverApiInteropPtr vulkanFinishedSemaphore, cudaFinishedSemaphore;
     uint64_t timelineValue = 0;
-    size_t cachedEnsembleSizeDevice = std::numeric_limits<size_t>::max();
+    size_t cachedCorrelationMemberCountDevice = std::numeric_limits<size_t>::max();
     size_t cachedVolumeDataSlice3dSize = 0;
     CUdeviceptr outputImageBufferCu{};
-    CUdeviceptr ensembleTextureArrayCu{};
-    std::vector<CUtexObject> cachedEnsembleTexturesCu;
+    CUdeviceptr fieldTextureArrayCu{};
+    std::vector<CUtexObject> cachedFieldTexturesCu;
     CUstream stream{};
-    SimilarityCalculatorKernelCache* kernelCache = nullptr;
+    CorrelationCalculatorKernelCache* kernelCache = nullptr;
 #endif
 };
 
@@ -214,8 +233,8 @@ class SpearmanReferenceRankComputePass : public sgl::vk::ComputePass {
 public:
     SpearmanReferenceRankComputePass(sgl::vk::Renderer* renderer, sgl::vk::BufferPtr uniformBuffer);
     void setVolumeData(VolumeData* _volumeData, bool isNewData);
-    void setEnsembleMemberCount(int ensembleMemberCount);
-    void setEnsembleImageViews(const std::vector<sgl::vk::ImageViewPtr>& _ensembleImageViews);
+    void setCorrelationMemberCount(int correlationMemberCount);
+    void setFieldImageViews(const std::vector<sgl::vk::ImageViewPtr>& _fieldImageViews);
     inline const sgl::vk::BufferPtr& getReferenceRankBuffer() { return referenceRankBuffer; }
 
 protected:
@@ -225,12 +244,12 @@ protected:
 
 private:
     VolumeData* volumeData = nullptr;
-    int cachedEnsembleMemberCount = 0;
+    int cachedCorrelationMemberCount = 0;
 
     const int computeBlockSizeX = 8, computeBlockSizeY = 8, computeBlockSizeZ = 4;
     sgl::vk::BufferPtr uniformBuffer;
 
-    std::vector<sgl::vk::ImageViewPtr> ensembleImageViews;
+    std::vector<sgl::vk::ImageViewPtr> fieldImageViews;
     sgl::vk::BufferPtr referenceRankBuffer;
 };
 

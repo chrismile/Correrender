@@ -40,6 +40,8 @@
 #include "DiagramBase.hpp"
 #include "../../Calculators/CorrelationDefines.hpp"
 
+typedef std::shared_ptr<float[]> HostCacheEntry;
+
 struct MIFieldEntry {
     float miValue;
     uint32_t pointIndex0, pointIndex1;
@@ -65,6 +67,7 @@ public:
     void setVolumeData(VolumeDataPtr& _volumeData, bool isNewData);
     void setRegions(const std::pair<GridRegion, GridRegion>& _rs);
     void setSelectedScalarField(int selectedFieldIdx, const std::string& _scalarFieldName);
+    void setIsEnsembleMode(bool _isEnsembleMode);
     void setCorrelationMeasureType(CorrelationMeasureType _correlationMeasureType);
     void setBeta(float _beta);
     void setDownscalingFactors(int _dfx, int _dfy, int _dfz);
@@ -96,6 +99,9 @@ public:
     void setCorrelationRange(const glm::vec2& _range);
     void setCellDistanceRange(const glm::ivec2& _range);
 
+    /// Returns whether ensemble or time correlation mode is used.
+    [[nodiscard]] inline bool getIsEnsembleMode() const { return isEnsembleMode; }
+
 protected:
     bool hasData() override {
         return true;
@@ -119,6 +125,10 @@ private:
     std::string selectedScalarFieldName;
     bool dataDirty = true;
 
+    int getCorrelationMemberCount();
+    HostCacheEntry getFieldEntryCpu(const std::string& fieldName, int fieldIdx);
+    bool isEnsembleMode = true; //< Ensemble or time mode?
+
     // Hierarchy data.
     CorrelationMeasureType correlationMeasureType = CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV;
     int dfx = 32, dfy = 32, dfz = 32; ///< Downscaling factors.
@@ -135,11 +145,10 @@ private:
 
     // B-spline data.
     void updateData();
-    void computeDownscaledField(int idx, std::vector<float*>& downscaledEnsembleFields);
-    void computeDownscaledFieldVariance(int idx, std::vector<float*>& downscaledEnsembleFields);
+    void computeDownscaledField(int idx, std::vector<float*>& downscaledFields);
+    void computeDownscaledFieldVariance(int idx, std::vector<float*>& downscaledFields);
     void computeCorrelations(
-            std::vector<float*>& downscaledEnsembleFields0,
-            std::vector<float*>& downscaledEnsembleFields1,
+            std::vector<float*>& downscaledFields0, std::vector<float*>& downscaledFields1,
             std::vector<MIFieldEntry>& miFieldEntries);
     int NUM_LINES = 0;
     int MAX_NUM_LINES = 100;

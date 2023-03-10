@@ -45,15 +45,15 @@ extern "C" __global__ void memcpyFloatClampToZero(
     }
 }
 
-extern "C" __global__ void combineEnsembles(
-        uint32_t xs, uint32_t ys, uint32_t zs, uint32_t es, uint32_t batchOffset, uint32_t batchSize,
-        float minEnsembleVal, float maxEnsembleVal,
-        float4* outputBuffer, cudaTextureObject_t* scalarFieldEnsembles) {
+extern "C" __global__ void combineCorrelationMembers(
+        uint32_t xs, uint32_t ys, uint32_t zs, uint32_t cs, uint32_t batchOffset, uint32_t batchSize,
+        float minFieldVal, float maxFieldVal,
+        float4* outputBuffer, cudaTextureObject_t* scalarFields) {
     uint32_t globalThreadIdx = blockIdx.x * blockDim.x + threadIdx.x;
     if (globalThreadIdx >= batchSize) {
         return;
     }
-    uint32_t pointIdxWriteOffset = globalThreadIdx * es;
+    uint32_t pointIdxWriteOffset = globalThreadIdx * cs;
     uint32_t pointIdxReadOffset = globalThreadIdx + batchOffset;
     uint32_t x = pointIdxReadOffset % xs;
     uint32_t y = (pointIdxReadOffset / xs) % ys;
@@ -62,28 +62,28 @@ extern "C" __global__ void combineEnsembles(
             2.0f * float(x) / float(xs - 1) - 1.0f,
             2.0f * float(y) / float(ys - 1) - 1.0f,
             2.0f * float(z) / float(zs - 1) - 1.0f);
-    for (uint32_t e = 0; e < es; e++) {
-        //float ensembleValue = tex3Dfetch(scalarFieldEnsembles[e], make_int4(x, y, z, 0)).x;
+    for (uint32_t c = 0; c < cs; c++) {
+        //float fieldValue = tex3Dfetch(scalarFields[e], make_int4(x, y, z, 0)).x;
 #ifdef USE_NORMALIZED_COORDINATES
-        float ensembleValue = tex3D<float>(
-                scalarFieldEnsembles[e],
+        float fieldValue = tex3D<float>(
+                scalarFields[c],
                 (float(x) + 0.5f) / float(xs),
                 (float(y) + 0.5f) / float(ys),
                 (float(z) + 0.5f) / float(zs));
 #else
-        float ensembleValue = tex3D<float>(scalarFieldEnsembles[e], float(x) + 0.5f, float(y) + 0.5f, float(z) + 0.5f);
+        float fieldValue = tex3D<float>(scalarFields[c], float(x) + 0.5f, float(y) + 0.5f, float(z) + 0.5f);
 #endif
-        ensembleValue = (ensembleValue - minEnsembleVal) / (maxEnsembleVal - minEnsembleVal);
-        outputBuffer[pointIdxWriteOffset + e] = make_float4(ensembleValue, pointCoords.x, pointCoords.y, pointCoords.z);
+        fieldValue = (fieldValue - minFieldVal) / (maxFieldVal - minFieldVal);
+        outputBuffer[pointIdxWriteOffset + c] = make_float4(fieldValue, pointCoords.x, pointCoords.y, pointCoords.z);
     }
 }
 
-extern "C" __global__ void combineEnsemblesReference(
-        uint32_t xs, uint32_t ys, uint32_t zs, uint32_t es, uint3 referencePointIdx,
-        float minEnsembleVal, float maxEnsembleVal,
-        float4* outputBuffer, cudaTextureObject_t* scalarFieldEnsembles) {
-    uint32_t e = blockIdx.x * blockDim.x + threadIdx.x;
-    if (e >= es) {
+extern "C" __global__ void combineCorrelationMembersReference(
+        uint32_t xs, uint32_t ys, uint32_t zs, uint32_t cs, uint3 referencePointIdx,
+        float minFieldVal, float maxFieldVal,
+        float4* outputBuffer, cudaTextureObject_t* scalarFields) {
+    uint32_t c = blockIdx.x * blockDim.x + threadIdx.x;
+    if (c >= cs) {
         return;
     }
 
@@ -92,31 +92,31 @@ extern "C" __global__ void combineEnsemblesReference(
             2.0f * float(referencePointIdx.y) / float(ys - 1) - 1.0f,
             2.0f * float(referencePointIdx.z) / float(zs - 1) - 1.0f);
 #ifdef USE_NORMALIZED_COORDINATES
-    float ensembleValue = tex3D<float>(
-                scalarFieldEnsembles[e],
+    float fieldValue = tex3D<float>(
+                scalarFields[c],
                 (float(referencePointIdx.x) + 0.5f) / float(xs),
                 (float(referencePointIdx.y) + 0.5f) / float(ys),
                 (float(referencePointIdx.z) + 0.5f) / float(zs));
 #else
-    float ensembleValue = tex3D<float>(
-            scalarFieldEnsembles[e],
+    float fieldValue = tex3D<float>(
+            scalarFields[c],
             float(referencePointIdx.x) + 0.5f,
             float(referencePointIdx.y) + 0.5f,
             float(referencePointIdx.z) + 0.5f);
 #endif
-    ensembleValue = (ensembleValue - minEnsembleVal) / (maxEnsembleVal - minEnsembleVal);
-    outputBuffer[e] = make_float4(ensembleValue, pointCoords.x, pointCoords.y, pointCoords.z);
+    fieldValue = (fieldValue - minFieldVal) / (maxFieldVal - minFieldVal);
+    outputBuffer[c] = make_float4(fieldValue, pointCoords.x, pointCoords.y, pointCoords.z);
 }
 
-extern "C" __global__ void combineEnsemblesAligned(
-        uint32_t xs, uint32_t ys, uint32_t zs, uint32_t es, uint32_t batchOffset, uint32_t batchSize,
-        float minEnsembleVal, float maxEnsembleVal,
-        float4* outputBuffer, cudaTextureObject_t* scalarFieldEnsembles, uint32_t alignment) {
+extern "C" __global__ void combineCorrelationMembersAligned(
+        uint32_t xs, uint32_t ys, uint32_t zs, uint32_t cs, uint32_t batchOffset, uint32_t batchSize,
+        float minFieldVal, float maxFieldVal,
+        float4* outputBuffer, cudaTextureObject_t* scalarFields, uint32_t alignment) {
     uint32_t globalThreadIdx = blockIdx.x * blockDim.x + threadIdx.x;
     if (globalThreadIdx >= batchSize) {
         return;
     }
-    uint32_t pointIdxWriteOffset = globalThreadIdx * es;
+    uint32_t pointIdxWriteOffset = globalThreadIdx * cs;
     uint32_t pointIdxReadOffset = globalThreadIdx + batchOffset;
     uint32_t x = pointIdxReadOffset % xs;
     uint32_t y = (pointIdxReadOffset / xs) % ys;
@@ -125,29 +125,29 @@ extern "C" __global__ void combineEnsemblesAligned(
             2.0f * float(x) / float(xs - 1) - 1.0f,
             2.0f * float(y) / float(ys - 1) - 1.0f,
             2.0f * float(z) / float(zs - 1) - 1.0f);
-    for (uint32_t e = 0; e < es; e++) {
-        //float ensembleValue = tex3Dfetch(scalarFieldEnsembles[e], make_int4(x, y, z, 0)).x;
+    for (uint32_t c = 0; c < cs; c++) {
+        //float fieldValue = tex3Dfetch(scalarFields[e], make_int4(x, y, z, 0)).x;
 #ifdef USE_NORMALIZED_COORDINATES
-        float ensembleValue = tex3D<float>(
-                scalarFieldEnsembles[e],
+        float fieldValue = tex3D<float>(
+                scalarFields[c],
                 (float(x) + 0.5f) / float(xs),
                 (float(y) + 0.5f) / float(ys),
                 (float(z) + 0.5f) / float(zs));
 #else
-        float ensembleValue = tex3D<float>(scalarFieldEnsembles[e], float(x) + 0.5f, float(y) + 0.5f, float(z) + 0.5f);
+        float fieldValue = tex3D<float>(scalarFields[c], float(x) + 0.5f, float(y) + 0.5f, float(z) + 0.5f);
 #endif
-        ensembleValue = (ensembleValue - minEnsembleVal) / (maxEnsembleVal - minEnsembleVal);
-        outputBuffer[(pointIdxWriteOffset + e) * alignment] =
-                make_float4(ensembleValue, pointCoords.x, pointCoords.y, pointCoords.z);
+        fieldValue = (fieldValue - minFieldVal) / (maxFieldVal - minFieldVal);
+        outputBuffer[(pointIdxWriteOffset + c) * alignment] =
+                make_float4(fieldValue, pointCoords.x, pointCoords.y, pointCoords.z);
     }
 }
 
-extern "C" __global__ void combineEnsemblesReferenceAligned(
-        uint32_t xs, uint32_t ys, uint32_t zs, uint32_t es, uint3 referencePointIdx,
-        float minEnsembleVal, float maxEnsembleVal,
-        float4* outputBuffer, cudaTextureObject_t* scalarFieldEnsembles, uint32_t alignment) {
-    uint32_t e = blockIdx.x * blockDim.x + threadIdx.x;
-    if (e >= es) {
+extern "C" __global__ void combineCorrelationMembersReferenceAligned(
+        uint32_t xs, uint32_t ys, uint32_t zs, uint32_t cs, uint3 referencePointIdx,
+        float minFieldVal, float maxFieldVal,
+        float4* outputBuffer, cudaTextureObject_t* scalarFields, uint32_t alignment) {
+    uint32_t c = blockIdx.x * blockDim.x + threadIdx.x;
+    if (c >= cs) {
         return;
     }
 
@@ -156,20 +156,20 @@ extern "C" __global__ void combineEnsemblesReferenceAligned(
             2.0f * float(referencePointIdx.y) / float(ys - 1) - 1.0f,
             2.0f * float(referencePointIdx.z) / float(zs - 1) - 1.0f);
 #ifdef USE_NORMALIZED_COORDINATES
-    float ensembleValue = tex3D<float>(
-                scalarFieldEnsembles[e],
+    float fieldValue = tex3D<float>(
+                scalarFields[c],
                 (float(referencePointIdx.x) + 0.5f) / float(xs),
                 (float(referencePointIdx.y) + 0.5f) / float(ys),
                 (float(referencePointIdx.z) + 0.5f) / float(zs));
 #else
-    float ensembleValue = tex3D<float>(
-            scalarFieldEnsembles[e],
+    float fieldValue = tex3D<float>(
+            scalarFields[c],
             float(referencePointIdx.x) + 0.5f,
             float(referencePointIdx.y) + 0.5f,
             float(referencePointIdx.z) + 0.5f);
 #endif
-    ensembleValue = (ensembleValue - minEnsembleVal) / (maxEnsembleVal - minEnsembleVal);
-    outputBuffer[e * alignment] = make_float4(ensembleValue, pointCoords.x, pointCoords.y, pointCoords.z);
+    fieldValue = (fieldValue - minFieldVal) / (maxFieldVal - minFieldVal);
+    outputBuffer[c * alignment] = make_float4(fieldValue, pointCoords.x, pointCoords.y, pointCoords.z);
 }
 
 extern "C" __global__ void writeGridPositions(
