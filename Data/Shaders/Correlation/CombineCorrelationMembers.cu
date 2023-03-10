@@ -63,7 +63,7 @@ extern "C" __global__ void combineCorrelationMembers(
             2.0f * float(y) / float(ys - 1) - 1.0f,
             2.0f * float(z) / float(zs - 1) - 1.0f);
     for (uint32_t c = 0; c < cs; c++) {
-        //float fieldValue = tex3Dfetch(scalarFields[e], make_int4(x, y, z, 0)).x;
+        //float fieldValue = tex3Dfetch(scalarFields[c], make_int4(x, y, z, 0)).x;
 #ifdef USE_NORMALIZED_COORDINATES
         float fieldValue = tex3D<float>(
                 scalarFields[c],
@@ -126,7 +126,7 @@ extern "C" __global__ void combineCorrelationMembersAligned(
             2.0f * float(y) / float(ys - 1) - 1.0f,
             2.0f * float(z) / float(zs - 1) - 1.0f);
     for (uint32_t c = 0; c < cs; c++) {
-        //float fieldValue = tex3Dfetch(scalarFields[e], make_int4(x, y, z, 0)).x;
+        //float fieldValue = tex3Dfetch(scalarFields[c], make_int4(x, y, z, 0)).x;
 #ifdef USE_NORMALIZED_COORDINATES
         float fieldValue = tex3D<float>(
                 scalarFields[c],
