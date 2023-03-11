@@ -56,6 +56,7 @@ public:
     void setViewManager(ViewManager* _viewManager) override;
     void setVolumeData(VolumeData* _volumeData, bool isNewData) override;
     void onFieldRemoved(FieldType fieldType, int fieldIdx) override;
+    [[nodiscard]] inline int getInputFieldIndex() const { return fieldIndex; }
     [[nodiscard]] bool getComputesCorrelation() const override { return true; }
     [[nodiscard]] virtual bool getIsRealtime() const { return false; }
     [[nodiscard]] bool getShouldRenderGui() const override { return true; }

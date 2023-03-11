@@ -76,8 +76,6 @@ HEBChart::HEBChart() {
     }
 #endif
     setDefaultBackendId(defaultBackendId);
-
-    initializeColorPoints();
 }
 
 void HEBChart::initialize() {
@@ -111,6 +109,10 @@ void HEBChart::setLineCountFactor(int _factor) {
     dataDirty = true;
 }
 
+void HEBChart::setCurveThickness(float _curveThickness) {
+    curveThickness = _curveThickness;
+}
+
 void HEBChart::setCurveOpacity(float _alpha) {
     curveOpacity = _alpha;
 }
@@ -140,9 +142,9 @@ void HEBChart::setColorByValue(bool _colorByValue) {
     needsReRender = true;
 }
 
-void HEBChart::setColorMap(DiagramColorMap _colorMap) {
-    colorMap = _colorMap;
-    initializeColorPoints();
+void HEBChart::setColorMap(int fieldIdx, DiagramColorMap _colorMap) {
+    fieldDataArray.at(fieldIdx)->colorMap = _colorMap;
+    fieldDataArray.at(fieldIdx)->initializeColorPoints();
     needsReRender = true;
 }
 
@@ -240,7 +242,7 @@ void HEBChart::update(float dt) {
         float minRadius = chartRadius - pointRadiusBase * 4.0f;
         float maxRadius = chartRadius + pointRadiusBase * 4.0f;
 
-        if (radiusMouse >= minRadius && radiusMouse <= maxRadius) {
+        if (radiusMouse >= minRadius && radiusMouse <= maxRadius && !nodesList.empty()) {
             if (regionsEqual) {
                 auto numLeaves = int(pointToNodeIndexMap0.size());
                 int sectorIdx = int(std::round(phiMouse / sgl::TWO_PI * float(numLeaves))) % numLeaves;
@@ -292,7 +294,7 @@ void HEBChart::update(float dt) {
             // TODO: Test if point lies in convex hull of control points first (using @see isInsidePolygon).
             int closestLineIdx = -1;
             float closestLineDist = std::numeric_limits<float>::max();
-            for (int lineIdx = 0; lineIdx < NUM_LINES; lineIdx++) {
+            for (int lineIdx = 0; lineIdx < numLinesTotal; lineIdx++) {
                 for (int ptIdx = 0; ptIdx < NUM_SUBDIVISIONS - 1; ptIdx++) {
                     glm::vec2 pt0 = curvePoints.at(lineIdx * NUM_SUBDIVISIONS + ptIdx);
                     pt0.x = windowWidth / 2.0f + pt0.x * chartRadius;
@@ -349,7 +351,7 @@ void HEBChart::update(float dt) {
     }
 
     if (selectedPointIndices[0] != newSelectedPointIndices[0] || selectedPointIndices[1] != newSelectedPointIndices[1]
-        || selectedLineIdx != newSelectedLineIdx) {
+            || selectedLineIdx != newSelectedLineIdx) {
         needsReRender = true;
     }
     selectedLineIdx = newSelectedLineIdx;
@@ -357,16 +359,16 @@ void HEBChart::update(float dt) {
     selectedPointIndices[1] = newSelectedPointIndices[1];
 }
 
-void HEBChart::initializeColorPoints() {
+void HEBChartFieldData::initializeColorPoints() {
     colorPoints = getColorPoints(colorMap);
 }
 
-glm::vec4 HEBChart::evalColorMapVec4(float t) {
+glm::vec4 HEBChartFieldData::evalColorMapVec4(float t) {
     t = glm::clamp(t, 0.0f, 1.0f);
     //glm::vec3 c0(208.0f/255.0f, 231.0f/255.0f, 208.0f/255.0f);
     //glm::vec3 c1(100.0f/255.0f, 1.0f, 100.0f/255.0f);
-    float opacity = curveOpacity;
-    if (opacityByValue) {
+    float opacity = parent->curveOpacity;
+    if (parent->opacityByValue) {
         opacity *= t * 0.75f + 0.25f;
     }
     //return glm::vec4(glm::mix(c0, c1, t), opacity);
@@ -380,7 +382,7 @@ glm::vec4 HEBChart::evalColorMapVec4(float t) {
     return glm::vec4(glm::mix(c0, c1, f1), opacity);
 }
 
-sgl::Color HEBChart::evalColorMap(float t) {
+sgl::Color HEBChartFieldData::evalColorMap(float t) {
     return sgl::colorFromVec4(evalColorMapVec4(t));
 }
 
@@ -403,7 +405,7 @@ void HEBChart::renderBaseNanoVG() {
     NVGcolor curveStrokeColor = nvgRGBA(
             100, 255, 100, uint8_t(std::clamp(int(std::ceil(curveOpacity * 255.0f)), 0, 255)));
     if (!curvePoints.empty()) {
-        for (int lineIdx = 0; lineIdx < NUM_LINES; lineIdx++) {
+        for (int lineIdx = 0; lineIdx < numLinesTotal; lineIdx++) {
             nvgBeginPath(vg);
             glm::vec2 pt0 = curvePoints.at(lineIdx * NUM_SUBDIVISIONS + 0);
             pt0.x = windowWidth / 2.0f + pt0.x * chartRadius;
@@ -416,24 +418,25 @@ void HEBChart::renderBaseNanoVG() {
                 nvgLineTo(vg, pt.x, pt.y);
             }
 
-            float strokeWidth = lineIdx == selectedLineIdx ? 2.0f : 1.0f;
+            float strokeWidth = lineIdx == selectedLineIdx ? curveThickness * 2.0f : curveThickness;
             nvgStrokeWidth(vg, strokeWidth);
 
             if (colorByValue) {
                 float factor = 1.0f;
-                if (miValues.size() > 1) {
-                    float maxMi = miValues.back();
-                    float minMi = miValues.front();
-                    factor = (miValues.at(lineIdx) - minMi) / (maxMi - minMi);
+                if (correlationValuesArray.size() > 1) {
+                    float maxMi = correlationValuesArray.back();
+                    float minMi = correlationValuesArray.front();
+                    factor = (correlationValuesArray.at(lineIdx) - minMi) / (maxMi - minMi);
                 }
-                glm::vec4 color = evalColorMapVec4(factor);
+                HEBChartFieldData* fieldData = fieldDataArray.at(lineFieldIndexArray.at(lineIdx)).get();
+                glm::vec4 color = fieldData->evalColorMapVec4(factor);
                 curveStrokeColor = nvgRGBAf(color.x, color.y, color.z, color.w);
             } else if (opacityByValue) {
                 float factor = 1.0f;
-                if (miValues.size() > 1) {
-                    float maxMi = miValues.back();
-                    float minMi = miValues.front();
-                    factor = (miValues.at(lineIdx) - minMi) / (maxMi - minMi) * 0.75f + 0.25f;
+                if (correlationValuesArray.size() > 1) {
+                    float maxMi = correlationValuesArray.back();
+                    float minMi = correlationValuesArray.front();
+                    factor = (correlationValuesArray.at(lineIdx) - minMi) / (maxMi - minMi) * 0.75f + 0.25f;
                 }
                 curveStrokeColor.a = curveOpacity * factor;
             } else {
@@ -448,7 +451,7 @@ void HEBChart::renderBaseNanoVG() {
     }
 
     // Draw the point circles.
-    float pointRadius = pointRadiusBase;
+    float pointRadius = curveThickness * pointRadiusBase;
     nvgBeginPath(vg);
     /*for (int i = 0; i < int(nodesList.size()); i++) {
         const auto& leaf = nodesList.at(i);
@@ -482,58 +485,75 @@ void HEBChart::renderBaseNanoVG() {
 
     if (showRing) {
         glm::vec2 center(windowWidth / 2.0f, windowHeight / 2.0f);
-        float rlo = chartRadius + outerRingOffset;
-        float rhi = chartRadius + outerRingOffset + outerRingWidth;
-        float rmi = chartRadius + outerRingOffset + 0.5f * outerRingWidth;
 
-        for (int leafIdx = int(leafIdxOffset); leafIdx < int(nodesList.size()); leafIdx++) {
-            int numLeaves = int(nodesList.size()) - int(leafIdxOffset);
-            int nextIdx = (leafIdx + 1 - int(leafIdxOffset)) % numLeaves + int(leafIdxOffset);
-            const auto& leafCurr = nodesList.at(leafIdx);
-            const auto& leafNext = nodesList.at(nextIdx);
-            float angle0 = leafCurr.angle;
-            float angle1 = leafNext.angle + 0.01f;
-            float cos0 = std::cos(angle0), sin0 = std::sin(angle0), cos1 = std::cos(angle1), sin1 = std::sin(angle1);
-            //glm::vec2 lo0 = center + rlo * glm::vec2(cos0, sin0);
-            glm::vec2 lo1 = center + rlo * glm::vec2(cos1, sin1);
-            glm::vec2 hi0 = center + rhi * glm::vec2(cos0, sin0);
-            //glm::vec2 hi1 = center + rhi * glm::vec2(cos1, sin1);
-            glm::vec2 mi0 = center + rmi * glm::vec2(cos0, sin0);
-            glm::vec2 mi1 = center + rmi * glm::vec2(cos1, sin1);
-            nvgBeginPath(vg);
-            nvgArc(vg, center.x, center.y, rlo, angle1, angle0, NVG_CCW);
-            nvgLineTo(vg, hi0.x, hi0.y);
-            nvgArc(vg, center.x, center.y, rhi, angle0, angle1, NVG_CW);
-            nvgLineTo(vg, lo1.x, lo1.y);
-            nvgClosePath(vg);
+        auto numFields = int(fieldDataArray.size());
+        for (int i = 0; i < numFields; i++) {
+            auto* fieldData = fieldDataArray.at(i).get();
+            float pctLower = float(i) / float(numFields);
+            float pctMiddle = (float(i) + 0.5f) / float(numFields);
+            float pctUpper = float(i + 1) / float(numFields);
+            float rlo = chartRadius + outerRingOffset + pctLower * outerRingWidth;
+            float rmi = chartRadius + outerRingOffset + pctMiddle * outerRingWidth;
+            float rhi = chartRadius + outerRingOffset + pctUpper * outerRingWidth;
 
-            float stdev0 = leafStdDevArray.at(leafIdx - int(leafIdxOffset));
-            float t0 = minStdDev == maxStdDev ? 0.0f : (stdev0 - minStdDev) / (maxStdDev - minStdDev);
-            glm::vec4 rgbColor0 = evalColorMapVec4(t0);
-            //glm::vec4 rgbColor0 = evalColorMapVec4(leafCurr.angle / sgl::TWO_PI);
-            rgbColor0.w = 1.0f;
-            NVGcolor fillColor0 = nvgRGBAf(rgbColor0.x, rgbColor0.y, rgbColor0.z, rgbColor0.w);
-            float stdev1 = leafStdDevArray.at(nextIdx - int(leafIdxOffset));
-            float t1 = minStdDev == maxStdDev ? 0.0f : (stdev1 - minStdDev) / (maxStdDev - minStdDev);
-            glm::vec4 rgbColor1 = evalColorMapVec4(t1);
-            //glm::vec4 rgbColor1 = evalColorMapVec4(leafNext.angle / sgl::TWO_PI);
-            rgbColor1.w = 1.0f;
-            NVGcolor fillColor1 = nvgRGBAf(rgbColor1.x, rgbColor1.y, rgbColor1.z, rgbColor1.w);
+            for (int leafIdx = int(leafIdxOffset); leafIdx < int(nodesList.size()); leafIdx++) {
+                int numLeaves = int(nodesList.size()) - int(leafIdxOffset);
+                int nextIdx = (leafIdx + 1 - int(leafIdxOffset)) % numLeaves + int(leafIdxOffset);
+                const auto &leafCurr = nodesList.at(leafIdx);
+                const auto &leafNext = nodesList.at(nextIdx);
+                float angle0 = leafCurr.angle;
+                float angle1 = leafNext.angle + 0.01f;
+                float cos0 = std::cos(angle0), sin0 = std::sin(angle0), cos1 = std::cos(angle1), sin1 = std::sin(
+                        angle1);
+                //glm::vec2 lo0 = center + rlo * glm::vec2(cos0, sin0);
+                glm::vec2 lo1 = center + rlo * glm::vec2(cos1, sin1);
+                glm::vec2 hi0 = center + rhi * glm::vec2(cos0, sin0);
+                //glm::vec2 hi1 = center + rhi * glm::vec2(cos1, sin1);
+                glm::vec2 mi0 = center + rmi * glm::vec2(cos0, sin0);
+                glm::vec2 mi1 = center + rmi * glm::vec2(cos1, sin1);
+                nvgBeginPath(vg);
+                nvgArc(vg, center.x, center.y, rlo, angle1, angle0, NVG_CCW);
+                nvgLineTo(vg, hi0.x, hi0.y);
+                nvgArc(vg, center.x, center.y, rhi, angle0, angle1, NVG_CW);
+                nvgLineTo(vg, lo1.x, lo1.y);
+                nvgClosePath(vg);
 
-            NVGpaint paint = nvgLinearGradient(vg, mi0.x, mi0.y, mi1.x, mi1.y, fillColor0, fillColor1);
-            nvgFillPaint(vg, paint);
-            nvgFill(vg);
+                float stdev0 = fieldData->leafStdDevArray.at(leafIdx - int(leafIdxOffset));
+                float t0 = fieldData->minStdDev == fieldData->maxStdDev ? 0.0f : (stdev0 - fieldData->minStdDev) / (fieldData->maxStdDev - fieldData->minStdDev);
+                glm::vec4 rgbColor0 = fieldData->evalColorMapVec4(t0);
+                //glm::vec4 rgbColor0 = fieldData->evalColorMapVec4(leafCurr.angle / sgl::TWO_PI);
+                rgbColor0.w = 1.0f;
+                NVGcolor fillColor0 = nvgRGBAf(rgbColor0.x, rgbColor0.y, rgbColor0.z, rgbColor0.w);
+                float stdev1 = fieldData->leafStdDevArray.at(nextIdx - int(leafIdxOffset));
+                float t1 = fieldData->minStdDev == fieldData->maxStdDev ? 0.0f : (stdev1 - fieldData->minStdDev) / (fieldData->maxStdDev - fieldData->minStdDev);
+                glm::vec4 rgbColor1 = fieldData->evalColorMapVec4(t1);
+                //glm::vec4 rgbColor1 = fieldData->evalColorMapVec4(leafNext.angle / sgl::TWO_PI);
+                rgbColor1.w = 1.0f;
+                NVGcolor fillColor1 = nvgRGBAf(rgbColor1.x, rgbColor1.y, rgbColor1.z, rgbColor1.w);
+
+                NVGpaint paint = nvgLinearGradient(vg, mi0.x, mi0.y, mi1.x, mi1.y, fillColor0, fillColor1);
+                nvgFillPaint(vg, paint);
+                nvgFill(vg);
+            }
         }
 
-        NVGcolor circleStrokeColorNvg = nvgRGBA(
-                circleStrokeColor.getR(), circleStrokeColor.getG(),
-                circleStrokeColor.getB(), circleStrokeColor.getA());
-        nvgBeginPath(vg);
-        nvgCircle(vg, center.x, center.y, rlo);
-        nvgCircle(vg, center.x, center.y, rhi);
-        nvgStrokeWidth(vg, 1.0f);
-        nvgStrokeColor(vg, circleStrokeColorNvg);
-        nvgStroke(vg);
+        for (int i = 0; i < numFields; i++) {
+            float pctLower = float(i) / float(numFields);
+            float pctUpper = float(i + 1) / float(numFields);
+            float rlo = chartRadius + outerRingOffset + pctLower * outerRingWidth;
+            float rhi = chartRadius + outerRingOffset + pctUpper * outerRingWidth;
+            NVGcolor circleStrokeColorNvg = nvgRGBA(
+                    circleStrokeColor.getR(), circleStrokeColor.getG(),
+                    circleStrokeColor.getB(), circleStrokeColor.getA());
+            nvgBeginPath(vg);
+            nvgCircle(vg, center.x, center.y, rlo);
+            if (i == numFields - 1) {
+                nvgCircle(vg, center.x, center.y, rhi);
+            }
+            nvgStrokeWidth(vg, 1.0f);
+            nvgStrokeColor(vg, circleStrokeColorNvg);
+            nvgStroke(vg);
+        }
     }
 }
 
@@ -554,9 +574,9 @@ void HEBChart::renderBaseSkia() {
             100, 255, 100, uint8_t(std::clamp(int(std::ceil(curveOpacity * 255.0f)), 0, 255)));
     if (!curvePoints.empty()) {
         paint.setStroke(true);
-        paint.setStrokeWidth(1.0f * s);
+        paint.setStrokeWidth(curveThickness * s);
         paint.setColor(toSkColor(curveStrokeColor));
-        for (int lineIdx = 0; lineIdx < NUM_LINES; lineIdx++) {
+        for (int lineIdx = 0; lineIdx < numLinesTotal; lineIdx++) {
             SkPath path;
             glm::vec2 pt0 = curvePoints.at(lineIdx * NUM_SUBDIVISIONS + 0);
             pt0.x = windowWidth / 2.0f + pt0.x * chartRadius;
@@ -571,19 +591,20 @@ void HEBChart::renderBaseSkia() {
 
             if (colorByValue) {
                 float factor = 1.0f;
-                if (miValues.size() > 1) {
-                    float maxMi = miValues.back();
-                    float minMi = miValues.front();
-                    factor = (miValues.at(lineIdx) - minMi) / (maxMi - minMi);
+                if (correlationValuesArray.size() > 1) {
+                    float maxMi = correlationValuesArray.back();
+                    float minMi = correlationValuesArray.front();
+                    factor = (correlationValuesArray.at(lineIdx) - minMi) / (maxMi - minMi);
                 }
-                curveStrokeColor = evalColorMap(factor);
+                HEBChartFieldData* fieldData = fieldDataArray.at(lineFieldIndexArray.at(lineIdx)).get();
+                curveStrokeColor = fieldData->evalColorMap(factor);
                 paint.setColor(toSkColor(curveStrokeColor));
             } else if (opacityByValue) {
                 float factor = 1.0f;
-                if (miValues.size() > 1) {
-                    float maxMi = miValues.back();
-                    float minMi = miValues.front();
-                    factor = (miValues.at(lineIdx) - minMi) / (maxMi - minMi) * 0.75f + 0.25f;
+                if (correlationValuesArray.size() > 1) {
+                    float maxMi = correlationValuesArray.back();
+                    float minMi = correlationValuesArray.front();
+                    factor = (correlationValuesArray.at(lineIdx) - minMi) / (maxMi - minMi) * 0.75f + 0.25f;
                 }
                 curveStrokeColor.setFloatA(curveOpacity * factor);
                 paint.setColor(toSkColor(curveStrokeColor));
@@ -593,12 +614,12 @@ void HEBChart::renderBaseSkia() {
                 sgl::Color curveStrokeColorSelected = curveStrokeColor;
                 curveStrokeColorSelected.setA(255);
                 paint.setColor(toSkColor(curveStrokeColorSelected));
-                paint.setStrokeWidth(2.0f * s);
+                paint.setStrokeWidth(curveThickness * 2.0f * s);
             } else {
                 if (!colorByValue && !opacityByValue) {
                     paint.setColor(toSkColor(curveStrokeColor));
                 }
-                paint.setStrokeWidth(1.0f * s);
+                paint.setStrokeWidth(curveThickness * s);
             }
 
             canvas->drawPath(path, paint);
@@ -606,7 +627,7 @@ void HEBChart::renderBaseSkia() {
     }
 
     // Draw the point circles.
-    float pointRadius = pointRadiusBase * s;
+    float pointRadius = curveThickness * pointRadiusBase * s;
     paint.setColor(toSkColor(circleFillColor));
     paint.setStroke(false);
     /*for (int i = 0; i < int(nodesList.size()); i++) {
@@ -636,66 +657,83 @@ void HEBChart::renderBaseSkia() {
     }
 
     if (showRing) {
-        glm::vec2 center(windowWidth / 2.0f * s, windowHeight / 2.0f * s);
-        float rlo = (chartRadius + outerRingOffset) * s;
-        float rhi = (chartRadius + outerRingOffset + outerRingWidth) * s;
-        float rmi = (chartRadius + outerRingOffset + 0.5f * outerRingWidth) * s;
-
         SkPaint gradientPaint;
         static_cast<VectorBackendSkia*>(vectorBackend)->initializePaint(&gradientPaint);
         gradientPaint.setStroke(false);
         SkPath path;
 
-        for (int leafIdx = int(leafIdxOffset); leafIdx < int(nodesList.size()); leafIdx++) {
-            int numLeaves = int(nodesList.size()) - int(leafIdxOffset);
-            int nextIdx = (leafIdx + 1 - int(leafIdxOffset)) % numLeaves + int(leafIdxOffset);
-            const auto& leafCurr = nodesList.at(leafIdx);
-            const auto& leafNext = nodesList.at(nextIdx);
-            float angle0 = leafCurr.angle;
-            float angle1 = leafNext.angle + 0.01f;
-            float angle0Deg = angle0 / sgl::PI * 180.0f;
-            float angle1Deg = angle1 / sgl::PI * 180.0f + (nextIdx < leafIdx ? 360.0f : 0.0f);
-            float cos0 = std::cos(angle0), sin0 = std::sin(angle0), cos1 = std::cos(angle1), sin1 = std::sin(angle1);
-            //glm::vec2 lo0 = center + rlo * glm::vec2(cos0, sin0);
-            //glm::vec2 lo1 = center + rlo * glm::vec2(cos1, sin1);
-            glm::vec2 hi0 = center + rhi * glm::vec2(cos0, sin0);
-            //glm::vec2 hi1 = center + rhi * glm::vec2(cos1, sin1);
-            glm::vec2 mi0 = center + rmi * glm::vec2(cos0, sin0);
-            glm::vec2 mi1 = center + rmi * glm::vec2(cos1, sin1);
+        glm::vec2 center(windowWidth / 2.0f * s, windowHeight / 2.0f * s);
+        auto numFields = int(fieldDataArray.size());
+        for (int i = 0; i < numFields; i++) {
+            auto* fieldData = fieldDataArray.at(i).get();
+            float pctLower = float(i) / float(numFields);
+            float pctMiddle = (float(i) + 0.5f) / float(numFields);
+            float pctUpper = float(i + 1) / float(numFields);
+            float rlo = (chartRadius + outerRingOffset + pctLower * outerRingWidth) * s;
+            float rmi = (chartRadius + outerRingOffset + pctMiddle * outerRingWidth) * s;
+            float rhi = (chartRadius + outerRingOffset + pctUpper * outerRingWidth) * s;
 
-            float stdev0 = leafStdDevArray.at(leafIdx - int(leafIdxOffset));
-            float t0 = minStdDev == maxStdDev ? 0.0f : (stdev0 - minStdDev) / (maxStdDev - minStdDev);
-            sgl::Color rgbColor0 = evalColorMap(t0);
-            rgbColor0.setA(255);
-            float stdev1 = leafStdDevArray.at(nextIdx - int(leafIdxOffset));
-            float t1 = minStdDev == maxStdDev ? 0.0f : (stdev1 - minStdDev) / (maxStdDev - minStdDev);
-            sgl::Color rgbColor1 = evalColorMap(t1);
-            rgbColor1.setA(255);
+            for (int leafIdx = int(leafIdxOffset); leafIdx < int(nodesList.size()); leafIdx++) {
+                int numLeaves = int(nodesList.size()) - int(leafIdxOffset);
+                int nextIdx = (leafIdx + 1 - int(leafIdxOffset)) % numLeaves + int(leafIdxOffset);
+                const auto &leafCurr = nodesList.at(leafIdx);
+                const auto &leafNext = nodesList.at(nextIdx);
+                float angle0 = leafCurr.angle;
+                float angle1 = leafNext.angle + 0.01f;
+                float angle0Deg = angle0 / sgl::PI * 180.0f;
+                float angle1Deg = angle1 / sgl::PI * 180.0f + (nextIdx < leafIdx ? 360.0f : 0.0f);
+                float cos0 = std::cos(angle0), sin0 = std::sin(angle0), cos1 = std::cos(angle1), sin1 = std::sin(
+                        angle1);
+                //glm::vec2 lo0 = center + rlo * glm::vec2(cos0, sin0);
+                //glm::vec2 lo1 = center + rlo * glm::vec2(cos1, sin1);
+                glm::vec2 hi0 = center + rhi * glm::vec2(cos0, sin0);
+                //glm::vec2 hi1 = center + rhi * glm::vec2(cos1, sin1);
+                glm::vec2 mi0 = center + rmi * glm::vec2(cos0, sin0);
+                glm::vec2 mi1 = center + rmi * glm::vec2(cos1, sin1);
 
-            SkPoint linearPoints[2] = { { mi0.x, mi0.y }, { mi1.x, mi1.y } };
-            SkColor linearColors[2] = { toSkColor(rgbColor0), toSkColor(rgbColor1) };
-            gradientPaint.setShader(SkGradientShader::MakeLinear(
-                    linearPoints, linearColors, nullptr, 2, SkTileMode::kClamp));
+                float stdev0 = fieldData->leafStdDevArray.at(leafIdx - int(leafIdxOffset));
+                float t0 = fieldData->minStdDev == fieldData->maxStdDev ? 0.0f : (stdev0 - fieldData->minStdDev) / (fieldData->maxStdDev - fieldData->minStdDev);
+                sgl::Color rgbColor0 = fieldData->evalColorMap(t0);
+                rgbColor0.setA(255);
+                float stdev1 = fieldData->leafStdDevArray.at(nextIdx - int(leafIdxOffset));
+                float t1 = fieldData->minStdDev == fieldData->maxStdDev ? 0.0f : (stdev1 - fieldData->minStdDev) / (fieldData->maxStdDev - fieldData->minStdDev);
+                sgl::Color rgbColor1 = fieldData->evalColorMap(t1);
+                rgbColor1.setA(255);
 
-            path.reset();
-            path.addArc(
-                    SkRect{center.x - rlo, center.y - rlo, center.x + rlo, center.y + rlo},
-                    angle1Deg, angle0Deg - angle1Deg);
-            path.lineTo(hi0.x, hi0.y);
-            path.arcTo(
-                    SkRect{center.x - rhi, center.y - rhi, center.x + rhi, center.y + rhi},
-                    angle0Deg, angle1Deg - angle0Deg, false);
-            //path.lineTo(lo1.x, lo1.y);
-            path.close();
+                SkPoint linearPoints[2] = {{mi0.x, mi0.y},
+                                           {mi1.x, mi1.y}};
+                SkColor linearColors[2] = {toSkColor(rgbColor0), toSkColor(rgbColor1)};
+                gradientPaint.setShader(SkGradientShader::MakeLinear(
+                        linearPoints, linearColors, nullptr, 2, SkTileMode::kClamp));
 
-            canvas->drawPath(path, gradientPaint);
+                path.reset();
+                path.addArc(
+                        SkRect{center.x - rlo, center.y - rlo, center.x + rlo, center.y + rlo},
+                        angle1Deg, angle0Deg - angle1Deg);
+                path.lineTo(hi0.x, hi0.y);
+                path.arcTo(
+                        SkRect{center.x - rhi, center.y - rhi, center.x + rhi, center.y + rhi},
+                        angle0Deg, angle1Deg - angle0Deg, false);
+                //path.lineTo(lo1.x, lo1.y);
+                path.close();
+
+                canvas->drawPath(path, gradientPaint);
+            }
         }
 
-        paint.setStroke(true);
-        paint.setStrokeWidth(1.0f * s);
-        paint.setColor(toSkColor(circleStrokeColor));
-        canvas->drawCircle(center.x, center.y, rlo, paint);
-        canvas->drawCircle(center.x, center.y, rhi, paint);
+        for (int i = 0; i < numFields; i++) {
+            float pctLower = float(i) / float(numFields);
+            float pctUpper = float(i + 1) / float(numFields);
+            float rlo = (chartRadius + outerRingOffset + pctLower * outerRingWidth) * s;
+            float rhi = (chartRadius + outerRingOffset + pctUpper * outerRingWidth) * s;
+            paint.setStroke(true);
+            paint.setStrokeWidth(1.0f * s);
+            paint.setColor(toSkColor(circleStrokeColor));
+            canvas->drawCircle(center.x, center.y, rlo, paint);
+            if (i == numFields - 1) {
+                canvas->drawCircle(center.x, center.y, rhi, paint);
+            }
+        }
     }
 }
 #endif
@@ -712,28 +750,29 @@ void HEBChart::renderBaseVkvg() {
     // Draw the B-spline curves.
     sgl::Color curveStrokeColor = sgl::Color(100, 255, 100, 255);
     if (!curvePoints.empty()) {
-        vkvg_set_line_width(context, 1.0f * s);
+        vkvg_set_line_width(context, curveThickness * s);
         vkvg_set_source_color(context, curveStrokeColor.getColorRGBA());
 
         if (colorByValue || opacityByValue) {
-            float maxMi = miValues.empty() ? 0.0f : miValues.back();
-            float minMi = miValues.empty() ? 0.0f : miValues.front();
-            for (int lineIdx = 0; lineIdx < NUM_LINES; lineIdx++) {
+            float maxMi = correlationValuesArray.empty() ? 0.0f : correlationValuesArray.back();
+            float minMi = correlationValuesArray.empty() ? 0.0f : correlationValuesArray.front();
+            for (int lineIdx = 0; lineIdx < numLinesTotal; lineIdx++) {
                 if (lineIdx == selectedLineIdx) {
                     continue;
                 }
                 if (colorByValue) {
                     float factor = 1.0f;
-                    if (miValues.size() > 1) {
-                        factor = (miValues.at(lineIdx) - minMi) / (maxMi - minMi);
+                    if (correlationValuesArray.size() > 1) {
+                        factor = (correlationValuesArray.at(lineIdx) - minMi) / (maxMi - minMi);
                     }
-                    auto color = evalColorMap(factor);
+                    HEBChartFieldData* fieldData = fieldDataArray.at(lineFieldIndexArray.at(lineIdx)).get();
+                    auto color = fieldData->evalColorMap(factor);
                     vkvg_set_source_color(context, color.getColorRGB());
                     vkvg_set_opacity(context, color.getFloatA());
                 } else if (opacityByValue) {
                     float factor = 1.0f;
-                    if (miValues.size() > 1) {
-                        factor = (miValues.at(lineIdx) - minMi) / (maxMi - minMi) * 0.75f + 0.25f;
+                    if (correlationValuesArray.size() > 1) {
+                        factor = (correlationValuesArray.at(lineIdx) - minMi) / (maxMi - minMi) * 0.75f + 0.25f;
                     }
                     vkvg_set_opacity(context, curveOpacity * factor);
                 }
@@ -753,7 +792,7 @@ void HEBChart::renderBaseVkvg() {
             }
         } else {
             vkvg_set_opacity(context, curveOpacity);
-            for (int lineIdx = 0; lineIdx < NUM_LINES; lineIdx++) {
+            for (int lineIdx = 0; lineIdx < numLinesTotal; lineIdx++) {
                 if (lineIdx == selectedLineIdx) {
                     continue;
                 }
@@ -772,15 +811,16 @@ void HEBChart::renderBaseVkvg() {
         }
 
         if (selectedLineIdx >= 0) {
-            vkvg_set_line_width(context, 2.0f * s);
+            vkvg_set_line_width(context, curveThickness * 2.0f * s);
             if (colorByValue) {
-                float maxMi = miValues.empty() ? 0.0f : miValues.back();
-                float minMi = miValues.empty() ? 0.0f : miValues.front();
+                float maxMi = correlationValuesArray.empty() ? 0.0f : correlationValuesArray.back();
+                float minMi = correlationValuesArray.empty() ? 0.0f : correlationValuesArray.front();
                 float factor = 1.0f;
-                if (miValues.size() > 1) {
-                    factor = (miValues.at(selectedLineIdx) - minMi) / (maxMi - minMi);
+                if (correlationValuesArray.size() > 1) {
+                    factor = (correlationValuesArray.at(selectedLineIdx) - minMi) / (maxMi - minMi);
                 }
-                auto color = evalColorMap(factor);
+                HEBChartFieldData* fieldData = fieldDataArray.at(lineFieldIndexArray.at(selectedLineIdx)).get();
+                auto color = fieldData->evalColorMap(factor);
                 vkvg_set_source_color(context, color.getColorRGB());
             }
             vkvg_set_opacity(context, 1.0f);
@@ -802,7 +842,7 @@ void HEBChart::renderBaseVkvg() {
     vkvg_set_opacity(context, 1.0f);
 
     // Draw the point circles.
-    float pointRadius = pointRadiusBase * s;
+    float pointRadius = curveThickness * pointRadiusBase * s;
     /*for (int i = 0; i < int(nodesList.size()); i++) {
         const auto& leaf = nodesList.at(i);
         float pointX = windowWidth / 2.0f + leaf.normalizedPosition.x * chartRadius;
@@ -834,49 +874,65 @@ void HEBChart::renderBaseVkvg() {
 
     if (showRing) {
         glm::vec2 center(windowWidth / 2.0f * s, windowHeight / 2.0f * s);
-        float rlo = (chartRadius + outerRingOffset) * s;
-        float rhi = (chartRadius + outerRingOffset + outerRingWidth) * s;
-        float rmi = (chartRadius + outerRingOffset + 0.5f * outerRingWidth) * s;
+        auto numFields = int(fieldDataArray.size());
+        for (int i = 0; i < numFields; i++) {
+            auto* fieldData = fieldDataArray.at(i).get();
+            float pctLower = float(i) / float(numFields);
+            float pctMiddle = (float(i) + 0.5f) / float(numFields);
+            float pctUpper = float(i + 1) / float(numFields);
+            float rlo = (chartRadius + outerRingOffset + pctLower * outerRingWidth) * s;
+            float rmi = (chartRadius + outerRingOffset + pctMiddle * outerRingWidth) * s;
+            float rhi = (chartRadius + outerRingOffset + pctUpper * outerRingWidth) * s;
 
-        for (int leafIdx = int(leafIdxOffset); leafIdx < int(nodesList.size()); leafIdx++) {
-            int numLeaves = int(nodesList.size()) - int(leafIdxOffset);
-            int nextIdx = (leafIdx + 1 - int(leafIdxOffset)) % numLeaves + int(leafIdxOffset);
-            const auto& leafCurr = nodesList.at(leafIdx);
-            const auto& leafNext = nodesList.at(nextIdx);
-            float angle0 = leafCurr.angle;
-            float angle1 = leafNext.angle + 0.01f;
-            float cos0 = std::cos(angle0), sin0 = std::sin(angle0), cos1 = std::cos(angle1), sin1 = std::sin(angle1);
-            //glm::vec2 lo0 = center + rlo * glm::vec2(cos0, sin0);
-            glm::vec2 lo1 = center + rlo * glm::vec2(cos1, sin1);
-            glm::vec2 hi0 = center + rhi * glm::vec2(cos0, sin0);
-            //glm::vec2 hi1 = center + rhi * glm::vec2(cos1, sin1);
-            glm::vec2 mi0 = center + rmi * glm::vec2(cos0, sin0);
-            glm::vec2 mi1 = center + rmi * glm::vec2(cos1, sin1);
-            vkvg_arc_negative(context, center.x, center.y, rlo, angle1, angle0);
-            vkvg_line_to(context, hi0.x, hi0.y);
-            vkvg_arc(context, center.x, center.y, rhi, angle0, angle1);
-            vkvg_line_to(context, lo1.x, lo1.y);
+            for (int leafIdx = int(leafIdxOffset); leafIdx < int(nodesList.size()); leafIdx++) {
+                int numLeaves = int(nodesList.size()) - int(leafIdxOffset);
+                int nextIdx = (leafIdx + 1 - int(leafIdxOffset)) % numLeaves + int(leafIdxOffset);
+                const auto &leafCurr = nodesList.at(leafIdx);
+                const auto &leafNext = nodesList.at(nextIdx);
+                float angle0 = leafCurr.angle;
+                float angle1 = leafNext.angle + 0.01f;
+                float cos0 = std::cos(angle0), sin0 = std::sin(angle0), cos1 = std::cos(angle1), sin1 = std::sin(
+                        angle1);
+                //glm::vec2 lo0 = center + rlo * glm::vec2(cos0, sin0);
+                glm::vec2 lo1 = center + rlo * glm::vec2(cos1, sin1);
+                glm::vec2 hi0 = center + rhi * glm::vec2(cos0, sin0);
+                //glm::vec2 hi1 = center + rhi * glm::vec2(cos1, sin1);
+                glm::vec2 mi0 = center + rmi * glm::vec2(cos0, sin0);
+                glm::vec2 mi1 = center + rmi * glm::vec2(cos1, sin1);
+                vkvg_arc_negative(context, center.x, center.y, rlo, angle1, angle0);
+                vkvg_line_to(context, hi0.x, hi0.y);
+                vkvg_arc(context, center.x, center.y, rhi, angle0, angle1);
+                vkvg_line_to(context, lo1.x, lo1.y);
 
-            float stdev0 = leafStdDevArray.at(leafIdx - int(leafIdxOffset));
-            float t0 = minStdDev == maxStdDev ? 0.0f : (stdev0 - minStdDev) / (maxStdDev - minStdDev);
-            glm::vec4 rgbColor0 = evalColorMapVec4(t0);
-            float stdev1 = leafStdDevArray.at(nextIdx - int(leafIdxOffset));
-            float t1 = minStdDev == maxStdDev ? 0.0f : (stdev1 - minStdDev) / (maxStdDev - minStdDev);
-            glm::vec4 rgbColor1 = evalColorMapVec4(t1);
+                float stdev0 = fieldData->leafStdDevArray.at(leafIdx - int(leafIdxOffset));
+                float t0 = fieldData->minStdDev == fieldData->maxStdDev ? 0.0f : (stdev0 - fieldData->minStdDev) / (fieldData->maxStdDev - fieldData->minStdDev);
+                glm::vec4 rgbColor0 = fieldData->evalColorMapVec4(t0);
+                float stdev1 = fieldData->leafStdDevArray.at(nextIdx - int(leafIdxOffset));
+                float t1 = fieldData->minStdDev == fieldData->maxStdDev ? 0.0f : (stdev1 - fieldData->minStdDev) / (fieldData->maxStdDev - fieldData->minStdDev);
+                glm::vec4 rgbColor1 = fieldData->evalColorMapVec4(t1);
 
-            auto pattern = vkvg_pattern_create_linear(mi0.x, mi0.y, mi1.x, mi1.y);
-            vkvg_pattern_add_color_stop(pattern, 0.0f, rgbColor0.x, rgbColor0.y, rgbColor0.z, 1.0f);
-            vkvg_pattern_add_color_stop(pattern, 1.0f, rgbColor1.x, rgbColor1.y, rgbColor1.z, 1.0f);
-            vkvg_set_source(context, pattern);
-            vkvg_pattern_destroy(pattern);
-            vkvg_fill(context);
+                auto pattern = vkvg_pattern_create_linear(mi0.x, mi0.y, mi1.x, mi1.y);
+                vkvg_pattern_add_color_stop(pattern, 0.0f, rgbColor0.x, rgbColor0.y, rgbColor0.z, 1.0f);
+                vkvg_pattern_add_color_stop(pattern, 1.0f, rgbColor1.x, rgbColor1.y, rgbColor1.z, 1.0f);
+                vkvg_set_source(context, pattern);
+                vkvg_pattern_destroy(pattern);
+                vkvg_fill(context);
+            }
         }
 
-        vkvg_arc(context, center.x, center.y, rlo, 0.0f, sgl::TWO_PI);
-        vkvg_arc(context, center.x, center.y, rhi, 0.0f, sgl::TWO_PI);
-        vkvg_set_line_width(context, 1.0f * s);
-        vkvg_set_source_color(context, circleStrokeColor.getColorRGBA());
-        vkvg_stroke(context);
+        for (int i = 0; i < numFields; i++) {
+            float pctLower = float(i) / float(numFields);
+            float pctUpper = float(i + 1) / float(numFields);
+            float rlo = (chartRadius + outerRingOffset + pctLower * outerRingWidth) * s;
+            float rhi = (chartRadius + outerRingOffset + pctUpper * outerRingWidth) * s;
+            vkvg_arc(context, center.x, center.y, rlo, 0.0f, sgl::TWO_PI);
+            if (i == numFields - 1) {
+                vkvg_arc(context, center.x, center.y, rhi, 0.0f, sgl::TWO_PI);
+            }
+            vkvg_set_line_width(context, 1.0f * s);
+            vkvg_set_source_color(context, circleStrokeColor.getColorRGBA());
+            vkvg_stroke(context);
+        }
     }
 }
 #endif

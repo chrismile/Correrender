@@ -30,6 +30,7 @@
 #define CORRERENDER_DIAGRAMRENDERER_HPP
 
 #include <Graphics/Vulkan/Render/Passes/Pass.hpp>
+#include <utility>
 
 #include "../../Calculators/CorrelationDefines.hpp"
 #include "../Renderer.hpp"
@@ -44,6 +45,14 @@ class ConnectingLineRasterPass;
 struct OutlineRenderData {
     sgl::vk::BufferPtr indexBuffer;
     sgl::vk::BufferPtr vertexPositionBuffer;
+};
+
+struct DiagramSelectedFieldData {
+    DiagramSelectedFieldData(int first, std::string second, DiagramColorMap third)
+            : first(first), second(std::move(second)), third(third) {}
+    int first;
+    std::string second;
+    DiagramColorMap third;
 };
 
 class DiagramRenderer : public Renderer {
@@ -69,6 +78,7 @@ protected:
     void renderGuiImpl(sgl::PropertyEditor& propertyEditor) override;
 
 private:
+    void updateScalarFieldComboValue();
     void recreateDiagramSwapchain(int diagramIdx = -1);
     void resetSelections(int idx = 0);
     VolumeDataPtr volumeData;
@@ -79,8 +89,9 @@ private:
 
     // UI renderer settings.
     void onCorrelationMemberCountChanged();
-    int selectedFieldIdx = 0, oldSelectedFieldIdx = 0;
-    std::string selectedScalarFieldName;
+    std::vector<bool> scalarFieldSelectionArray;
+    std::string scalarFieldComboValue;
+    std::vector<DiagramSelectedFieldData> selectedScalarFields;
     bool isEnsembleMode = true; //< Ensemble or time mode?
     CorrelationMeasureType correlationMeasureType = CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV;
     float beta = 0.75f;
@@ -88,6 +99,7 @@ private:
     int downscalingFactorX = 32, downscalingFactorY = 32, downscalingFactorZ = 32;
     bool downscalingFactorUniform = true;
     int lineCountFactor = 100;
+    float curveThickness = 1.5f;
     float curveOpacity = 0.4f;
     glm::vec2 correlationRange{}, correlationRangeTotal{};
     glm::ivec2 cellDistanceRange{}, cellDistanceRangeTotal{};
@@ -95,7 +107,6 @@ private:
     bool alignWithParentWindow = false;
     bool opacityByValue = false;
     bool colorByValue = true;
-    DiagramColorMap colorMap = DiagramColorMap::CIVIDIS;
     bool use2dField = false;
 
     // Test data.

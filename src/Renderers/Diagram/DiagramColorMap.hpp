@@ -33,11 +33,12 @@
 #include <glm/vec3.hpp>
 
 enum class DiagramColorMap {
-    GREEN, VIRIDIS, HEATMAP, CIVIDIS
+    VIRIDIS, HEATMAP, CIVIDIS, GREEN,
 };
 const char* const DIAGRAM_COLOR_MAP_NAMES[] = {
-        "Green", "Viridis", "Heatmap", "Cividis"
+       "Viridis", "Heatmap", "Cividis", "Green"
 };
+const int NUM_COLOR_MAPS = ((int)(sizeof(DIAGRAM_COLOR_MAP_NAMES) / sizeof(*(DIAGRAM_COLOR_MAP_NAMES))));
 std::vector<glm::vec3> getColorPoints(DiagramColorMap colorMap);
 
 #endif //CORRERENDER_DIAGRAMCOLORMAP_HPP

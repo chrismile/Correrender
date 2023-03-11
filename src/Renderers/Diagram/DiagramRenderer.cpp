@@ -53,9 +53,8 @@ DiagramRenderer::DiagramRenderer(ViewManager* viewManager)
 }
 
 DiagramRenderer::~DiagramRenderer() {
-    if (!selectedScalarFieldName.empty()) {
-        volumeData->releaseTf(this, selectedFieldIdx);
-        volumeData->releaseScalarField(this, selectedFieldIdx);
+    for (auto& selectedScalarField : selectedScalarFields) {
+        volumeData->releaseScalarField(this, selectedScalarField.first);
     }
 }
 
@@ -102,18 +101,17 @@ void DiagramRenderer::initialize() {
     //diagram->setUseEqualArea(true);
     if (volumeData) {
         parentDiagram->setVolumeData(volumeData, true);
-        parentDiagram->setSelectedScalarField(selectedFieldIdx, selectedScalarFieldName);
         parentDiagram->setIsEnsembleMode(isEnsembleMode);
         parentDiagram->setCorrelationMeasureType(correlationMeasureType);
         parentDiagram->setBeta(beta);
         parentDiagram->setDownscalingFactors(downscalingFactorX, downscalingFactorY, downscalingFactorZ);
         parentDiagram->setLineCountFactor(lineCountFactor);
+        parentDiagram->setCurveThickness(curveThickness);
         parentDiagram->setCurveOpacity(curveOpacity);
         parentDiagram->setDiagramRadius(diagramRadius);
         parentDiagram->setAlignWithParentWindow(alignWithParentWindow);
         parentDiagram->setOpacityByValue(opacityByValue);
         parentDiagram->setColorByValue(colorByValue);
-        parentDiagram->setColorMap(colorMap);
         parentDiagram->setUse2DField(use2dField);
         parentDiagram->setClearColor(viewManager->getClearColor());
     }
@@ -134,14 +132,7 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
         isEnsembleMode = true;
     }
 
-    if (!selectedScalarFieldName.empty()) {
-        volumeData->releaseTf(this, oldSelectedFieldIdx);
-        volumeData->releaseScalarField(this, oldSelectedFieldIdx);
-    }
-    const std::vector<std::string>& fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
     if (isNewData) {
-        selectedFieldIdx = volumeData->getStandardScalarFieldIdx();
-
         int xs = volumeData->getGridSizeX();
         int ys = volumeData->getGridSizeY();
         int zs = volumeData->getGridSizeZ();
@@ -166,25 +157,44 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
             downscalingFactorX = downscalingFactorY = downscalingFactorZ = dsw;
         }
     }
-    selectedScalarFieldName = fieldNames.at(selectedFieldIdx);
-    volumeData->acquireTf(this, selectedFieldIdx);
-    volumeData->acquireScalarField(this, selectedFieldIdx);
-    oldSelectedFieldIdx = selectedFieldIdx;
+
+    const std::vector<std::string>& fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
+    if (fieldNames.size() > scalarFieldSelectionArray.size()) {
+        scalarFieldSelectionArray.resize(fieldNames.size());
+    }
+    updateScalarFieldComboValue();
+    for (int selectedFieldIdx = 0; selectedFieldIdx < int(selectedScalarFields.size()); selectedFieldIdx++) {
+        auto& selectedScalarField = selectedScalarFields.at(selectedFieldIdx);
+        selectedScalarField.second = fieldNames.at(selectedScalarField.first);
+    }
 
     parentDiagram->setVolumeData(volumeData, isNewData);
     if (isNewData) {
-        parentDiagram->setSelectedScalarField(selectedFieldIdx, selectedScalarFieldName);
+        selectedScalarFields.clear();
+        int standardFieldIdx = volumeData->getStandardScalarFieldIdx();
+        selectedScalarFields.emplace_back(standardFieldIdx, fieldNames.at(standardFieldIdx), DiagramColorMap::VIRIDIS);
+        scalarFieldSelectionArray.clear();
+        scalarFieldSelectionArray.resize(fieldNames.size());
+        scalarFieldSelectionArray.at(standardFieldIdx) = true;
+        scalarFieldComboValue = fieldNames.at(standardFieldIdx);
+        volumeData->acquireScalarField(this, standardFieldIdx);
+        parentDiagram->clearScalarFields();
+        for (int selectedFieldIdx = 0; selectedFieldIdx < int(selectedScalarFields.size()); selectedFieldIdx++) {
+            auto& selectedScalarField = selectedScalarFields.at(selectedFieldIdx);
+            parentDiagram->addScalarField(selectedScalarField.first, selectedScalarField.second);
+            parentDiagram->setColorMap(selectedFieldIdx, selectedScalarField.third);
+        }
         parentDiagram->setIsEnsembleMode(isEnsembleMode);
         parentDiagram->setCorrelationMeasureType(correlationMeasureType);
         parentDiagram->setBeta(beta);
         parentDiagram->setDownscalingFactors(downscalingFactorX, downscalingFactorY, downscalingFactorZ);
         parentDiagram->setLineCountFactor(lineCountFactor);
+        parentDiagram->setCurveThickness(curveThickness);
         parentDiagram->setCurveOpacity(curveOpacity);
         parentDiagram->setDiagramRadius(diagramRadius);
         parentDiagram->setAlignWithParentWindow(alignWithParentWindow);
         parentDiagram->setOpacityByValue(opacityByValue);
         parentDiagram->setColorByValue(colorByValue);
-        parentDiagram->setColorMap(colorMap);
         parentDiagram->setUse2DField(use2dField);
         parentDiagram->setClearColor(viewManager->getClearColor());
 
@@ -203,16 +213,21 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
 
 void DiagramRenderer::onFieldRemoved(FieldType fieldType, int fieldIdx) {
     if (fieldType == FieldType::SCALAR) {
-        if (selectedFieldIdx == fieldIdx) {
-            selectedFieldIdx = 0;
-        } else if (selectedFieldIdx > fieldIdx) {
-            selectedFieldIdx--;
+        for (auto& diagram : diagrams) {
+            diagram->removeScalarField(fieldIdx, true);
         }
-        if (oldSelectedFieldIdx == fieldIdx) {
-            oldSelectedFieldIdx = -1;
-            selectedScalarFieldName.clear();
-        } else if (oldSelectedFieldIdx > fieldIdx) {
-            oldSelectedFieldIdx--;
+
+        for (size_t i = 0; i < selectedScalarFields.size(); ) {
+            if (selectedScalarFields.at(i).first == fieldIdx) {
+                volumeData->releaseScalarField(this, selectedScalarFields.at(i).first);
+                selectedScalarFields.erase(selectedScalarFields.begin() + ptrdiff_t(i));
+                continue;
+            } else if (selectedScalarFields.at(i).first > fieldIdx) {
+                volumeData->releaseScalarField(this, selectedScalarFields.at(i).first);
+                selectedScalarFields.at(i).first--;
+                volumeData->acquireScalarField(this, selectedScalarFields.at(i).first);
+            }
+            i++;
         }
     }
 }
@@ -270,17 +285,22 @@ void DiagramRenderer::resetSelections(int idx) {
             int dfz = sgl::iceil(downscalingFactorZ, 1 << 2 * idx);
             diagram->setDownscalingFactors(dfx, dfy, dfz);
             diagram->setRegions(selectedRegionStack.at(idx - 1));
-            diagram->setSelectedScalarField(selectedFieldIdx, selectedScalarFieldName);
+            diagram->clearScalarFields();
+            for (int selectedFieldIdx = 0; selectedFieldIdx < int(selectedScalarFields.size()); selectedFieldIdx++) {
+                auto& selectedScalarField = selectedScalarFields.at(selectedFieldIdx);
+                diagram->addScalarField(selectedScalarField.first, selectedScalarField.second);
+                diagram->setColorMap(selectedFieldIdx, selectedScalarField.third);
+            }
             diagram->setIsEnsembleMode(isEnsembleMode);
             diagram->setCorrelationMeasureType(correlationMeasureType);
             diagram->setBeta(beta);
             diagram->setLineCountFactor(lineCountFactor);
+            diagram->setCurveThickness(curveThickness);
             diagram->setCurveOpacity(curveOpacity);
             diagram->setDiagramRadius(diagramRadius);
             diagram->setAlignWithParentWindow(alignWithParentWindow);
             diagram->setOpacityByValue(opacityByValue);
             diagram->setColorByValue(colorByValue);
-            diagram->setColorMap(colorMap);
             diagram->setUse2DField(use2dField);
             diagram->setClearColor(viewManager->getClearColor());
             diagram->getCorrelationRangeTotal();
@@ -336,7 +356,12 @@ void DiagramRenderer::update(float dt, bool isMouseGrabbed) {
             calculatorMap.resize(int(lastCorrelationCalculatorType) - int(firstCorrelationCalculatorType) + 1);
             auto selectedRegion1 = diagram->getSelectedRegion(1);
             for (auto& calculator : correlationCalculators) {
-                if (calculator->getIsEnsembleMode() != isEnsembleMode) {
+                if (calculator->getIsEnsembleMode() != isEnsembleMode
+                        || !std::any_of(
+                                selectedScalarFields.begin(), selectedScalarFields.end(),
+                                [&](DiagramSelectedFieldData& selectedField) {
+                                    return calculator->getInputFieldIndex() == selectedField.first;
+                                })) {
                     continue;
                 }
                 int idx = int(calculator->getCalculatorType()) - int(firstCorrelationCalculatorType);
@@ -430,11 +455,6 @@ void DiagramRenderer::updateAlignmentRotation(float dt, HEBChart* diagram) {
     cameraPosition = glm::vec3(rotTheta * glm::vec4(cameraPosition, 1.0f));
     cameraUp = glm::vec3(rotTheta * glm::vec4(cameraUp, 1.0f));
     cameraPosition = cameraPosition + cameraLookAt;
-
-    if (std::isnan(cameraPosition.x) || std::isnan(cameraPosition.y) || std::isnan(cameraPosition.z)) {
-        std::cout << "HERE2" << std::endl;
-        return;
-    }
 
     camera->setLookAtViewMatrix(cameraPosition, cameraLookAt, cameraUp);
     reRender = true;
@@ -547,6 +567,24 @@ void DiagramRenderer::removeViewImpl(uint32_t viewIdx) {
     }
 }
 
+void DiagramRenderer::updateScalarFieldComboValue() {
+    std::vector<std::string> comboSelVec(0);
+    const std::vector<std::string>& fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
+    for (size_t fieldIdx = 0; fieldIdx < fieldNames.size(); fieldIdx++) {
+        if (scalarFieldSelectionArray.at(fieldIdx)) {
+            ImGui::SetItemDefaultFocus();
+            comboSelVec.push_back(fieldNames.at(fieldIdx));
+        }
+    }
+    scalarFieldComboValue = "";
+    for (size_t v = 0; v < comboSelVec.size(); ++v) {
+        scalarFieldComboValue += comboSelVec[v];
+        if (comboSelVec.size() > 1 && v + 1 != comboSelVec.size()) {
+            scalarFieldComboValue += ", ";
+        }
+    }
+}
+
 void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
     std::string textDefault = "View " + std::to_string(diagramViewIdx + 1);
     if (propertyEditor.addBeginCombo(
@@ -565,20 +603,6 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
             }
         }
         propertyEditor.addEndCombo();
-    }
-
-    if (volumeData) {
-        const std::vector<std::string>& fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
-        int selectedFieldIdxGui = selectedFieldIdx;
-        if (propertyEditor.addCombo("Scalar Field", &selectedFieldIdxGui, fieldNames.data(), int(fieldNames.size()))) {
-            selectedFieldIdx = selectedFieldIdxGui;
-            selectedScalarFieldName = fieldNames.at(selectedFieldIdx);
-            for (auto& diagram : diagrams) {
-                diagram->setSelectedScalarField(selectedFieldIdx, selectedScalarFieldName);
-            }
-            dirty = true;
-            reRender = true;
-        }
     }
 
     if (volumeData->getEnsembleMemberCount() > 1 && volumeData->getTimeStepCount() > 1) {
@@ -606,6 +630,99 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         }
         resetSelections();
         dirty = true;
+        reRender = true;
+    }
+
+    if (volumeData) {
+        if (propertyEditor.addBeginCombo(
+                "Scalar Fields", scalarFieldComboValue, ImGuiComboFlags_NoArrowButton)) {
+            const std::vector<std::string>& fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
+            for (size_t fieldIdx = 0; fieldIdx < fieldNames.size(); fieldIdx++) {
+                std::string text = fieldNames.at(fieldIdx);
+                bool useField = scalarFieldSelectionArray.at(fieldIdx);
+                if (ImGui::Selectable(
+                        text.c_str(), &useField, ImGuiSelectableFlags_::ImGuiSelectableFlags_DontClosePopups)) {
+                    if (useField) {
+                        parentDiagram->addScalarField(int(fieldIdx), text);
+
+                        // Get the next free color map.
+                        std::vector<int> colorMapUseCounter(NUM_COLOR_MAPS);
+                        for (size_t i = 0; i < selectedScalarFields.size(); i++) {
+                            colorMapUseCounter.at(int(selectedScalarFields.at(i).third)) += 1;
+                        }
+                        size_t minIndex = 0;
+                        int minUseCount = std::numeric_limits<int>::max();
+                        for (int i = 0; i < NUM_COLOR_MAPS; i++) {
+                            if (colorMapUseCounter.at(i) < minUseCount) {
+                                minUseCount = colorMapUseCounter.at(i);
+                                minIndex = i;
+                            }
+                        }
+                        DiagramSelectedFieldData newFieldData( int(fieldIdx), text, DiagramColorMap(minIndex));
+
+                        bool foundInsertionPosition = false;
+                        for (size_t i = 0; i < selectedScalarFields.size(); i++) {
+                            if (selectedScalarFields.at(i).first > int(fieldIdx)) {
+                                selectedScalarFields.insert(
+                                        selectedScalarFields.begin() + ptrdiff_t(i), newFieldData);
+                                parentDiagram->setColorMap(int(i), newFieldData.third);
+                                foundInsertionPosition = true;
+                                break;
+                            }
+                        }
+                        if (!foundInsertionPosition) {
+                            selectedScalarFields.push_back(newFieldData);
+                            parentDiagram->setColorMap(int(selectedScalarFields.size() - 1), newFieldData.third);
+                        }
+                    } else {
+                        parentDiagram->removeScalarField(int(fieldIdx), false);
+                        for (size_t i = 0; i < selectedScalarFields.size(); i++) {
+                            if (selectedScalarFields.at(i).first == int(fieldIdx)) {
+                                volumeData->releaseScalarField(this, selectedScalarFields.at(i).first);
+                                selectedScalarFields.erase(selectedScalarFields.begin() + ptrdiff_t(i));
+                                break;
+                            }
+                        }
+                    }
+                    scalarFieldSelectionArray.at(fieldIdx) = useField;
+                    dirty = true;
+                    reRender = true;
+                }
+                if (useField) {
+                    ImGui::SetItemDefaultFocus();
+                }
+            }
+            updateScalarFieldComboValue();
+            propertyEditor.addEndCombo();
+        }
+    }
+
+    for (int selectedFieldIdx = 0; selectedFieldIdx < int(selectedScalarFields.size()); selectedFieldIdx++) {
+        ImGui::PushID(selectedFieldIdx);
+        auto& selectedScalarField = selectedScalarFields.at(selectedFieldIdx);
+        DiagramColorMap& colorMap = selectedScalarField.third;
+        if (colorByValue && propertyEditor.addCombo(
+                "Color Map (" + selectedScalarField.second + ")", (int*)&colorMap, DIAGRAM_COLOR_MAP_NAMES,
+                IM_ARRAYSIZE(DIAGRAM_COLOR_MAP_NAMES))) {
+            for (auto& diagram : diagrams) {
+                diagram->setColorMap(selectedFieldIdx, colorMap);
+            }
+            reRender = true;
+        }
+        ImGui::PopID();
+    }
+
+    if (propertyEditor.addCheckbox("Value -> Opacity", &opacityByValue)) {
+        for (auto& diagram : diagrams) {
+            diagram->setOpacityByValue(opacityByValue);
+        }
+        reRender = true;
+    }
+
+    if (propertyEditor.addCheckbox("Value -> Color", &colorByValue)) {
+        for (auto& diagram : diagrams) {
+            diagram->setColorByValue(colorByValue);
+        }
         reRender = true;
     }
 
@@ -648,6 +765,13 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         reRender = true;
     }
 
+    if (propertyEditor.addSliderFloat("Curve Thickness", &curveThickness, 0.5f, 4.0f)) {
+        for (auto& diagram : diagrams) {
+            diagram->setCurveThickness(curveThickness);
+        }
+        reRender = true;
+    }
+
     if (propertyEditor.addSliderFloat("Opacity", &curveOpacity, 0.0f, 1.0f)) {
         for (auto& diagram : diagrams) {
             diagram->setCurveOpacity(curveOpacity);
@@ -679,29 +803,6 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
 
     if (propertyEditor.addCheckbox("Align with Window", &alignWithParentWindow)) {
         parentDiagram->setAlignWithParentWindow(alignWithParentWindow);
-        reRender = true;
-    }
-
-    if (propertyEditor.addCheckbox("Value -> Opacity", &opacityByValue)) {
-        for (auto& diagram : diagrams) {
-            diagram->setOpacityByValue(opacityByValue);
-        }
-        reRender = true;
-    }
-
-    if (propertyEditor.addCheckbox("Value -> Color", &colorByValue)) {
-        for (auto& diagram : diagrams) {
-            diagram->setColorByValue(colorByValue);
-        }
-        reRender = true;
-    }
-
-    if (colorByValue && propertyEditor.addCombo(
-            "Color Map", (int*)&colorMap, DIAGRAM_COLOR_MAP_NAMES,
-            IM_ARRAYSIZE(DIAGRAM_COLOR_MAP_NAMES))) {
-        for (auto& diagram : diagrams) {
-            diagram->setColorMap(colorMap);
-        }
         reRender = true;
     }
 

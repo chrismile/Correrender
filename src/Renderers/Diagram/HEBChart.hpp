@@ -41,6 +41,7 @@
 #include "../../Calculators/CorrelationDefines.hpp"
 
 typedef std::shared_ptr<float[]> HostCacheEntry;
+class HEBChart;
 
 struct MIFieldEntry {
     float miValue;
@@ -51,6 +52,30 @@ struct MIFieldEntry {
     bool operator<(const MIFieldEntry& rhs) const { return miValue > rhs.miValue; }
 };
 
+struct HEBChartFieldData {
+    explicit HEBChartFieldData(HEBChart* parent) : parent(parent) {}
+
+    // General data.
+    HEBChart* parent = nullptr;
+    int selectedFieldIdx = 0;
+    std::string selectedScalarFieldName;
+
+    // Line data (lines themselves are stored in diagram class).
+    float minCorrelationValue = 0.0f, maxCorrelationValue = 0.0f;
+
+    // Outer ring.
+    std::vector<float> leafStdDevArray;
+    float minStdDev = 0.0f, maxStdDev = 0.0f;
+
+    // Transfer function.
+    void initializeColorPoints();
+    glm::vec4 evalColorMapVec4(float t);
+    sgl::Color evalColorMap(float t);
+    DiagramColorMap colorMap = DiagramColorMap::CIVIDIS;
+    std::vector<glm::vec3> colorPoints;
+};
+typedef std::shared_ptr<HEBChartFieldData> HEBChartFieldDataPtr;
+
 /**
  * Hierarchical edge bundling chart. For more details see:
  * - "Hierarchical Edge Bundles: Visualization of Adjacency Relations in Hierarchical Data" (Danny Holten, 2006).
@@ -58,6 +83,7 @@ struct MIFieldEntry {
  * - https://r-graph-gallery.com/hierarchical-edge-bundling.html
  */
 class HEBChart : public DiagramBase {
+    friend struct HEBChartFieldData;
 public:
     HEBChart();
     DiagramType getDiagramType() override { return DiagramType::HEB_CHART; }
@@ -66,18 +92,21 @@ public:
     void updateSizeByParent() override;
     void setVolumeData(VolumeDataPtr& _volumeData, bool isNewData);
     void setRegions(const std::pair<GridRegion, GridRegion>& _rs);
-    void setSelectedScalarField(int selectedFieldIdx, const std::string& _scalarFieldName);
+    void clearScalarFields();
+    void addScalarField(int selectedFieldIdx, const std::string& _scalarFieldName);
+    void removeScalarField(int selectedFieldIdx, bool doNotShiftIndicesBack);
+    void setColorMap(int fieldIdx, DiagramColorMap _colorMap);
     void setIsEnsembleMode(bool _isEnsembleMode);
     void setCorrelationMeasureType(CorrelationMeasureType _correlationMeasureType);
     void setBeta(float _beta);
     void setDownscalingFactors(int _dfx, int _dfy, int _dfz);
     void setLineCountFactor(int _factor);
+    void setCurveThickness(float _curveThickness);
     void setCurveOpacity(float _alpha);
     void setDiagramRadius(int radius);
     void setAlignWithParentWindow(bool _align);
     void setOpacityByValue(bool _opacityByValue);
     void setColorByValue(bool _colorByValue);
-    void setColorMap(DiagramColorMap _colorMap);
     void setUse2DField(bool _use2dField);
 
     // Selection query.
@@ -118,12 +147,7 @@ protected:
     void onUpdatedWindowSize() override;
 
 private:
-    float chartRadius{};
-
-    // Selected scalar field.
     VolumeDataPtr volumeData;
-    int selectedFieldIdx = 0;
-    std::string selectedScalarFieldName;
     bool dataDirty = true;
 
     int getCorrelationMemberCount();
@@ -142,28 +166,37 @@ private:
     std::vector<HEBNode> nodesList;
     std::vector<uint32_t> pointToNodeIndexMap0, pointToNodeIndexMap1;
     uint32_t leafIdxOffset = 0, leafIdxOffset1 = 0;
-    std::vector<float> leafStdDevArray;
 
     // B-spline data.
     void updateData();
-    void computeDownscaledField(int idx, std::vector<float*>& downscaledFields);
-    void computeDownscaledFieldVariance(int idx, std::vector<float*>& downscaledFields);
+    void computeDownscaledField(
+            HEBChartFieldData* fieldData, int idx, std::vector<float*>& downscaledFields);
+    void computeDownscaledFieldVariance(
+            HEBChartFieldData* fieldData, int idx, std::vector<float*>& downscaledFields);
     void computeCorrelations(
             std::vector<float*>& downscaledFields0, std::vector<float*>& downscaledFields1,
             std::vector<MIFieldEntry>& miFieldEntries);
-    int NUM_LINES = 0;
+    int numLinesTotal = 0;
     int MAX_NUM_LINES = 100;
     const int NUM_SUBDIVISIONS = 50;
     float beta = 0.75f;
+    float curveThickness = 1.5f;
     float curveOpacity = 0.4f;
     glm::vec2 correlationRange{}, correlationRangeTotal{};
     glm::ivec2 cellDistanceRange{}, cellDistanceRangeTotal{};
+
+    // Field data.
+    std::vector<HEBChartFieldDataPtr> fieldDataArray;
+    // Lines (stored separately from field data, as lines should be rendered from lowest to highest value).
     std::vector<glm::vec2> curvePoints;
-    std::vector<float> miValues; ///< per-line values.
+    std::vector<float> correlationValuesArray; ///< per-line values.
     std::vector<std::pair<int, int>> connectedPointsArray; ///< points connected by lines.
+    std::vector<int> lineFieldIndexArray;
+    float minCorrelationValueGlobal = 0.0f, maxCorrelationValueGlobal = 0.0f;
 
     // GUI data.
     void resetSelectedPrimitives();
+    float chartRadius{};
     int hoveredPointIdx = -1;
     int hoveredLineIdx = -1;
     int clickedPointIdx = -1;
@@ -178,17 +211,11 @@ private:
     bool alignWithParentWindow = false;
     bool opacityByValue = false;
     bool colorByValue = true;
-    DiagramColorMap colorMap = DiagramColorMap::CIVIDIS;
-    std::vector<glm::vec3> colorPoints;
-    void initializeColorPoints();
-    glm::vec4 evalColorMapVec4(float t);
-    sgl::Color evalColorMap(float t);
 
     // Outer ring.
     bool showRing = true;
     float outerRingOffset = 3.0f;
     const float outerRingWidth = 20.0f;
-    float minStdDev = 0.0f, maxStdDev = 0.0f;
 };
 
 #endif //CORRERENDER_HEBCHART_HPP
