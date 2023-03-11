@@ -80,4 +80,7 @@ float computeKendall(
         std::vector<std::pair<float, float>>& jointArray, std::vector<float>& ordinalRankArray,
         std::vector<float>& y);
 
+// O(n^2) implementation.
+float computeKendallSlow(const float* referenceValues, const float* queryValues, int es);
+
 #endif //CORRERENDER_CORRELATION_HPP

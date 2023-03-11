@@ -31,7 +31,6 @@
 
 #include <boost/math/special_functions/digamma.hpp>
 
-#include <Utils/SearchStructures/KdTreed.hpp>
 #include <Utils/Random/Xorshift.hpp>
 
 #include "MutualInformation.hpp"
@@ -135,6 +134,7 @@ float computeMutualInformationBinned(
 
     return float(mi);
 }
+
 template
 float computeMutualInformationBinned<float>(
         const float* referenceValues, const float* queryValues, int numBins, int es,
@@ -143,6 +143,8 @@ template
 float computeMutualInformationBinned<double>(
         const float* referenceValues, const float* queryValues, int numBins, int es,
         double* histogram0, double* histogram1, double* histogram2d);
+
+
 
 #define KRASKOV_USE_RANDOM_NOISE
 #define USE_1D_BINARY_SEARCH
@@ -156,28 +158,30 @@ const float default_epsilon<float>::noise = 1e-5f;
 const double default_epsilon<double>::noise = 1e-10;
 
 template<class Real, bool includeCenter = true>
-Real averageDigamma(const float* values, int es, const std::vector<Real>& distanceVec, bool isRef) {
+Real averageDigamma(
+        const float* values, int es, const std::vector<Real>& distanceVec, bool isRef,
+        KraskovEstimatorCache<Real>& cache) {
 #ifdef KRASKOV_USE_RANDOM_NOISE
     sgl::XorshiftRandomGenerator gen(isRef ? 617406168ul : 864730169ul);
-    std::vector<Real> baseArray(es);
+    cache.baseArray.resize(es);
 #endif
     Real factor = Real(1) / Real(es);
     Real meanDigammaValue = 0;
 #ifdef USE_1D_BINARY_SEARCH
-    std::vector<Real> sortedArray(es);
+    cache.sortedArray.resize(es);
     for (int e = 0; e < es; e++) {
 #ifdef KRASKOV_USE_RANDOM_NOISE
-        sortedArray.at(e) = values[e] + gen.getRandomFloatBetween(0.0f, 1.0f) * default_epsilon<Real>::noise;
-        baseArray.at(e) = sortedArray.at(e);
+        cache.sortedArray.at(e) = values[e] + gen.getRandomFloatBetween(0.0f, 1.0f) * default_epsilon<Real>::noise;
+        cache.baseArray.at(e) = cache.sortedArray.at(e);
 #else
-        sortedArray.at(e) = values[e];
+        cache.sortedArray.at(e) = values[e];
 #endif
     }
-    std::sort(sortedArray.begin(), sortedArray.end());
+    std::sort(cache.sortedArray.begin(), cache.sortedArray.end());
 
     for (int e = 0; e < es; e++) {
 #ifdef KRASKOV_USE_RANDOM_NOISE
-        Real currentValue = baseArray[e];
+        Real currentValue = cache.baseArray[e];
 #else
         Real currentValue = values[e];
 #endif
@@ -195,7 +199,7 @@ Real averageDigamma(const float* values, int es, const std::vector<Real>& distan
         // Binary search.
         while (lower < upper) {
             middle = (lower + upper) / 2;
-            Real middleValue = sortedArray[middle];
+            Real middleValue = cache.sortedArray[middle];
             if (middleValue < searchValueLower) {
                 lower = middle + 1;
             } else {
@@ -210,7 +214,7 @@ Real averageDigamma(const float* values, int es, const std::vector<Real>& distan
         // Binary search.
         while (lower < upper) {
             middle = (lower + upper) / 2;
-            Real middleValue = sortedArray[middle];
+            Real middleValue = cache.sortedArray[middle];
             if (middleValue < searchValueUpper) {
                 lower = middle + 1;
             } else {
@@ -295,40 +299,43 @@ void findKNearestNeighborDistances1D(
  */
 template<class Real>
 float computeMutualInformationKraskov(
-        const float* referenceValues, const float* queryValues, int k, int es) {
+        const float* referenceValues, const float* queryValues, int k, int es, KraskovEstimatorCache<Real>& cache) {
     //const int base = 2;
+    cache.points.clear();
+    cache.pointsCopy.clear();
+    cache.kdTree2d.clear();
+    cache.kthNeighborDistances.clear();
+    cache.nearestNeighborDistances.clear();
 
 #ifdef KRASKOV_USE_RANDOM_NOISE
     sgl::XorshiftRandomGenerator genRef(617406168ul);
     sgl::XorshiftRandomGenerator genQuery(864730169ul);
 #endif
 
-    sgl::KdTreed<Real, 2, sgl::DistanceMeasure::CHEBYSHEV> kdTree2d;
-    std::vector<glm::vec<2, Real>> points;
-    points.reserve(es);
+    cache.points.reserve(es);
+    cache.pointsCopy.reserve(es);
     for (int e = 0; e < es; e++) {
 #ifdef KRASKOV_USE_RANDOM_NOISE
-        points.emplace_back(
+        cache.points.emplace_back(
                 referenceValues[e] + genRef.getRandomFloatBetween(0.0f, 1.0f) * default_epsilon<Real>::noise,
                 queryValues[e] + genQuery.getRandomFloatBetween(0.0f, 1.0f) * default_epsilon<Real>::noise);
 #else
-        points.emplace_back(referenceValues[e], queryValues[e]);
+        cache.points.emplace_back(referenceValues[e], queryValues[e]);
 #endif
+        cache.pointsCopy.push_back(cache.points.back());
     }
-    kdTree2d.build(points);
+    cache.kdTree2d.buildInplace(cache.pointsCopy);
 
-    std::vector<Real> kthNeighborDistances;
-    kthNeighborDistances.reserve(es);
-    std::vector<Real> nearestNeighborDistances;
-    nearestNeighborDistances.reserve(k + 1);
+    cache.kthNeighborDistances.reserve(es);
+    cache.nearestNeighborDistances.reserve(k + 1);
     for (int e = 0; e < es; e++) {
-        nearestNeighborDistances.clear();
-        kdTree2d.findKNearestNeighbors(points.at(e), k + 1, nearestNeighborDistances);
-        kthNeighborDistances.emplace_back(nearestNeighborDistances.back());
+        cache.nearestNeighborDistances.clear();
+        cache.kdTree2d.findKNearestNeighbors(cache.points.at(e), k + 1, cache.nearestNeighborDistances);
+        cache.kthNeighborDistances.emplace_back(cache.nearestNeighborDistances.back());
     }
 
-    auto a = averageDigamma<Real>(referenceValues, es, kthNeighborDistances, true);
-    auto b = averageDigamma<Real>(queryValues, es, kthNeighborDistances, false);
+    auto a = averageDigamma<Real>(referenceValues, es, cache.kthNeighborDistances, true, cache);
+    auto b = averageDigamma<Real>(queryValues, es, cache.kthNeighborDistances, false, cache);
     auto c = Real(boost::math::digamma(k));
     auto d = Real(boost::math::digamma(es));
 
@@ -342,99 +349,60 @@ float computeMutualInformationKraskov(
  */
 template<class Real>
 float computeMutualInformationKraskov2(
-        const float* referenceValues, const float* queryValues, int k, int es) {
+        const float* referenceValues, const float* queryValues, int k, int es, KraskovEstimatorCache<Real>& cache) {
     //const int base = 2;
+    cache.points.clear();
+    cache.pointsCopy.clear();
+    cache.kdTree2d.clear();
+    cache.kthNeighborDistances.clear();
+    cache.nearestNeighborDistances.clear();
+    cache.kthNeighborDistancesRef.clear();
+    cache.kthNeighborDistancesQuery.clear();
+    cache.nearestNeighbors.clear();
 
 #ifdef KRASKOV_USE_RANDOM_NOISE
     sgl::XorshiftRandomGenerator genRef(617406168ul);
     sgl::XorshiftRandomGenerator genQuery(864730169ul);
 #endif
 
-    // CASE (A).
-    sgl::KdTreed<Real, 2, sgl::DistanceMeasure::CHEBYSHEV> kdTree2d;
-    std::vector<glm::vec<2, Real>> points;
-    points.reserve(es);
+    cache.points.reserve(es);
+    cache.pointsCopy.reserve(es);
     for (int e = 0; e < es; e++) {
 #ifdef KRASKOV_USE_RANDOM_NOISE
-        points.emplace_back(
+        cache.points.emplace_back(
                 referenceValues[e] + genRef.getRandomFloatBetween(0.0f, 1.0f) * default_epsilon<Real>::noise,
                 queryValues[e] + genQuery.getRandomFloatBetween(0.0f, 1.0f) * default_epsilon<Real>::noise);
 #else
-        points.emplace_back(referenceValues[e], queryValues[e]);
+        cache.points.emplace_back(referenceValues[e], queryValues[e]);
 #endif
+        cache.pointsCopy.push_back(cache.points.back());
     }
-    kdTree2d.build(points);
+    cache.kdTree2d.buildInplace(cache.pointsCopy);
 
-    std::vector<Real> kthNeighborDistancesRef;
-    kthNeighborDistancesRef.reserve(es);
-    std::vector<Real> kthNeighborDistancesQuery;
-    kthNeighborDistancesQuery.reserve(es);
-    std::vector<Real> nearestNeighborDistances;
-    nearestNeighborDistances.reserve(k + 1);
-    std::vector<glm::vec<2, Real>> nearestNeighbors;
-    nearestNeighbors.reserve(k + 1);
+    cache.kthNeighborDistancesRef.reserve(es);
+    cache.kthNeighborDistancesQuery.reserve(es);
+    cache.nearestNeighborDistances.reserve(k + 1);
+    cache.nearestNeighbors.reserve(k + 1);
     for (int e = 0; e < es; e++) {
-        nearestNeighborDistances.clear();
-        kdTree2d.findKNearestNeighbors(points.at(e), k + 1, nearestNeighbors, nearestNeighborDistances);
+        cache.nearestNeighborDistances.clear();
+        cache.kdTree2d.findKNearestNeighbors(
+                cache.points.at(e), k + 1, cache.nearestNeighbors, cache.nearestNeighborDistances);
         Real distX = std::numeric_limits<Real>::lowest();
         Real distY = std::numeric_limits<Real>::lowest();
-        for (size_t i = 0; i < nearestNeighbors.size(); i++) {
-            Real ex = std::abs(points.at(e).x - nearestNeighbors.at(i).x);
-            Real ey = std::abs(points.at(e).y - nearestNeighbors.at(i).y);
+        for (size_t i = 0; i < cache.nearestNeighbors.size(); i++) {
+            Real ex = std::abs(cache.points.at(e).x - cache.nearestNeighbors.at(i).x);
+            Real ey = std::abs(cache.points.at(e).y - cache.nearestNeighbors.at(i).y);
             distX = std::max(distX, ex);
             distY = std::max(distY, ey);
         }
-        kthNeighborDistancesRef.emplace_back(distX);
-        kthNeighborDistancesQuery.emplace_back(distY);
-        //kthNeighborDistancesRef.emplace_back(std::abs(points.at(e).x - nearestNeighbors.back().x));
-        //kthNeighborDistancesQuery.emplace_back(std::abs(points.at(e).y - nearestNeighbors.back().y));
+        cache.kthNeighborDistancesRef.emplace_back(distX);
+        cache.kthNeighborDistancesQuery.emplace_back(distY);
     }
 
-    auto a = averageDigamma<Real, false>(referenceValues, es, kthNeighborDistancesRef, true);
-    auto b = averageDigamma<Real, false>(queryValues, es, kthNeighborDistancesQuery, false);
+    auto a = averageDigamma<Real, false>(referenceValues, es, cache.kthNeighborDistancesRef, true, cache);
+    auto b = averageDigamma<Real, false>(queryValues, es, cache.kthNeighborDistancesQuery, false, cache);
     auto c = Real(boost::math::digamma(k)) - Real(1) / Real(k);
     auto d = Real(boost::math::digamma(es));
-
-    // CASE (B).
-    /*sgl::KdTreed<Real, 1, sgl::DistanceMeasure::CHEBYSHEV> kdTreeX;
-    sgl::KdTreed<Real, 1, sgl::DistanceMeasure::CHEBYSHEV> kdTreeY;
-    std::vector<glm::vec<1, Real>> X;
-    X.reserve(es);
-    std::vector<glm::vec<1, Real>> Y;
-    Y.reserve(es);
-    for (int e = 0; e < es; e++) {
-#ifdef KRASKOV_USE_RANDOM_NOISE
-        X.emplace_back(referenceValues[e] + genRef.getRandomFloatBetween(0.0f, 1.0f) * default_epsilon<Real>::noise);
-        Y.emplace_back(queryValues[e] + genQuery.getRandomFloatBetween(0.0f, 1.0f) * default_epsilon<Real>::noise);
-#else
-        X.emplace_back(referenceValues[e]);
-        Y.emplace_back(queryValues[e]);
-#endif
-    }
-    //std::sort(X.begin(), X.end());
-    //std::sort(Y.begin(), Y.end());
-    kdTreeX.build(X);
-    kdTreeY.build(Y);
-
-    std::vector<Real> kthNeighborDistancesRef;
-    kthNeighborDistancesRef.reserve(es);
-    std::vector<Real> kthNeighborDistancesQuery;
-    kthNeighborDistancesQuery.reserve(es);
-    std::vector<Real> nearestNeighborDistances;
-    nearestNeighborDistances.reserve(k + 1);
-    for (int e = 0; e < es; e++) {
-        nearestNeighborDistances.clear();
-        kdTreeX.findKNearestNeighbors(X.at(e), k + 1, nearestNeighborDistances);
-        kthNeighborDistancesRef.emplace_back(nearestNeighborDistances.back());
-        nearestNeighborDistances.clear();
-        kdTreeY.findKNearestNeighbors(Y.at(e), k + 1, nearestNeighborDistances);
-        kthNeighborDistancesQuery.emplace_back(nearestNeighborDistances.back());
-    }
-
-    auto a = averageDigamma<Real, false>(referenceValues, es, kthNeighborDistancesRef, true);
-    auto b = averageDigamma<Real, false>(queryValues, es, kthNeighborDistancesQuery, false);
-    auto c = Real(boost::math::digamma(k)) - Real(1) / Real(k);
-    auto d = Real(boost::math::digamma(es));*/
 
     //Real mi = (-a - b + c + d) / Real(std::log(base));
     Real mi = -a - b + c + d;
@@ -443,17 +411,17 @@ float computeMutualInformationKraskov2(
 
 template
 float computeMutualInformationKraskov<float>(
-        const float* referenceValues, const float* queryValues, int k, int es);
+        const float* referenceValues, const float* queryValues, int k, int es, KraskovEstimatorCache<float>& cache);
 template
 float computeMutualInformationKraskov<double>(
-        const float* referenceValues, const float* queryValues, int k, int es);
+        const float* referenceValues, const float* queryValues, int k, int es, KraskovEstimatorCache<double>& cache);
 
 template
 float computeMutualInformationKraskov2<float>(
-        const float* referenceValues, const float* queryValues, int k, int es);
+        const float* referenceValues, const float* queryValues, int k, int es, KraskovEstimatorCache<float>& cache);
 template
 float computeMutualInformationKraskov2<double>(
-        const float* referenceValues, const float* queryValues, int k, int es);
+        const float* referenceValues, const float* queryValues, int k, int es, KraskovEstimatorCache<double>& cache);
 
 
 float computeMaximumMutualInformationKraskov(int k, int es) {

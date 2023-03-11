@@ -286,7 +286,7 @@ float computeKendall(
     return float(numerator) / denominator;
 }
 
-int sign(float value) {
+inline int sign(float value) {
     return value > 0.0f ? 1 : (value < 0.0f ? -1 : 0);
 }
 

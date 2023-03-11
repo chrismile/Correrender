@@ -653,6 +653,7 @@ void CorrelationCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float
 #ifdef USE_TBB
         tbb::parallel_for(tbb::blocked_range<size_t>(0, numGridPoints), [&](auto const& r) {
             auto* gridPointValues = new float[cs];
+            KraskovEstimatorCache<double> kraskovEstimatorCache;
             for (auto gridPointIdx = r.begin(); gridPointIdx != r.end(); gridPointIdx++) {
 #else
 #if _OPENMP >= 200805
@@ -660,6 +661,7 @@ void CorrelationCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float
         shared(minFieldVal, maxFieldVal)
         {
             auto* gridPointValues = new float[cs];
+            KraskovEstimatorCache<double> kraskovEstimatorCache;
             #pragma omp for
 #endif
             for (size_t gridPointIdx = 0; gridPointIdx < numGridPoints; gridPointIdx++) {
@@ -686,10 +688,10 @@ void CorrelationCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float
                 float mutualInformation;
                 if (kraskovEstimatorIndex == 1) {
                     mutualInformation = computeMutualInformationKraskov<double>(
-                            referenceValues, gridPointValues, k, cs);
+                            referenceValues, gridPointValues, k, cs, kraskovEstimatorCache);
                 } else {
                     mutualInformation = computeMutualInformationKraskov2<double>(
-                            referenceValues, gridPointValues, k, cs);
+                            referenceValues, gridPointValues, k, cs, kraskovEstimatorCache);
                 }
                 buffer[gridPointIdx] = mutualInformation;
             }

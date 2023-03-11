@@ -110,8 +110,8 @@ layout(push_constant) uniform PushConstants {
 
 /*
  * Global defines:
- * - MEMBER_COUNT
- * - MAX_STACK_SIZE: uint32_t(ceil(log(MEMBER_COUNT + 1))); 10 for 1000 ensemble members.
+ * - MEMBER_COUNT: Number of entries to compute the correlation for.
+ * - MAX_STACK_SIZE: uint32_t(ceil(log(MEMBER_COUNT))) + 1; 11 for 1000 ensemble members.
  */
 
 float referenceValues[MEMBER_COUNT];

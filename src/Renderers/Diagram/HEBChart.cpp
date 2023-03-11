@@ -452,6 +452,8 @@ void HEBChart::computeCorrelations(
                     histogram2d = new double[numBins * numBins];
                 }
 
+                KraskovEstimatorCache<double> kraskovEstimatorCache;
+
                 float minFieldValRef, maxFieldValRef, minFieldVal, maxFieldVal;
 
                 for (int i = r.begin(); i != r.end(); i++) {
@@ -493,6 +495,8 @@ void HEBChart::computeCorrelations(
             histogram1 = new double[numBins];
             histogram2d = new double[numBins * numBins];
         }
+
+        KraskovEstimatorCache<double> kraskovEstimatorCache;
 
         float minFieldValRef, maxFieldValRef, minFieldVal, maxFieldVal;
 
@@ -573,7 +577,8 @@ void HEBChart::computeCorrelations(
                         miValue = computeMutualInformationBinned<double>(
                                 X.data(), Y.data(), numBins, cs, histogram0, histogram1, histogram2d);
                     } else if (cmt == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV) {
-                        miValue = computeMutualInformationKraskov<double>(X.data(), Y.data(), k, cs);
+                        miValue = computeMutualInformationKraskov<double>(
+                                X.data(), Y.data(), k, cs, kraskovEstimatorCache);
                     }
                     if (miValue < correlationRange.x || miValue > correlationRange.y) {
                         continue;

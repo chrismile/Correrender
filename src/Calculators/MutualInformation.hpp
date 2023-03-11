@@ -29,6 +29,8 @@
 #ifndef CORRERENDER_MUTUALINFORMATION_HPP
 #define CORRERENDER_MUTUALINFORMATION_HPP
 
+#include <Utils/SearchStructures/KdTreed.hpp>
+
 template<class Real>
 float computeMutualInformationBinned(
         const float* referenceValues, const float* queryValues, int numBins, int es,
@@ -43,23 +45,42 @@ float computeMutualInformationBinned<double>(
         double* histogram0, double* histogram1, double* histogram2d);
 
 template<class Real>
+struct KraskovEstimatorCache {
+    // K-d-tree computations.
+    std::vector<glm::vec<2, Real>> points;
+    std::vector<glm::vec<2, Real>> pointsCopy;
+    sgl::KdTreed<Real, 2, sgl::DistanceMeasure::CHEBYSHEV> kdTree2d;
+    std::vector<Real> kthNeighborDistances;
+    std::vector<Real> nearestNeighborDistances;
+
+    // 2nd estimator.
+    std::vector<Real> kthNeighborDistancesRef;
+    std::vector<Real> kthNeighborDistancesQuery;
+    std::vector<glm::vec<2, Real>> nearestNeighbors;
+
+    // Average digamma computation.
+    std::vector<Real> baseArray;
+    std::vector<Real> sortedArray;
+};
+
+template<class Real>
 float computeMutualInformationKraskov(
-        const float* referenceValues, const float* queryValues, int k, int es);
+        const float* referenceValues, const float* queryValues, int k, int es, KraskovEstimatorCache<Real>& cache);
 template<class Real>
 float computeMutualInformationKraskov2(
-        const float* referenceValues, const float* queryValues, int k, int es);
+        const float* referenceValues, const float* queryValues, int k, int es, KraskovEstimatorCache<Real>& cache);
 extern template
 float computeMutualInformationKraskov<float>(
-        const float* referenceValues, const float* queryValues, int k, int es);
+        const float* referenceValues, const float* queryValues, int k, int es, KraskovEstimatorCache<float>& cache);
 extern template
 float computeMutualInformationKraskov<double>(
-        const float* referenceValues, const float* queryValues, int k, int es);
+        const float* referenceValues, const float* queryValues, int k, int es, KraskovEstimatorCache<double>& cache);
 extern template
 float computeMutualInformationKraskov2<float>(
-        const float* referenceValues, const float* queryValues, int k, int es);
+        const float* referenceValues, const float* queryValues, int k, int es, KraskovEstimatorCache<float>& cache);
 extern template
 float computeMutualInformationKraskov2<double>(
-        const float* referenceValues, const float* queryValues, int k, int es);
+        const float* referenceValues, const float* queryValues, int k, int es, KraskovEstimatorCache<double>& cache);
 
 float computeMaximumMutualInformationKraskov(int k, int es);
 
