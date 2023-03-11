@@ -28,14 +28,16 @@
 
 #include "DiagramColorMap.hpp"
 
+std::vector<sgl::Color> defaultColors = {
+        sgl::Color(100, 255, 100),
+        sgl::Color(255, 60, 50),
+        sgl::Color(0, 170, 255),
+        sgl::Color(255, 148, 60),
+};
+
 std::vector<glm::vec3> getColorPoints(DiagramColorMap colorMap) {
     std::vector<glm::vec3> colorPoints;
-    if (colorMap == DiagramColorMap::GREEN) {
-        colorPoints = {
-                { 208.0f / 255.0f, 231.0f / 255.0f, 208.0f / 255.0f },
-                { 100.0f / 255.0f, 255.0f / 255.0f, 100.0f / 255.0f },
-        };
-    } else if (colorMap == DiagramColorMap::VIRIDIS) {
+    if (colorMap == DiagramColorMap::VIRIDIS) {
         colorPoints = {
                 { 52.0f / 255.0f, 0.0f / 255.0f, 66.0f / 255.0f },
                 { 45.0f / 255.0f, 62.0f / 255.0f, 120.0f / 255.0f },
@@ -58,6 +60,17 @@ std::vector<glm::vec3> getColorPoints(DiagramColorMap colorMap) {
                 { 0.0f / 255.0f, 34.0f / 255.0f, 77.0f / 255.0f },
                 { 124.0f / 255.0f, 123.0f / 255.0f, 120.0f / 255.0f },
                 { 253.0f / 255.0f, 231.0f / 255.0f, 55.0f / 255.0f },
+        };
+    } else if (colorMap == DiagramColorMap::NEON_GREENS) {
+        colorPoints = {
+                { 208.0f / 255.0f, 231.0f / 255.0f, 208.0f / 255.0f },
+                { 100.0f / 255.0f, 255.0f / 255.0f, 100.0f / 255.0f },
+        };
+    } else {
+        sgl::Color color = defaultColors.at(int(colorMap) - int(DiagramColorMap::NEON_GREEN));
+        colorPoints = {
+                { color.getFloatR(), color.getFloatG(), color.getFloatB() },
+                { color.getFloatR(), color.getFloatG(), color.getFloatB() },
         };
     }
     return colorPoints;
