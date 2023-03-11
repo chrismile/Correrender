@@ -53,8 +53,9 @@ bool CvolLoader::setInputFiles(
     bool loaded = sgl::loadFileFromSourceRanged(
             dataSourceFilename, buffer, lengthRead, sizeof(CvolFileHeader), length, true);
     if (!loaded) {
-        sgl::Logfile::get()->throwError(
+        sgl::Logfile::get()->writeError(
                 "Error in CvolLoader::load: Couldn't open file \"" + dataSourceFilename + "\".");
+        return false;
     }
     if (length < sizeof(CvolFileHeader)) {
         sgl::Logfile::get()->throwError(

@@ -159,6 +159,11 @@ void ZarrLoader::loadFloatArray3D(
 bool ZarrLoader::setInputFiles(
         VolumeData* volumeData, const std::string& filePath, const DataSetInformation& dataSetInformation) {
     z5::filesystem::handle::File f(filePath);
+    if (!f.exists()) {
+        sgl::Logfile::get()->writeError(
+                "Error in ZarrLoader::setInputFiles: Directory \"" + filePath + "\" couldn't be opened.");
+        return false;
+    }
 
     std::vector<std::string> keys;
     f.keys(keys);
@@ -166,6 +171,12 @@ bool ZarrLoader::setInputFiles(
     datasets.resize(keys.size());
     for (size_t datasetIdx = 0; datasetIdx < keys.size(); datasetIdx++) {
         datasets.at(datasetIdx) = z5::openDataset(f, keys.at(datasetIdx));
+        if (!datasets.at(datasetIdx)) {
+            sgl::Logfile::get()->writeError(
+                    "Error in ZarrLoader::setInputFiles: Data set \"" + keys.at(datasetIdx) + "\" in directory \""
+                    + filePath + "\" couldn't be opened.");
+            return false;
+        }
         datasetNameMap.insert(std::make_pair(keys.at(datasetIdx), datasetIdx));
     }
 
@@ -188,9 +199,9 @@ bool ZarrLoader::setInputFiles(
     float* zCoords = nullptr;
     float* yCoords = nullptr;
     float* xCoords = nullptr;
-    bool isLatLonData = false;
+    //bool isLatLonData = false;
     if (getDatasetExists("lon") && getDatasetExists("lat") && getDatasetExists("lev")) {
-        isLatLonData = true;
+        //isLatLonData = true;
         loadFloatArray1D(getDatasetIndex("lev"), zs, zCoords);
         loadFloatArray1D(getDatasetIndex("lat"), ys, yCoords);
         loadFloatArray1D(getDatasetIndex("lon"), xs, xCoords);

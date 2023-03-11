@@ -170,8 +170,9 @@ bool NetCdfLoader::setInputFiles(
     dataSetInformation = _dataSetInformation;
     int status = nc_open(filePath.c_str(), NC_NOWRITE, &ncid);
     if (status != 0) {
-        sgl::Logfile::get()->throwError(
+        sgl::Logfile::get()->writeError(
                 "Error in NetCdfLoader::load: File \"" + filePath + "\" couldn't be opened.");
+        return false;
     }
 
     // Temporary data for storing information about the variables in the data file.

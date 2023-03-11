@@ -491,7 +491,10 @@ bool VolumeData::setInputFiles(
         if (!volumeLoader) {
             return false;
         }
-        volumeLoader->setInputFiles(this, filePath, dataSetInformation);
+        if (!volumeLoader->setInputFiles(this, filePath, dataSetInformation)) {
+            delete volumeLoader;
+            return false;
+        }
         volumeLoaders.push_back(volumeLoader);
     }
 

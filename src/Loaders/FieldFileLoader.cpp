@@ -49,8 +49,9 @@ bool FieldFileLoader::setInputFiles(
     bool loaded = sgl::loadFileFromSourceRanged(
             dataSourceFilename, buffer, lengthRead, sizeof(FieldFileHeader), length, true);
     if (!loaded) {
-        sgl::Logfile::get()->throwError(
+        sgl::Logfile::get()->writeError(
                 "Error in FieldFileLoader::load: Couldn't open file \"" + dataSourceFilename + "\".");
+        return false;
     }
     if (length < sizeof(FieldFileHeader)) {
         sgl::Logfile::get()->throwError(

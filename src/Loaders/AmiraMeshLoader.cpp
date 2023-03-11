@@ -58,8 +58,10 @@ char* AmiraMeshLoader::skipLine(char* fileBuffer, char* fileBufferEnd) {
 }
 
 AmiraMeshLoader::~AmiraMeshLoader() {
-    delete[] buffer;
-    buffer = nullptr;
+    if (buffer) {
+        delete[] buffer;
+        buffer = nullptr;
+    }
 }
 
 bool AmiraMeshLoader::setInputFiles(
@@ -71,8 +73,9 @@ bool AmiraMeshLoader::setInputFiles(
     size_t length = 0;
     bool loaded = sgl::loadFileFromSource(dataSourceFilename, buffer, length, false);
     if (!loaded) {
-        sgl::Logfile::get()->throwError(
+        sgl::Logfile::get()->writeError(
                 "Error in AmiraMeshLoader::setInputFiles: Couldn't open file \"" + dataSourceFilename + "\".");
+        return false;
     }
     char* fileBuffer = reinterpret_cast<char*>(buffer);
 

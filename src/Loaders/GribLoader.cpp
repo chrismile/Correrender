@@ -100,9 +100,10 @@ bool GribLoader::setInputFiles(
 #endif
 
     if (!file) {
-        sgl::Logfile::get()->throwError(
+        sgl::Logfile::get()->writeError(
                 std::string() + "Error in GribLoader::setInputFiles: File \""
                 + dataSourceFilename + "\" could not be opened.");
+        return false;
     }
 
     int errorCode = 0;

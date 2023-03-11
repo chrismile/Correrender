@@ -75,8 +75,9 @@ bool DatRawFileLoader::setInputFiles(
             }
         }
         if (datFilePath.empty()) {
-            sgl::Logfile::get()->throwError(
+            sgl::Logfile::get()->writeError(
                     "Error in DatRawFileLoader::load: No .dat file found for \"" + rawFilePaths.front() + "\".");
+            return false;
         }
     }
 
