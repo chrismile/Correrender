@@ -110,6 +110,13 @@ layout(binding = 4) readonly buffer ReferenceRankBuffer {
     float referenceRankArray[MEMBER_COUNT];
 };
 
+layout(push_constant) uniform PushConstants {
+    ivec3 paddingVec;
+    int padding0;
+    uvec3 batchOffset;
+    uint padding1;
+};
+
 float valueArray[MEMBER_COUNT];
 uint ordinalRankArray[MEMBER_COUNT];
 float rankArray[MEMBER_COUNT];
@@ -150,8 +157,8 @@ float pearsonCorrelation() {
 }
 
 void main() {
-    ivec3 currentPointIdx = ivec3(gl_GlobalInvocationID.xyz);
-    if (gl_GlobalInvocationID.x >= xs || gl_GlobalInvocationID.y >= ys || gl_GlobalInvocationID.z >= zs) {
+    ivec3 currentPointIdx = ivec3(gl_GlobalInvocationID.xyz + batchOffset);
+    if (currentPointIdx.x >= xs || currentPointIdx.y >= ys || currentPointIdx.z >= zs) {
         return;
     }
 

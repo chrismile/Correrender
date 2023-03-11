@@ -107,11 +107,11 @@ class CorrelationComputePass;
 
 /**
  * Correlation calculator with support for computing:
- * - Pearson correlation coefficient (PCC)
- * - Spearman correlation coefficient
- * - Kendal's tau
- * - Binned mutual information estimator
- * - Kraskov mutual information estimator
+ * - Pearson correlation coefficient.
+ * - Spearman rank correlation coefficient.
+ * - Kendall rank correlation coefficient (aka. Kendall's tau).
+ * - Binned mutual information estimator.
+ * - Kraskov mutual information estimator.
  */
 class CorrelationCalculator : public ICorrelationCalculator {
 public:
@@ -192,7 +192,11 @@ private:
     int cachedCorrelationMemberCount = 0;
     CorrelationMeasureType correlationMeasureType = CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV;
 
-    const uint32_t batchCorrelationMemberCountThreshold = 10;
+    const uint32_t batchCorrelationMemberCountThresholdPearson = 1024;
+    const uint32_t batchCorrelationMemberCountThresholdSpearman = 10;
+    const uint32_t batchCorrelationMemberCountThresholdKendall = 10;
+    const uint32_t batchCorrelationMemberCountThresholdMiBinned = 10;
+    const uint32_t batchCorrelationMemberCountThresholdKraskov = 10;
     const int computeBlockSizeX = 8, computeBlockSizeY = 8, computeBlockSizeZ = 4;
     struct UniformData {
         uint32_t xs, ys, zs, cs;

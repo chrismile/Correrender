@@ -337,10 +337,6 @@ void CorrelationCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         hasNameChanged = true;
         dirty = true;
         correlationComputePass->setCorrelationMeasureType(correlationMeasureType);
-        if (useGpu && (correlationMeasureType == CorrelationMeasureType::KENDALL)) {
-            hasFilterDeviceChanged = true;
-            useGpu = false;
-        }
     }
 
 #ifdef SUPPORT_CUDA_INTEROP
@@ -359,7 +355,7 @@ void CorrelationCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         }
     } else
 #endif
-    if (correlationMeasureType != CorrelationMeasureType::KENDALL && propertyEditor.addCheckbox("Use GPU", &useGpu)) {
+    if (propertyEditor.addCheckbox("Use GPU", &useGpu)) {
         hasFilterDeviceChanged = true;
         dirty = true;
     }
@@ -777,7 +773,7 @@ void CorrelationCalculator::calculateDevice(int timeStepIdx, int ensembleIdx, co
                 }
             }
             renderer->pushConstants(
-                    correlationComputePass->getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, sizeof(glm::vec4),
+                    correlationComputePass->getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, 2 * sizeof(glm::vec4),
                     glm::vec2(minFieldVal, maxFieldVal));
         }
         correlationComputePass->render();
@@ -900,6 +896,7 @@ void CorrelationComputePass::setOutputImage(const sgl::vk::ImageViewPtr& _output
 
 void CorrelationComputePass::setReferencePoint(const glm::ivec3& referencePointIndex) {
     if (correlationMeasureType == CorrelationMeasureType::PEARSON
+            || correlationMeasureType == CorrelationMeasureType::KENDALL
             || correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED
             || correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV) {
         renderer->pushConstants(getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, 0, referencePointIndex);
@@ -948,7 +945,12 @@ void CorrelationComputePass::loadShader() {
     preprocessorDefines.insert(std::make_pair("BLOCK_SIZE_Z", std::to_string(computeBlockSizeZ)));
     preprocessorDefines.insert(std::make_pair(
             "MEMBER_COUNT", std::to_string(cachedCorrelationMemberCount)));
-    if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
+    if (correlationMeasureType == CorrelationMeasureType::KENDALL) {
+        auto maxStackSize = uint32_t(std::ceil(std::log2(cachedCorrelationMemberCount))) + 1;
+        preprocessorDefines.insert(std::make_pair(
+                "MAX_STACK_SIZE", std::to_string(maxStackSize)));
+        preprocessorDefines.insert(std::make_pair("k", std::to_string(k)));
+    } else if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
         preprocessorDefines.insert(std::make_pair("numBins", std::to_string(numBins)));
     } else if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV) {
         auto maxBinaryTreeLevels = uint32_t(std::ceil(std::log2(cachedCorrelationMemberCount + 1)));
@@ -964,6 +966,8 @@ void CorrelationComputePass::loadShader() {
         shaderName = "PearsonCorrelation.Compute";
     } else if (correlationMeasureType == CorrelationMeasureType::SPEARMAN) {
         shaderName = "SpearmanRankCorrelation.Compute";
+    } else if (correlationMeasureType == CorrelationMeasureType::KENDALL) {
+        shaderName = "KendallRankCorrelation.Compute";
     } else if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
         shaderName = "MutualInformationBinned.Compute";
     } else if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV) {
@@ -995,7 +999,25 @@ void CorrelationComputePass::_render() {
 
     uint32_t batchCount = 1;
     bool needsBatchedRendering = false;
-    if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV) {
+    bool supportsBatchedRendering =
+            correlationMeasureType == CorrelationMeasureType::PEARSON
+            || correlationMeasureType == CorrelationMeasureType::SPEARMAN
+            || correlationMeasureType == CorrelationMeasureType::KENDALL
+            || correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED
+            || correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV;
+    if (supportsBatchedRendering) {
+        uint32_t batchCorrelationMemberCountThreshold = 10;
+        if (correlationMeasureType == CorrelationMeasureType::PEARSON) {
+            batchCorrelationMemberCountThreshold = batchCorrelationMemberCountThresholdPearson;
+        } else if (correlationMeasureType == CorrelationMeasureType::SPEARMAN) {
+            batchCorrelationMemberCountThreshold = batchCorrelationMemberCountThresholdSpearman;
+        } else if (correlationMeasureType == CorrelationMeasureType::KENDALL) {
+            batchCorrelationMemberCountThreshold = batchCorrelationMemberCountThresholdKendall;
+        } else if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
+            batchCorrelationMemberCountThreshold = batchCorrelationMemberCountThresholdMiBinned;
+        } else if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV) {
+            batchCorrelationMemberCountThreshold = batchCorrelationMemberCountThresholdKraskov;
+        }
         if (cachedCorrelationMemberCount > int(batchCorrelationMemberCountThreshold)) {
             needsBatchedRendering = true;
             batchCount = sgl::uiceil(uint32_t(cachedCorrelationMemberCount), batchCorrelationMemberCountThreshold);
@@ -1016,7 +1038,7 @@ void CorrelationComputePass::_render() {
         auto batchSizeZ = uint32_t(volumeData->getGridSizeZ());
         batchCount = sgl::uiceil(uint32_t(volumeData->getGridSizeX()), batchSizeX);
         for (uint32_t batchIdx = 0; batchIdx < batchCount; batchIdx++) {
-            if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV) {
+            if (supportsBatchedRendering) {
                 renderer->pushConstants(
                         getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, sizeof(glm::uvec4),
                         glm::uvec3(batchSizeX * batchIdx, 0, 0));
@@ -1032,7 +1054,7 @@ void CorrelationComputePass::_render() {
             renderer->syncWithCpu();
         }
     } else {
-        if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV) {
+        if (supportsBatchedRendering) {
             renderer->pushConstants(
                     getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, sizeof(glm::uvec4), glm::uvec3(0));
         }

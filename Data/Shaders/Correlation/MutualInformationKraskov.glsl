@@ -450,7 +450,7 @@ float getRandomFloatNorm(inout uvec3 rngState) {
 
 void main() {
     ivec3 currentPointIdx = ivec3(gl_GlobalInvocationID.xyz + batchOffset);
-    if (gl_GlobalInvocationID.x >= xs || gl_GlobalInvocationID.y >= ys || gl_GlobalInvocationID.z >= zs) {
+    if (currentPointIdx.x >= xs || currentPointIdx.y >= ys || currentPointIdx.z >= zs) {
         return;
     }
 

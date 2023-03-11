@@ -230,16 +230,16 @@ int M(const std::vector<float>& L, const std::vector<float>& R) {
     int m = int(R.size());
     int i = 0;
     int j = 0;
-    int num_swaps = 0;
+    int numSwaps = 0;
     while (i < n && j < m) {
         if (R[j] < L[i]) {
-            num_swaps += n - i;
+            numSwaps += n - i;
             j += 1;
         } else {
             i += 1;
         }
     }
-    return num_swaps;
+    return numSwaps;
 }
 
 // https://en.wikipedia.org/wiki/Kendall_rank_correlation_coefficient
@@ -278,9 +278,27 @@ float computeKendall(
     ordinalRankArray.clear();
     int n2 = computeTiesB(queryValues, ordinalRankArray, es);
     ordinalRankArray.clear();
-    int n3 = 0;  // Joint ties in ref and query, TODO.
+    int n3 = 0; // Joint ties in ref and query, TODO.
     int numerator = n0 - n1 - n2 + n3 - 2 * S_y;
     //auto denominator = float(n0);  // Tau-a
-    float denominator = std::sqrt(float((n0 - n1) * (n0 - n2)));
+    // The square root needs to be taken separately to avoid integer overflow.
+    float denominator = std::sqrt(float(n0 - n1)) * std::sqrt(float(n0 - n2));
     return float(numerator) / denominator;
+}
+
+int sign(float value) {
+    return value > 0.0f ? 1 : (value < 0.0f ? -1 : 0);
+}
+
+float computeKendallSlow(const float* referenceValues, const float* queryValues, int es) {
+    int n = es;
+    int numerator = 0;
+    for (int i = 1; i < n; i++) {
+        for (int j = 0; j < i; j++) {
+            numerator += sign(referenceValues[i] - referenceValues[j]) * sign(queryValues[i] - queryValues[j]);
+        }
+    }
+    int n0 = (n * (n - 1)) / 2;
+    int denominator = n0; // Tau-a
+    return float(numerator) / float(denominator);
 }

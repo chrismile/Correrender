@@ -42,13 +42,15 @@ layout (binding = 3) uniform texture3D scalarFields[MEMBER_COUNT];
 
 layout(push_constant) uniform PushConstants {
     ivec3 referencePointIdx;
-    int paddingPushConstants;
+    int padding0;
+    uvec3 batchOffset;
+    uint padding1;
     float minFieldVal, maxFieldVal;
 };
 
 void main() {
-    ivec3 currentPointIdx = ivec3(gl_GlobalInvocationID.xyz);
-    if (gl_GlobalInvocationID.x >= xs || gl_GlobalInvocationID.y >= ys || gl_GlobalInvocationID.z >= zs) {
+    ivec3 currentPointIdx = ivec3(gl_GlobalInvocationID.xyz + batchOffset);
+    if (currentPointIdx.x >= xs || currentPointIdx.y >= ys || currentPointIdx.z >= zs) {
         return;
     }
 
