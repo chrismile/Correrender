@@ -1495,6 +1495,12 @@ void MainApp::renderGuiMenuBar() {
             if (ImGui::MenuItem("Checkpoint Window", nullptr, checkpointWindow.getShowWindow())) {
                 checkpointWindow.setShowWindow(!checkpointWindow.getShowWindow());
             }
+            if (volumeData) {
+                auto& tfWindow = volumeData->getMultiVarTransferFunctionWindow();
+                if (ImGui::MenuItem("Transfer Function Window", nullptr, tfWindow.getShowWindow())) {
+                    tfWindow.setShowWindow(!tfWindow.getShowWindow());
+                }
+            }
             //if (ImGui::MenuItem("Replay Widget", nullptr, replayWidget.getShowWindow())) {
             //    replayWidget.setShowWindow(!replayWidget.getShowWindow());
             //}

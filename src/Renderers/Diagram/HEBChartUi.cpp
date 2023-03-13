@@ -318,11 +318,11 @@ void HEBChart::update(float dt) {
             hoveredLineIdx = -1;
         }
         //auto endTime = std::chrono::system_clock::now();
-        //auto elapsedLoad = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
-        //std::cout << "Elapsed time update: " << elapsedLoad.count() << "ms" << std::endl;
+        //auto elapsedTime = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
+        //std::cout << "Elapsed time update: " << elapsedTime.count() << "ms" << std::endl;
     }
 
-    if (isMouseInWindow && sgl::Mouse->buttonPressed(1)) {
+    if (isMouseInWindow && sgl::Mouse->buttonReleased(1) && !windowMoveOrResizeJustFinished) {
         clickedLineIdx = -1;
         clickedPointIdx = -1;
         if (hoveredLineIdx >= 0) {

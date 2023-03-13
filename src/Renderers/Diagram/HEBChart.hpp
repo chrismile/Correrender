@@ -37,6 +37,7 @@
 #include "DiagramColorMap.hpp"
 #include "Region.hpp"
 #include "Octree.hpp"
+#include "Sampling.hpp"
 #include "DiagramBase.hpp"
 #include "../../Calculators/CorrelationDefines.hpp"
 
@@ -50,6 +51,12 @@ struct MIFieldEntry {
     MIFieldEntry(float miValue, uint32_t pointIndex0, uint32_t pointIndex1)
             : miValue(miValue), pointIndex0(pointIndex0), pointIndex1(pointIndex1) {}
     bool operator<(const MIFieldEntry& rhs) const { return miValue > rhs.miValue; }
+};
+
+struct HEBChartFieldUpdateData {
+    std::vector<glm::vec2> curvePoints;
+    std::vector<float> correlationValuesArray;
+    std::vector<std::pair<int, int>> connectedPointsArray;
 };
 
 struct HEBChartFieldData {
@@ -98,6 +105,8 @@ public:
     void setColorMap(int fieldIdx, DiagramColorMap _colorMap);
     void setIsEnsembleMode(bool _isEnsembleMode);
     void setCorrelationMeasureType(CorrelationMeasureType _correlationMeasureType);
+    void setSamplingMethodType(SamplingMethodType _samplingMethodType);
+    void setNumSamples(int _numSamples);
     void setBeta(float _beta);
     void setDownscalingFactors(int _dfx, int _dfy, int _dfz);
     void setLineCountFactor(int _factor);
@@ -152,10 +161,13 @@ private:
 
     int getCorrelationMemberCount();
     HostCacheEntry getFieldEntryCpu(const std::string& fieldName, int fieldIdx);
+    std::pair<float, float> getMinMaxScalarFieldValue(const std::string& fieldName, int fieldIdx);
     bool isEnsembleMode = true; //< Ensemble or time mode?
 
     // Hierarchy data.
     CorrelationMeasureType correlationMeasureType = CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV;
+    SamplingMethodType samplingMethodType = SamplingMethodType::MEAN;
+    int numSamples = 100;
     int dfx = 32, dfy = 32, dfz = 32; ///< Downscaling factors.
     int xs = 0, ys = 0, zs = 0; //< Grid size.
     int xsd0 = 0, ysd0 = 0, zsd0 = 0; //< Downscaled grid size.
@@ -174,8 +186,14 @@ private:
     void computeDownscaledFieldVariance(
             HEBChartFieldData* fieldData, int idx, std::vector<float*>& downscaledFields);
     void computeCorrelations(
+            HEBChartFieldData* fieldData,
             std::vector<float*>& downscaledFields0, std::vector<float*>& downscaledFields1,
             std::vector<MIFieldEntry>& miFieldEntries);
+    void computeCorrelationsMean(
+            HEBChartFieldData* fieldData,
+            std::vector<float*>& downscaledFields0, std::vector<float*>& downscaledFields1,
+            std::vector<MIFieldEntry>& miFieldEntries);
+    void computeCorrelationsSampling(HEBChartFieldData* fieldData, std::vector<MIFieldEntry>& miFieldEntries);
     int numLinesTotal = 0;
     int MAX_NUM_LINES = 100;
     const int NUM_SUBDIVISIONS = 50;

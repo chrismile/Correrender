@@ -181,9 +181,13 @@ void main() {
     computeFractionalRanking();
 
     // 4. Compute the Pearson correlation of the ranks.
-    float correlation = pearsonCorrelation();
+    float correlationValue = pearsonCorrelation();
 
-    imageStore(outputImage, currentPointIdx, vec4(isnan(nanValue) ? nanValue : correlation));
+#ifdef CALCULATE_ABSOLUTE_VALUE
+    correlationValue = abs(correlationValue);
+#endif
+
+    imageStore(outputImage, currentPointIdx, vec4(isnan(nanValue) ? nanValue : correlationValue));
 }
 
 

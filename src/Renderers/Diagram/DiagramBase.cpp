@@ -96,6 +96,7 @@ void DiagramBase::update(float dt) {
     mousePosition /= getScaleFactor();
 
     bool isMouseOverDiagram = getIsMouseOverDiagram(mousePositionPx) && !isMouseGrabbedByParent;
+    windowMoveOrResizeJustFinished = false;
 
     // Mouse press event.
     if (isMouseOverDiagram && !isWindowFixed) {
@@ -117,9 +118,20 @@ void DiagramBase::update(float dt) {
 
     // Mouse release event.
     if (sgl::Mouse->buttonReleased(1)) {
+        checkWindowMoveOrResizeJustFinished(mousePositionPx);
         resizeDirection = ResizeDirection::NONE;
         isDraggingWindow = false;
+        isResizingWindow = false;
         isMouseGrabbed =  false;
+    }
+}
+
+void DiagramBase::checkWindowMoveOrResizeJustFinished(const glm::ivec2& mousePositionPx) {
+    bool dragFinished =
+            isDraggingWindow && (mousePositionPx.x - mouseDragStartPosX || mousePositionPx.y - mouseDragStartPosY);
+    bool resizeFinished = isResizingWindow;
+    if (dragFinished || resizeFinished) {
+        windowMoveOrResizeJustFinished = true;
     }
 }
 
@@ -133,8 +145,10 @@ bool DiagramBase::getIsMouseOverDiagramImGui() const {
 
 void DiagramBase::mouseMoveEvent(const glm::ivec2& mousePositionPx, const glm::vec2& mousePositionScaled) {
     if (sgl::Mouse->buttonReleased(1)) {
+        checkWindowMoveOrResizeJustFinished(mousePositionPx);
         resizeDirection = ResizeDirection::NONE;
         isDraggingWindow = false;
+        isResizingWindow = false;
     }
 
     if (resizeDirection != ResizeDirection::NONE) {
@@ -223,8 +237,10 @@ void DiagramBase::mouseMoveEvent(const glm::ivec2& mousePositionPx, const glm::v
 
 void DiagramBase::mouseMoveEventParent(const glm::ivec2& mousePositionPx, const glm::vec2& mousePositionScaled) {
     if (sgl::Mouse->isButtonUp(1)) {
+        checkWindowMoveOrResizeJustFinished(mousePositionPx);
         resizeDirection = ResizeDirection::NONE;
         isDraggingWindow = false;
+        isResizingWindow = false;
     }
 
     if (resizeDirection != ResizeDirection::NONE) {
@@ -298,6 +314,7 @@ void DiagramBase::mousePressEventResizeWindow(const glm::ivec2& mousePositionPx,
         }
 
         if (resizeDirection != ResizeDirection::NONE) {
+            isResizingWindow = true;
             lastResizeMouseX = mousePositionPx.x;
             lastResizeMouseY = mousePositionPx.y;
         }

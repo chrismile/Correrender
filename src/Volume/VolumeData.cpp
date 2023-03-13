@@ -610,6 +610,7 @@ void VolumeData::addCalculator(const CalculatorPtr& calculator) {
         std::vector<sgl::Color16> transferFunctionColorMap =
                 multiVarTransferFunctionWindow.getTransferFunctionMap_sRGB(int(colorLegendWidgets.size()) - 1);
         colorLegendWidgets.back().setTransferFunctionColorMap(transferFunctionColorMap);
+        colorLegendWidgets.back().setClearColor(cachedClearColor);
         for (auto& entry : scalarFieldToRendererMap) {
             entry.second->dirty = true;
         }
@@ -1301,6 +1302,7 @@ void VolumeData::recomputeColorLegend() {
 }
 
 void VolumeData::setClearColor(const sgl::Color& clearColor) {
+    cachedClearColor = clearColor;
     multiVarTransferFunctionWindow.setClearColor(clearColor);
     for (auto& colorLegendWidget : colorLegendWidgets) {
         colorLegendWidget.setClearColor(clearColor);

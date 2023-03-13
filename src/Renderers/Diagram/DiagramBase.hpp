@@ -149,7 +149,7 @@ protected:
         NONE = 0, LEFT = 1, RIGHT = 2, BOTTOM = 4, TOP = 8,
         BOTTOM_LEFT = BOTTOM | LEFT, BOTTOM_RIGHT = BOTTOM | RIGHT, TOP_LEFT = TOP | LEFT, TOP_RIGHT = TOP | RIGHT
     };
-     [[nodiscard]] inline ResizeDirection getResizeDirection() const { return resizeDirection; }
+    [[nodiscard]] inline ResizeDirection getResizeDirection() const { return resizeDirection; }
 
     // Dragging the window.
     bool isDraggingWindow = false;
@@ -168,9 +168,11 @@ protected:
     sgl::CursorType cursorShape = sgl::CursorType::DEFAULT;
 
     // Offset for deducing mouse position.
+    void checkWindowMoveOrResizeJustFinished(const glm::ivec2& mousePositionPx);
     int imGuiWindowOffsetX = 0, imGuiWindowOffsetY = 0;
     bool isMouseGrabbedByParent = false;
     bool isMouseGrabbed = false;
+    bool windowMoveOrResizeJustFinished = false;
     bool isWindowFixed = false; //< Is resize and grabbing disabled?
 
     // Variables can be selected by clicking on them.

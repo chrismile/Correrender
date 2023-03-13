@@ -196,5 +196,9 @@ void main() {
     float denominator = sqrt(float(n0 - n1)) * sqrt(float(n0 - n2));
     float correlationValue = float(numerator) / denominator;
 
+#ifdef CALCULATE_ABSOLUTE_VALUE
+    correlationValue = abs(correlationValue);
+#endif
+
     imageStore(outputImage, currentPointIdx, vec4(isnan(nanValue) ? nanValue : correlationValue));
 }

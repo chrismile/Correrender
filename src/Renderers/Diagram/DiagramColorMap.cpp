@@ -61,6 +61,60 @@ std::vector<glm::vec3> getColorPoints(DiagramColorMap colorMap) {
                 { 124.0f / 255.0f, 123.0f / 255.0f, 120.0f / 255.0f },
                 { 253.0f / 255.0f, 231.0f / 255.0f, 55.0f / 255.0f },
         };
+    } else if (colorMap == DiagramColorMap::SPRING) {
+        // Spring (https://matplotlib.org/stable/tutorials/colors/colormaps.html).
+        colorPoints = {
+                { 1.0000f, 0.0000f, 1.0000f },
+                { 1.0000f, 0.2510f, 0.7490f },
+                { 1.0000f, 0.5020f, 0.4980f },
+                { 1.0000f, 0.7529f, 0.2471f },
+                { 1.0000f, 1.0000f, 0.0000f },
+        };
+    } else if (colorMap == DiagramColorMap::SUMMER) {
+        // Summer (https://matplotlib.org/stable/tutorials/colors/colormaps.html).
+        colorPoints = {
+                { 0.0000f, 0.5000f, 0.4000f },
+                { 0.2510f, 0.6255f, 0.4000f },
+                { 0.5020f, 0.7510f, 0.4000f },
+                { 0.7529f, 0.8765f, 0.4000f },
+                { 1.0000f, 1.0000f, 0.4000f },
+        };
+    } else if (colorMap == DiagramColorMap::AUTUMN) {
+        // Autumn (https://matplotlib.org/stable/tutorials/colors/colormaps.html).
+        colorPoints = {
+                { 1.0000f, 0.0000f, 0.0000f },
+                { 1.0000f, 0.2510f, 0.0000f },
+                { 1.0000f, 0.5020f, 0.0000f },
+                { 1.0000f, 0.7529f, 0.0000f },
+                { 1.0000f, 1.0000f, 0.0000f },
+        };
+    } else if (colorMap == DiagramColorMap::WINTER) {
+        // Winter (https://matplotlib.org/stable/tutorials/colors/colormaps.html).
+        colorPoints = {
+                { 0.0000f, 0.0000f, 1.0000f },
+                { 0.0000f, 0.2510f, 0.8745f },
+                { 0.0000f, 0.5020f, 0.7490f },
+                { 0.0000f, 0.7529f, 0.6235f },
+                { 0.0000f, 1.0000f, 0.5000f },
+        };
+    } else if (colorMap == DiagramColorMap::COOL) {
+        // Cool (https://matplotlib.org/stable/tutorials/colors/colormaps.html).
+        colorPoints = {
+                { 0.0000f, 1.0000f, 1.0000f },
+                { 0.2510f, 0.7490f, 1.0000f },
+                { 0.5020f, 0.4980f, 1.0000f },
+                { 0.7529f, 0.2471f, 1.0000f },
+                { 1.0000f, 0.0000f, 1.0000f },
+        };
+    } else if (colorMap == DiagramColorMap::WISTIA) {
+        // Wistia (https://matplotlib.org/stable/tutorials/colors/colormaps.html).
+        colorPoints = {
+                { 0.8941f, 1.0000f, 0.4784f },
+                { 1.0000f, 0.9091f, 0.1016f },
+                { 1.0000f, 0.7403f, 0.0000f },
+                { 0.9999f, 0.6259f, 0.0000f },
+                { 0.9882f, 0.4980f, 0.0000f },
+        };
     } else if (colorMap == DiagramColorMap::NEON_GREENS) {
         colorPoints = {
                 { 208.0f / 255.0f, 231.0f / 255.0f, 208.0f / 255.0f },

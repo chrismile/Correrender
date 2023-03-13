@@ -103,6 +103,8 @@ void DiagramRenderer::initialize() {
         parentDiagram->setVolumeData(volumeData, true);
         parentDiagram->setIsEnsembleMode(isEnsembleMode);
         parentDiagram->setCorrelationMeasureType(correlationMeasureType);
+        parentDiagram->setSamplingMethodType(samplingMethodType);
+        parentDiagram->setNumSamples(numSamples);
         parentDiagram->setBeta(beta);
         parentDiagram->setDownscalingFactors(downscalingFactorX, downscalingFactorY, downscalingFactorZ);
         parentDiagram->setLineCountFactor(lineCountFactor);
@@ -186,6 +188,8 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
         }
         parentDiagram->setIsEnsembleMode(isEnsembleMode);
         parentDiagram->setCorrelationMeasureType(correlationMeasureType);
+        parentDiagram->setSamplingMethodType(samplingMethodType);
+        parentDiagram->setNumSamples(numSamples);
         parentDiagram->setBeta(beta);
         parentDiagram->setDownscalingFactors(downscalingFactorX, downscalingFactorY, downscalingFactorZ);
         parentDiagram->setLineCountFactor(lineCountFactor);
@@ -293,6 +297,8 @@ void DiagramRenderer::resetSelections(int idx) {
             }
             diagram->setIsEnsembleMode(isEnsembleMode);
             diagram->setCorrelationMeasureType(correlationMeasureType);
+            diagram->setSamplingMethodType(samplingMethodType);
+            diagram->setNumSamples(numSamples);
             diagram->setBeta(beta);
             diagram->setLineCountFactor(lineCountFactor);
             diagram->setCurveThickness(curveThickness);
@@ -633,6 +639,29 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         reRender = true;
     }
 
+    if (propertyEditor.addCombo(
+            "Sampling Method", (int*)&samplingMethodType,
+            SAMPLING_METHOD_TYPE_NAMES, IM_ARRAYSIZE(SAMPLING_METHOD_TYPE_NAMES))) {
+        for (auto& diagram : diagrams) {
+            diagram->setSamplingMethodType(samplingMethodType);
+        }
+        correlationRangeTotal = correlationRange = parentDiagram->getCorrelationRangeTotal();
+        for (auto& diagram : diagrams) {
+            diagram->setCorrelationRange(correlationRangeTotal);
+        }
+        resetSelections();
+        dirty = true;
+        reRender = true;
+    }
+
+    if (samplingMethodType != SamplingMethodType::MEAN && propertyEditor.addSliderIntEdit(
+            "#Samples", &numSamples, 1, 1000) == ImGui::EditMode::INPUT_FINISHED) {
+        for (auto& diagram : diagrams) {
+            diagram->setNumSamples(numSamples);
+        }
+        reRender = true;
+    }
+
     if (volumeData) {
         if (propertyEditor.addBeginCombo(
                 "Scalar Fields", scalarFieldComboValue, ImGuiComboFlags_NoArrowButton)) {
@@ -734,9 +763,17 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
     }
 
     if (downscalingFactorUniform) {
-        if (propertyEditor.addSliderIntPowerOfTwoEdit(
-                "Downscaling", &downscalingFactorX, minDownscalingFactor, maxDownscalingFactor)
-                    == ImGui::EditMode::INPUT_FINISHED) {
+        bool downscalingChanged;
+        if (downscalingPowerOfTwo) {
+            downscalingChanged = propertyEditor.addSliderIntPowerOfTwoEdit(
+                    "Downscaling", &downscalingFactorX, minDownscalingFactor, maxDownscalingFactor)
+                                    == ImGui::EditMode::INPUT_FINISHED;
+        } else {
+            downscalingChanged = propertyEditor.addSliderIntEdit(
+                    "Downscaling", &downscalingFactorX, minDownscalingFactor, maxDownscalingFactor)
+                                    == ImGui::EditMode::INPUT_FINISHED;
+        }
+        if (downscalingChanged) {
             downscalingFactorY = downscalingFactorX;
             downscalingFactorZ = downscalingFactorX;
             parentDiagram->setDownscalingFactors(downscalingFactorX, downscalingFactorY, downscalingFactorZ);
@@ -744,18 +781,25 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
             reRender = true;
         }
     } else {
+        ImGui::EditMode downscalingChanged;
         int dfs[3] = { downscalingFactorX, downscalingFactorY, downscalingFactorZ };
-        auto editMode = propertyEditor.addSliderInt3PowerOfTwoEdit(
-                "Downscaling", dfs, minDownscalingFactor, maxDownscalingFactor);
+        if (downscalingPowerOfTwo) {
+            downscalingChanged = propertyEditor.addSliderInt3PowerOfTwoEdit(
+                    "Downscaling", dfs, minDownscalingFactor, maxDownscalingFactor);
+        } else {
+            downscalingChanged = propertyEditor.addSliderInt3Edit(
+                    "Downscaling", dfs, minDownscalingFactor, maxDownscalingFactor);
+        }
         downscalingFactorX = dfs[0];
         downscalingFactorY = dfs[1];
         downscalingFactorZ = dfs[2];
-        if (editMode == ImGui::EditMode::INPUT_FINISHED) {
+        if (downscalingChanged == ImGui::EditMode::INPUT_FINISHED) {
             parentDiagram->setDownscalingFactors(downscalingFactorX, downscalingFactorY, downscalingFactorZ);
             resetSelections();
             reRender = true;
         }
     }
+    propertyEditor.addCheckbox("Downscaling PoT", &downscalingPowerOfTwo);
 
     if (propertyEditor.addSliderIntEdit(
             "#Line Factor", &lineCountFactor, 10, 1000) == ImGui::EditMode::INPUT_FINISHED) {

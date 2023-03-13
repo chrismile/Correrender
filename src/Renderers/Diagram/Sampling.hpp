@@ -26,27 +26,17 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef CORRERENDER_DIAGRAMCOLORMAP_HPP
-#define CORRERENDER_DIAGRAMCOLORMAP_HPP
+#ifndef CORRERENDER_SAMPLING_HPP
+#define CORRERENDER_SAMPLING_HPP
 
-#include <vector>
-#include <glm/vec3.hpp>
-
-#include <Graphics/Color.hpp>
-
-enum class DiagramColorMap {
-    VIRIDIS, HEATMAP, CIVIDIS,
-    SPRING, SUMMER, AUTUMN, WINTER, COOL, WISTIA,
-    NEON_GREENS, NEON_GREEN, NEON_RED, NEON_BLUE, NEON_ORANGE
+enum class SamplingMethodType {
+    MEAN, RANDOM_UNIFORM, QUASIRANDOM_HALTON, QUASIRANDOM_PLASTIC, // BAYESIAN_OPTIMIZATION
 };
-const char* const DIAGRAM_COLOR_MAP_NAMES[] = {
-        "Viridis", "Heatmap", "Cividis",
-        "Spring", "Summer", "Autumn", "Winter", "Cool", "Wistia",
-        "Neon Greens", "Neon Green", "Neon Red", "Neon Blue", "Neon Orange"
+
+const char* const SAMPLING_METHOD_TYPE_NAMES[] = {
+        "Mean", "Random Uniform", "Quasirandom Halton", "Quasirandom Plastic", // "Bayesian Optimization"
 };
-const int NUM_COLOR_MAPS = ((int)(sizeof(DIAGRAM_COLOR_MAP_NAMES) / sizeof(*(DIAGRAM_COLOR_MAP_NAMES))));
-std::vector<glm::vec3> getColorPoints(DiagramColorMap colorMap);
 
-extern std::vector<sgl::Color> defaultColors;
+void generateSamples(float* samples, int numSamples, SamplingMethodType samplingMethodType);
 
-#endif //CORRERENDER_DIAGRAMCOLORMAP_HPP
+#endif //CORRERENDER_SAMPLING_HPP

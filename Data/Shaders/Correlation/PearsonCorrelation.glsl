@@ -76,12 +76,16 @@ void main() {
     }
     float stdDevX = sqrt(varX);
     float stdDevY = sqrt(varY);
-    float pearsonCorrelation = 0;
+    float correlationValue = 0;
     for (uint c = 0; c < cs; c++) {
         float x = texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), referencePointIdx, 0).r;
         float y = texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), currentPointIdx, 0).r;
-        pearsonCorrelation += invNm1 * ((x - meanX) / stdDevX) * ((y - meanY) / stdDevY);
+        correlationValue += invNm1 * ((x - meanX) / stdDevX) * ((y - meanY) / stdDevY);
     }
 
-    imageStore(outputImage, currentPointIdx, vec4(pearsonCorrelation));
+#ifdef CALCULATE_ABSOLUTE_VALUE
+    correlationValue = abs(correlationValue);
+#endif
+
+    imageStore(outputImage, currentPointIdx, vec4(correlationValue));
 }

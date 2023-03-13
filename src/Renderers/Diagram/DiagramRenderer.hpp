@@ -34,6 +34,7 @@
 
 #include "../../Calculators/CorrelationDefines.hpp"
 #include "../Renderer.hpp"
+#include "Sampling.hpp"
 #include "DiagramColorMap.hpp"
 #include "Region.hpp"
 
@@ -88,15 +89,17 @@ private:
     std::vector<std::pair<GridRegion, GridRegion>> selectedRegionStack; //< Selected regions stack.
 
     // UI renderer settings.
-    void onCorrelationMemberCountChanged();
     std::vector<bool> scalarFieldSelectionArray;
     std::string scalarFieldComboValue;
     std::vector<DiagramSelectedFieldData> selectedScalarFields;
     bool isEnsembleMode = true; //< Ensemble or time mode?
     CorrelationMeasureType correlationMeasureType = CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV;
+    SamplingMethodType samplingMethodType = SamplingMethodType::MEAN;
+    int numSamples = 100;
     float beta = 0.75f;
     int minDownscalingFactor = 16, maxDownscalingFactor = 64;
     int downscalingFactorX = 32, downscalingFactorY = 32, downscalingFactorZ = 32;
+    bool downscalingPowerOfTwo = true;
     bool downscalingFactorUniform = true;
     int lineCountFactor = 100;
     float curveThickness = 1.5f;

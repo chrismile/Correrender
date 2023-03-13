@@ -270,6 +270,7 @@ protected:
     bool reRender = false;
     ImGuiFileDialog* fileDialogInstance = nullptr;
     sgl::MultiVarTransferFunctionWindow multiVarTransferFunctionWindow;
+    sgl::Color cachedClearColor;
 
     // Color legend widgets for different attributes.
     bool getIsTransferFunctionVisible(uint32_t viewIdx, uint32_t varIdx);

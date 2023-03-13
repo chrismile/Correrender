@@ -360,6 +360,13 @@ void CorrelationCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         dirty = true;
     }
 
+    if (correlationMeasureType != CorrelationMeasureType::MUTUAL_INFORMATION_BINNED
+            && correlationMeasureType != CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV
+            && propertyEditor.addCheckbox("Absolute Value", &calculateAbsoluteValue)) {
+        correlationComputePass->setCalculateAbsoluteValue(calculateAbsoluteValue);
+        dirty = true;
+    }
+
     if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED && propertyEditor.addSliderIntEdit(
             "#Bins", &numBins, 10, 100) == ImGui::EditMode::INPUT_FINISHED) {
         correlationComputePass->setNumBins(numBins);
@@ -917,6 +924,13 @@ void CorrelationComputePass::setCorrelationMeasureType(CorrelationMeasureType _c
     }
 }
 
+void CorrelationComputePass::setCalculateAbsoluteValue(bool _calculateAbsoluteValue) {
+    if (calculateAbsoluteValue != _calculateAbsoluteValue) {
+        calculateAbsoluteValue = _calculateAbsoluteValue;
+        setShaderDirty();
+    }
+}
+
 void CorrelationComputePass::setNumBins(int _numBins) {
     if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED && numBins != _numBins) {
         setShaderDirty();
@@ -947,6 +961,11 @@ void CorrelationComputePass::loadShader() {
     preprocessorDefines.insert(std::make_pair("BLOCK_SIZE_Z", std::to_string(computeBlockSizeZ)));
     preprocessorDefines.insert(std::make_pair(
             "MEMBER_COUNT", std::to_string(cachedCorrelationMemberCount)));
+    if (correlationMeasureType != CorrelationMeasureType::MUTUAL_INFORMATION_BINNED
+            && correlationMeasureType != CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV
+            && calculateAbsoluteValue) {
+        preprocessorDefines.insert(std::make_pair("CALCULATE_ABSOLUTE_VALUE", ""));
+    }
     if (correlationMeasureType == CorrelationMeasureType::KENDALL) {
         auto maxStackSize = uint32_t(std::ceil(std::log2(cachedCorrelationMemberCount))) + 1;
         preprocessorDefines.insert(std::make_pair(

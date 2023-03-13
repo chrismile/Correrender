@@ -137,7 +137,11 @@ public:
     [[nodiscard]] std::pair<float, float> getFixedRange() const override {
         if (correlationMeasureType != CorrelationMeasureType::MUTUAL_INFORMATION_BINNED
                 && correlationMeasureType != CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV) {
-            return std::make_pair(-1.0f, 1.0f);
+            if (calculateAbsoluteValue) {
+                return std::make_pair(0.0f, 1.0f);
+            } else {
+                return std::make_pair(-1.0f, 1.0f);
+            }
         } else {
             return std::make_pair(0.0f, 1.0f);
         }
@@ -155,6 +159,7 @@ private:
     CorrelationMeasureType correlationMeasureType = CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV;
     bool useGpu = true;
     bool useCuda = false; ///< Currently only for CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV.
+    bool calculateAbsoluteValue = false; ///< Whether to use absolute value for non-MI correlations.
     int numBins = 80; ///< For CorrelationMeasureType::MUTUAL_INFORMATION_BINNED.
     int k = 3; ///< For CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV.
     int kMax = 20; ///< For CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV.
@@ -174,6 +179,7 @@ public:
     void setOutputImage(const sgl::vk::ImageViewPtr& _outputImage);
     void setReferencePoint(const glm::ivec3& referencePointIndex);
     void setCorrelationMeasureType(CorrelationMeasureType _correlationMeasureType);
+    void setCalculateAbsoluteValue(bool _calculateAbsoluteValue);
     void setNumBins(int _numBins);
     void setKraskovNumNeighbors(int _k);
     void setKraskovEstimatorIndex(int _kraskovEstimatorIndex);
@@ -206,6 +212,9 @@ private:
 
     std::vector<sgl::vk::ImageViewPtr> fieldImageViews;
     sgl::vk::ImageViewPtr outputImage;
+
+    // For non-MI correlations.
+    bool calculateAbsoluteValue = false;
 
     // For Spearman correlation.
     std::shared_ptr<SpearmanReferenceRankComputePass> spearmanReferenceRankComputePass;
