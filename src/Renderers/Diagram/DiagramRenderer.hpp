@@ -84,6 +84,7 @@ private:
     void resetSelections(int idx = 0);
     VolumeDataPtr volumeData;
     uint32_t diagramViewIdx = 0;
+    bool reRenderTriggeredByDiagram = false;
     std::shared_ptr<HEBChart> parentDiagram; //< Parent diagram.
     std::vector<std::shared_ptr<HEBChart>> diagrams; //< Diagram stack.
     std::vector<std::pair<GridRegion, GridRegion>> selectedRegionStack; //< Selected regions stack.

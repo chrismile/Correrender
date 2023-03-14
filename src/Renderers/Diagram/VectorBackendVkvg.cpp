@@ -240,3 +240,29 @@ bool VectorBackendVkvg::renderGuiPropertyEditor(sgl::PropertyEditor& propertyEdi
 
     return reRender;
 }
+
+void VectorBackendVkvg::copyVectorBackendSettingsFrom(VectorBackend* backend) {
+    if (getID() != backend->getID()) {
+        sgl::Logfile::get()->throwError(
+                "Error in VectorBackendVkvg::copyVectorBackendSettingsFrom: Vector backend ID mismatch.");
+    }
+
+    auto* vkvgBackend = static_cast<VectorBackendVkvg*>(backend);
+
+    bool recreate = false;
+    if (sampleCount != vkvgBackend->sampleCount) {
+        sampleCount = vkvgBackend->sampleCount;
+        recreate = true;
+    }
+    if (supersamplingFactor != vkvgBackend->supersamplingFactor) {
+        supersamplingFactor = vkvgBackend->supersamplingFactor;
+        vectorWidget->setSupersamplingFactor(supersamplingFactor, false);
+        recreate = true;
+    }
+
+    if (recreate) {
+        destroy();
+        initialize();
+        vectorWidget->onWindowSizeChanged();
+    }
+}

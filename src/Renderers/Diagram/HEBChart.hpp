@@ -73,6 +73,8 @@ struct HEBChartFieldData {
     // Outer ring.
     std::vector<float> leafStdDevArray;
     float minStdDev = 0.0f, maxStdDev = 0.0f;
+    // Angle ranges for !regionsEqual.
+    float a00 = 0.0f, a01 = 0.0f, a10 = 0.0f, a11 = 0.0f;
 
     // Transfer function.
     void initializeColorPoints();

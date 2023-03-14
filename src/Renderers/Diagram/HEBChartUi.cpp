@@ -405,7 +405,11 @@ void HEBChart::renderBaseNanoVG() {
     NVGcolor curveStrokeColor = nvgRGBA(
             100, 255, 100, uint8_t(std::clamp(int(std::ceil(curveOpacity * 255.0f)), 0, 255)));
     if (!curvePoints.empty()) {
+        nvgStrokeWidth(vg, curveThickness);
         for (int lineIdx = 0; lineIdx < numLinesTotal; lineIdx++) {
+            if (lineIdx == selectedLineIdx) {
+                continue;
+            }
             nvgBeginPath(vg);
             glm::vec2 pt0 = curvePoints.at(lineIdx * NUM_SUBDIVISIONS + 0);
             pt0.x = windowWidth / 2.0f + pt0.x * chartRadius;
@@ -417,9 +421,6 @@ void HEBChart::renderBaseNanoVG() {
                 pt.y = windowHeight / 2.0f + pt.y * chartRadius;
                 nvgLineTo(vg, pt.x, pt.y);
             }
-
-            float strokeWidth = lineIdx == selectedLineIdx ? curveThickness * 2.0f : curveThickness;
-            nvgStrokeWidth(vg, strokeWidth);
 
             if (colorByValue) {
                 float factor = 1.0f;
@@ -442,10 +443,37 @@ void HEBChart::renderBaseNanoVG() {
             } else {
                 curveStrokeColor.a = curveOpacity;
             }
-
-            curveStrokeColor.a = lineIdx == selectedLineIdx ? 1.0f : curveStrokeColor.a;
             nvgStrokeColor(vg, curveStrokeColor);
+            nvgStroke(vg);
+        }
 
+        if (selectedLineIdx >= 0) {
+            nvgStrokeWidth(vg, curveThickness * 2.0f);
+            nvgBeginPath(vg);
+            glm::vec2 pt0 = curvePoints.at(selectedLineIdx * NUM_SUBDIVISIONS + 0);
+            pt0.x = windowWidth / 2.0f + pt0.x * chartRadius;
+            pt0.y = windowHeight / 2.0f + pt0.y * chartRadius;
+            nvgMoveTo(vg, pt0.x, pt0.y);
+            for (int ptIdx = 1; ptIdx < NUM_SUBDIVISIONS; ptIdx++) {
+                glm::vec2 pt = curvePoints.at(selectedLineIdx * NUM_SUBDIVISIONS + ptIdx);
+                pt.x = windowWidth / 2.0f + pt.x * chartRadius;
+                pt.y = windowHeight / 2.0f + pt.y * chartRadius;
+                nvgLineTo(vg, pt.x, pt.y);
+            }
+
+            if (colorByValue) {
+                float maxMi = correlationValuesArray.empty() ? 0.0f : correlationValuesArray.back();
+                float minMi = correlationValuesArray.empty() ? 0.0f : correlationValuesArray.front();
+                float factor = 1.0f;
+                if (correlationValuesArray.size() > 1) {
+                    factor = (correlationValuesArray.at(selectedLineIdx) - minMi) / (maxMi - minMi);
+                }
+                HEBChartFieldData* fieldData = fieldDataArray.at(lineFieldIndexArray.at(selectedLineIdx)).get();
+                glm::vec4 color = fieldData->evalColorMapVec4(factor);
+                curveStrokeColor = nvgRGBAf(color.x, color.y, color.z, color.w);
+            }
+            curveStrokeColor.a = 1.0f;
+            nvgStrokeColor(vg, curveStrokeColor);
             nvgStroke(vg);
         }
     }
@@ -497,20 +525,45 @@ void HEBChart::renderBaseNanoVG() {
             float rhi = chartRadius + outerRingOffset + pctUpper * outerRingWidth;
 
             for (int leafIdx = int(leafIdxOffset); leafIdx < int(nodesList.size()); leafIdx++) {
+                if (!regionsEqual && (leafIdx == int(leafIdxOffset1) - 1 || leafIdx == int(nodesList.size()) - 1)) {
+                    continue;
+                }
                 int numLeaves = int(nodesList.size()) - int(leafIdxOffset);
                 int nextIdx = (leafIdx + 1 - int(leafIdxOffset)) % numLeaves + int(leafIdxOffset);
                 const auto &leafCurr = nodesList.at(leafIdx);
                 const auto &leafNext = nodesList.at(nextIdx);
                 float angle0 = leafCurr.angle;
                 float angle1 = leafNext.angle + 0.01f;
-                float cos0 = std::cos(angle0), sin0 = std::sin(angle0), cos1 = std::cos(angle1), sin1 = std::sin(
-                        angle1);
+                float angleMid0 = angle0;
+                float angleMid1 = angle1;
+                if (!regionsEqual && (leafIdx == int(leafIdxOffset) || leafIdx == int(leafIdxOffset1))) {
+                    float deltaAngle = std::min(angle1 - angle0, 0.1f);
+                    angle0 -= deltaAngle * 0.5f;
+                    if (leafIdx == int(leafIdxOffset)) {
+                        fieldData->a00 = angle0;
+                    } else {
+                        fieldData->a10 = angle0;
+                    }
+                }
+                if (!regionsEqual && (leafIdx == int(leafIdxOffset1) - 2 || leafIdx == int(nodesList.size()) - 2)) {
+                    float deltaAngle = std::min(angle1 - angle0, 0.1f);
+                    angle1 += deltaAngle * 0.5f;
+                    if (leafIdx == int(leafIdxOffset1) - 2) {
+                        fieldData->a01 = angle1;
+                    } else {
+                        fieldData->a11 = angle1;
+                    }
+                }
+                float cos0 = std::cos(angle0), sin0 = std::sin(angle0);
+                float cos1 = std::cos(angle1), sin1 = std::sin(angle1);
+                float cosMid0 = std::cos(angleMid0), sinMid0 = std::sin(angleMid0);
+                float cosMid1 = std::cos(angleMid1), sinMid1 = std::sin(angleMid1);
                 //glm::vec2 lo0 = center + rlo * glm::vec2(cos0, sin0);
                 glm::vec2 lo1 = center + rlo * glm::vec2(cos1, sin1);
                 glm::vec2 hi0 = center + rhi * glm::vec2(cos0, sin0);
                 //glm::vec2 hi1 = center + rhi * glm::vec2(cos1, sin1);
-                glm::vec2 mi0 = center + rmi * glm::vec2(cos0, sin0);
-                glm::vec2 mi1 = center + rmi * glm::vec2(cos1, sin1);
+                glm::vec2 mi0 = center + rmi * glm::vec2(cosMid0, sinMid0);
+                glm::vec2 mi1 = center + rmi * glm::vec2(cosMid1, sinMid1);
                 nvgBeginPath(vg);
                 nvgArc(vg, center.x, center.y, rlo, angle1, angle0, NVG_CCW);
                 nvgLineTo(vg, hi0.x, hi0.y);
@@ -538,6 +591,7 @@ void HEBChart::renderBaseNanoVG() {
         }
 
         for (int i = 0; i < numFields; i++) {
+            auto* fieldData = fieldDataArray.at(i).get();
             float pctLower = float(i) / float(numFields);
             float pctUpper = float(i + 1) / float(numFields);
             float rlo = chartRadius + outerRingOffset + pctLower * outerRingWidth;
@@ -546,9 +600,21 @@ void HEBChart::renderBaseNanoVG() {
                     circleStrokeColor.getR(), circleStrokeColor.getG(),
                     circleStrokeColor.getB(), circleStrokeColor.getA());
             nvgBeginPath(vg);
-            nvgCircle(vg, center.x, center.y, rlo);
-            if (i == numFields - 1) {
-                nvgCircle(vg, center.x, center.y, rhi);
+            if (regionsEqual) {
+                nvgCircle(vg, center.x, center.y, rlo);
+                if (i == numFields - 1) {
+                    nvgCircle(vg, center.x, center.y, rhi);
+                }
+            } else {
+                nvgArc(vg, center.x, center.y, rlo, fieldData->a00, fieldData->a01, NVG_CW);
+                nvgLineTo(vg, center.x + rhi * std::cos(fieldData->a01), center.y + rhi * std::sin(fieldData->a01));
+                nvgArc(vg, center.x, center.y, rhi, fieldData->a01, fieldData->a00, NVG_CCW);
+                nvgLineTo(vg, center.x + rlo * std::cos(fieldData->a00), center.y + rlo * std::sin(fieldData->a00));
+                nvgMoveTo(vg, center.x + rlo * std::cos(fieldData->a10), center.y + rlo * std::sin(fieldData->a10));
+                nvgArc(vg, center.x, center.y, rlo, fieldData->a10, fieldData->a11, NVG_CW);
+                nvgLineTo(vg, center.x + rhi * std::cos(fieldData->a11), center.y + rhi * std::sin(fieldData->a11));
+                nvgArc(vg, center.x, center.y, rhi, fieldData->a11, fieldData->a10, NVG_CCW);
+                nvgLineTo(vg, center.x + rlo * std::cos(fieldData->a10), center.y + rlo * std::sin(fieldData->a10));
             }
             nvgStrokeWidth(vg, 1.0f);
             nvgStrokeColor(vg, circleStrokeColorNvg);
@@ -576,8 +642,12 @@ void HEBChart::renderBaseSkia() {
         paint.setStroke(true);
         paint.setStrokeWidth(curveThickness * s);
         paint.setColor(toSkColor(curveStrokeColor));
+        SkPath path;
         for (int lineIdx = 0; lineIdx < numLinesTotal; lineIdx++) {
-            SkPath path;
+            if (lineIdx == selectedLineIdx) {
+                continue;
+            }
+            path.reset();
             glm::vec2 pt0 = curvePoints.at(lineIdx * NUM_SUBDIVISIONS + 0);
             pt0.x = windowWidth / 2.0f + pt0.x * chartRadius;
             pt0.y = windowHeight / 2.0f + pt0.y * chartRadius;
@@ -609,19 +679,36 @@ void HEBChart::renderBaseSkia() {
                 curveStrokeColor.setFloatA(curveOpacity * factor);
                 paint.setColor(toSkColor(curveStrokeColor));
             }
+            canvas->drawPath(path, paint);
+        }
 
-            if (selectedLineIdx == lineIdx) {
-                sgl::Color curveStrokeColorSelected = curveStrokeColor;
-                curveStrokeColorSelected.setA(255);
-                paint.setColor(toSkColor(curveStrokeColorSelected));
-                paint.setStrokeWidth(curveThickness * 2.0f * s);
-            } else {
-                if (!colorByValue && !opacityByValue) {
-                    paint.setColor(toSkColor(curveStrokeColor));
-                }
-                paint.setStrokeWidth(curveThickness * s);
+        if (selectedLineIdx >= 0) {
+            path.reset();
+            glm::vec2 pt0 = curvePoints.at(selectedLineIdx * NUM_SUBDIVISIONS + 0);
+            pt0.x = windowWidth / 2.0f + pt0.x * chartRadius;
+            pt0.y = windowHeight / 2.0f + pt0.y * chartRadius;
+            path.moveTo(pt0.x * s, pt0.y * s);
+            for (int ptIdx = 1; ptIdx < NUM_SUBDIVISIONS; ptIdx++) {
+                glm::vec2 pt = curvePoints.at(selectedLineIdx * NUM_SUBDIVISIONS + ptIdx);
+                pt.x = windowWidth / 2.0f + pt.x * chartRadius;
+                pt.y = windowHeight / 2.0f + pt.y * chartRadius;
+                path.lineTo(pt.x * s, pt.y * s);
             }
 
+            if (colorByValue) {
+                float maxMi = correlationValuesArray.empty() ? 0.0f : correlationValuesArray.back();
+                float minMi = correlationValuesArray.empty() ? 0.0f : correlationValuesArray.front();
+                float factor = 1.0f;
+                if (correlationValuesArray.size() > 1) {
+                    factor = (correlationValuesArray.at(selectedLineIdx) - minMi) / (maxMi - minMi);
+                }
+                HEBChartFieldData* fieldData = fieldDataArray.at(lineFieldIndexArray.at(selectedLineIdx)).get();
+                curveStrokeColor = fieldData->evalColorMap(factor);
+                paint.setColor(toSkColor(curveStrokeColor));
+            }
+            curveStrokeColor.setA(255);
+            paint.setColor(toSkColor(curveStrokeColor));
+            paint.setStrokeWidth(curveThickness * 2.0f * s);
             canvas->drawPath(path, paint);
         }
     }
@@ -674,22 +761,47 @@ void HEBChart::renderBaseSkia() {
             float rhi = (chartRadius + outerRingOffset + pctUpper * outerRingWidth) * s;
 
             for (int leafIdx = int(leafIdxOffset); leafIdx < int(nodesList.size()); leafIdx++) {
+                if (!regionsEqual && (leafIdx == int(leafIdxOffset1) - 1 || leafIdx == int(nodesList.size()) - 1)) {
+                    continue;
+                }
                 int numLeaves = int(nodesList.size()) - int(leafIdxOffset);
                 int nextIdx = (leafIdx + 1 - int(leafIdxOffset)) % numLeaves + int(leafIdxOffset);
                 const auto &leafCurr = nodesList.at(leafIdx);
                 const auto &leafNext = nodesList.at(nextIdx);
                 float angle0 = leafCurr.angle;
                 float angle1 = leafNext.angle + 0.01f;
+                float angleMid0 = angle0;
+                float angleMid1 = angle1;
+                if (!regionsEqual && (leafIdx == int(leafIdxOffset) || leafIdx == int(leafIdxOffset1))) {
+                    float deltaAngle = std::min(angle1 - angle0, 0.1f);
+                    angle0 -= deltaAngle * 0.5f;
+                    if (leafIdx == int(leafIdxOffset)) {
+                        fieldData->a00 = angle0;
+                    } else {
+                        fieldData->a10 = angle0;
+                    }
+                }
+                if (!regionsEqual && (leafIdx == int(leafIdxOffset1) - 2 || leafIdx == int(nodesList.size()) - 2)) {
+                    float deltaAngle = std::min(angle1 - angle0, 0.1f);
+                    angle1 += deltaAngle * 0.5f;
+                    if (leafIdx == int(leafIdxOffset1) - 2) {
+                        fieldData->a01 = angle1;
+                    } else {
+                        fieldData->a11 = angle1;
+                    }
+                }
                 float angle0Deg = angle0 / sgl::PI * 180.0f;
                 float angle1Deg = angle1 / sgl::PI * 180.0f + (nextIdx < leafIdx ? 360.0f : 0.0f);
-                float cos0 = std::cos(angle0), sin0 = std::sin(angle0), cos1 = std::cos(angle1), sin1 = std::sin(
-                        angle1);
+                float cos0 = std::cos(angle0), sin0 = std::sin(angle0);
+                //float cos1 = std::cos(angle1), sin1 = std::sin(angle1);
+                float cosMid0 = std::cos(angleMid0), sinMid0 = std::sin(angleMid0);
+                float cosMid1 = std::cos(angleMid1), sinMid1 = std::sin(angleMid1);
                 //glm::vec2 lo0 = center + rlo * glm::vec2(cos0, sin0);
                 //glm::vec2 lo1 = center + rlo * glm::vec2(cos1, sin1);
                 glm::vec2 hi0 = center + rhi * glm::vec2(cos0, sin0);
                 //glm::vec2 hi1 = center + rhi * glm::vec2(cos1, sin1);
-                glm::vec2 mi0 = center + rmi * glm::vec2(cos0, sin0);
-                glm::vec2 mi1 = center + rmi * glm::vec2(cos1, sin1);
+                glm::vec2 mi0 = center + rmi * glm::vec2(cosMid0, sinMid0);
+                glm::vec2 mi1 = center + rmi * glm::vec2(cosMid1, sinMid1);
 
                 float stdev0 = fieldData->leafStdDevArray.at(leafIdx - int(leafIdxOffset));
                 float t0 = fieldData->minStdDev == fieldData->maxStdDev ? 0.0f : (stdev0 - fieldData->minStdDev) / (fieldData->maxStdDev - fieldData->minStdDev);
@@ -722,6 +834,7 @@ void HEBChart::renderBaseSkia() {
         }
 
         for (int i = 0; i < numFields; i++) {
+            auto* fieldData = fieldDataArray.at(i).get();
             float pctLower = float(i) / float(numFields);
             float pctUpper = float(i + 1) / float(numFields);
             float rlo = (chartRadius + outerRingOffset + pctLower * outerRingWidth) * s;
@@ -729,9 +842,36 @@ void HEBChart::renderBaseSkia() {
             paint.setStroke(true);
             paint.setStrokeWidth(1.0f * s);
             paint.setColor(toSkColor(circleStrokeColor));
-            canvas->drawCircle(center.x, center.y, rlo, paint);
-            if (i == numFields - 1) {
-                canvas->drawCircle(center.x, center.y, rhi, paint);
+            if (regionsEqual) {
+                canvas->drawCircle(center.x, center.y, rlo, paint);
+                if (i == numFields - 1) {
+                    canvas->drawCircle(center.x, center.y, rhi, paint);
+                }
+            } else {
+                float a00Deg = fieldData->a00 / sgl::PI * 180.0f;
+                float a01Deg = fieldData->a01 / sgl::PI * 180.0f;
+                float a10Deg = fieldData->a10 / sgl::PI * 180.0f;
+                float a11Deg = fieldData->a11 / sgl::PI * 180.0f;
+                path.reset();
+                path.arcTo(
+                        SkRect{center.x - rlo, center.y - rlo, center.x + rlo, center.y + rlo},
+                        a00Deg, a01Deg - a00Deg, false);
+                path.lineTo(center.x + rhi * std::cos(fieldData->a01), center.y + rhi * std::sin(fieldData->a01));
+                path.arcTo(
+                        SkRect{center.x - rhi, center.y - rhi, center.x + rhi, center.y + rhi},
+                        a01Deg, a00Deg - a01Deg, false);
+                path.close();
+                canvas->drawPath(path, paint);
+                path.reset();
+                path.arcTo(
+                        SkRect{center.x - rlo, center.y - rlo, center.x + rlo, center.y + rlo},
+                        a10Deg, a11Deg - a10Deg, false);
+                path.lineTo(center.x + rhi * std::cos(fieldData->a11), center.y + rhi * std::sin(fieldData->a11));
+                path.arcTo(
+                        SkRect{center.x - rhi, center.y - rhi, center.x + rhi, center.y + rhi},
+                        a11Deg, a10Deg - a11Deg, false);
+                path.close();
+                canvas->drawPath(path, paint);
             }
         }
     }
@@ -885,20 +1025,45 @@ void HEBChart::renderBaseVkvg() {
             float rhi = (chartRadius + outerRingOffset + pctUpper * outerRingWidth) * s;
 
             for (int leafIdx = int(leafIdxOffset); leafIdx < int(nodesList.size()); leafIdx++) {
+                if (!regionsEqual && (leafIdx == int(leafIdxOffset1) - 1 || leafIdx == int(nodesList.size()) - 1)) {
+                    continue;
+                }
                 int numLeaves = int(nodesList.size()) - int(leafIdxOffset);
                 int nextIdx = (leafIdx + 1 - int(leafIdxOffset)) % numLeaves + int(leafIdxOffset);
                 const auto &leafCurr = nodesList.at(leafIdx);
                 const auto &leafNext = nodesList.at(nextIdx);
                 float angle0 = leafCurr.angle;
                 float angle1 = leafNext.angle + 0.01f;
-                float cos0 = std::cos(angle0), sin0 = std::sin(angle0), cos1 = std::cos(angle1), sin1 = std::sin(
-                        angle1);
+                float angleMid0 = angle0;
+                float angleMid1 = angle1;
+                if (!regionsEqual && (leafIdx == int(leafIdxOffset) || leafIdx == int(leafIdxOffset1))) {
+                    float deltaAngle = std::min(angle1 - angle0, 0.1f);
+                    angle0 -= deltaAngle * 0.5f;
+                    if (leafIdx == int(leafIdxOffset)) {
+                        fieldData->a00 = angle0;
+                    } else {
+                        fieldData->a10 = angle0;
+                    }
+                }
+                if (!regionsEqual && (leafIdx == int(leafIdxOffset1) - 2 || leafIdx == int(nodesList.size()) - 2)) {
+                    float deltaAngle = std::min(angle1 - angle0, 0.1f);
+                    angle1 += deltaAngle * 0.5f;
+                    if (leafIdx == int(leafIdxOffset1) - 2) {
+                        fieldData->a01 = angle1;
+                    } else {
+                        fieldData->a11 = angle1;
+                    }
+                }
+                float cos0 = std::cos(angle0), sin0 = std::sin(angle0);
+                float cos1 = std::cos(angle1), sin1 = std::sin(angle1);
+                float cosMid0 = std::cos(angleMid0), sinMid0 = std::sin(angleMid0);
+                float cosMid1 = std::cos(angleMid1), sinMid1 = std::sin(angleMid1);
                 //glm::vec2 lo0 = center + rlo * glm::vec2(cos0, sin0);
                 glm::vec2 lo1 = center + rlo * glm::vec2(cos1, sin1);
                 glm::vec2 hi0 = center + rhi * glm::vec2(cos0, sin0);
                 //glm::vec2 hi1 = center + rhi * glm::vec2(cos1, sin1);
-                glm::vec2 mi0 = center + rmi * glm::vec2(cos0, sin0);
-                glm::vec2 mi1 = center + rmi * glm::vec2(cos1, sin1);
+                glm::vec2 mi0 = center + rmi * glm::vec2(cosMid0, sinMid0);
+                glm::vec2 mi1 = center + rmi * glm::vec2(cosMid1, sinMid1);
                 vkvg_arc_negative(context, center.x, center.y, rlo, angle1, angle0);
                 vkvg_line_to(context, hi0.x, hi0.y);
                 vkvg_arc(context, center.x, center.y, rhi, angle0, angle1);
@@ -921,13 +1086,26 @@ void HEBChart::renderBaseVkvg() {
         }
 
         for (int i = 0; i < numFields; i++) {
+            auto* fieldData = fieldDataArray.at(i).get();
             float pctLower = float(i) / float(numFields);
             float pctUpper = float(i + 1) / float(numFields);
             float rlo = (chartRadius + outerRingOffset + pctLower * outerRingWidth) * s;
             float rhi = (chartRadius + outerRingOffset + pctUpper * outerRingWidth) * s;
-            vkvg_arc(context, center.x, center.y, rlo, 0.0f, sgl::TWO_PI);
-            if (i == numFields - 1) {
-                vkvg_arc(context, center.x, center.y, rhi, 0.0f, sgl::TWO_PI);
+            if (regionsEqual) {
+                vkvg_arc(context, center.x, center.y, rlo, 0.0f, sgl::TWO_PI);
+                if (i == numFields - 1) {
+                    vkvg_arc(context, center.x, center.y, rhi, 0.0f, sgl::TWO_PI);
+                }
+            } else {
+                vkvg_arc(context, center.x, center.y, rlo, fieldData->a00, fieldData->a01);
+                vkvg_line_to(context, center.x + rhi * std::cos(fieldData->a01), center.y + rhi * std::sin(fieldData->a01));
+                vkvg_arc_negative(context, center.x, center.y, rhi, fieldData->a01, fieldData->a00);
+                vkvg_line_to(context, center.x + rlo * std::cos(fieldData->a00), center.y + rlo * std::sin(fieldData->a00));
+                vkvg_move_to(context, center.x + rlo * std::cos(fieldData->a10), center.y + rlo * std::sin(fieldData->a10));
+                vkvg_arc(context, center.x, center.y, rlo, fieldData->a10, fieldData->a11);
+                vkvg_line_to(context, center.x + rhi * std::cos(fieldData->a11), center.y + rhi * std::sin(fieldData->a11));
+                vkvg_arc_negative(context, center.x, center.y, rhi, fieldData->a11, fieldData->a10);
+                vkvg_line_to(context, center.x + rlo * std::cos(fieldData->a10), center.y + rlo * std::sin(fieldData->a10));
             }
             vkvg_set_line_width(context, 1.0f * s);
             vkvg_set_source_color(context, circleStrokeColor.getColorRGBA());

@@ -50,6 +50,7 @@ public:
     void renderEnd() override;
     void onRenderFinished() override;
     bool renderGuiPropertyEditor(sgl::PropertyEditor& propertyEditor) override;
+    void copyVectorBackendSettingsFrom(VectorBackend* backend) override;
 
     VkvgContext getContext();
 

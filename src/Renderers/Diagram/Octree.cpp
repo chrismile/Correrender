@@ -237,7 +237,7 @@ void buildHebTree(
         }
     } else {
         // Start with placing the leaves on a unit circle.
-        const float angleRangeHalf = sgl::PI * 0.95f;
+        const float angleRangeHalf = sgl::PI * 0.92f;
         const float angleOffset0 = 0.5f * (sgl::PI - angleRangeHalf);
         auto numLeaves0 = int(pointToNodeIndexMap0.size());
         uint32_t leafCounter0 = 0;

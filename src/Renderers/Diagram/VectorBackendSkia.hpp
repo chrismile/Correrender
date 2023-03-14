@@ -49,6 +49,7 @@ public:
     void renderStart() override;
     void renderEnd() override;
     bool renderGuiPropertyEditor(sgl::PropertyEditor& propertyEditor) override;
+    void copyVectorBackendSettingsFrom(VectorBackend* backend) override;
 
     SkCanvas* getCanvas();
     void initializePaint(SkPaint* paint);

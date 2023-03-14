@@ -135,6 +135,7 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
     }
 
     if (isNewData) {
+        reRenderTriggeredByDiagram = true;
         int xs = volumeData->getGridSizeX();
         int ys = volumeData->getGridSizeY();
         int zs = volumeData->getGridSizeZ();
@@ -262,6 +263,7 @@ void DiagramRenderer::recreateDiagramSwapchain(int diagramIdx) {
             diagram->updateSizeByParent();
         }
     }
+    reRenderTriggeredByDiagram = true;
 }
 
 void DiagramRenderer::resetSelections(int idx) {
@@ -276,6 +278,7 @@ void DiagramRenderer::resetSelections(int idx) {
             auto diagram = std::make_shared<HEBChart>();
             diagram->setRendererVk(renderer);
             diagram->initialize();
+            diagram->copyVectorWidgetSettingsFrom(parentDiagram.get());
             diagrams.at(idx) = diagram;
             recreateDiagramSwapchain(idx);
         }
@@ -320,12 +323,14 @@ void DiagramRenderer::resetSelections(int idx) {
 }
 
 void DiagramRenderer::update(float dt, bool isMouseGrabbed) {
+    reRenderTriggeredByDiagram = false;
     for (auto it = diagrams.rbegin(); it != diagrams.rend(); it++) {
         auto& diagram = *it;
         diagram->setIsMouseGrabbedByParent(isMouseGrabbed);
         diagram->update(dt);
         if (diagram->getNeedsReRender()) {
             reRenderViewArray.at(diagramViewIdx) = true;
+            reRenderTriggeredByDiagram = true;
         }
         isMouseGrabbed |= diagram->getIsMouseGrabbed() || diagram->getIsMouseOverDiagramImGui();
     }
@@ -479,6 +484,7 @@ void DiagramRenderer::setClearColor(const sgl::Color& clearColor) {
     for (auto& diagram : diagrams) {
         diagram->setClearColor(clearColor);
     }
+    reRenderTriggeredByDiagram = true;
 }
 
 void DiagramRenderer::renderViewImpl(uint32_t viewIdx) {
@@ -496,7 +502,9 @@ void DiagramRenderer::renderViewImpl(uint32_t viewIdx) {
         } else {
             diagram->setImGuiWindowOffset(0, 0);
         }
-        diagram->render();
+        if (reRenderTriggeredByDiagram) {
+            diagram->render();
+        }
         diagram->setBlitTargetSupersamplingFactor(viewManager->getDataView(diagramViewIdx)->getSupersamplingFactor());
         diagram->blitToTargetVk();
     }
@@ -621,6 +629,7 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
             correlationRangeTotal = correlationRange = parentDiagram->getCorrelationRangeTotal();
             dirty = true;
             reRender = true;
+            reRenderTriggeredByDiagram = true;
         }
     }
 
@@ -637,6 +646,7 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         resetSelections();
         dirty = true;
         reRender = true;
+        reRenderTriggeredByDiagram = true;
     }
 
     if (propertyEditor.addCombo(
@@ -652,6 +662,7 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         resetSelections();
         dirty = true;
         reRender = true;
+        reRenderTriggeredByDiagram = true;
     }
 
     if (samplingMethodType != SamplingMethodType::MEAN && propertyEditor.addSliderIntEdit(
@@ -660,6 +671,7 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
             diagram->setNumSamples(numSamples);
         }
         reRender = true;
+        reRenderTriggeredByDiagram = true;
     }
 
     if (volumeData) {
@@ -716,6 +728,7 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
                     scalarFieldSelectionArray.at(fieldIdx) = useField;
                     dirty = true;
                     reRender = true;
+                    reRenderTriggeredByDiagram = true;
                 }
                 if (useField) {
                     ImGui::SetItemDefaultFocus();
@@ -737,6 +750,7 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
                 diagram->setColorMap(selectedFieldIdx, colorMap);
             }
             reRender = true;
+            reRenderTriggeredByDiagram = true;
         }
         ImGui::PopID();
     }
@@ -746,6 +760,7 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
             diagram->setOpacityByValue(opacityByValue);
         }
         reRender = true;
+        reRenderTriggeredByDiagram = true;
     }
 
     if (propertyEditor.addCheckbox("Value -> Color", &colorByValue)) {
@@ -753,6 +768,7 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
             diagram->setColorByValue(colorByValue);
         }
         reRender = true;
+        reRenderTriggeredByDiagram = true;
     }
 
     if (propertyEditor.addSliderFloatEdit("beta", &beta, 0.0f, 1.0f) == ImGui::EditMode::INPUT_FINISHED) {
@@ -760,6 +776,7 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
             diagram->setBeta(beta);
         }
         reRender = true;
+        reRenderTriggeredByDiagram = true;
     }
 
     if (downscalingFactorUniform) {
@@ -779,6 +796,7 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
             parentDiagram->setDownscalingFactors(downscalingFactorX, downscalingFactorY, downscalingFactorZ);
             resetSelections();
             reRender = true;
+            reRenderTriggeredByDiagram = true;
         }
     } else {
         ImGui::EditMode downscalingChanged;
@@ -797,6 +815,7 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
             parentDiagram->setDownscalingFactors(downscalingFactorX, downscalingFactorY, downscalingFactorZ);
             resetSelections();
             reRender = true;
+            reRenderTriggeredByDiagram = true;
         }
     }
     propertyEditor.addCheckbox("Downscaling PoT", &downscalingPowerOfTwo);
@@ -807,6 +826,7 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
             diagram->setLineCountFactor(lineCountFactor);
         }
         reRender = true;
+        reRenderTriggeredByDiagram = true;
     }
 
     if (propertyEditor.addSliderFloat("Curve Thickness", &curveThickness, 0.5f, 4.0f)) {
@@ -814,6 +834,7 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
             diagram->setCurveThickness(curveThickness);
         }
         reRender = true;
+        reRenderTriggeredByDiagram = true;
     }
 
     if (propertyEditor.addSliderFloat("Opacity", &curveOpacity, 0.0f, 1.0f)) {
@@ -821,6 +842,7 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
             diagram->setCurveOpacity(curveOpacity);
         }
         reRender = true;
+        reRenderTriggeredByDiagram = true;
     }
 
     if (propertyEditor.addSliderFloat2Edit(
@@ -829,6 +851,7 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         parentDiagram->setCorrelationRange(correlationRange);
         resetSelections();
         reRender = true;
+        reRenderTriggeredByDiagram = true;
     }
 
     if (propertyEditor.addSliderInt2Edit(
@@ -837,17 +860,20 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         parentDiagram->setCellDistanceRange(cellDistanceRange);
         resetSelections();
         reRender = true;
+        reRenderTriggeredByDiagram = true;
     }
 
     if (propertyEditor.addSliderInt("Diagram Radius", &diagramRadius, 100, 400)) {
         parentDiagram->setDiagramRadius(diagramRadius);
         resetSelections();
         reRender = true;
+        reRenderTriggeredByDiagram = true;
     }
 
     if (propertyEditor.addCheckbox("Align with Window", &alignWithParentWindow)) {
         parentDiagram->setAlignWithParentWindow(alignWithParentWindow);
         reRender = true;
+        reRenderTriggeredByDiagram = true;
     }
 
     /*if (propertyEditor.addCheckbox("Use 2D Field", &use2dField)) {
@@ -855,9 +881,14 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
             diagram->setUse2DField(use2dField);
         }
         reRender = true;
+        reRenderTriggeredByDiagram = true;
     }*/
 
     if (parentDiagram->renderGuiPropertyEditor(propertyEditor)) {
+        for (size_t i = 1; i < diagrams.size(); i++) {
+            diagrams.at(i)->copyVectorWidgetSettingsFrom(parentDiagram.get());
+        }
         reRender = true;
+        reRenderTriggeredByDiagram = true;
     }
 }

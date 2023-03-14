@@ -264,6 +264,40 @@ bool VectorBackendSkia::renderGuiPropertyEditor(sgl::PropertyEditor& propertyEdi
     return reRender;
 }
 
+void VectorBackendSkia::copyVectorBackendSettingsFrom(VectorBackend* backend) {
+    if (getID() != backend->getID()) {
+        sgl::Logfile::get()->throwError(
+                "Error in VectorBackendSkia::copyVectorBackendSettingsFrom: Vector backend ID mismatch.");
+    }
+
+    auto* skiaBackend = static_cast<VectorBackendSkia*>(backend);
+
+    bool recreate = false;
+    if (sampleCount != skiaBackend->sampleCount) {
+        sampleCount = skiaBackend->sampleCount;
+        recreate = true;
+    }
+    if (usePaintAA != skiaBackend->usePaintAA) {
+        usePaintAA = skiaBackend->usePaintAA;
+        recreate = true;
+    }
+    if (useInternalAA != skiaBackend->useInternalAA) {
+        useInternalAA = skiaBackend->useInternalAA;
+        recreate = true;
+    }
+    if (supersamplingFactor != skiaBackend->supersamplingFactor) {
+        supersamplingFactor = skiaBackend->supersamplingFactor;
+        vectorWidget->setSupersamplingFactor(supersamplingFactor, false);
+        recreate = true;
+    }
+
+    if (recreate) {
+        destroy();
+        initialize();
+        vectorWidget->onWindowSizeChanged();
+    }
+}
+
 SkColor toSkColor(const sgl::Color& col) {
     return SkColorSetARGB(col.getA(), col.getR(), col.getG(), col.getB());
 }
