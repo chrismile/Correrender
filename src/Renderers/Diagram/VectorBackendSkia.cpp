@@ -41,6 +41,7 @@
 #include <core/SkCanvas.h>
 #include <core/SkSurface.h>
 #include <core/SkColorSpace.h>
+#include <core/SkFont.h>
 #include <gpu/GrDirectContext.h>
 #include <gpu/vk/GrVkBackendContext.h>
 #include <gpu/vk/VulkanExtensions.h>
@@ -115,6 +116,12 @@ void VectorBackendSkia::initialize() {
     if (!skiaCache->context) {
         sgl::Logfile::get()->writeError("Error in SkiaRenderPass::SkiaRenderPass: GrDirectContext::MakeVulkan failed.");
     }
+}
+
+sk_sp<SkTypeface> VectorBackendSkia::createDefaultTypeface() {
+    std::string fontFilename = sgl::AppSettings::get()->getDataDirectory() + "Fonts/DroidSans.ttf";
+    return SkTypeface::MakeFromFile(fontFilename.c_str());
+    //return SkTypeface::MakeDefault();
 }
 
 void VectorBackendSkia::destroy() {

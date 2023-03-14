@@ -29,10 +29,15 @@
 #ifndef CORRERENDER_VECTORBACKENDSKIA_HPP
 #define CORRERENDER_VECTORBACKENDSKIA_HPP
 
+#ifdef SUPPORT_SKIA
+#include <core/SkRefCnt.h>
+#endif
+
 #include <Graphics/Vector/VectorBackend.hpp>
 
 class SkCanvas;
 class SkPaint;
+class SkTypeface;
 typedef uint32_t SkColor;
 struct SkiaCache;
 
@@ -50,6 +55,9 @@ public:
     void renderEnd() override;
     bool renderGuiPropertyEditor(sgl::PropertyEditor& propertyEditor) override;
     void copyVectorBackendSettingsFrom(VectorBackend* backend) override;
+
+    // Font API.
+    sk_sp<SkTypeface> createDefaultTypeface();
 
     SkCanvas* getCanvas();
     void initializePaint(SkPaint* paint);

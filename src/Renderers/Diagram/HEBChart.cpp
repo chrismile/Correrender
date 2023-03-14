@@ -137,6 +137,7 @@ void HEBChart::addScalarField(int _selectedFieldIdx, const std::string& _scalarF
     if (!foundInsertionPosition) {
         fieldDataArray.push_back(fieldData);
     }
+    computeColorLegendHeight();
     dataDirty = true;
 }
 
@@ -154,6 +155,7 @@ void HEBChart::removeScalarField(int _selectedFieldIdx, bool shiftIndicesBack) {
         }
         i++;
     }
+    computeColorLegendHeight();
     dataDirty = true;
 }
 
@@ -430,17 +432,17 @@ void HEBChart::computeCorrelations(
         HEBChartFieldData* fieldData,
         std::vector<float*>& downscaledFields0, std::vector<float*>& downscaledFields1,
         std::vector<MIFieldEntry>& miFieldEntries) {
-    auto startTime = std::chrono::system_clock::now();
+    //auto startTime = std::chrono::system_clock::now();
     if (samplingMethodType == SamplingMethodType::MEAN) {
         computeCorrelationsMean(fieldData, downscaledFields0, downscaledFields1, miFieldEntries);
     } else {
         computeCorrelationsSampling(fieldData, miFieldEntries);
     }
-    auto endTime = std::chrono::system_clock::now();
-    auto elapsedTime = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
-    std::cout << "Elapsed time correlations: " << elapsedTime.count() << "ms" << std::endl;
+    //auto endTime = std::chrono::system_clock::now();
+    //auto elapsedTime = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
+    //std::cout << "Elapsed time correlations: " << elapsedTime.count() << "ms" << std::endl;
 
-    auto startTimeSort = std::chrono::system_clock::now();
+    //auto startTimeSort = std::chrono::system_clock::now();
 #ifdef USE_TBB
     tbb::parallel_sort(miFieldEntries.begin(), miFieldEntries.end());
 //#elif __cpp_lib_parallel_algorithm >= 201603L
@@ -448,9 +450,9 @@ void HEBChart::computeCorrelations(
 #else
     std::sort(miFieldEntries.begin(), miFieldEntries.end());
 #endif
-    auto endTimeSort = std::chrono::system_clock::now();
-    auto elapsedTimeSort = std::chrono::duration_cast<std::chrono::milliseconds>(endTimeSort - startTimeSort);
-    std::cout << "Elapsed time sort: " << elapsedTimeSort.count() << "ms" << std::endl;
+    //auto endTimeSort = std::chrono::system_clock::now();
+    //auto elapsedTimeSort = std::chrono::duration_cast<std::chrono::milliseconds>(endTimeSort - startTimeSort);
+    //std::cout << "Elapsed time sort: " << elapsedTimeSort.count() << "ms" << std::endl;
 }
 
 

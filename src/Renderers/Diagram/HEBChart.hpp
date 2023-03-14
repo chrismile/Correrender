@@ -217,6 +217,7 @@ private:
     // GUI data.
     void resetSelectedPrimitives();
     float chartRadius{};
+    float totalRadius{};
     int hoveredPointIdx = -1;
     int hoveredLineIdx = -1;
     int clickedPointIdx = -1;
@@ -227,7 +228,8 @@ private:
     float pointRadiusBase = 1.5f;
     sgl::Color circleFillColor = sgl::Color(180, 180, 180, 255);
     sgl::Color circleFillColorSelected = sgl::Color(180, 80, 80, 255);
-    sgl::Color circleStrokeColor = sgl::Color(60, 60, 60, 255);
+    sgl::Color circleStrokeColorDark = sgl::Color(255, 255, 255, 255);
+    sgl::Color circleStrokeColorBright = sgl::Color(0, 0, 0, 255);
     bool alignWithParentWindow = false;
     bool opacityByValue = false;
     bool colorByValue = true;
@@ -235,7 +237,25 @@ private:
     // Outer ring.
     bool showRing = true;
     float outerRingOffset = 3.0f;
-    const float outerRingWidth = 20.0f;
+    float outerRingWidth = 0.0f; //< Determined automatically.
+    const float outerRingSizePct = 0.1f;
+
+    // Color legend.
+    void drawColorLegends();
+    void drawColorLegend(
+            float x, float y, float w, float h, int numLabels, int numTicks,
+            const std::function<std::string(float)>& labelMap, const std::function<glm::vec4(float)>& colorMap,
+            const std::string& textTop);
+    void computeColorLegendHeight();
+    bool shallDrawColorLegend = true;
+    sgl::Color textColorDark = sgl::Color(255, 255, 255, 255);
+    sgl::Color textColorBright = sgl::Color(0, 0, 0, 255);
+    float colorLegendWidth = 20.0f;
+    float colorLegendHeight = 20.0f;
+    float maxColorLegendHeight = 200.0f;
+    float colorLegendCircleDist = 5.0f;
+    const float textWidthMaxBase = 32;
+    float textWidthMax = 32;
 };
 
 #endif //CORRERENDER_HEBCHART_HPP

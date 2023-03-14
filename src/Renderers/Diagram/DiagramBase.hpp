@@ -33,6 +33,11 @@
 #include <sstream>
 #include <functional>
 
+#ifdef SUPPORT_SKIA
+#include <core/SkRefCnt.h>
+#include <core/SkTypeface.h>
+#endif
+
 #include <Graphics/Window.hpp>
 #include <Graphics/Vector/VectorWidget.hpp>
 
@@ -40,8 +45,10 @@ struct NVGcontext;
 typedef struct NVGcontext NVGcontext;
 struct NVGcolor;
 class SkCanvas;
+#ifdef SUPPORT_VKVG
 struct _vkvg_context_t;
 typedef struct _vkvg_context_t* VkvgContext;
+#endif
 
 enum class DiagramType {
     RADAR_BAR_CHART, HEB_CHART
@@ -69,6 +76,8 @@ public:
 
 protected:
     virtual bool hasData()=0;
+    void onBackendCreated() override;
+    void onBackendDestroyed() override;
 
     // Widget move/resize events.
     void mouseMoveEvent(const glm::ivec2& mousePositionPx, const glm::vec2& mousePositionScaled);
@@ -136,6 +145,10 @@ protected:
     const float borderRoundingRadius = 4.0f;
     float backgroundOpacity = 1.0f;
     float textSizeLegend = 12.0f;
+
+#ifdef SUPPORT_SKIA
+    sk_sp<SkTypeface> typeface;
+#endif
 
     // Color palette.
     bool isDarkMode = true;

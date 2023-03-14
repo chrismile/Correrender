@@ -44,6 +44,7 @@ public:
 
     explicit VectorBackendVkvg(sgl::VectorWidget* vectorWidget);
     void initialize() override;
+    void initializeFont();
     void destroy() override;
     void onResize() override;
     void renderStart() override;
@@ -57,6 +58,8 @@ public:
 private:
     VkSampleCountFlagBits sampleCount = VK_SAMPLE_COUNT_1_BIT;
     VkvgCache* vkvgCache = nullptr;
+    uint8_t* fontBuffer = nullptr;
+    size_t fontBufferSize = 0;
 };
 
 #endif //CORRERENDER_VECTORBACKENDVKVG_HPP

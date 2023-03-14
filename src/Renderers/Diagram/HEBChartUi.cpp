@@ -34,6 +34,8 @@
 #include <core/SkPaint.h>
 #include <core/SkPath.h>
 #include <core/SkShader.h>
+#include <core/SkFont.h>
+#include <core/SkFontMetrics.h>
 #include <effects/SkGradientShader.h>
 #endif
 #ifdef SUPPORT_VKVG
@@ -81,14 +83,17 @@ HEBChart::HEBChart() {
 void HEBChart::initialize() {
     borderSizeX = 10;
     borderSizeY = 10;
-    chartRadius = 160;
+    totalRadius = 160;
     if (showRing) {
-        borderSizeX += outerRingWidth + outerRingOffset;
-        borderSizeY += outerRingWidth + outerRingOffset;
+        chartRadius = totalRadius * (1.0f - outerRingSizePct);
+    } else {
+        chartRadius = totalRadius;
     }
+    outerRingWidth = totalRadius - chartRadius - outerRingOffset;
+    computeColorLegendHeight();
 
-    windowWidth = (chartRadius + borderSizeX) * 2.0f;
-    windowHeight = (chartRadius + borderSizeY) * 2.0f;
+    windowWidth = (totalRadius + borderSizeX) * 2.0f;
+    windowHeight = (totalRadius + borderSizeY) * 2.0f;
 
     DiagramBase::initialize();
     onWindowSizeChanged();
@@ -96,7 +101,14 @@ void HEBChart::initialize() {
 
 void HEBChart::onUpdatedWindowSize() {
     float minDim = std::min(windowWidth - 2.0f * borderSizeX, windowHeight - 2.0f * borderSizeY);
-    chartRadius = std::round(0.5f * minDim);
+    totalRadius = std::round(0.5f * minDim);
+    if (showRing) {
+        chartRadius = totalRadius * (1.0f - outerRingSizePct);
+    } else {
+        chartRadius = totalRadius;
+    }
+    outerRingWidth = totalRadius - chartRadius - outerRingOffset;
+    computeColorLegendHeight();
 }
 
 void HEBChart::setBeta(float _beta) {
@@ -118,9 +130,17 @@ void HEBChart::setCurveOpacity(float _alpha) {
 }
 
 void HEBChart::setDiagramRadius(int radius) {
-    chartRadius = float(radius);
-    windowWidth = (chartRadius + borderSizeX) * 2.0f;
-    windowHeight = (chartRadius + borderSizeY) * 2.0f;
+    totalRadius = float(radius);
+    if (showRing) {
+        chartRadius = totalRadius * (1.0f - outerRingSizePct);
+    } else {
+        chartRadius = totalRadius;
+    }
+    outerRingWidth = totalRadius - chartRadius - outerRingOffset;
+    computeColorLegendHeight();
+
+    windowWidth = (totalRadius + borderSizeX) * 2.0f;
+    windowHeight = (totalRadius + borderSizeY) * 2.0f;
     onWindowSizeChanged();
 }
 
@@ -217,8 +237,6 @@ void HEBChart::update(float dt) {
     mousePosition /= getScaleFactor();
     //mousePosition.y = windowHeight - mousePosition.y;
 
-    //std::cout << "mousePosition: " << mousePosition.x << ", " << mousePosition.y << std::endl;
-
     sgl::AABB2 windowAabb(
             glm::vec2(borderWidth, borderWidth),
             glm::vec2(windowWidth - 2.0f * borderWidth, windowHeight - 2.0f * borderWidth));
@@ -290,10 +308,12 @@ void HEBChart::update(float dt) {
 
         // Select a line.
         const float minDist = 4.0f;
+        const float minDistHalf = 2.0f;
         if (!curvePoints.empty() && hoveredPointIdx < 0) {
             // TODO: Test if point lies in convex hull of control points first (using @see isInsidePolygon).
             int closestLineIdx = -1;
             float closestLineDist = std::numeric_limits<float>::max();
+            float closestLineCorrelationValue = std::numeric_limits<float>::lowest();
             for (int lineIdx = 0; lineIdx < numLinesTotal; lineIdx++) {
                 for (int ptIdx = 0; ptIdx < NUM_SUBDIVISIONS - 1; ptIdx++) {
                     glm::vec2 pt0 = curvePoints.at(lineIdx * NUM_SUBDIVISIONS + ptIdx);
@@ -303,9 +323,12 @@ void HEBChart::update(float dt) {
                     pt1.x = windowWidth / 2.0f + pt1.x * chartRadius;
                     pt1.y = windowHeight / 2.0f + pt1.y * chartRadius;
                     float dist = getDistanceToLineSegment(mousePosition, pt0, pt1);
-                    if (dist < closestLineDist && dist <= minDist) {
+                    float correlationValue = correlationValuesArray.at(lineIdx);
+                    if ((dist <= minDist && dist < closestLineDist)
+                            || (dist <= minDistHalf && correlationValue < closestLineCorrelationValue)) {
                         closestLineIdx = lineIdx;
                         closestLineDist = dist;
+                        closestLineCorrelationValue = correlationValue;
                     }
                 }
             }
@@ -590,15 +613,16 @@ void HEBChart::renderBaseNanoVG() {
             }
         }
 
+        sgl::Color circleStrokeColor = isDarkMode ? circleStrokeColorDark : circleStrokeColorBright;
+        NVGcolor circleStrokeColorNvg = nvgRGBA(
+                circleStrokeColor.getR(), circleStrokeColor.getG(),
+                circleStrokeColor.getB(), circleStrokeColor.getA());
         for (int i = 0; i < numFields; i++) {
             auto* fieldData = fieldDataArray.at(i).get();
             float pctLower = float(i) / float(numFields);
             float pctUpper = float(i + 1) / float(numFields);
             float rlo = chartRadius + outerRingOffset + pctLower * outerRingWidth;
             float rhi = chartRadius + outerRingOffset + pctUpper * outerRingWidth;
-            NVGcolor circleStrokeColorNvg = nvgRGBA(
-                    circleStrokeColor.getR(), circleStrokeColor.getG(),
-                    circleStrokeColor.getB(), circleStrokeColor.getA());
             nvgBeginPath(vg);
             if (regionsEqual) {
                 nvgCircle(vg, center.x, center.y, rlo);
@@ -620,6 +644,11 @@ void HEBChart::renderBaseNanoVG() {
             nvgStrokeColor(vg, circleStrokeColorNvg);
             nvgStroke(vg);
         }
+    }
+
+    // Draw color legend.
+    if (shallDrawColorLegend) {
+        drawColorLegends();
     }
 }
 
@@ -812,9 +841,8 @@ void HEBChart::renderBaseSkia() {
                 sgl::Color rgbColor1 = fieldData->evalColorMap(t1);
                 rgbColor1.setA(255);
 
-                SkPoint linearPoints[2] = {{mi0.x, mi0.y},
-                                           {mi1.x, mi1.y}};
-                SkColor linearColors[2] = {toSkColor(rgbColor0), toSkColor(rgbColor1)};
+                SkPoint linearPoints[2] = { { mi0.x, mi0.y }, { mi1.x, mi1.y } };
+                SkColor linearColors[2] = { toSkColor(rgbColor0), toSkColor(rgbColor1) };
                 gradientPaint.setShader(SkGradientShader::MakeLinear(
                         linearPoints, linearColors, nullptr, 2, SkTileMode::kClamp));
 
@@ -833,6 +861,7 @@ void HEBChart::renderBaseSkia() {
             }
         }
 
+        sgl::Color circleStrokeColor = isDarkMode ? circleStrokeColorDark : circleStrokeColorBright;
         for (int i = 0; i < numFields; i++) {
             auto* fieldData = fieldDataArray.at(i).get();
             float pctLower = float(i) / float(numFields);
@@ -874,6 +903,11 @@ void HEBChart::renderBaseSkia() {
                 canvas->drawPath(path, paint);
             }
         }
+    }
+
+    // Draw color legend.
+    if (shallDrawColorLegend) {
+        drawColorLegends();
     }
 }
 #endif
@@ -1085,6 +1119,7 @@ void HEBChart::renderBaseVkvg() {
             }
         }
 
+        sgl::Color circleStrokeColor = isDarkMode ? circleStrokeColorDark : circleStrokeColorBright;
         for (int i = 0; i < numFields; i++) {
             auto* fieldData = fieldDataArray.at(i).get();
             float pctLower = float(i) / float(numFields);
@@ -1112,5 +1147,283 @@ void HEBChart::renderBaseVkvg() {
             vkvg_stroke(context);
         }
     }
+
+    // Draw color legend.
+    if (shallDrawColorLegend) {
+        drawColorLegends();
+    }
 }
 #endif
+
+void HEBChart::drawColorLegends() {
+    auto numFields = int(fieldDataArray.size());
+    auto labelMap = [](float t) {
+        return getNiceNumberString(t * 0.5f, 4);
+    };
+    for (int i = 0; i < numFields; i++) {
+        int ix = numFields - i;
+        auto* fieldData = fieldDataArray.at(i).get();
+        auto colorMap = [fieldData](float t) {
+            return fieldData->evalColorMapVec4(t);
+        };
+        drawColorLegend(
+                windowWidth - borderSizeX - float(ix) * (colorLegendWidth + textWidthMax),
+                windowHeight - borderSizeY - colorLegendHeight,
+                colorLegendWidth, colorLegendHeight,
+                2, 5, labelMap, colorMap,
+                fieldData->selectedScalarFieldName);
+    }
+}
+
+void HEBChart::drawColorLegend(
+        float x, float y, float w, float h, int numLabels, int numTicks,
+        const std::function<std::string(float)>& labelMap, const std::function<glm::vec4(float)>& colorMap,
+        const std::string& textTop) {
+    sgl::Color textColor = isDarkMode ? textColorDark : textColorBright;
+    NVGcolor textColorNvg;
+    if (vg) {
+        textColorNvg = nvgRGBA(textColor.getR(), textColor.getG(), textColor.getB(), 255);
+    }
+#ifdef SUPPORT_SKIA
+    SkPaint* paint = nullptr, *gradientPaint = nullptr;
+    SkFont* font = nullptr;
+    SkFontMetrics metrics{};
+    if (canvas) {
+        paint = new SkPaint;
+        gradientPaint = new SkPaint;
+        static_cast<VectorBackendSkia*>(vectorBackend)->initializePaint(paint);
+        static_cast<VectorBackendSkia*>(vectorBackend)->initializePaint(gradientPaint);
+        font = new SkFont(typeface, textSizeLegend * s);
+        font->getMetrics(&metrics);
+    }
+#endif
+
+    const int numPoints = 17; // 9
+    const int numSubdivisions = numPoints - 1;
+
+    // Draw color bar.
+    for (int i = 0; i < numSubdivisions; i++) {
+        float t0 = 1.0f - float(i) / float(numSubdivisions);
+        float t1 = 1.0f - float(i + 1) / float(numSubdivisions);
+
+        glm::vec4 fillColorVec0 = colorMap(t0);
+        glm::vec4 fillColorVec1 = colorMap(t1);
+        fillColorVec0.w = 1.0f;
+        fillColorVec1.w = 1.0f;
+        if (vg) {
+            auto fillColor0 = nvgRGBAf(fillColorVec0.x, fillColorVec0.y, fillColorVec0.z, 1.0f);
+            auto fillColor1 = nvgRGBAf(fillColorVec1.x, fillColorVec1.y, fillColorVec1.z, 1.0f);
+            nvgBeginPath(vg);
+            nvgRect(vg, x, y + h * float(i) / float(numSubdivisions), w, h / float(numSubdivisions));
+            NVGpaint paint = nvgLinearGradient(
+                    vg, x, y + h * float(i) / float(numSubdivisions), x, y + h * float(i+1) / float(numSubdivisions),
+                    fillColor0, fillColor1);
+            nvgFillPaint(vg, paint);
+            nvgFill(vg);
+        }
+#ifdef SUPPORT_SKIA
+        else if (canvas) {
+            auto fillColor0 = toSkColor(sgl::colorFromVec4(fillColorVec0));
+            auto fillColor1 = toSkColor(sgl::colorFromVec4(fillColorVec1));
+            SkPoint linearPoints[2] = {
+                    { x * s, (y + h * float(i) / float(numSubdivisions)) * s },
+                    { x * s, (y + h * float(i + 1) / float(numSubdivisions)) * s }
+            };
+            SkColor linearColors[2] = { fillColor0, fillColor1 };
+            gradientPaint->setShader(SkGradientShader::MakeLinear(
+                    linearPoints, linearColors, nullptr, 2, SkTileMode::kClamp));
+            canvas->drawRect(
+                    SkRect{
+                        x * s, (y + h * float(i) / float(numSubdivisions)) * s,
+                        (x + w) * s, (y + h * float(i + 1) / float(numSubdivisions)) * s}, *gradientPaint);
+        }
+#endif
+#ifdef SUPPORT_VKVG
+        else if (context) {
+            auto pattern = vkvg_pattern_create_linear(
+                    x * s, (y + h * float(i) / float(numSubdivisions)) * s,
+                    x * s, (y + h * float(i + 1) / float(numSubdivisions)) * s);
+            vkvg_pattern_add_color_stop(pattern, 0.0f, fillColorVec0.x, fillColorVec0.y, fillColorVec0.z, 1.0f);
+            vkvg_pattern_add_color_stop(pattern, 1.0f, fillColorVec1.x, fillColorVec1.y, fillColorVec1.z, 1.0f);
+            vkvg_set_source(context, pattern);
+            vkvg_pattern_destroy(pattern);
+            vkvg_rectangle(
+                    context, x * s, (y + h * float(i) / float(numSubdivisions)) * s,
+                    w * s, h / float(numSubdivisions) * s);
+            vkvg_fill(context);
+        }
+#endif
+    }
+
+    // Draw ticks.
+    const float tickWidth = 4.0f;
+    const float tickHeight = 1.0f;
+    if (vg) {
+        nvgBeginPath(vg);
+        for (int tickIdx = 0; tickIdx < numTicks; tickIdx++) {
+            float centerY = y + float(tickIdx) / float(numTicks - 1) * h;
+            nvgRect(vg, x + w, centerY - tickHeight / 2.0f, tickWidth, tickHeight);
+        }
+        nvgFillColor(vg, textColorNvg);
+        nvgFill(vg);
+    }
+#ifdef SUPPORT_SKIA
+    else if (canvas) {
+        paint->setColor(toSkColor(textColor));
+        paint->setStroke(false);
+        for (int tickIdx = 0; tickIdx < numTicks; tickIdx++) {
+            float centerY = y + float(tickIdx) / float(numTicks - 1) * h;
+            canvas->drawRect(
+                    SkRect{
+                        (x + w) * s, (centerY - tickHeight / 2.0f) * s,
+                        (x + w + tickWidth) * s, (centerY + tickHeight / 2.0f) * s}, *paint);
+        }
+    }
+#endif
+#ifdef SUPPORT_VKVG
+    else if (context) {
+        vkvg_set_source_color(context, textColor.getColorRGBA());
+        for (int tickIdx = 0; tickIdx < numTicks; tickIdx++) {
+            float centerY = y + float(tickIdx) / float(numTicks - 1) * h;
+            vkvg_rectangle(
+                    context, (x + w) * s, (centerY - tickHeight / 2.0f) * s, tickWidth * s, tickHeight * s);
+        }
+        vkvg_fill(context);
+    }
+#endif
+
+    // Draw on the right.
+    if (vg) {
+        nvgFontSize(vg, textSizeLegend);
+        nvgFontFace(vg, "sans");
+        for (int tickIdx = 0; tickIdx < numTicks; tickIdx++) {
+            float t = 1.0f - float(tickIdx) / float(numTicks - 1);
+            float centerY = y + float(tickIdx) / float(numTicks - 1) * h;
+            std::string labelText = labelMap(t);
+            nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+            nvgFillColor(vg, textColorNvg);
+            nvgText(vg, x + w + 2.0f * tickWidth, centerY, labelText.c_str(), nullptr);
+        }
+        nvgFillColor(vg, textColorNvg);
+        nvgFill(vg);
+    }
+#ifdef SUPPORT_SKIA
+    else if (canvas) {
+        paint->setColor(toSkColor(textColor));
+        for (int tickIdx = 0; tickIdx < numTicks; tickIdx++) {
+            float t = 1.0f - float(tickIdx) / float(numTicks - 1);
+            float centerY = y + float(tickIdx) / float(numTicks - 1) * h;
+            std::string labelText = labelMap(t);
+            SkRect bounds{};
+            font->measureText(labelText.c_str(), labelText.size(), SkTextEncoding::kUTF8, &bounds);
+            canvas->drawString(
+                    labelText.c_str(),
+                    (x + w + 2.0f * tickWidth) * s, centerY * s + 0.5f * (bounds.height() - metrics.fDescent),
+                    *font, *paint);
+        }
+    }
+#endif
+#ifdef SUPPORT_VKVG
+    else if (context) {
+        vkvg_set_font_size(context, uint32_t(std::round(textSizeLegend * s * 0.75f)));
+        //vkvg_select_font_face(context, "sans");
+        vkvg_set_source_color(context, textColor.getColorRGBA());
+        for (int tickIdx = 0; tickIdx < numTicks; tickIdx++) {
+            float t = 1.0f - float(tickIdx) / float(numTicks - 1);
+            float centerY = y + float(tickIdx) / float(numTicks - 1) * h;
+            std::string labelText = labelMap(t);
+            vkvg_text_extents_t te{};
+            vkvg_text_extents(context, labelText.c_str(), &te);
+            vkvg_font_extents_t fe{};
+            vkvg_font_extents(context, &fe);
+            vkvg_move_to(context, (x + w + 2.0f * tickWidth) * s, centerY * s + 0.5f * te.height - fe.descent);
+            vkvg_show_text(context, labelText.c_str());
+        }
+    }
+#endif
+
+    // Draw text on the top.
+    if (vg) {
+        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_BOTTOM);
+        nvgFillColor(vg, textColorNvg);
+        nvgText(vg, x + w * 0.5f, y - 4, textTop.c_str(), nullptr);
+    }
+#ifdef SUPPORT_SKIA
+    else if (canvas) {
+        SkRect bounds{};
+        font->measureText(textTop.c_str(), textTop.size(), SkTextEncoding::kUTF8, &bounds);
+        paint->setColor(toSkColor(textColor));
+        canvas->drawString(
+                textTop.c_str(), (x + w * 0.5f) * s - 0.5f * bounds.width(), (y - 4) * s - metrics.fDescent,
+                *font, *paint);
+    }
+#endif
+#ifdef SUPPORT_VKVG
+    else if (context) {
+        vkvg_text_extents_t te{};
+        vkvg_text_extents(context, textTop.c_str(), &te);
+        vkvg_font_extents_t fe{};
+        vkvg_font_extents(context, &fe);
+        vkvg_move_to(context, (x + w * 0.5f) * s - 0.5f * te.width, (y - 4) * s - fe.descent);
+        vkvg_show_text(context, textTop.c_str());
+    }
+#endif
+
+    // Draw box outline.
+    if (vg) {
+        nvgBeginPath(vg);
+        nvgRect(vg, x, y, w, h);
+        nvgStrokeWidth(vg, 0.75f);
+        nvgStrokeColor(vg, textColorNvg);
+        nvgStroke(vg);
+    }
+#ifdef SUPPORT_SKIA
+    else if (canvas) {
+        paint->setStroke(true);
+        paint->setStrokeWidth(0.75f * s);
+        paint->setColor(toSkColor(textColor));
+        canvas->drawRect(SkRect{x * s, y * s, (x + w) * s, (y + h) * s}, *paint);
+    }
+#endif
+#ifdef SUPPORT_VKVG
+    else if (context) {
+        vkvg_set_line_width(context, 0.75f * s);
+        vkvg_set_source_color(context, textColor.getColorRGBA());
+        vkvg_rectangle(context, x * s, y * s, w * s, h * s);
+        vkvg_stroke(context);
+    }
+#endif
+
+#ifdef SUPPORT_SKIA
+    if (canvas) {
+        delete paint;
+        delete gradientPaint;
+        delete font;
+    }
+#endif
+}
+
+template<typename T> inline T sqr(T val) { return val * val; }
+
+void HEBChart::computeColorLegendHeight() {
+    textWidthMax = textWidthMaxBase * textSize / 8.0f;
+    const auto numFields = int(fieldDataArray.size());
+    const float r = totalRadius;
+    const float bx = borderSizeX;
+    const float by = borderSizeY;
+    const float w = windowWidth;
+    const float h = windowHeight;
+    const float cw = float(numFields) * (colorLegendWidth + textWidthMax);
+    const float d = colorLegendCircleDist;
+
+    const float b = -2.0f * (h - by - h * 0.5f);
+    const float c = sqr(h - by - h * 0.5f) - sqr(r + d) + sqr(w - bx - cw - w * 0.5f);
+    const float discriminant = b * b - 4.0f * c;
+    const float maxHeight = std::min(maxColorLegendHeight, totalRadius * 0.5f);
+    if (discriminant > 0.0f) {
+        colorLegendHeight = (-b - std::sqrt(b * b - 4.0f * c)) * 0.5f - textSize * 2.0f;
+        colorLegendHeight = std::clamp(colorLegendHeight, 1.0f, maxHeight);
+    } else {
+        colorLegendHeight = maxHeight;
+    }
+}

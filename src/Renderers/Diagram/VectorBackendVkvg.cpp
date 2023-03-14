@@ -29,6 +29,7 @@
 #include <glm/vec3.hpp>
 #include <Utils/AppSettings.hpp>
 #include <Utils/File/Logfile.hpp>
+#include <Utils/File/FileLoader.hpp>
 #include <Graphics/Color.hpp>
 #include <Graphics/Vulkan/Utils/Instance.hpp>
 #include <Graphics/Vulkan/Utils/Device.hpp>
@@ -101,6 +102,21 @@ void VectorBackendVkvg::initialize() {
 
     auto dpi = int(std::round(96.0f * scaleFactor));
     vkvg_device_set_dpy(vkvgCache->device, dpi, dpi);
+
+    std::string fontFilename = sgl::AppSettings::get()->getDataDirectory() + "Fonts/DroidSans.ttf";
+    if (!sgl::loadFileFromSource(fontFilename, fontBuffer, fontBufferSize, true)) {
+        sgl::Logfile::get()->throwError("Error in VectorBackendVkvg::initialize: Couldn't find the font file.");
+    }
+}
+
+void VectorBackendVkvg::initializeFont() {
+    //std::string fontFilename = sgl::AppSettings::get()->getDataDirectory() + "Fonts/DroidSans.ttf";
+    // As of 2023-03-14, VKVG takes ownership of the memory and calls "free" on it.
+    auto* fontBufferCopy = static_cast<uint8_t*>(malloc(fontBufferSize));
+    memcpy(fontBufferCopy, fontBuffer, fontBufferSize);
+    vkvg_load_font_from_memory(vkvgCache->context, fontBufferCopy, long(fontBufferSize), "sans");
+    //vkvg_load_font_from_path(vkvgCache->context, fontFilename.c_str(), "sans");
+    //vkvg_select_font_face(vkvgCache->context, "sans");
 }
 
 void VectorBackendVkvg::destroy() {
@@ -119,6 +135,11 @@ void VectorBackendVkvg::destroy() {
     }
     if (vkvgCache->device) {
         vkvg_device_destroy(vkvgCache->device);
+    }
+    if (fontBuffer) {
+        delete[] fontBuffer;
+        fontBuffer = nullptr;
+        fontBufferSize = 0;
     }
     delete vkvgCache;
     vkvgCache = nullptr;
@@ -143,6 +164,7 @@ void VectorBackendVkvg::onResize() {
     }
 
     vkvgCache->context = vkvg_create(vkvgCache->surface);
+    initializeFont();
     if (!vkvgCache->surface) {
         sgl::Logfile::get()->throwError(
                 "Error in VkvgRenderPass::recreateSwapchain: vkvg_create failed.");

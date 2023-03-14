@@ -328,7 +328,7 @@ void DiagramRenderer::update(float dt, bool isMouseGrabbed) {
         auto& diagram = *it;
         diagram->setIsMouseGrabbedByParent(isMouseGrabbed);
         diagram->update(dt);
-        if (diagram->getNeedsReRender()) {
+        if (diagram->getNeedsReRender() && !reRenderViewArray.empty()) {
             reRenderViewArray.at(diagramViewIdx) = true;
             reRenderTriggeredByDiagram = true;
         }
@@ -566,10 +566,19 @@ void DiagramRenderer::addViewImpl(uint32_t viewIdx) {
 }
 
 void DiagramRenderer::removeViewImpl(uint32_t viewIdx) {
+    bool diagramViewIdxChanged = false;
     if (diagramViewIdx >= viewIdx && diagramViewIdx != 0) {
-        diagramViewIdx--;
-    } else if (viewManager->getNumViews() > 0) {
-        diagramViewIdx++;
+        if (diagramViewIdx != 0) {
+            diagramViewIdx--;
+        } else if (viewManager->getNumViews() > 0) {
+            diagramViewIdx++;
+        }
+    }
+
+    if (diagramViewIdxChanged) {
+        reRender = true;
+        reRenderTriggeredByDiagram = true;
+        recreateDiagramSwapchain();
     }
 
     connectingLineRasterPass.erase(connectingLineRasterPass.begin() + viewIdx);
@@ -610,6 +619,7 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
                     text.c_str(), &showInView, ImGuiSelectableFlags_::ImGuiSelectableFlags_None)) {
                 diagramViewIdx = uint32_t(viewIdx);
                 reRender = true;
+                reRenderTriggeredByDiagram = true;
                 recreateDiagramSwapchain();
             }
             if (showInView) {
@@ -763,14 +773,6 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         reRenderTriggeredByDiagram = true;
     }
 
-    if (propertyEditor.addCheckbox("Value -> Color", &colorByValue)) {
-        for (auto& diagram : diagrams) {
-            diagram->setColorByValue(colorByValue);
-        }
-        reRender = true;
-        reRenderTriggeredByDiagram = true;
-    }
-
     if (propertyEditor.addSliderFloatEdit("beta", &beta, 0.0f, 1.0f) == ImGui::EditMode::INPUT_FINISHED) {
         for (auto& diagram : diagrams) {
             diagram->setBeta(beta);
@@ -864,6 +866,7 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
     }
 
     if (propertyEditor.addSliderInt("Diagram Radius", &diagramRadius, 100, 400)) {
+        diagramRadius = std::max(diagramRadius, 1);
         parentDiagram->setDiagramRadius(diagramRadius);
         resetSelections();
         reRender = true;

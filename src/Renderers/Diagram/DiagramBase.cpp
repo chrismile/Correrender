@@ -68,6 +68,25 @@ void DiagramBase::initialize() {
     _initialize();
 }
 
+void DiagramBase::onBackendCreated() {
+#ifdef SUPPORT_SKIA
+    if (strcmp(vectorBackend->getID(), VectorBackendSkia::getClassID()) == 0) {
+        auto* skiaBackend = static_cast<VectorBackendSkia*>(vectorBackend);
+        typeface = skiaBackend->createDefaultTypeface();
+    }
+#endif
+}
+
+void DiagramBase::onBackendDestroyed() {
+    vg = nullptr;
+#ifdef SUPPORT_SKIA
+    canvas = nullptr;
+#endif
+#ifdef SUPPORT_VKVG
+    context = nullptr;
+#endif
+}
+
 void DiagramBase::setImGuiWindowOffset(int offsetX, int offsetY) {
     imGuiWindowOffsetX = offsetX;
     imGuiWindowOffsetY = offsetY;
@@ -334,6 +353,12 @@ void DiagramBase::mousePressEventMoveWindow(const glm::ivec2& mousePositionPx, c
 
 void DiagramBase::getNanoVGContext() {
     vg = static_cast<sgl::VectorBackendNanoVG*>(vectorBackend)->getContext();
+#ifdef SUPPORT_SKIA
+    canvas = nullptr;
+#endif
+#ifdef SUPPORT_VKVG
+    context = nullptr;
+#endif
 }
 
 void DiagramBase::renderBaseNanoVG() {
@@ -362,7 +387,11 @@ void DiagramBase::renderBaseNanoVG() {
 
 #ifdef SUPPORT_SKIA
 void DiagramBase::getSkiaCanvas() {
+    vg = nullptr;
     canvas = static_cast<VectorBackendSkia*>(vectorBackend)->getCanvas();
+#ifdef SUPPORT_VKVG
+    context = nullptr;
+#endif
 }
 
 void DiagramBase::renderBaseSkia() {
@@ -396,6 +425,10 @@ void DiagramBase::renderBaseSkia() {
 
 #ifdef SUPPORT_VKVG
 void DiagramBase::getVkvgContext() {
+    vg = nullptr;
+#ifdef SUPPORT_SKIA
+    canvas = nullptr;
+#endif
     context = static_cast<VectorBackendVkvg*>(vectorBackend)->getContext();
 }
 

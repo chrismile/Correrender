@@ -523,7 +523,7 @@ if $build_with_vkvg_support; then
         pushd vkvg-src/build >/dev/null
         cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="${PROJECTPATH}/third_party/vkvg" \
         -DVKVG_ENABLE_VK_SCALAR_BLOCK_LAYOUT=ON -DVKVG_ENABLE_VK_TIMELINE_SEMAPHORE=ON \
-        -DVKVG_USE_FREETYPE=OFF -DVKVG_USE_FONTCONFIG=OFF -DVKVG_USE_HARFBUZZ=OFF -DVKVG_BUILD_TESTS=OFF
+        -DVKVG_USE_FONTCONFIG=OFF -DVKVG_USE_HARFBUZZ=OFF -DVKVG_BUILD_TESTS=OFF
         make -j $(nproc)
         make install
         params+=(-Dvkvg_DIR="${PROJECTPATH}/third_party/vkvg")
