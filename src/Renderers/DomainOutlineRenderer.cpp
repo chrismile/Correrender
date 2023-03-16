@@ -167,6 +167,15 @@ void DomainOutlineRasterPass::setRenderData(
     setDataDirty();
 }
 
+void DomainOutlineRasterPass::setCustomColor(const glm::vec4& color) {
+    uniformData.objectColor = color;
+    useCustomColor = true;
+}
+
+void DomainOutlineRasterPass::resetCustomColor() {
+    useCustomColor = false;
+}
+
 void DomainOutlineRasterPass::loadShader() {
     shaderStages = sgl::vk::ShaderManager->getShaderStages({ "DomainOutline.Vertex", "DomainOutline.Fragment" });
 }
@@ -210,7 +219,9 @@ void DomainOutlineRasterPass::_render() {
     glm::vec3 backgroundColor = sceneData->clearColor->getFloatColorRGB();
     glm::vec3 foregroundColor = glm::vec3(1.0f) - backgroundColor;
 
-    uniformData.objectColor = glm::vec4(foregroundColor.x, foregroundColor.y, foregroundColor.z, 1.0f);
+    if (!useCustomColor) {
+        uniformData.objectColor = glm::vec4(foregroundColor.x, foregroundColor.y, foregroundColor.z, 1.0f);
+    }
     uniformDataBuffer->updateData(
             sizeof(UniformData), &uniformData, renderer->getVkCommandBuffer());
     renderer->insertMemoryBarrier(
@@ -235,10 +246,11 @@ void DomainOutlineComputePass::setRenderData(
     setDataDirty();
 }
 
-void DomainOutlineComputePass::setOutlineSettings(const sgl::AABB3& aabb, float lineWidth) {
+void DomainOutlineComputePass::setOutlineSettings(const sgl::AABB3& aabb, float lineWidth, float offset) {
     pushConstants.aabbMin = aabb.min;
     pushConstants.aabbMax = aabb.max;
     pushConstants.lineWidth = lineWidth;
+    pushConstants.offset = offset;
 }
 
 void DomainOutlineComputePass::loadShader() {

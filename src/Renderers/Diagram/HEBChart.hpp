@@ -38,6 +38,7 @@
 #include "Region.hpp"
 #include "Octree.hpp"
 #include "Sampling.hpp"
+#include "DiagramButton.hpp"
 #include "DiagramBase.hpp"
 #include "../../Calculators/CorrelationDefines.hpp"
 
@@ -45,12 +46,12 @@ typedef std::shared_ptr<float[]> HostCacheEntry;
 class HEBChart;
 
 struct MIFieldEntry {
-    float miValue;
+    float correlationValue;
     uint32_t pointIndex0, pointIndex1;
 
-    MIFieldEntry(float miValue, uint32_t pointIndex0, uint32_t pointIndex1)
-            : miValue(miValue), pointIndex0(pointIndex0), pointIndex1(pointIndex1) {}
-    bool operator<(const MIFieldEntry& rhs) const { return miValue > rhs.miValue; }
+    MIFieldEntry(float correlationValue, uint32_t pointIndex0, uint32_t pointIndex1)
+            : correlationValue(correlationValue), pointIndex0(pointIndex0), pointIndex1(pointIndex1) {}
+    bool operator<(const MIFieldEntry& rhs) const { return correlationValue > rhs.correlationValue; }
 };
 
 struct HEBChartFieldUpdateData {
@@ -100,6 +101,7 @@ public:
     void update(float dt) override;
     void updateSizeByParent() override;
     void setVolumeData(VolumeDataPtr& _volumeData, bool isNewData);
+    void setIsFocusView(int focusViewLevel);
     void setRegions(const std::pair<GridRegion, GridRegion>& _rs);
     void clearScalarFields();
     void addScalarField(int selectedFieldIdx, const std::string& _scalarFieldName);
@@ -115,20 +117,30 @@ public:
     void setCurveThickness(float _curveThickness);
     void setCurveOpacity(float _alpha);
     void setDiagramRadius(int radius);
+    void setOuterRingSizePercentage(float pct);
     void setAlignWithParentWindow(bool _align);
     void setOpacityByValue(bool _opacityByValue);
     void setColorByValue(bool _colorByValue);
+    void setShowSelectedRegionsByColor(bool _show);
     void setUse2DField(bool _use2dField);
 
     // Selection query.
+    void resetSelectedPrimitives();
     bool getIsRegionSelected(int idx);
     uint32_t getPointIndexGrid(int pointIdx);
     uint32_t getSelectedPointIndexGrid(int idx);
     sgl::AABB3 getSelectedRegion(int idx);
     std::pair<glm::vec3, glm::vec3> getLinePositions();
     glm::vec3 getLineDirection();
+    [[nodiscard]] inline bool getShowSelectedRegionsByColor() const { return showSelectedRegionsByColor; }
+    [[nodiscard]] inline const sgl::Color& getColorSelected0() const { return circleFillColorSelected0; }
+    [[nodiscard]] inline const sgl::Color& getColorSelected1() const { return circleFillColorSelected1; }
+    [[nodiscard]] inline const sgl::Color& getColorSelected(int idx) const {
+        return idx == 0 ? circleFillColorSelected0 : circleFillColorSelected1;
+    }
 
     // Queries for showing children.
+    void resetFocusSelection();
     bool getHasNewFocusSelection(bool& isDeselection);
     std::pair<GridRegion, GridRegion> getFocusSelection();
     GridRegion getGridRegionPointIdx(int idx, uint32_t pointIdx);
@@ -139,6 +151,9 @@ public:
     glm::ivec2 getCellDistanceRangeTotal();
     void setCorrelationRange(const glm::vec2& _range);
     void setCellDistanceRange(const glm::ivec2& _range);
+
+    // Focus+Context state queries.
+    [[nodiscard]] inline int getReturnToViewIdx() { int idx = returnToViewIdx; returnToViewIdx = -1; return idx; }
 
     /// Returns whether ensemble or time correlation mode is used.
     [[nodiscard]] inline bool getIsEnsembleMode() const { return isEnsembleMode; }
@@ -159,6 +174,7 @@ protected:
 
 private:
     VolumeDataPtr volumeData;
+    bool isFocusView = false;
     bool dataDirty = true;
 
     int getCorrelationMemberCount();
@@ -215,7 +231,6 @@ private:
     float minCorrelationValueGlobal = 0.0f, maxCorrelationValueGlobal = 0.0f;
 
     // GUI data.
-    void resetSelectedPrimitives();
     float chartRadius{};
     float totalRadius{};
     int hoveredPointIdx = -1;
@@ -225,20 +240,23 @@ private:
     int selectedPointIndices[2] = { -1, -1 };
     int selectedLineIdx = -1;
     int clickedPointIdxOld = -1, clickedLineIdxOld = -1; //< For getHasNewFocusSelection.
+    bool isFocusSelectionReset = false;
     float pointRadiusBase = 1.5f;
     sgl::Color circleFillColor = sgl::Color(180, 180, 180, 255);
-    sgl::Color circleFillColorSelected = sgl::Color(180, 80, 80, 255);
+    sgl::Color circleFillColorSelected0 = sgl::Color(180, 80, 80, 255);
+    sgl::Color circleFillColorSelected1 = sgl::Color(50, 100, 180, 255);
     sgl::Color circleStrokeColorDark = sgl::Color(255, 255, 255, 255);
     sgl::Color circleStrokeColorBright = sgl::Color(0, 0, 0, 255);
     bool alignWithParentWindow = false;
     bool opacityByValue = false;
     bool colorByValue = true;
+    bool showSelectedRegionsByColor = true;
 
     // Outer ring.
     bool showRing = true;
     float outerRingOffset = 3.0f;
     float outerRingWidth = 0.0f; //< Determined automatically.
-    const float outerRingSizePct = 0.1f;
+    float outerRingSizePct = 0.1f;
 
     // Color legend.
     void drawColorLegends();
@@ -256,6 +274,10 @@ private:
     float colorLegendCircleDist = 5.0f;
     const float textWidthMaxBase = 32;
     float textWidthMax = 32;
+
+    // Buttons for closing the window/going back by one view.
+    std::vector<DiagramButton> buttons;
+    int returnToViewIdx = -1;
 };
 
 #endif //CORRERENDER_HEBCHART_HPP

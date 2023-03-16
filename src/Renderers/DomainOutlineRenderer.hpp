@@ -69,6 +69,8 @@ public:
     // Public interface.
     void setRenderData(
             const sgl::vk::BufferPtr& _indexBuffer, const sgl::vk::BufferPtr& _vertexPositionBuffer);
+    void setCustomColor(const glm::vec4& color);
+    void resetCustomColor();
     void recreateSwapchain(uint32_t width, uint32_t height) override;
 
 protected:
@@ -83,6 +85,7 @@ private:
 
     sgl::vk::BufferPtr indexBuffer;
     sgl::vk::BufferPtr vertexPositionBuffer;
+    bool useCustomColor = false;
 
     struct UniformData {
         glm::vec4 objectColor;
@@ -95,7 +98,7 @@ struct DomainOutlinePushConstants {
     glm::vec3 aabbMin{};
     float lineWidth{};
     glm::vec3 aabbMax{};
-    float padding{};
+    float offset{};
 };
 
 class DomainOutlineComputePass : public sgl::vk::ComputePass {
@@ -105,7 +108,7 @@ public:
     // Public interface.
     void setRenderData(
             const sgl::vk::BufferPtr& _indexBuffer, const sgl::vk::BufferPtr& _vertexPositionBuffer);
-    void setOutlineSettings(const sgl::AABB3& aabb, float lineWidth);
+    void setOutlineSettings(const sgl::AABB3& aabb, float lineWidth, float offset);
 
 protected:
     void loadShader() override;

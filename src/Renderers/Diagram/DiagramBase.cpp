@@ -476,7 +476,7 @@ std::string removeTrailingZeros(const std::string& numberString) {
 /// Removes decimal points if more than maxDigits digits are used.
 std::string DiagramBase::getNiceNumberString(float number, int digits) {
     int maxDigits = digits + 2; // Add 2 digits for '.' and one digit afterwards.
-    std::string outString = removeTrailingZeros(toString(number, digits, true));
+    std::string outString = removeTrailingZeros(sgl::toString(number, digits, true));
 
     // Can we remove digits after the decimal point?
     size_t dotPos = outString.find('.');
@@ -489,8 +489,8 @@ std::string DiagramBase::getNiceNumberString(float number, int digits) {
     }
 
     // Still too large?
-    if (int(outString.size()) > maxDigits) {
-        outString = toString(number, std::max(digits - 2, 1), false, false, true);
+    if (int(outString.size()) > maxDigits || (outString == "0" && number > std::numeric_limits<float>::epsilon())) {
+        outString = sgl::toString(number, std::max(digits - 2, 1), false, false, true);
     }
     return outString;
 }

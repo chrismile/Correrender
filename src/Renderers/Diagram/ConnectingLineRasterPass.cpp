@@ -64,6 +64,16 @@ void ConnectingLineRasterPass::setLineSettings(const std::pair<glm::vec3, glm::v
     uniformData.lineWidth = lineWidth;
 }
 
+void ConnectingLineRasterPass::setCustomColors(const glm::vec4& c0, const glm::vec4& c1) {
+    uniformData.c0 = c0;
+    uniformData.c1 = c1;
+    useCustomColors = true;
+}
+
+void ConnectingLineRasterPass::resetCustomColors() {
+    useCustomColors = false;
+}
+
 void ConnectingLineRasterPass::loadShader() {
     std::map<std::string, std::string> preprocessorDefines;
     if (sceneData->useDepthBuffer) {
@@ -110,7 +120,10 @@ void ConnectingLineRasterPass::_render() {
     glm::vec3 backgroundColor = sceneData->clearColor->getFloatColorRGB();
     glm::vec3 foregroundColor = glm::vec3(1.0f) - backgroundColor;
 
-    uniformData.objectColor = glm::vec4(foregroundColor.x, foregroundColor.y, foregroundColor.z, 1.0f);
+    if (!useCustomColors) {
+        uniformData.c0 = glm::vec4(foregroundColor.x, foregroundColor.y, foregroundColor.z, 1.0f);
+        uniformData.c1 = glm::vec4(foregroundColor.x, foregroundColor.y, foregroundColor.z, 1.0f);
+    }
     uniformDataBuffer->updateData(
             sizeof(UniformData), &uniformData, renderer->getVkCommandBuffer());
     renderer->insertMemoryBarrier(

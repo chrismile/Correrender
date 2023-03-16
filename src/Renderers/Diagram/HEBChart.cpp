@@ -583,26 +583,26 @@ void HEBChart::computeCorrelationsMean(
                         }
                     }
 
-                    float miValue = 0.0f;
+                    float correlationValue = 0.0f;
                     if (cmt == CorrelationMeasureType::PEARSON) {
-                        miValue = computePearson2<float>(X.data(), Y.data(), cs);
+                        correlationValue = computePearson2<float>(X.data(), Y.data(), cs);
                     } else if (cmt == CorrelationMeasureType::SPEARMAN) {
                         computeRanks(Y.data(), gridPointRanks, ordinalRankArraySpearman, cs);
-                        miValue = computePearson2<float>(referenceRanks, gridPointRanks, cs);
+                        correlationValue = computePearson2<float>(referenceRanks, gridPointRanks, cs);
                     } else if (cmt == CorrelationMeasureType::KENDALL) {
-                        miValue = computeKendall(
+                        correlationValue = computeKendall(
                                 X.data(), Y.data(), cs, jointArray, ordinalRankArray, y);
                     } else if (cmt == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
-                        miValue = computeMutualInformationBinned<double>(
+                        correlationValue = computeMutualInformationBinned<double>(
                                 X.data(), Y.data(), numBins, cs, histogram0, histogram1, histogram2d);
                     } else if (cmt == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV) {
-                        miValue = computeMutualInformationKraskov<double>(
+                        correlationValue = computeMutualInformationKraskov<double>(
                                 X.data(), Y.data(), k, cs, kraskovEstimatorCache);
                     }
-                    if (miValue < correlationRange.x || miValue > correlationRange.y) {
+                    if (correlationValue < correlationRange.x || correlationValue > correlationRange.y) {
                         continue;
                     }
-                    miFieldEntriesThread.emplace_back(miValue, i, j);
+                    miFieldEntriesThread.emplace_back(correlationValue, i, j);
                 }
             }
         }
@@ -712,7 +712,8 @@ void HEBChart::computeCorrelationsSampling(
             auto region0 = getGridRegionPointIdx(0, i);
             auto region1 = getGridRegionPointIdx(1, j);
 
-            float miValueMax = std::numeric_limits<float>::lowest();
+            float correlationValueMax = 0.0f;
+            bool isValidValue = false;
             for (int sampleIdx = 0; sampleIdx < numSamples; sampleIdx++) {
                 int xi = std::clamp(int(std::round(samples[sampleIdx * 6 + 0] * float(region0.xsr) - 0.5f)), 0, region0.xsr - 1) + region0.xoff;
                 int yi = std::clamp(int(std::round(samples[sampleIdx * 6 + 1] * float(region0.ysr) - 0.5f)), 0, region0.ysr - 1) + region0.yoff;
@@ -735,33 +736,35 @@ void HEBChart::computeCorrelationsSampling(
                     continue;
                 }
 
-                float miValue = 0.0f;
+                float correlationValue = 0.0f;
                 if (cmt == CorrelationMeasureType::PEARSON) {
-                    miValue = computePearson2<float>(X.data(), Y.data(), cs);
+                    correlationValue = computePearson2<float>(X.data(), Y.data(), cs);
                 } else if (cmt == CorrelationMeasureType::SPEARMAN) {
                     computeRanks(Y.data(), referenceRanks, ordinalRankArrayRef, cs);
                     computeRanks(Y.data(), gridPointRanks, ordinalRankArraySpearman, cs);
-                    miValue = computePearson2<float>(referenceRanks, gridPointRanks, cs);
+                    correlationValue = computePearson2<float>(referenceRanks, gridPointRanks, cs);
                 } else if (cmt == CorrelationMeasureType::KENDALL) {
-                    miValue = computeKendall(
+                    correlationValue = computeKendall(
                             X.data(), Y.data(), cs, jointArray, ordinalRankArray, y);
                 } else if (cmt == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
                     for (int c = 0; c < cs; c++) {
                         X[c] = (X[c] - minFieldVal) / (maxFieldVal - minFieldVal);
                         Y[c] = (Y[c] - minFieldVal) / (maxFieldVal - minFieldVal);
                     }
-                    miValue = computeMutualInformationBinned<double>(
+                    correlationValue = computeMutualInformationBinned<double>(
                             X.data(), Y.data(), numBins, cs, histogram0, histogram1, histogram2d);
                 } else if (cmt == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV) {
-                    miValue = computeMutualInformationKraskov<double>(
+                    correlationValue = computeMutualInformationKraskov<double>(
                             X.data(), Y.data(), k, cs, kraskovEstimatorCache);
                 }
-                miValueMax = std::max(miValueMax, miValue);
+                if (std::abs(correlationValue) >= std::abs(correlationValueMax)) {
+                    correlationValueMax = correlationValue;
+                    isValidValue = true;
+                }
             }
 
-            if (miValueMax != std::numeric_limits<float>::lowest()
-                    && miValueMax >= correlationRange.x && miValueMax <= correlationRange.y) {
-                miFieldEntriesThread.emplace_back(miValueMax, i, j);
+            if (isValidValue && correlationValueMax >= correlationRange.x && correlationValueMax <= correlationRange.y) {
+                miFieldEntriesThread.emplace_back(correlationValueMax, i, j);
             }
         }
 
@@ -940,8 +943,8 @@ void HEBChart::updateData() {
         connectedPointsArrayLocal.resize(numLinesLocal);
 
         if (!miFieldEntries.empty()) {
-            fieldData->minCorrelationValue = miFieldEntries.at(numLinesLocal - 1).miValue;
-            fieldData->maxCorrelationValue = miFieldEntries.at(0).miValue;
+            fieldData->minCorrelationValue = miFieldEntries.at(numLinesLocal - 1).correlationValue;
+            fieldData->maxCorrelationValue = miFieldEntries.at(0).correlationValue;
         } else {
             fieldData->minCorrelationValue = std::numeric_limits<float>::max();
             fieldData->maxCorrelationValue = std::numeric_limits<float>::lowest();
@@ -965,7 +968,7 @@ void HEBChart::updateData() {
 #endif
                 // Use reverse order so lines are drawn from least to most important.
                 const auto& miEntry = miFieldEntries.at(numLinesLocal - lineIdx - 1);
-                correlationValuesArrayLocal.at(lineIdx) = miEntry.miValue;
+                correlationValuesArrayLocal.at(lineIdx) = miEntry.correlationValue;
 
                 auto idx0 = int(pointToNodeIndexMap0.at(miEntry.pointIndex0) - leafIdxOffset);
                 auto idx1 = int(pointToNodeIndexMap1.at(miEntry.pointIndex1) - leafIdxOffset);
@@ -1083,22 +1086,24 @@ std::pair<glm::vec3, glm::vec3> HEBChart::getLinePositions() {
     int groupIdx0 = getLeafIdxGroup(selectedPointIndices[0]);
     int xsdg0 = groupIdx0 == 0 ? xsd0 : xsd1;
     int ysdg0 = groupIdx0 == 0 ? ysd0 : ysd1;
+    const auto& rg0 =  groupIdx0 == 0 ? r0 : r1;
     //int zsdg0 = groupIdx0 == 0 ? zsd0 : zsd1;
     int groupIdx1 = getLeafIdxGroup(selectedPointIndices[1]);
     int xsdg1 = groupIdx1 == 0 ? xsd0 : xsd1;
     int ysdg1 = groupIdx1 == 0 ? ysd0 : ysd1;
     //int zsdg1 = groupIdx1 == 0 ? zsd0 : zsd1;
+    const auto& rg1 =  groupIdx1 == 0 ? r0 : r1;
 
     auto pointIdx0 = getSelectedPointIndexGrid(0);
     uint32_t xd0 = pointIdx0 % uint32_t(xsdg0);
     uint32_t yd0 = (pointIdx0 / uint32_t(xsdg0)) % uint32_t(ysdg0);
     uint32_t zd0 = pointIdx0 / uint32_t(xsdg0 * ysdg0);
-    glm::ivec3 c0((int)xd0, (int)yd0, (int)zd0);
+    glm::ivec3 c0(rg0.xoff + (int)xd0 * dfx, rg0.yoff + (int)yd0 * dfy, rg0.zoff + (int)zd0 * dfz);
     auto pointIdx1 = getSelectedPointIndexGrid(1);
     uint32_t xd1 = pointIdx1 % uint32_t(xsdg1);
     uint32_t yd1 = (pointIdx1 / uint32_t(xsdg1)) % uint32_t(ysdg1);
     uint32_t zd1 = pointIdx1 / uint32_t(xsdg1 * ysdg1);
-    glm::ivec3 c1((int)xd1, (int)yd1, (int)zd1);
+    glm::ivec3 c1(rg1.xoff + int(xd1) * dfx, rg1.yoff + (int)yd1 * dfy, rg1.zoff + (int)zd1 * dfz);
 
     auto b0 = getSelectedRegion(0);
     auto b1 = getSelectedRegion(1);
@@ -1127,7 +1132,17 @@ glm::vec3 HEBChart::getLineDirection() {
 }
 
 
+void HEBChart::resetFocusSelection() {
+    clickedLineIdxOld = -1;
+    clickedPointIdxOld = -1;
+    isFocusSelectionReset = true;
+}
+
 bool HEBChart::getHasNewFocusSelection(bool& isDeselection) {
+    if (isFocusSelectionReset) {
+        isDeselection = false;
+        return false;
+    }
     bool hasNewFocusSelection =
             (clickedPointIdx >= 0 && clickedPointIdx != clickedPointIdxOld)
             || (clickedLineIdx >= 0 && clickedLineIdx != clickedLineIdxOld);

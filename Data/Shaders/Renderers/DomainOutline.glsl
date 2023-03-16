@@ -64,7 +64,7 @@ layout(push_constant) uniform PushConstants {
     vec3 aabbMin;
     float lineWidth;
     vec3 aabbMax;
-    float padding;
+    float offset; //< To avoid z-fighting of multiple outlines.
 };
 
 layout(binding = 0, std430) writeonly buffer IndexBuffer {
@@ -107,10 +107,10 @@ void addEdge(vec3 lower, vec3 upper, uint vertexOffset, uint indexOffset) {
 
 void main() {
     uint threadIdx = gl_GlobalInvocationID.x;
-    vec3 min0 = aabbMin - vec3(lineWidth / 2.0f);
-    vec3 min1 = aabbMin + vec3(lineWidth / 2.0f);
-    vec3 max0 = aabbMax - vec3(lineWidth / 2.0f);
-    vec3 max1 = aabbMax + vec3(lineWidth / 2.0f);
+    vec3 min0 = aabbMin - vec3(lineWidth / 2.0f + offset);
+    vec3 min1 = aabbMin + vec3(lineWidth / 2.0f + offset);
+    vec3 max0 = aabbMax - vec3(lineWidth / 2.0f + offset);
+    vec3 max1 = aabbMax + vec3(lineWidth / 2.0f + offset);
     vec3 lower, upper;
     if (threadIdx == 0) {
         lower = vec3(min0.x, min0.y, min0.z); upper = vec3(max1.x, min1.y, min1.z);

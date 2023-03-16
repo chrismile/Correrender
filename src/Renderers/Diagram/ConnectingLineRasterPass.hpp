@@ -38,6 +38,8 @@ public:
 
     // Public interface.
     void setLineSettings(const std::pair<glm::vec3, glm::vec3>& points, float lineWidth);
+    void setCustomColors(const glm::vec4& c0, const glm::vec4& c1);
+    void resetCustomColors();
     void recreateSwapchain(uint32_t width, uint32_t height) override;
 
 protected:
@@ -51,11 +53,13 @@ private:
     sgl::CameraPtr* camera;
 
     const int tubeNumSubdivisions = 16;
+    bool useCustomColors = false;
 
     sgl::vk::BufferPtr indexBuffer;
 
     struct UniformData {
-        glm::vec4 objectColor{};
+        glm::vec4 c0{};
+        glm::vec4 c1{};
         glm::vec3 p0{};
         float lineWidth = 0.001f;
         glm::vec3 p1{};

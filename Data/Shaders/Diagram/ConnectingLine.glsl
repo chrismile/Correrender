@@ -29,7 +29,8 @@
 -- Uniform
 
 layout(binding = 0) uniform UniformDataBuffer {
-    vec4 objectColor;
+    vec4 c0;
+    vec4 c1;
     vec3 p0;
     float lineWidth;
     vec3 p1;
@@ -42,6 +43,8 @@ layout(binding = 0) uniform UniformDataBuffer {
 #version 450 core
 
 #import ".Uniform"
+
+layout(location = 0) out float pct;
 
 #define M_PI 3.14159265358979323846
 
@@ -68,6 +71,7 @@ void main() {
     vec3 localPosition = vec3(cosAngle, sinAngle, 0.0);
     vec3 vertexPosition = lineRadius * (tangentFrameMatrix * localPosition) + lineCenterPosition;
 
+    pct = linePointIdx == 0 ? 0.0 : 1.0;
     gl_Position = mvpMatrix * vec4(vertexPosition, 1.0);
 }
 
@@ -78,8 +82,9 @@ void main() {
 
 #import ".Uniform"
 
+layout(location = 0) in float pct;
 layout(location = 0) out vec4 fragColor;
 
 void main() {
-    fragColor = objectColor;
+    fragColor = mix(c0, c1, pct);
 }

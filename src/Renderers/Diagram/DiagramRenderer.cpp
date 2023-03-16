@@ -111,8 +111,10 @@ void DiagramRenderer::initialize() {
         parentDiagram->setCurveThickness(curveThickness);
         parentDiagram->setCurveOpacity(curveOpacity);
         parentDiagram->setDiagramRadius(diagramRadius);
+        parentDiagram->setOuterRingSizePercentage(outerRingSizePct);
         parentDiagram->setAlignWithParentWindow(alignWithParentWindow);
         parentDiagram->setOpacityByValue(opacityByValue);
+        parentDiagram->setShowSelectedRegionsByColor(showSelectedRegionsByColor);
         parentDiagram->setColorByValue(colorByValue);
         parentDiagram->setUse2DField(use2dField);
         parentDiagram->setClearColor(viewManager->getClearColor());
@@ -197,8 +199,10 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
         parentDiagram->setCurveThickness(curveThickness);
         parentDiagram->setCurveOpacity(curveOpacity);
         parentDiagram->setDiagramRadius(diagramRadius);
+        parentDiagram->setOuterRingSizePercentage(outerRingSizePct);
         parentDiagram->setAlignWithParentWindow(alignWithParentWindow);
         parentDiagram->setOpacityByValue(opacityByValue);
+        parentDiagram->setShowSelectedRegionsByColor(showSelectedRegionsByColor);
         parentDiagram->setColorByValue(colorByValue);
         parentDiagram->setUse2DField(use2dField);
         parentDiagram->setClearColor(viewManager->getClearColor());
@@ -279,6 +283,7 @@ void DiagramRenderer::resetSelections(int idx) {
             diagram->setRendererVk(renderer);
             diagram->initialize();
             diagram->copyVectorWidgetSettingsFrom(parentDiagram.get());
+            diagram->setIsFocusView(idx);
             diagrams.at(idx) = diagram;
             recreateDiagramSwapchain(idx);
         }
@@ -307,8 +312,10 @@ void DiagramRenderer::resetSelections(int idx) {
             diagram->setCurveThickness(curveThickness);
             diagram->setCurveOpacity(curveOpacity);
             diagram->setDiagramRadius(diagramRadius);
+            diagram->setOuterRingSizePercentage(outerRingSizePct);
             diagram->setAlignWithParentWindow(alignWithParentWindow);
             diagram->setOpacityByValue(opacityByValue);
+            diagram->setShowSelectedRegionsByColor(showSelectedRegionsByColor);
             diagram->setColorByValue(colorByValue);
             diagram->setUse2DField(use2dField);
             diagram->setClearColor(viewManager->getClearColor());
@@ -336,14 +343,27 @@ void DiagramRenderer::update(float dt, bool isMouseGrabbed) {
     }
     for (size_t i = 0; i < diagrams.size(); i++) {
         auto diagram = diagrams.at(i);
+
         bool isDeselection = false;
         if (diagram->getHasNewFocusSelection(isDeselection)) {
             renderer->getDevice()->waitIdle();
             resetSelections(int(i + 1));
         }
         if (isDeselection) {
+            renderer->getDevice()->waitIdle();
             selectedRegionStack.resize(i);
             diagrams.resize(i + 1);
+        }
+
+        int returnToViewIdx = diagram->getReturnToViewIdx();
+        if (returnToViewIdx >= 0) {
+            renderer->getDevice()->waitIdle();
+            selectedRegionStack.resize(returnToViewIdx);
+            diagrams.resize(returnToViewIdx + 1);
+            //diagrams.at(returnToViewIdx)->resetSelectedPrimitives();
+            diagrams.at(returnToViewIdx)->resetFocusSelection();
+            reRenderViewArray.at(diagramViewIdx) = true;
+            reRenderTriggeredByDiagram = true;
         }
     }
 
@@ -523,15 +543,31 @@ void DiagramRenderer::renderViewPreImpl(uint32_t viewIdx) {
         return;
     }
 
+    bool twoRegionsSelected = diagram->getIsRegionSelected(0) && diagram->getIsRegionSelected(1);
+
     for (int idx = 0; idx < 2; idx++) {
         if (diagram->getIsRegionSelected(idx)) {
-            domainOutlineComputePasses[idx].at(viewIdx)->setOutlineSettings(diagram->getSelectedRegion(idx), lineWidth);
+            domainOutlineComputePasses[idx].at(viewIdx)->setOutlineSettings(
+                    diagram->getSelectedRegion(idx), lineWidth, 1e-4f);
             domainOutlineComputePasses[idx].at(viewIdx)->render();
+            if (twoRegionsSelected && diagram->getShowSelectedRegionsByColor()) {
+                domainOutlineRasterPasses[idx].at(viewIdx)->setCustomColor(
+                        diagram->getColorSelected(idx).getFloatColorRGBA());
+            } else {
+                domainOutlineRasterPasses[idx].at(viewIdx)->resetCustomColor();
+            }
             domainOutlineRasterPasses[idx].at(viewIdx)->render();
         }
     }
-    if (diagram->getIsRegionSelected(0) && diagram->getIsRegionSelected(1)) {
+    if (twoRegionsSelected) {
         connectingLineRasterPass.at(viewIdx)->setLineSettings(diagram->getLinePositions(), lineWidth);
+        if (diagram->getShowSelectedRegionsByColor()) {
+            connectingLineRasterPass.at(viewIdx)->setCustomColors(
+                    diagram->getColorSelected0().getFloatColorRGBA(),
+                    diagram->getColorSelected1().getFloatColorRGBA());
+        } else {
+            connectingLineRasterPass.at(viewIdx)->resetCustomColors();
+        }
         connectingLineRasterPass.at(viewIdx)->render();
     }
 }
@@ -773,6 +809,14 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         reRenderTriggeredByDiagram = true;
     }
 
+    if (propertyEditor.addCheckbox("Color Selections", &showSelectedRegionsByColor)) {
+        for (auto& diagram : diagrams) {
+            diagram->setShowSelectedRegionsByColor(showSelectedRegionsByColor);
+        }
+        reRender = true;
+        reRenderTriggeredByDiagram = true;
+    }
+
     if (propertyEditor.addSliderFloatEdit("beta", &beta, 0.0f, 1.0f) == ImGui::EditMode::INPUT_FINISHED) {
         for (auto& diagram : diagrams) {
             diagram->setBeta(beta);
@@ -867,8 +911,19 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
 
     if (propertyEditor.addSliderInt("Diagram Radius", &diagramRadius, 100, 400)) {
         diagramRadius = std::max(diagramRadius, 1);
-        parentDiagram->setDiagramRadius(diagramRadius);
+        for (auto& diagram : diagrams) {
+            diagram->setDiagramRadius(diagramRadius);
+        }
         resetSelections();
+        reRender = true;
+        reRenderTriggeredByDiagram = true;
+    }
+
+    if (propertyEditor.addSliderFloat("Ring Size (%)", &outerRingSizePct, 0.0f, 1.0f)) {
+        outerRingSizePct = std::clamp(outerRingSizePct, 0.0f, 1.0f);
+        for (auto& diagram : diagrams) {
+            diagram->setOuterRingSizePercentage(outerRingSizePct);
+        }
         reRender = true;
         reRenderTriggeredByDiagram = true;
     }

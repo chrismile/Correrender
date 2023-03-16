@@ -92,7 +92,7 @@ void HEBChart::initialize() {
     outerRingWidth = totalRadius - chartRadius - outerRingOffset;
     computeColorLegendHeight();
 
-    windowWidth = (totalRadius + borderSizeX) * 2.0f;
+    windowWidth = (totalRadius + borderSizeX) * 2.0f + colorLegendWidth * 4.0f;
     windowHeight = (totalRadius + borderSizeY) * 2.0f;
 
     DiagramBase::initialize();
@@ -109,6 +109,20 @@ void HEBChart::onUpdatedWindowSize() {
     }
     outerRingWidth = totalRadius - chartRadius - outerRingOffset;
     computeColorLegendHeight();
+}
+
+void HEBChart::setIsFocusView(int focusViewLevel) {
+    isFocusView = true;
+    for (int i = 0; i < focusViewLevel; i++) {
+        if (i == focusViewLevel - 1) {
+            buttons.emplace_back(ButtonType::BACK);
+        } else if (i == focusViewLevel - 2) {
+            buttons.emplace_back(ButtonType::BACK_TWO);
+        } else {
+            buttons.emplace_back(ButtonType::BACK_THREE);
+        }
+    }
+    buttons.emplace_back(ButtonType::CLOSE);
 }
 
 void HEBChart::setBeta(float _beta) {
@@ -139,9 +153,21 @@ void HEBChart::setDiagramRadius(int radius) {
     outerRingWidth = totalRadius - chartRadius - outerRingOffset;
     computeColorLegendHeight();
 
-    windowWidth = (totalRadius + borderSizeX) * 2.0f;
+    windowWidth = (totalRadius + borderSizeX) * 2.0f + colorLegendWidth * 4.0f;
     windowHeight = (totalRadius + borderSizeY) * 2.0f;
     onWindowSizeChanged();
+}
+
+void HEBChart::setOuterRingSizePercentage(float pct) {
+    outerRingSizePct = pct;
+    showRing = pct > 0.0f;
+    if (showRing) {
+        chartRadius = totalRadius * (1.0f - outerRingSizePct);
+    } else {
+        chartRadius = totalRadius;
+    }
+    outerRingWidth = totalRadius - chartRadius - outerRingOffset;
+    needsReRender = true;
 }
 
 void HEBChart::setAlignWithParentWindow(bool _align) {
@@ -159,6 +185,11 @@ void HEBChart::setOpacityByValue(bool _opacityByValue) {
 
 void HEBChart::setColorByValue(bool _colorByValue) {
     colorByValue = _colorByValue;
+    needsReRender = true;
+}
+
+void HEBChart::setShowSelectedRegionsByColor(bool _show) {
+    showSelectedRegionsByColor = _show;
     needsReRender = true;
 }
 
@@ -224,9 +255,22 @@ void HEBChart::updateSizeByParent() {
 }
 
 void HEBChart::update(float dt) {
+    // Check whether the mouse is hovering a button. In this case, window move and resize events should be disabled.
+    glm::vec2 mousePosition(sgl::Mouse->getX(), sgl::Mouse->getY());
+    if (sgl::ImGuiWrapper::get()->getUseDockSpaceMode()) {
+        mousePosition -= glm::vec2(imGuiWindowOffsetX, imGuiWindowOffsetY);
+    }
+    mousePosition -= glm::vec2(getWindowOffsetX(), getWindowOffsetY());
+    mousePosition /= getScaleFactor();
+    bool isAnyButtonHovered = false;
+    for (auto& button : buttons) {
+        isAnyButtonHovered = isAnyButtonHovered || button.getIsHovered(mousePosition);
+    }
+    isMouseGrabbedByParent = isMouseGrabbedByParent || isAnyButtonHovered;
+
     DiagramBase::update(dt);
 
-    glm::vec2 mousePosition(sgl::Mouse->getX(), sgl::Mouse->getY());
+    mousePosition = glm::vec2(sgl::Mouse->getX(), sgl::Mouse->getY());
     if (sgl::ImGuiWrapper::get()->getUseDockSpaceMode()) {
         mousePosition -= glm::vec2(imGuiWindowOffsetX, imGuiWindowOffsetY);
     }
@@ -241,6 +285,34 @@ void HEBChart::update(float dt) {
             glm::vec2(borderWidth, borderWidth),
             glm::vec2(windowWidth - 2.0f * borderWidth, windowHeight - 2.0f * borderWidth));
     bool isMouseInWindow = windowAabb.contains(mousePosition) && !isMouseGrabbedByParent;
+
+    // Update the buttons.
+    const float buttonSize = std::clamp(totalRadius * 0.125f, 10.0f, 30.0f);
+    isAnyButtonHovered = false;
+    for (size_t buttonIdx = 0; buttonIdx < buttons.size(); buttonIdx++) {
+        auto& button = buttons.at(buttonIdx);
+        if (button.getButtonType() == ButtonType::CLOSE) {
+            // The close button is on the right.
+            button.setPosition(windowWidth - borderSizeX - buttonSize, borderSizeY);
+        } else {
+            // Order the other buttons from left to right with spacing.
+            button.setPosition(borderSizeX + float(buttonIdx) * (buttonSize * 1.25f), borderSizeY);
+        }
+        button.setSize(buttonSize);
+        if (button.update(dt, mousePosition)) {
+            needsReRender = true;
+        }
+        if (button.getButtonTriggered()) {
+            if (button.getButtonType() == ButtonType::CLOSE) {
+                returnToViewIdx = 0;
+            } else if (isAnyBackButton(button.getButtonType())) {
+                returnToViewIdx = int(buttonIdx);
+            }
+        }
+        isAnyButtonHovered = isAnyButtonHovered || button.getIsHovered(mousePosition);
+    }
+    isMouseInWindow = isMouseInWindow && !isAnyButtonHovered;
+
     if (!isMouseInWindow) {
         if (hoveredPointIdx != -1) {
             hoveredPointIdx = -1;
@@ -315,6 +387,7 @@ void HEBChart::update(float dt) {
             float closestLineDist = std::numeric_limits<float>::max();
             float closestLineCorrelationValue = std::numeric_limits<float>::lowest();
             for (int lineIdx = 0; lineIdx < numLinesTotal; lineIdx++) {
+                float correlationValue = std::abs(correlationValuesArray.at(lineIdx));
                 for (int ptIdx = 0; ptIdx < NUM_SUBDIVISIONS - 1; ptIdx++) {
                     glm::vec2 pt0 = curvePoints.at(lineIdx * NUM_SUBDIVISIONS + ptIdx);
                     pt0.x = windowWidth / 2.0f + pt0.x * chartRadius;
@@ -323,9 +396,8 @@ void HEBChart::update(float dt) {
                     pt1.x = windowWidth / 2.0f + pt1.x * chartRadius;
                     pt1.y = windowHeight / 2.0f + pt1.y * chartRadius;
                     float dist = getDistanceToLineSegment(mousePosition, pt0, pt1);
-                    float correlationValue = correlationValuesArray.at(lineIdx);
-                    if ((dist <= minDist && dist < closestLineDist)
-                            || (dist <= minDistHalf && correlationValue < closestLineCorrelationValue)) {
+                    if ((dist <= minDist && dist < closestLineDist && (closestLineDist > minDistHalf || correlationValue > closestLineCorrelationValue))
+                            || (dist <= minDistHalf && correlationValue > closestLineCorrelationValue)) {
                         closestLineIdx = lineIdx;
                         closestLineDist = dist;
                         closestLineCorrelationValue = correlationValue;
@@ -345,13 +417,20 @@ void HEBChart::update(float dt) {
         //std::cout << "Elapsed time update: " << elapsedTime.count() << "ms" << std::endl;
     }
 
-    if (isMouseInWindow && sgl::Mouse->buttonReleased(1) && !windowMoveOrResizeJustFinished) {
+    if (isMouseInWindow && (sgl::Mouse->buttonReleased(1) || sgl::Mouse->buttonReleased(3))
+            && !windowMoveOrResizeJustFinished) {
         clickedLineIdx = -1;
         clickedPointIdx = -1;
         if (hoveredLineIdx >= 0) {
             clickedLineIdx = hoveredLineIdx;
         } else if (hoveredPointIdx >= 0) {
             clickedPointIdx = hoveredPointIdx;
+        }
+        // Left click opens focus view, right click only selects the line.
+        isFocusSelectionReset = !sgl::Mouse->buttonReleased(1);
+        if (isFocusSelectionReset) {
+            clickedLineIdxOld = -1;
+            clickedPointIdxOld = -1;
         }
     }
 
@@ -411,13 +490,6 @@ sgl::Color HEBChartFieldData::evalColorMap(float t) {
 
 void HEBChart::renderBaseNanoVG() {
     DiagramBase::renderBaseNanoVG();
-
-    NVGcolor circleFillColorNvg = nvgRGBA(
-            circleFillColor.getR(), circleFillColor.getG(),
-            circleFillColor.getB(), circleFillColor.getA());
-    NVGcolor circleFillColorSelectedNvg = nvgRGBA(
-            circleFillColorSelected.getR(), circleFillColorSelected.getG(),
-            circleFillColorSelected.getB(), circleFillColorSelected.getA());
 
     if (dataDirty) {
         updateData();
@@ -520,11 +592,22 @@ void HEBChart::renderBaseNanoVG() {
         float pointY = windowHeight / 2.0f + leaf.normalizedPosition.y * chartRadius;
         nvgCircle(vg, pointX, pointY, pointRadius);
     }
+    NVGcolor circleFillColorNvg = nvgRGBA(
+            circleFillColor.getR(), circleFillColor.getG(),
+            circleFillColor.getB(), circleFillColor.getA());
     nvgFillColor(vg, circleFillColorNvg);
     nvgFill(vg);
 
     int numPointsSelected = selectedPointIndices[0] < 0 ? 0 : (selectedPointIndices[1] < 0 ? 1 : 2);
+    NVGcolor circleFillColorSelectedNvg = nvgRGBA(
+            circleFillColorSelected0.getR(), circleFillColorSelected0.getG(),
+            circleFillColorSelected0.getB(), circleFillColorSelected0.getA());
     for (int idx = 0; idx < numPointsSelected; idx++) {
+        if (showSelectedRegionsByColor && idx == 1) {
+            circleFillColorSelectedNvg = nvgRGBA(
+                    circleFillColorSelected1.getR(), circleFillColorSelected1.getG(),
+                    circleFillColorSelected1.getB(), circleFillColorSelected1.getA());
+        }
         const auto& leaf = nodesList.at(int(leafIdxOffset) + selectedPointIndices[idx]);
         float pointX = windowWidth / 2.0f + leaf.normalizedPosition.x * chartRadius;
         float pointY = windowHeight / 2.0f + leaf.normalizedPosition.y * chartRadius;
@@ -644,6 +727,38 @@ void HEBChart::renderBaseNanoVG() {
             nvgStrokeColor(vg, circleStrokeColorNvg);
             nvgStroke(vg);
         }
+    }
+
+    if (showSelectedRegionsByColor && isFocusView && !fieldDataArray.empty()) {
+        glm::vec2 center(windowWidth / 2.0f, windowHeight / 2.0f);
+        auto* fieldData = fieldDataArray.front().get();
+        float rhi = totalRadius + std::max(totalRadius * 0.015f, 4.0f);
+        for (int i = 0; i < 2; i++) {
+            float angle0 = i == 0 ? fieldData->a00 : fieldData->a10;
+            float angle1 = i == 0 ? fieldData->a01 : fieldData->a11;
+            const sgl::Color& circleFillColorSelected = getColorSelected(i);
+            circleFillColorSelectedNvg = nvgRGBA(
+                    circleFillColorSelected.getR(), circleFillColorSelected.getG(),
+                    circleFillColorSelected.getB(), circleFillColorSelected.getA());
+            nvgBeginPath(vg);
+            nvgArc(vg, center.x, center.y, rhi, angle0, angle1, NVG_CW);
+            nvgStrokeWidth(vg, 3.0f);
+            nvgStrokeColor(vg, circleFillColorSelectedNvg);
+            nvgStroke(vg);
+        }
+    }
+
+    // Render buttons.
+    for (auto& button : buttons) {
+        button.render(
+                vg,
+#ifdef SUPPORT_SKIA
+                canvas, nullptr,
+#endif
+#ifdef SUPPORT_VKVG
+                context,
+#endif
+                isDarkMode, s);
     }
 
     // Draw color legend.
@@ -768,7 +883,8 @@ void HEBChart::renderBaseSkia() {
         const auto& leaf = nodesList.at(int(leafIdxOffset) + selectedPointIndices[idx]);
         float pointX = windowWidth / 2.0f + leaf.normalizedPosition.x * chartRadius;
         float pointY = windowHeight / 2.0f + leaf.normalizedPosition.y * chartRadius;
-        paint.setColor(toSkColor(circleFillColorSelected));
+        paint.setColor(toSkColor(
+                showSelectedRegionsByColor && idx == 1 ? circleFillColorSelected1 : circleFillColorSelected0));
         canvas->drawCircle(pointX * s, pointY * s, pointRadius * 1.5f, paint);
     }
 
@@ -903,6 +1019,39 @@ void HEBChart::renderBaseSkia() {
                 canvas->drawPath(path, paint);
             }
         }
+    }
+
+    if (showSelectedRegionsByColor && isFocusView && !fieldDataArray.empty()) {
+        glm::vec2 center(windowWidth / 2.0f * s, windowHeight / 2.0f * s);
+        auto* fieldData = fieldDataArray.front().get();
+        float rhi = (totalRadius + std::max(totalRadius * 0.015f, 4.0f)) * s;
+        SkPath path;
+        paint.setStroke(true);
+        paint.setStrokeWidth(3.0f * s);
+        for (int i = 0; i < 2; i++) {
+            float angle0Deg = (i == 0 ? fieldData->a00 : fieldData->a10) / sgl::PI * 180.0f;
+            float angle1Deg = (i == 0 ? fieldData->a01 : fieldData->a11) / sgl::PI * 180.0f;
+            const sgl::Color& circleFillColorSelected = getColorSelected(i);
+            path.reset();
+            path.arcTo(
+                    SkRect{center.x - rhi, center.y - rhi, center.x + rhi, center.y + rhi},
+                    angle0Deg, angle1Deg - angle0Deg, false);
+            paint.setColor(toSkColor(circleFillColorSelected));
+            canvas->drawPath(path, paint);
+        }
+    }
+
+    // Render buttons.
+    SkPaint defaultPaint;
+    static_cast<VectorBackendSkia*>(vectorBackend)->initializePaint(&defaultPaint);
+    for (auto& button : buttons) {
+        button.render(
+                vg,
+                canvas, &defaultPaint,
+#ifdef SUPPORT_VKVG
+                context,
+#endif
+                isDarkMode, s);
     }
 
     // Draw color legend.
@@ -1042,7 +1191,9 @@ void HEBChart::renderBaseVkvg() {
         float pointX = windowWidth / 2.0f + leaf.normalizedPosition.x * chartRadius;
         float pointY = windowHeight / 2.0f + leaf.normalizedPosition.y * chartRadius;
         vkvg_ellipse(context, pointRadius * 1.5f, pointRadius * 1.5f, pointX * s, pointY * s, 0.0f);
-        vkvg_set_source_color(context, circleFillColorSelected.getColorRGBA());
+        vkvg_set_source_color(
+                context, (showSelectedRegionsByColor && idx == 1
+                          ? circleFillColorSelected1 : circleFillColorSelected0).getColorRGBA());
         vkvg_fill(context);
     }
 
@@ -1148,6 +1299,32 @@ void HEBChart::renderBaseVkvg() {
         }
     }
 
+    if (showSelectedRegionsByColor && isFocusView && !fieldDataArray.empty()) {
+        glm::vec2 center(windowWidth / 2.0f * s, windowHeight / 2.0f * s);
+        auto* fieldData = fieldDataArray.front().get();
+        float rhi = (totalRadius + std::max(totalRadius * 0.015f, 4.0f)) * s;
+        for (int i = 0; i < 2; i++) {
+            float angle0 = i == 0 ? fieldData->a00 : fieldData->a10;
+            float angle1 = i == 0 ? fieldData->a01 : fieldData->a11;
+            const sgl::Color& circleFillColorSelected = getColorSelected(i);
+            vkvg_arc(context, center.x, center.y, rhi, angle0, angle1);
+            vkvg_set_line_width(context, 3.0f * s);
+            vkvg_set_source_color(context, circleFillColorSelected.getColorRGBA());
+            vkvg_stroke(context);
+        }
+    }
+
+    // Render buttons.
+    for (auto& button : buttons) {
+        button.render(
+                vg,
+#ifdef SUPPORT_SKIA
+                canvas, nullptr,
+#endif
+                context,
+                isDarkMode, s);
+    }
+
     // Draw color legend.
     if (shallDrawColorLegend) {
         drawColorLegends();
@@ -1157,8 +1334,10 @@ void HEBChart::renderBaseVkvg() {
 
 void HEBChart::drawColorLegends() {
     auto numFields = int(fieldDataArray.size());
-    auto labelMap = [](float t) {
-        return getNiceNumberString(t * 0.5f, 4);
+    float maxMi = correlationValuesArray.empty() ? 0.0f : correlationValuesArray.back();
+    float minMi = correlationValuesArray.empty() ? 0.0f : correlationValuesArray.front();
+    auto labelMap = [minMi, maxMi](float t) {
+        return getNiceNumberString((1.0f - t) * minMi + t * maxMi, 2);
     };
     for (int i = 0; i < numFields; i++) {
         int ix = numFields - i;
@@ -1166,11 +1345,20 @@ void HEBChart::drawColorLegends() {
         auto colorMap = [fieldData](float t) {
             return fieldData->evalColorMapVec4(t);
         };
+        int numLabels = 5;
+        int numTicks = 5;
+        if (colorLegendHeight < textSizeLegend * 2.0f) {
+            numLabels = 2;
+            numTicks = 2;
+        } else if (colorLegendHeight < textSizeLegend * 4.0f) {
+            numLabels = 3;
+            numTicks = 3;
+        }
         drawColorLegend(
                 windowWidth - borderSizeX - float(ix) * (colorLegendWidth + textWidthMax),
                 windowHeight - borderSizeY - colorLegendHeight,
                 colorLegendWidth, colorLegendHeight,
-                2, 5, labelMap, colorMap,
+                numLabels, numTicks, labelMap, colorMap,
                 fieldData->selectedScalarFieldName);
     }
 }
@@ -1214,9 +1402,10 @@ void HEBChart::drawColorLegend(
             auto fillColor0 = nvgRGBAf(fillColorVec0.x, fillColorVec0.y, fillColorVec0.z, 1.0f);
             auto fillColor1 = nvgRGBAf(fillColorVec1.x, fillColorVec1.y, fillColorVec1.z, 1.0f);
             nvgBeginPath(vg);
-            nvgRect(vg, x, y + h * float(i) / float(numSubdivisions), w, h / float(numSubdivisions));
+            nvgRect(vg, x, y + h * float(i) / float(numSubdivisions), w, h / float(numSubdivisions) + 1e-1f);
             NVGpaint paint = nvgLinearGradient(
-                    vg, x, y + h * float(i) / float(numSubdivisions), x, y + h * float(i+1) / float(numSubdivisions),
+                    vg, x, y + h * float(i) / float(numSubdivisions),
+                    x, y + h * float(i+1) / float(numSubdivisions),
                     fillColor0, fillColor1);
             nvgFillPaint(vg, paint);
             nvgFill(vg);
@@ -1235,7 +1424,7 @@ void HEBChart::drawColorLegend(
             canvas->drawRect(
                     SkRect{
                         x * s, (y + h * float(i) / float(numSubdivisions)) * s,
-                        (x + w) * s, (y + h * float(i + 1) / float(numSubdivisions)) * s}, *gradientPaint);
+                        (x + w) * s, (y + h * float(i + 1) / float(numSubdivisions) + 1e-1f) * s}, *gradientPaint);
         }
 #endif
 #ifdef SUPPORT_VKVG
@@ -1249,7 +1438,7 @@ void HEBChart::drawColorLegend(
             vkvg_pattern_destroy(pattern);
             vkvg_rectangle(
                     context, x * s, (y + h * float(i) / float(numSubdivisions)) * s,
-                    w * s, h / float(numSubdivisions) * s);
+                    w * s, (h / float(numSubdivisions) + 1e-1f) * s);
             vkvg_fill(context);
         }
 #endif
@@ -1296,9 +1485,9 @@ void HEBChart::drawColorLegend(
     if (vg) {
         nvgFontSize(vg, textSizeLegend);
         nvgFontFace(vg, "sans");
-        for (int tickIdx = 0; tickIdx < numTicks; tickIdx++) {
-            float t = 1.0f - float(tickIdx) / float(numTicks - 1);
-            float centerY = y + float(tickIdx) / float(numTicks - 1) * h;
+        for (int tickIdx = 0; tickIdx < numLabels; tickIdx++) {
+            float t = 1.0f - float(tickIdx) / float(numLabels - 1);
+            float centerY = y + float(tickIdx) / float(numLabels - 1) * h;
             std::string labelText = labelMap(t);
             nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
             nvgFillColor(vg, textColorNvg);
@@ -1310,9 +1499,9 @@ void HEBChart::drawColorLegend(
 #ifdef SUPPORT_SKIA
     else if (canvas) {
         paint->setColor(toSkColor(textColor));
-        for (int tickIdx = 0; tickIdx < numTicks; tickIdx++) {
-            float t = 1.0f - float(tickIdx) / float(numTicks - 1);
-            float centerY = y + float(tickIdx) / float(numTicks - 1) * h;
+        for (int tickIdx = 0; tickIdx < numLabels; tickIdx++) {
+            float t = 1.0f - float(tickIdx) / float(numLabels - 1);
+            float centerY = y + float(tickIdx) / float(numLabels - 1) * h;
             std::string labelText = labelMap(t);
             SkRect bounds{};
             font->measureText(labelText.c_str(), labelText.size(), SkTextEncoding::kUTF8, &bounds);
@@ -1328,9 +1517,9 @@ void HEBChart::drawColorLegend(
         vkvg_set_font_size(context, uint32_t(std::round(textSizeLegend * s * 0.75f)));
         //vkvg_select_font_face(context, "sans");
         vkvg_set_source_color(context, textColor.getColorRGBA());
-        for (int tickIdx = 0; tickIdx < numTicks; tickIdx++) {
-            float t = 1.0f - float(tickIdx) / float(numTicks - 1);
-            float centerY = y + float(tickIdx) / float(numTicks - 1) * h;
+        for (int tickIdx = 0; tickIdx < numLabels; tickIdx++) {
+            float t = 1.0f - float(tickIdx) / float(numLabels - 1);
+            float centerY = y + float(tickIdx) / float(numLabels - 1) * h;
             std::string labelText = labelMap(t);
             vkvg_text_extents_t te{};
             vkvg_text_extents(context, labelText.c_str(), &te);

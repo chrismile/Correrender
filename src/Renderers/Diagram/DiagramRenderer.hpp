@@ -108,9 +108,11 @@ private:
     glm::vec2 correlationRange{}, correlationRangeTotal{};
     glm::ivec2 cellDistanceRange{}, cellDistanceRangeTotal{};
     int diagramRadius = 160;
+    float outerRingSizePct = 0.1f;
     bool alignWithParentWindow = false;
     bool opacityByValue = false;
     bool colorByValue = true;
+    bool showSelectedRegionsByColor = true;
     bool use2dField = false;
 
     // Test data.
