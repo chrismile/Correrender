@@ -223,7 +223,7 @@ Real averageDigamma(
         }
         int endRange = upper - 1;
 
-        int numPoints = endRange + 1 - startRange;
+        int numPoints = std::max(endRange + 1 - startRange, 1);
         if constexpr(includeCenter) {
             meanDigammaValue += factor * Real(boost::math::digamma(numPoints)); // nx/y + 1
         } else {

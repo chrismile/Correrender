@@ -549,7 +549,7 @@ bool VolumeData::setInputFiles(
         helicityVariableExists = true;
     }
 
-    if (es > 1) {
+    if (ts > 1 || es > 1) {
         addCalculator(std::make_shared<CorrelationCalculator>(renderer));
 #ifdef SUPPORT_PYTORCH
         addCalculator(std::make_shared<PyTorchCorrelationCalculator>(renderer));

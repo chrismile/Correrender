@@ -157,6 +157,7 @@ protected:
     sgl::Color backgroundFillColorBright = sgl::Color(245, 245, 245, 255);
     sgl::Color backgroundStrokeColorDark = sgl::Color(60, 60, 60, 255);
     sgl::Color backgroundStrokeColorBright = sgl::Color(190, 190, 190, 255);
+    bool renderBackgroundStroke = true;
 
     enum ResizeDirection {
         NONE = 0, LEFT = 1, RIGHT = 2, BOTTOM = 4, TOP = 8,

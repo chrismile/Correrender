@@ -125,9 +125,7 @@ void heapSort() {
 
 float averageDigamma() {
     heapSort();
-    //if (gl_GlobalInvocationID.x == 29 && gl_GlobalInvocationID.y == 176 && gl_GlobalInvocationID.z == 10) {
-    //    debugPrintfEXT("refs %f %f %f %f", referenceValues[0], referenceValues[1], referenceValues[2], referenceValues[3]);
-    //}
+
     float factor = 1.0 / float(cs);
     float meanDigammaValue = 0.0;
     for (uint c = 0; c < cs; c++) {
@@ -165,10 +163,7 @@ float averageDigamma() {
         }
         int endRange = upper - 1;
 
-        uint numPoints = uint(endRange + 1 - startRange);
-        //if (gl_GlobalInvocationID.x == 29 && gl_GlobalInvocationID.y == 176 && gl_GlobalInvocationID.z == 10) {
-        //    debugPrintfEXT("np %u", numPoints);
-        //}
+        uint numPoints = max(uint(endRange + 1 - startRange), 1u);
         meanDigammaValue += factor * digamma(numPoints);
     }
     return meanDigammaValue;
@@ -183,19 +178,23 @@ float averageDigamma() {
 
 layout(local_size_x = BLOCK_SIZE_X, local_size_y = BLOCK_SIZE_Y, local_size_z = BLOCK_SIZE_Z) in;
 
+#ifdef USE_REQUESTS_BUFFER
+#include "RequestsBuffer.glsl"
+#else
 layout (binding = 0) uniform UniformBuffer {
     uint xs, ys, zs, cs;
 };
 layout (binding = 1, r32f) uniform writeonly image3D outputImage;
-layout (binding = 2) uniform sampler scalarFieldSampler;
-layout (binding = 3) uniform texture3D scalarFields[MEMBER_COUNT];
-
 layout(push_constant) uniform PushConstants {
     ivec3 referencePointIdx;
     int padding0;
     uvec3 batchOffset;
     uint padding1;
 };
+#endif
+
+layout (binding = 2) uniform sampler scalarFieldSampler;
+layout (binding = 3) uniform texture3D scalarFields[MEMBER_COUNT];
 
 
 /*
@@ -250,10 +249,6 @@ void buildKdTree() {
         heapSort2D(stackEntry.startIdx, stackEntry.endIdx, axis);
         uint medianIndex = stackEntry.startIdx + (stackEntry.endIdx - stackEntry.startIdx) / 2u;
 
-        //if (nodeCounter == 2 && gl_GlobalInvocationID.x == 29 && gl_GlobalInvocationID.y == 176 && gl_GlobalInvocationID.z == 10) {
-        //    debugPrintfEXT("vs %f %f", referenceValues[stackEntry.startIdx], referenceValues[stackEntry.endIdx-1]);
-        //}
-
         uint rightIdx;
         if (stackEntry.endIdx - medianIndex - 1 == 0u) {
             rightIdx = INVALID_NODE;
@@ -274,18 +269,6 @@ void buildKdTree() {
 
         uint leftRightIdx = (leftIdx | rightIdx << 16u);
         nodes[nodeCounter] = KdNode(vec2(referenceValues[medianIndex], queryValues[medianIndex]), axis, leftRightIdx);
-        //if (gl_GlobalInvocationID.x == 29 && gl_GlobalInvocationID.y == 176 && gl_GlobalInvocationID.z == 10) {
-        //    debugPrintfEXT("add %u %u %f %f %u %u", nodeCounter, axis, referenceValues[medianIndex], queryValues[medianIndex], leftIdx, rightIdx);
-        //}
-        //if (gl_GlobalInvocationID.x == 29 && gl_GlobalInvocationID.y == 176 && gl_GlobalInvocationID.z == 10) {
-        //    debugPrintfEXT("p %f %f", nodes[nodeCounter].point.x, nodes[nodeCounter].point.y);
-        //}
-        //if (gl_GlobalInvocationID.x == 0 && gl_GlobalInvocationID.y == 0 && gl_GlobalInvocationID.z == 0) {
-        //    debugPrintfEXT("bd (%u): %u", nodeCounter, leftRightIdx);
-        //}
-        //if (gl_GlobalInvocationID.x == 0 && gl_GlobalInvocationID.y == 0 && gl_GlobalInvocationID.z == 0) {
-        //    debugPrintfEXT("bd %u / %i", stackSize, MAX_STACK_SIZE_BUILD);
-        //}
         nodeCounter++;
     }
 }
@@ -306,13 +289,6 @@ float findKNearestNeighbors(vec2 point, uint c) {
             stackSize++;
             currNode = nodes[currNodeIdx];
 
-            //if (gl_GlobalInvocationID.x == 0 && gl_GlobalInvocationID.y == 0 && gl_GlobalInvocationID.z == 0) {
-            //    debugPrintfEXT("gd (%u): %u", currNodeIdx, currNode.leftRightIdx);
-            //}
-            //if (gl_GlobalInvocationID.x == 0 && gl_GlobalInvocationID.y == 0 && gl_GlobalInvocationID.z == 0) {
-            //    debugPrintfEXT("bd %u / %i", stackSize, MAX_STACK_SIZE_KN);
-            //}
-
             // Descend on side of split planes where the point lies.
             bool isPointOnLeftSide = point[currNode.axis] <= currNode.point[currNode.axis];
             if (isPointOnLeftSide) {
@@ -328,12 +304,6 @@ float findKNearestNeighbors(vec2 point, uint c) {
 
         // Compute the distance of this node to the point.
         vec2 diff = abs(point - currNode.point);
-        //if (e == 4 && gl_GlobalInvocationID.x == 29 && gl_GlobalInvocationID.y == 176 && gl_GlobalInvocationID.z == 10) {
-        //    debugPrintfEXT("n %f %f %u", currNode.point[0], currNode.point[1], currNode.axis);
-        //}
-        //if (gl_GlobalInvocationID.x == 29 && gl_GlobalInvocationID.y == 176 && gl_GlobalInvocationID.z == 10) {
-        //    debugPrintfEXT("p %f %f, n %f %f", point[0], point[1], currNode.point[0], currNode.point[1]);
-        //}
         float newDistance = max(diff.x, diff.y);
         if (newDistance < distances[k]) {
             float tempDistance;
@@ -345,12 +315,6 @@ float findKNearestNeighbors(vec2 point, uint c) {
                 }
             }
         }
-        //if (gl_GlobalInvocationID.x == 29 && gl_GlobalInvocationID.y == 176 && gl_GlobalInvocationID.z == 10) {
-        //    debugPrintfEXT("dist %f %f %f %f", distances[0], distances[1], distances[2], distances[3]);
-        //}
-        //if (gl_GlobalInvocationID.x == 0 && gl_GlobalInvocationID.y == 0 && gl_GlobalInvocationID.z == 0) {
-        //    debugPrintfEXT("kn (%u): %u", currNodeIdx, currNode.leftRightIdx);
-        //}
 
         // Check whether there could be a closer point on the opposite side.
         bool isPointOnLeftSide = point[currNode.axis] <= currNode.point[currNode.axis];
@@ -361,14 +325,7 @@ float findKNearestNeighbors(vec2 point, uint c) {
         } else {
             currNodeIdx = INVALID_NODE;
         }
-
-        //if (gl_GlobalInvocationID.x == 0 && gl_GlobalInvocationID.y == 0 && gl_GlobalInvocationID.z == 0) {
-        //    debugPrintfEXT("fn (%u)", currNodeIdx);
-        //}
     }
-    //if (gl_GlobalInvocationID.x == 0 && gl_GlobalInvocationID.y == 0 && gl_GlobalInvocationID.z == 0) {
-    //    debugPrintfEXT("fin");
-    //}
     return distances[k];
 }
 
@@ -407,6 +364,7 @@ float digamma(uint ix) {
 const float EPSILON = 1e-6;
 const float EPSILON_NOISE = 1e-5;
 
+#define REF 111
 #define averageDigamma averageDigammaReference
 #define valueArray referenceValues
 #define swapElements swapElementsReference
@@ -419,6 +377,8 @@ const float EPSILON_NOISE = 1e-5;
 #undef heapify
 #undef heapSort
 
+#undef REF
+#define REF 222
 #define averageDigamma averageDigammaQuery
 #define valueArray queryValues
 #define swapElements swapElementsQuery
@@ -449,13 +409,17 @@ float getRandomFloatNorm(inout uvec3 rngState) {
 #endif
 
 void main() {
-    ivec3 currentPointIdx = ivec3(gl_GlobalInvocationID.xyz + batchOffset);
-    if (currentPointIdx.x >= xs || currentPointIdx.y >= ys || currentPointIdx.z >= zs) {
-        return;
-    }
+#include "CorrelationMain.glsl"
+
+    float nanValue = 0.0;
+    float value;
 
 #ifdef KRASKOV_USE_RANDOM_NOISE
+#ifdef USE_REQUESTS_BUFFER
+    uint globalThreadIdx = gl_GlobalInvocationID.x;
+#else
     uint globalThreadIdx = gl_GlobalInvocationID.x + gl_GlobalInvocationID.y * xs + gl_GlobalInvocationID.z * xs * ys;
+#endif
     uint seed = 17u * globalThreadIdx + 240167u;
 
     // Use Xorshift random numbers with period 2^96-1.
@@ -465,12 +429,14 @@ void main() {
     rngState.z = 521288629u ^ seed;
 
     // Optionally add noise.
-    float nanValue = 0.0;
-    float value;
     for (uint c = 0; c < cs; c++) {
-        referenceValues[c] =
+        value =
                 texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), referencePointIdx, 0).r
                 + EPSILON_NOISE * getRandomFloatNorm(rngState);
+        if (isnan(value)) {
+            nanValue = value;
+        }
+        referenceValues[c] = value;
         value =
                 texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), currentPointIdx, 0).r
                 + EPSILON_NOISE * getRandomFloatNorm(rngState);
@@ -483,8 +449,11 @@ void main() {
     float nanValue = 0.0;
     float value;
     for (uint c = 0; c < cs; c++) {
-        referenceValues[c] = texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), referencePointIdx, 0).r;
-        //queryValues[c] = texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), currentPointIdx, 0).r;
+        value = texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), referencePointIdx, 0).r;
+        if (isnan(value)) {
+            nanValue = value;
+        }
+        referenceValues[c] = value;
         value = texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), currentPointIdx, 0).r;
         if (isnan(value)) {
             nanValue = value;
@@ -495,26 +464,8 @@ void main() {
 
     buildKdTree();
 
-    //rngState.x = 123456789u ^ seed;
-    //rngState.y = 362436069u ^ seed;
-    //rngState.z = 521288629u ^ seed;
-    //for (uint c = 0; c < cs; c++) {
-    //    referenceValues[c] =
-    //            texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), referencePointIdx, 0).r
-    //            + EPSILON_NOISE * getRandomFloatNorm(rngState);
-    //    queryValues[c] =
-    //            texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), currentPointIdx, 0).r
-    //            + EPSILON_NOISE * getRandomFloatNorm(rngState);
-    //}
-
     for (uint c = 0; c < cs; c++) {
-        //if (gl_GlobalInvocationID.x == 29 && gl_GlobalInvocationID.y == 176 && gl_GlobalInvocationID.z == 10) {
-        //    debugPrintfEXT("kref %f, kquery %f", referenceValues[e], queryValues[e]);
-        //}
         kthNeighborDistances[c] = findKNearestNeighbors(vec2(referenceValues[c], queryValues[c]), c);
-        //if (gl_GlobalInvocationID.x == 29 && gl_GlobalInvocationID.y == 176 && gl_GlobalInvocationID.z == 10) {
-        //    debugPrintfEXT("kn (%u): %f", e, kthNeighborDistances[e]);
-        //}
     }
 
     float a = averageDigammaReference();
@@ -524,10 +475,9 @@ void main() {
     //float mi = (-a - b + c + d) / log(base);
     float mi = -a - b + c + d;
 
-    //if (gl_GlobalInvocationID.x == 29 && gl_GlobalInvocationID.y == 176 && gl_GlobalInvocationID.z == 10) {
-    //    debugPrintfEXT("abcd %f %f %f %f", a, b, c, d);
-    //    debugPrintfEXT("mi %f", mi);
-    //}
-
+#ifdef USE_REQUESTS_BUFFER
+    outputBuffer[requestIdx] = isnan(nanValue) ? nanValue : max(mi, 0.0);
+#else
     imageStore(outputImage, currentPointIdx, vec4(isnan(nanValue) ? nanValue : max(mi, 0.0)));
+#endif
 }

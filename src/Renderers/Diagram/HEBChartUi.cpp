@@ -56,7 +56,80 @@
 #ifdef SUPPORT_VKVG
 #include "VectorBackendVkvg.hpp"
 #endif
+#include "ColorSpace.hpp"
 #include "HEBChart.hpp"
+
+void HEBChartFieldData::setColorMap(DiagramColorMap _colorMap) {
+    colorMapLines = _colorMap;
+    initializeColorPoints();
+}
+
+void HEBChartFieldData::setColorMapVariance(DiagramColorMap _colorMap) {
+    colorMapVariance = _colorMap;
+    initializeColorPointsVariance();
+}
+
+void HEBChartFieldData::initializeColorPoints() {
+    colorPointsLines = getColorPoints(colorMapLines);
+}
+
+void HEBChartFieldData::initializeColorPointsVariance() {
+    colorPointsVariance = getColorPoints(colorMapVariance);
+}
+
+glm::vec4 HEBChartFieldData::evalColorMapVec4(float t) {
+    if (std::isnan(t)) {
+        if (colorMapLines == DiagramColorMap::VIRIDIS) {
+            return glm::vec4(1.0f, 0.0f, 1.0f, 1.0f);
+        } else {
+            return glm::vec4(1.0f, 1.0f, 0.0f, 1.0f);
+        }
+    }
+    t = glm::clamp(t, 0.0f, 1.0f);
+    float opacity = parent->curveOpacity;
+    if (parent->opacityByValue) {
+        opacity *= t * 0.75f + 0.25f;
+    }
+    auto N = int(colorPointsLines.size());
+    float arrayPosFlt = t * float(N - 1);
+    int lastIdx = std::min(int(arrayPosFlt), N - 1);
+    int nextIdx = std::min(lastIdx + 1, N - 1);
+    float f1 = arrayPosFlt - float(lastIdx);
+    const glm::vec3& c0 = colorPointsLines.at(lastIdx);
+    const glm::vec3& c1 = colorPointsLines.at(nextIdx);
+    return glm::vec4(glm::mix(c0, c1, f1), opacity);
+}
+
+sgl::Color HEBChartFieldData::evalColorMap(float t) {
+    return sgl::colorFromVec4(evalColorMapVec4(t));
+}
+
+glm::vec4 HEBChartFieldData::evalColorMapVec4Variance(float t, bool saturated) {
+    if (!separateColorVarianceAndCorrelation) {
+        return evalColorMapVec4(t);
+    }
+    t = glm::clamp(t, 0.0f, 1.0f);
+    auto N = int(colorPointsVariance.size());
+    float arrayPosFlt = t * float(N - 1);
+    int lastIdx = std::min(int(arrayPosFlt), N - 1);
+    int nextIdx = std::min(lastIdx + 1, N - 1);
+    float f1 = arrayPosFlt - float(lastIdx);
+    const glm::vec3& c0 = colorPointsVariance.at(lastIdx);
+    const glm::vec3& c1 = colorPointsVariance.at(nextIdx);
+    glm::vec3 colorResult = glm::mix(c0, c1, f1);
+    if (!saturated) {
+        colorResult = rgbToHsl(colorResult);
+        colorResult.g = 0.0f;
+        colorResult = hslToRgb(colorResult);
+    }
+    return glm::vec4(colorResult, 1.0f);
+}
+
+sgl::Color HEBChartFieldData::evalColorMapVariance(float t, bool saturated) {
+    return sgl::colorFromVec4(evalColorMapVec4Variance(t, saturated));
+}
+
+
 
 HEBChart::HEBChart() {
 #ifdef SUPPORT_SKIA
@@ -172,6 +245,7 @@ void HEBChart::setOuterRingSizePercentage(float pct) {
 
 void HEBChart::setAlignWithParentWindow(bool _align) {
     alignWithParentWindow = _align;
+    renderBackgroundStroke = !_align;
     isWindowFixed = alignWithParentWindow;
     if (alignWithParentWindow) {
         updateSizeByParent();
@@ -188,14 +262,33 @@ void HEBChart::setColorByValue(bool _colorByValue) {
     needsReRender = true;
 }
 
+void HEBChart::setUseSeparateColorVarianceAndCorrelation(bool _separate) {
+    separateColorVarianceAndCorrelation = _separate;
+    for (auto& fieldData : fieldDataArray) {
+        fieldData->separateColorVarianceAndCorrelation = _separate;
+        if (separateColorVarianceAndCorrelation) {
+            fieldData->initializeColorPointsVariance();
+        }
+    }
+    computeColorLegendHeight();
+    needsReRender = true;
+}
+
 void HEBChart::setShowSelectedRegionsByColor(bool _show) {
     showSelectedRegionsByColor = _show;
     needsReRender = true;
 }
 
 void HEBChart::setColorMap(int fieldIdx, DiagramColorMap _colorMap) {
-    fieldDataArray.at(fieldIdx)->colorMap = _colorMap;
-    fieldDataArray.at(fieldIdx)->initializeColorPoints();
+    fieldDataArray.at(fieldIdx)->setColorMap(_colorMap);
+    needsReRender = true;
+}
+
+void HEBChart::setColorMapVariance(DiagramColorMap _colorMap) {
+    colorMapVariance = _colorMap;
+    for (auto& fieldData : fieldDataArray) {
+        fieldData->setColorMapVariance(_colorMap);
+    }
     needsReRender = true;
 }
 
@@ -246,10 +339,11 @@ bool isInsidePolygon(const std::vector<glm::vec2>& polygon, const glm::vec2& pt)
 
 void HEBChart::updateSizeByParent() {
     auto [parentWidth, parentHeight] = getBlitTargetSize();
+    auto ssf = float(blitTargetSupersamplingFactor);
     windowOffsetX = 0;
     windowOffsetY = 0;
-    windowWidth = float(parentWidth);
-    windowHeight = float(parentHeight);
+    windowWidth = float(parentWidth) / (scaleFactor * float(ssf));
+    windowHeight = float(parentHeight) / (scaleFactor * float(ssf));
     onUpdatedWindowSize();
     onWindowSizeChanged();
 }
@@ -461,33 +555,6 @@ void HEBChart::update(float dt) {
     selectedPointIndices[1] = newSelectedPointIndices[1];
 }
 
-void HEBChartFieldData::initializeColorPoints() {
-    colorPoints = getColorPoints(colorMap);
-}
-
-glm::vec4 HEBChartFieldData::evalColorMapVec4(float t) {
-    t = glm::clamp(t, 0.0f, 1.0f);
-    //glm::vec3 c0(208.0f/255.0f, 231.0f/255.0f, 208.0f/255.0f);
-    //glm::vec3 c1(100.0f/255.0f, 1.0f, 100.0f/255.0f);
-    float opacity = parent->curveOpacity;
-    if (parent->opacityByValue) {
-        opacity *= t * 0.75f + 0.25f;
-    }
-    //return glm::vec4(glm::mix(c0, c1, t), opacity);
-    auto N = int(colorPoints.size());
-    float arrayPosFlt = t * float(N - 1);
-    int lastIdx = std::min(int(arrayPosFlt), N - 1);
-    int nextIdx = std::min(lastIdx + 1, N - 1);
-    float f1 = arrayPosFlt - float(lastIdx);
-    const glm::vec3& c0 = colorPoints.at(lastIdx);
-    const glm::vec3& c1 = colorPoints.at(nextIdx);
-    return glm::vec4(glm::mix(c0, c1, f1), opacity);
-}
-
-sgl::Color HEBChartFieldData::evalColorMap(float t) {
-    return sgl::colorFromVec4(evalColorMapVec4(t));
-}
-
 void HEBChart::renderBaseNanoVG() {
     DiagramBase::renderBaseNanoVG();
 
@@ -629,6 +696,9 @@ void HEBChart::renderBaseNanoVG() {
             float rlo = chartRadius + outerRingOffset + pctLower * outerRingWidth;
             float rmi = chartRadius + outerRingOffset + pctMiddle * outerRingWidth;
             float rhi = chartRadius + outerRingOffset + pctUpper * outerRingWidth;
+            bool isSaturated =
+                    !separateColorVarianceAndCorrelation || selectedLineIdx < 0
+                    || lineFieldIndexArray.at(selectedLineIdx) == i;
 
             for (int leafIdx = int(leafIdxOffset); leafIdx < int(nodesList.size()); leafIdx++) {
                 if (!regionsEqual && (leafIdx == int(leafIdxOffset1) - 1 || leafIdx == int(nodesList.size()) - 1)) {
@@ -679,14 +749,14 @@ void HEBChart::renderBaseNanoVG() {
 
                 float stdev0 = fieldData->leafStdDevArray.at(leafIdx - int(leafIdxOffset));
                 float t0 = fieldData->minStdDev == fieldData->maxStdDev ? 0.0f : (stdev0 - fieldData->minStdDev) / (fieldData->maxStdDev - fieldData->minStdDev);
-                glm::vec4 rgbColor0 = fieldData->evalColorMapVec4(t0);
-                //glm::vec4 rgbColor0 = fieldData->evalColorMapVec4(leafCurr.angle / sgl::TWO_PI);
+                glm::vec4 rgbColor0 = fieldData->evalColorMapVec4Variance(t0, isSaturated);
+                //glm::vec4 rgbColor0 = fieldData->evalColorMapVec4Variance(leafCurr.angle / sgl::TWO_PI, false);
                 rgbColor0.w = 1.0f;
                 NVGcolor fillColor0 = nvgRGBAf(rgbColor0.x, rgbColor0.y, rgbColor0.z, rgbColor0.w);
                 float stdev1 = fieldData->leafStdDevArray.at(nextIdx - int(leafIdxOffset));
                 float t1 = fieldData->minStdDev == fieldData->maxStdDev ? 0.0f : (stdev1 - fieldData->minStdDev) / (fieldData->maxStdDev - fieldData->minStdDev);
-                glm::vec4 rgbColor1 = fieldData->evalColorMapVec4(t1);
-                //glm::vec4 rgbColor1 = fieldData->evalColorMapVec4(leafNext.angle / sgl::TWO_PI);
+                glm::vec4 rgbColor1 = fieldData->evalColorMapVec4Variance(t1, isSaturated);
+                //glm::vec4 rgbColor1 = fieldData->evalColorMapVec4Variance(leafNext.angle / sgl::TWO_PI, false);
                 rgbColor1.w = 1.0f;
                 NVGcolor fillColor1 = nvgRGBAf(rgbColor1.x, rgbColor1.y, rgbColor1.z, rgbColor1.w);
 
@@ -904,6 +974,9 @@ void HEBChart::renderBaseSkia() {
             float rlo = (chartRadius + outerRingOffset + pctLower * outerRingWidth) * s;
             float rmi = (chartRadius + outerRingOffset + pctMiddle * outerRingWidth) * s;
             float rhi = (chartRadius + outerRingOffset + pctUpper * outerRingWidth) * s;
+            bool isSaturated =
+                    !separateColorVarianceAndCorrelation || selectedLineIdx < 0
+                    || lineFieldIndexArray.at(selectedLineIdx) == i;
 
             for (int leafIdx = int(leafIdxOffset); leafIdx < int(nodesList.size()); leafIdx++) {
                 if (!regionsEqual && (leafIdx == int(leafIdxOffset1) - 1 || leafIdx == int(nodesList.size()) - 1)) {
@@ -950,11 +1023,11 @@ void HEBChart::renderBaseSkia() {
 
                 float stdev0 = fieldData->leafStdDevArray.at(leafIdx - int(leafIdxOffset));
                 float t0 = fieldData->minStdDev == fieldData->maxStdDev ? 0.0f : (stdev0 - fieldData->minStdDev) / (fieldData->maxStdDev - fieldData->minStdDev);
-                sgl::Color rgbColor0 = fieldData->evalColorMap(t0);
+                sgl::Color rgbColor0 = fieldData->evalColorMapVariance(t0, isSaturated);
                 rgbColor0.setA(255);
                 float stdev1 = fieldData->leafStdDevArray.at(nextIdx - int(leafIdxOffset));
                 float t1 = fieldData->minStdDev == fieldData->maxStdDev ? 0.0f : (stdev1 - fieldData->minStdDev) / (fieldData->maxStdDev - fieldData->minStdDev);
-                sgl::Color rgbColor1 = fieldData->evalColorMap(t1);
+                sgl::Color rgbColor1 = fieldData->evalColorMapVariance(t1, isSaturated);
                 rgbColor1.setA(255);
 
                 SkPoint linearPoints[2] = { { mi0.x, mi0.y }, { mi1.x, mi1.y } };
@@ -1208,6 +1281,9 @@ void HEBChart::renderBaseVkvg() {
             float rlo = (chartRadius + outerRingOffset + pctLower * outerRingWidth) * s;
             float rmi = (chartRadius + outerRingOffset + pctMiddle * outerRingWidth) * s;
             float rhi = (chartRadius + outerRingOffset + pctUpper * outerRingWidth) * s;
+            bool isSaturated =
+                    !separateColorVarianceAndCorrelation || selectedLineIdx < 0
+                    || lineFieldIndexArray.at(selectedLineIdx) == i;
 
             for (int leafIdx = int(leafIdxOffset); leafIdx < int(nodesList.size()); leafIdx++) {
                 if (!regionsEqual && (leafIdx == int(leafIdxOffset1) - 1 || leafIdx == int(nodesList.size()) - 1)) {
@@ -1256,10 +1332,10 @@ void HEBChart::renderBaseVkvg() {
 
                 float stdev0 = fieldData->leafStdDevArray.at(leafIdx - int(leafIdxOffset));
                 float t0 = fieldData->minStdDev == fieldData->maxStdDev ? 0.0f : (stdev0 - fieldData->minStdDev) / (fieldData->maxStdDev - fieldData->minStdDev);
-                glm::vec4 rgbColor0 = fieldData->evalColorMapVec4(t0);
+                glm::vec4 rgbColor0 = fieldData->evalColorMapVec4Variance(t0, isSaturated);
                 float stdev1 = fieldData->leafStdDevArray.at(nextIdx - int(leafIdxOffset));
                 float t1 = fieldData->minStdDev == fieldData->maxStdDev ? 0.0f : (stdev1 - fieldData->minStdDev) / (fieldData->maxStdDev - fieldData->minStdDev);
-                glm::vec4 rgbColor1 = fieldData->evalColorMapVec4(t1);
+                glm::vec4 rgbColor1 = fieldData->evalColorMapVec4Variance(t1, isSaturated);
 
                 auto pattern = vkvg_pattern_create_linear(mi0.x, mi0.y, mi1.x, mi1.y);
                 vkvg_pattern_add_color_stop(pattern, 0.0f, rgbColor0.x, rgbColor0.y, rgbColor0.z, 1.0f);
@@ -1333,33 +1409,70 @@ void HEBChart::renderBaseVkvg() {
 #endif
 
 void HEBChart::drawColorLegends() {
+    const auto& fieldDataArrayLocal = fieldDataArray;
     auto numFields = int(fieldDataArray.size());
+    if (numFields == 0) {
+        return;
+    }
+    if (separateColorVarianceAndCorrelation) {
+        numFields++;
+    }
+
     float maxMi = correlationValuesArray.empty() ? 0.0f : correlationValuesArray.back();
     float minMi = correlationValuesArray.empty() ? 0.0f : correlationValuesArray.front();
-    auto labelMap = [minMi, maxMi](float t) {
-        return getNiceNumberString((1.0f - t) * minMi + t * maxMi, 2);
-    };
     for (int i = 0; i < numFields; i++) {
         int ix = numFields - i;
-        auto* fieldData = fieldDataArray.at(i).get();
-        auto colorMap = [fieldData](float t) {
-            return fieldData->evalColorMapVec4(t);
-        };
+        HEBChartFieldData* fieldData = nullptr;
+        std::string variableName;
+        std::function<glm::vec4(float)> colorMap;
+        std::function<std::string(float)> labelMap;
+        bool isEnsembleSpread = separateColorVarianceAndCorrelation && i == 0;
+        if (isEnsembleSpread) {
+            variableName = "\u03C3"; //< sigma.
+            colorMap = [fieldDataArrayLocal](float t) {
+                return fieldDataArrayLocal.front()->evalColorMapVec4Variance(t, true);
+            };
+            labelMap = [](float t) {
+                return t < 0.0001f ? "min" : (t > 0.9999f ? "max" : "");
+            };
+        } else {
+            int fieldIdx = separateColorVarianceAndCorrelation ? i - 1 : i;
+            fieldData = fieldDataArray.at(fieldIdx).get();
+            variableName = fieldData->selectedScalarFieldName;
+            colorMap = [fieldData](float t) {
+                return fieldData->evalColorMapVec4(t);
+            };
+            labelMap = [minMi, maxMi](float t) {
+                return getNiceNumberString((1.0f - t) * minMi + t * maxMi, 2);
+            };
+        }
+
         int numLabels = 5;
         int numTicks = 5;
-        if (colorLegendHeight < textSizeLegend * 2.0f) {
+        if (colorLegendHeight < textSizeLegend * 0.625f) {
+            numLabels = 0;
+            numTicks = 0;
+        } else if (colorLegendHeight < textSizeLegend * 2.0f) {
             numLabels = 2;
             numTicks = 2;
         } else if (colorLegendHeight < textSizeLegend * 4.0f) {
             numLabels = 3;
             numTicks = 3;
         }
+
+        float posX;
+        if (arrangeColorLegendsBothSides && i < numFields / 2) {
+            posX = borderSizeX + float(i) * (colorLegendWidth + textWidthMax + colorLegendSpacing);
+        } else {
+            posX =
+                    windowWidth - borderSizeX
+                    - float(ix) * (colorLegendWidth + textWidthMax)
+                    - float(ix - 1) * colorLegendSpacing;
+        }
+
         drawColorLegend(
-                windowWidth - borderSizeX - float(ix) * (colorLegendWidth + textWidthMax),
-                windowHeight - borderSizeY - colorLegendHeight,
-                colorLegendWidth, colorLegendHeight,
-                numLabels, numTicks, labelMap, colorMap,
-                fieldData->selectedScalarFieldName);
+                posX, windowHeight - borderSizeY - colorLegendHeight,
+                colorLegendWidth, colorLegendHeight, numLabels, numTicks, labelMap, colorMap, variableName);
     }
 }
 
@@ -1594,25 +1707,44 @@ void HEBChart::drawColorLegend(
 
 template<typename T> inline T sqr(T val) { return val * val; }
 
-void HEBChart::computeColorLegendHeight() {
-    textWidthMax = textWidthMaxBase * textSize / 8.0f;
-    const auto numFields = int(fieldDataArray.size());
+float HEBChart::computeColorLegendHeightForNumFields(int numFields, float maxHeight) {
     const float r = totalRadius;
     const float bx = borderSizeX;
     const float by = borderSizeY;
     const float w = windowWidth;
     const float h = windowHeight;
-    const float cw = float(numFields) * (colorLegendWidth + textWidthMax);
     const float d = colorLegendCircleDist;
+    const float cw = float(numFields) * (colorLegendWidth + textWidthMax) + float(numFields - 1) * colorLegendSpacing;
 
     const float b = -2.0f * (h - by - h * 0.5f);
     const float c = sqr(h - by - h * 0.5f) - sqr(r + d) + sqr(w - bx - cw - w * 0.5f);
     const float discriminant = b * b - 4.0f * c;
-    const float maxHeight = std::min(maxColorLegendHeight, totalRadius * 0.5f);
+
+    float height;
     if (discriminant > 0.0f) {
-        colorLegendHeight = (-b - std::sqrt(b * b - 4.0f * c)) * 0.5f - textSize * 2.0f;
-        colorLegendHeight = std::clamp(colorLegendHeight, 1.0f, maxHeight);
+        height = (-b - std::sqrt(b * b - 4.0f * c)) * 0.5f - textSize * 2.0f;
+        height = std::clamp(height, 1.0f, maxHeight);
     } else {
-        colorLegendHeight = maxHeight;
+        height = maxHeight;
+    }
+    return height;
+}
+
+void HEBChart::computeColorLegendHeight() {
+    textWidthMax = textWidthMaxBase * textSize / 8.0f;
+    auto numFields = int(fieldDataArray.size());
+
+    // Add transfer function for ensemble spread.
+    if (separateColorVarianceAndCorrelation) {
+        numFields++;
+    }
+
+    const float maxHeight = std::min(maxColorLegendHeight, totalRadius * 0.5f);
+    colorLegendHeight = computeColorLegendHeightForNumFields(numFields, maxHeight);
+    if (numFields > 1 && colorLegendHeight < maxHeight * 0.5f) {
+        colorLegendHeight = computeColorLegendHeightForNumFields(sgl::iceil(numFields, 2), maxHeight);
+        arrangeColorLegendsBothSides = true;
+    } else {
+        arrangeColorLegendsBothSides = false;
     }
 }

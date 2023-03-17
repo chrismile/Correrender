@@ -43,6 +43,7 @@
 #include "../../Calculators/CorrelationDefines.hpp"
 
 typedef std::shared_ptr<float[]> HostCacheEntry;
+class CorrelationComputePass;
 class HEBChart;
 
 struct MIFieldEntry {
@@ -78,11 +79,17 @@ struct HEBChartFieldData {
     float a00 = 0.0f, a01 = 0.0f, a10 = 0.0f, a11 = 0.0f;
 
     // Transfer function.
+    void setColorMap(DiagramColorMap _colorMap); //< Only lines if separateColorVarianceAndCorrelation.
+    void setColorMapVariance(DiagramColorMap _colorMap);
     void initializeColorPoints();
+    void initializeColorPointsVariance();
     glm::vec4 evalColorMapVec4(float t);
     sgl::Color evalColorMap(float t);
-    DiagramColorMap colorMap = DiagramColorMap::CIVIDIS;
-    std::vector<glm::vec3> colorPoints;
+    glm::vec4 evalColorMapVec4Variance(float t, bool saturated);
+    sgl::Color evalColorMapVariance(float t, bool saturated);
+    DiagramColorMap colorMapLines = DiagramColorMap::CIVIDIS, colorMapVariance = DiagramColorMap::CIVIDIS;
+    std::vector<glm::vec3> colorPointsLines, colorPointsVariance;
+    bool separateColorVarianceAndCorrelation = true;
 };
 typedef std::shared_ptr<HEBChartFieldData> HEBChartFieldDataPtr;
 
@@ -96,6 +103,7 @@ class HEBChart : public DiagramBase {
     friend struct HEBChartFieldData;
 public:
     HEBChart();
+    ~HEBChart();
     DiagramType getDiagramType() override { return DiagramType::HEB_CHART; }
     void initialize() override;
     void update(float dt) override;
@@ -106,7 +114,8 @@ public:
     void clearScalarFields();
     void addScalarField(int selectedFieldIdx, const std::string& _scalarFieldName);
     void removeScalarField(int selectedFieldIdx, bool doNotShiftIndicesBack);
-    void setColorMap(int fieldIdx, DiagramColorMap _colorMap);
+    void setColorMap(int fieldIdx, DiagramColorMap _colorMap); //< Only lines if separateColorVarianceAndCorrelation.
+    void setColorMapVariance(DiagramColorMap _colorMap);
     void setIsEnsembleMode(bool _isEnsembleMode);
     void setCorrelationMeasureType(CorrelationMeasureType _correlationMeasureType);
     void setSamplingMethodType(SamplingMethodType _samplingMethodType);
@@ -121,8 +130,10 @@ public:
     void setAlignWithParentWindow(bool _align);
     void setOpacityByValue(bool _opacityByValue);
     void setColorByValue(bool _colorByValue);
+    void setUseSeparateColorVarianceAndCorrelation(bool _separate);
     void setShowSelectedRegionsByColor(bool _show);
     void setUse2DField(bool _use2dField);
+    void setUseCorrelationComputationGpu(bool _useGpu);
 
     // Selection query.
     void resetSelectedPrimitives();
@@ -179,6 +190,7 @@ private:
 
     int getCorrelationMemberCount();
     HostCacheEntry getFieldEntryCpu(const std::string& fieldName, int fieldIdx);
+    DeviceCacheEntry getFieldEntryDevice(const std::string& fieldName, int fieldIdx);
     std::pair<float, float> getMinMaxScalarFieldValue(const std::string& fieldName, int fieldIdx);
     bool isEnsembleMode = true; //< Ensemble or time mode?
 
@@ -201,8 +213,7 @@ private:
     void updateData();
     void computeDownscaledField(
             HEBChartFieldData* fieldData, int idx, std::vector<float*>& downscaledFields);
-    void computeDownscaledFieldVariance(
-            HEBChartFieldData* fieldData, int idx, std::vector<float*>& downscaledFields);
+    void computeDownscaledFieldVariance(HEBChartFieldData* fieldData, int idx);
     void computeCorrelations(
             HEBChartFieldData* fieldData,
             std::vector<float*>& downscaledFields0, std::vector<float*>& downscaledFields1,
@@ -211,7 +222,8 @@ private:
             HEBChartFieldData* fieldData,
             std::vector<float*>& downscaledFields0, std::vector<float*>& downscaledFields1,
             std::vector<MIFieldEntry>& miFieldEntries);
-    void computeCorrelationsSampling(HEBChartFieldData* fieldData, std::vector<MIFieldEntry>& miFieldEntries);
+    void computeCorrelationsSamplingCpu(HEBChartFieldData* fieldData, std::vector<MIFieldEntry>& miFieldEntries);
+    void computeCorrelationsSamplingGpu(HEBChartFieldData* fieldData, std::vector<MIFieldEntry>& miFieldEntries);
     int numLinesTotal = 0;
     int MAX_NUM_LINES = 100;
     const int NUM_SUBDIVISIONS = 50;
@@ -221,6 +233,17 @@ private:
     glm::vec2 correlationRange{}, correlationRangeTotal{};
     glm::ivec2 cellDistanceRange{}, cellDistanceRangeTotal{};
 
+    // GPU computations.
+    bool useCorrelationComputationGpu = true;
+    bool supportsAsyncCompute = true;
+    sgl::vk::Renderer* computeRenderer = nullptr;
+    sgl::vk::BufferPtr requestsBuffer{}, requestsStagingBuffer{};
+    sgl::vk::BufferPtr correlationOutputBuffer{}, correlationOutputStagingBuffer{};
+    sgl::vk::FencePtr fence{};
+    VkCommandPool commandPool{};
+    VkCommandBuffer commandBuffer{};
+    std::shared_ptr<CorrelationComputePass> correlationComputePass;
+
     // Field data.
     std::vector<HEBChartFieldDataPtr> fieldDataArray;
     // Lines (stored separately from field data, as lines should be rendered from lowest to highest value).
@@ -229,6 +252,7 @@ private:
     std::vector<std::pair<int, int>> connectedPointsArray; ///< points connected by lines.
     std::vector<int> lineFieldIndexArray;
     float minCorrelationValueGlobal = 0.0f, maxCorrelationValueGlobal = 0.0f;
+    DiagramColorMap colorMapVariance = DiagramColorMap::VIRIDIS;
 
     // GUI data.
     float chartRadius{};
@@ -251,6 +275,7 @@ private:
     bool opacityByValue = false;
     bool colorByValue = true;
     bool showSelectedRegionsByColor = true;
+    bool separateColorVarianceAndCorrelation = true;
 
     // Outer ring.
     bool showRing = true;
@@ -264,14 +289,17 @@ private:
             float x, float y, float w, float h, int numLabels, int numTicks,
             const std::function<std::string(float)>& labelMap, const std::function<glm::vec4(float)>& colorMap,
             const std::string& textTop);
+    float computeColorLegendHeightForNumFields(int numFields, float maxHeight);
     void computeColorLegendHeight();
     bool shallDrawColorLegend = true;
     sgl::Color textColorDark = sgl::Color(255, 255, 255, 255);
     sgl::Color textColorBright = sgl::Color(0, 0, 0, 255);
+    bool arrangeColorLegendsBothSides = false;
     float colorLegendWidth = 20.0f;
     float colorLegendHeight = 20.0f;
     float maxColorLegendHeight = 200.0f;
     float colorLegendCircleDist = 5.0f;
+    const float colorLegendSpacing = 4.0f;
     const float textWidthMaxBase = 32;
     float textWidthMax = 32;
 

@@ -50,6 +50,7 @@
 #include "MutualInformation.hpp"
 #include "ReferencePointSelectionRenderer.hpp"
 #include "CorrelationCalculator.hpp"
+#include "DeviceThreadInfo.hpp"
 
 ICorrelationCalculator::ICorrelationCalculator(sgl::vk::Renderer* renderer) : Calculator(renderer) {
 }
@@ -917,6 +918,28 @@ void CorrelationComputePass::setReferencePoint(const glm::ivec3& referencePointI
     }
 }
 
+void CorrelationComputePass::setUseRequestEvaluationMode(bool _useRequestEvaluationMode) {
+    useRequestEvaluationMode = _useRequestEvaluationMode;
+}
+
+void CorrelationComputePass::setNumRequests(uint32_t _numRequests) {
+    numRequests = _numRequests;
+}
+
+void CorrelationComputePass::setRequestsBuffer(const sgl::vk::BufferPtr& _requestsBuffer) {
+    requestsBuffer = _requestsBuffer;
+    if (computeData) {
+        computeData->setStaticBuffer(requestsBuffer, "RequestsBuffer");
+    }
+}
+
+void CorrelationComputePass::setOutputBuffer(const sgl::vk::BufferPtr& _outputBuffer) {
+    outputBuffer = _outputBuffer;
+    if (computeData) {
+        computeData->setStaticBuffer(outputBuffer, "OutputBuffer");
+    }
+}
+
 void CorrelationComputePass::setCorrelationMeasureType(CorrelationMeasureType _correlationMeasureType) {
     if (correlationMeasureType != _correlationMeasureType) {
         correlationMeasureType = _correlationMeasureType;
@@ -956,11 +979,20 @@ void CorrelationComputePass::setKraskovEstimatorIndex(int _kraskovEstimatorIndex
 void CorrelationComputePass::loadShader() {
     sgl::vk::ShaderManager->invalidateShaderCache();
     std::map<std::string, std::string> preprocessorDefines;
-    preprocessorDefines.insert(std::make_pair("BLOCK_SIZE_X", std::to_string(computeBlockSizeX)));
-    preprocessorDefines.insert(std::make_pair("BLOCK_SIZE_Y", std::to_string(computeBlockSizeY)));
-    preprocessorDefines.insert(std::make_pair("BLOCK_SIZE_Z", std::to_string(computeBlockSizeZ)));
+    if (useRequestEvaluationMode) {
+        preprocessorDefines.insert(std::make_pair("BLOCK_SIZE_X", std::to_string(computeBlockSize1D)));
+        preprocessorDefines.insert(std::make_pair("BLOCK_SIZE_Y", std::to_string(1)));
+        preprocessorDefines.insert(std::make_pair("BLOCK_SIZE_Z", std::to_string(1)));
+    } else {
+        preprocessorDefines.insert(std::make_pair("BLOCK_SIZE_X", std::to_string(computeBlockSizeX)));
+        preprocessorDefines.insert(std::make_pair("BLOCK_SIZE_Y", std::to_string(computeBlockSizeY)));
+        preprocessorDefines.insert(std::make_pair("BLOCK_SIZE_Z", std::to_string(computeBlockSizeZ)));
+    }
     preprocessorDefines.insert(std::make_pair(
             "MEMBER_COUNT", std::to_string(cachedCorrelationMemberCount)));
+    if (useRequestEvaluationMode) {
+        preprocessorDefines.insert(std::make_pair("USE_REQUESTS_BUFFER", ""));
+    }
     if (correlationMeasureType != CorrelationMeasureType::MUTUAL_INFORMATION_BINNED
             && correlationMeasureType != CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV
             && calculateAbsoluteValue) {
@@ -999,10 +1031,15 @@ void CorrelationComputePass::loadShader() {
 
 void CorrelationComputePass::createComputeData(sgl::vk::Renderer* renderer, sgl::vk::ComputePipelinePtr& computePipeline) {
     computeData = std::make_shared<sgl::vk::ComputeData>(renderer, computePipeline);
-    computeData->setStaticBuffer(uniformBuffer, "UniformBuffer");
     computeData->setImageSampler(volumeData->getImageSampler(), "scalarFieldSampler");
     computeData->setStaticImageViewArray(fieldImageViews, "scalarFields");
-    computeData->setStaticImageView(outputImage, "outputImage");
+    if (useRequestEvaluationMode) {
+        computeData->setStaticBuffer(requestsBuffer, "RequestsBuffer");
+        computeData->setStaticBuffer(outputBuffer, "OutputBuffer");
+    } else {
+        computeData->setStaticBuffer(uniformBuffer, "UniformBuffer");
+        computeData->setStaticImageView(outputImage, "outputImage");
+    }
     if (correlationMeasureType == CorrelationMeasureType::SPEARMAN) {
         computeData->setStaticBuffer(
                 spearmanReferenceRankComputePass->getReferenceRankBuffer(), "ReferenceRankBuffer");
@@ -1026,7 +1063,22 @@ void CorrelationComputePass::_render() {
             || correlationMeasureType == CorrelationMeasureType::KENDALL
             || correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED
             || correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV;
+    supportsBatchedRendering = supportsBatchedRendering && !useRequestEvaluationMode;
     if (supportsBatchedRendering) {
+        /*
+         * M = #cells, N = Members.
+         * Estimated time: M * N * log2(N).
+         * On a RTX 3090, M = 1.76 * 10^6 and N = 100 takes approx. 1s.
+         */
+        DeviceThreadInfo deviceCoresInfo = getDeviceThreadInfo(device);
+        const uint32_t numCudaCoresRtx3090 = 10496;
+        int M = volumeData->getGridSizeX() * volumeData->getGridSizeY() * volumeData->getGridSizeZ();
+        int N = cachedCorrelationMemberCount;
+        double factorM = double(M) / (1.76 * 1e6);
+        double factorN = double(N) / 100.0 * std::log2(double(N) / 100.0 + 1.0);
+        double factorCores = double(numCudaCoresRtx3090) / double(deviceCoresInfo.numCudaCoresEquivalent);
+        batchCount = uint32_t(std::ceil(factorM * factorN * factorCores));
+
         uint32_t batchCorrelationMemberCountThreshold = 10;
         if (correlationMeasureType == CorrelationMeasureType::PEARSON) {
             batchCorrelationMemberCountThreshold = batchCorrelationMemberCountThresholdPearson;
@@ -1079,91 +1131,16 @@ void CorrelationComputePass::_render() {
             renderer->pushConstants(
                     getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, sizeof(glm::uvec4), glm::uvec3(0));
         }
-        renderer->dispatch(
-                computeData,
-                sgl::iceil(volumeData->getGridSizeX(), computeBlockSizeX),
-                sgl::iceil(volumeData->getGridSizeY(), computeBlockSizeY),
-                sgl::iceil(volumeData->getGridSizeZ(), computeBlockSizeZ));
+        if (useRequestEvaluationMode) {
+            renderer->dispatch(computeData, sgl::uiceil(numRequests, uint32_t(computeBlockSize1D)), 1, 1);
+        } else {
+            renderer->dispatch(
+                    computeData,
+                    sgl::iceil(volumeData->getGridSizeX(), computeBlockSizeX),
+                    sgl::iceil(volumeData->getGridSizeY(), computeBlockSizeY),
+                    sgl::iceil(volumeData->getGridSizeZ(), computeBlockSizeZ));
+        }
     }
-}
-
-struct CudaDeviceCoresInfo {
-    uint32_t numMultiprocessors;
-    uint32_t warpSize;
-    uint32_t numCoresPerMultiprocessor;
-    uint32_t numCudaCoresTotal;
-};
-
-CudaDeviceCoresInfo getNumCudaCores(CUdevice cuDevice) {
-    CudaDeviceCoresInfo info{};
-
-    /*
-     * Only use one thread block per shader multiprocessor (SM) to improve chance of fair scheduling.
-     * See, e.g.: https://stackoverflow.com/questions/33150040/doubling-buffering-in-cuda-so-the-cpu-can-operate-on-data-produced-by-a-persiste/33158954#33158954%5B/
-     */
-    CUresult cuResult;
-    int numMultiprocessors = 16;
-    cuResult = sgl::vk::g_cudaDeviceApiFunctionTable.cuDeviceGetAttribute(
-            &numMultiprocessors, CU_DEVICE_ATTRIBUTE_MULTIPROCESSOR_COUNT, cuDevice);
-    sgl::vk::checkCUresult(cuResult, "Error in cuDeviceGetAttribute: ");
-    info.numMultiprocessors = uint32_t(numMultiprocessors);
-
-    /*
-     * Use more threads than warp size. Factor 4 seems to make sense at least for RTX 3090.
-     * For more details see: https://stackoverflow.com/questions/32530604/how-can-i-get-number-of-cores-in-cuda-device
-     * Or: https://github.com/NVIDIA/cuda-samples/blob/master/Common/helper_cuda.h
-     * https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#compute-capabilities
-     * https://developer.nvidia.com/blog/inside-pascal/
-     */
-    int warpSize = 32;
-    cuResult = sgl::vk::g_cudaDeviceApiFunctionTable.cuDeviceGetAttribute(
-            &warpSize, CU_DEVICE_ATTRIBUTE_WARP_SIZE, cuDevice);
-    sgl::vk::checkCUresult(cuResult, "Error in cuDeviceGetAttribute: ");
-    info.warpSize = uint32_t(warpSize);
-
-    int major = 0;
-    cuResult = sgl::vk::g_cudaDeviceApiFunctionTable.cuDeviceGetAttribute(
-            &major, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, cuDevice);
-    sgl::vk::checkCUresult(cuResult, "Error in cuDeviceGetAttribute: ");
-    int minor = 0;
-    cuResult = sgl::vk::g_cudaDeviceApiFunctionTable.cuDeviceGetAttribute(
-            &minor, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR, cuDevice);
-    sgl::vk::checkCUresult(cuResult, "Error in cuDeviceGetAttribute: ");
-
-    // Use warp size * 4 as fallback for unknown architectures.
-    int numCoresPerMultiprocessor = warpSize * 4;
-
-    if (major == 2) {
-        if (minor == 1) {
-            numCoresPerMultiprocessor = 48;
-        } else {
-            numCoresPerMultiprocessor = 32;
-        }
-    } else if (major == 3) {
-        numCoresPerMultiprocessor = 192;
-    } else if (major == 5) {
-        numCoresPerMultiprocessor = 128;
-    } else if (major == 6) {
-        if (minor == 0) {
-            numCoresPerMultiprocessor = 64;
-        } else {
-            numCoresPerMultiprocessor = 128;
-        }
-    } else if (major == 7) {
-        numCoresPerMultiprocessor = 64;
-    } else if (major == 8) {
-        if (minor == 0) {
-            numCoresPerMultiprocessor = 64;
-        } else {
-            numCoresPerMultiprocessor = 128;
-        }
-    } else if (major == 9) {
-        numCoresPerMultiprocessor = 128;
-    }
-    info.numCoresPerMultiprocessor = uint32_t(numCoresPerMultiprocessor);
-    info.numCudaCoresTotal = info.numMultiprocessors * info.numCoresPerMultiprocessor;
-
-    return info;
 }
 
 void CorrelationComputePass::computeCuda(
@@ -1335,12 +1312,8 @@ void CorrelationComputePass::computeCuda(
     int bestBlockSize = 32;
     sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuOccupancyMaxPotentialBlockSize(
             &minGridSize, &bestBlockSize, kernelCache->kernel, nullptr, 0, 0), "Error in cuOccupancyMaxPotentialBlockSize: ");
-    //std::cout << "minGridSize: " << minGridSize << ", bestBlockSize: " << bestBlockSize << std::endl;
 
-    CUdevice cuDevice{};
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuDeviceGet(&cuDevice, 0), "Error in cuDeviceGet: ");
-    CudaDeviceCoresInfo deviceCoresInfo = getNumCudaCores(cuDevice);
-    //std::cout << "numMultiprocessors: " << deviceCoresInfo.numMultiprocessors << ", bestBlockSize: " << deviceCoresInfo.warpSize << std::endl;
+    DeviceThreadInfo deviceCoresInfo = getDeviceThreadInfo(device);
     int BLOCK_SIZE = sgl::lastPowerOfTwo(bestBlockSize);
     while (BLOCK_SIZE > int(deviceCoresInfo.warpSize)
            && sgl::iceil(int(M), BLOCK_SIZE) * 2 < int(deviceCoresInfo.numMultiprocessors)) {
@@ -1354,13 +1327,9 @@ void CorrelationComputePass::computeCuda(
     const uint32_t numCudaCoresRtx3090 = 10496;
     double factorM = double(M) / (1.76 * 1e6);
     double factorN = double(N) / 100.0 * std::log2(double(N) / 100.0 + 1.0);
-    double factorCudaCores = double(numCudaCoresRtx3090) / double(deviceCoresInfo.numCudaCoresTotal);
-    auto batchCount = uint32_t(std::ceil(factorM * factorN * factorCudaCores));
+    double factorCores = double(numCudaCoresRtx3090) / double(deviceCoresInfo.numCudaCoresEquivalent);
+    auto batchCount = uint32_t(std::ceil(factorM * factorN * factorCores));
 
-    // __global__ void mutualInformationKraskov(
-    //        cudaTextureObject_t* scalarFields, float* __restrict__ miArray,
-    //        uint32_t xs, uint32_t ys, uint32_t zs, uint3 referencePointIdx,
-    //        const uint32_t batchOffset, const uint32_t batchSize) {
     CUdeviceptr scalarFields = fieldTextureArrayCu;
     CUdeviceptr miArray = outputImageBufferCu;
     auto batchSize = uint32_t(M);

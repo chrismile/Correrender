@@ -380,8 +380,10 @@ void DiagramBase::renderBaseNanoVG() {
             borderRoundingRadius);
     nvgFillColor(vg, backgroundFillColorNvg);
     nvgFill(vg);
-    nvgStrokeColor(vg, backgroundStrokeColorNvg);
-    nvgStroke(vg);
+    if (renderBackgroundStroke) {
+        nvgStrokeColor(vg, backgroundStrokeColorNvg);
+        nvgStroke(vg);
+    }
 }
 
 
@@ -413,12 +415,14 @@ void DiagramBase::renderBaseSkia() {
             SkRect{borderWidth * s, borderWidth * s, (windowWidth - borderWidth) * s, (windowHeight - borderWidth) * s},
             borderRoundingRadius * s, borderRoundingRadius * s, paint);
 
-    paint.setColor(toSkColor(backgroundStrokeColor));
-    paint.setStroke(true);
-    paint.setStrokeWidth(1.0f * s);
-    canvas->drawRoundRect(
-            SkRect{borderWidth * s, borderWidth * s, (windowWidth - borderWidth) * s, (windowHeight - borderWidth) * s},
-            borderRoundingRadius * s, borderRoundingRadius * s, paint);
+    if (renderBackgroundStroke) {
+        paint.setColor(toSkColor(backgroundStrokeColor));
+        paint.setStroke(true);
+        paint.setStrokeWidth(1.0f * s);
+        canvas->drawRoundRect(
+                SkRect{borderWidth * s, borderWidth * s, (windowWidth - borderWidth) * s, (windowHeight - borderWidth) * s},
+                borderRoundingRadius * s, borderRoundingRadius * s, paint);
+    }
 }
 #endif
 
@@ -446,10 +450,14 @@ void DiagramBase::renderBaseVkvg() {
             borderRoundingRadius * s);
     vkvg_set_opacity(context, backgroundOpacity);
     vkvg_set_source_color(context, backgroundFillColor.getColorRGBA());
-    vkvg_fill_preserve(context);
-    vkvg_set_source_color(context, backgroundStrokeColor.getColorRGBA());
-    vkvg_set_line_width(context, 1.0f * s);
-    vkvg_stroke(context);
+    if (renderBackgroundStroke) {
+        vkvg_fill_preserve(context);
+        vkvg_set_source_color(context, backgroundStrokeColor.getColorRGBA());
+        vkvg_set_line_width(context, 1.0f * s);
+        vkvg_stroke(context);
+    } else {
+        vkvg_fill(context);
+    }
 
     vkvg_set_opacity(context, 1.0f);
 }

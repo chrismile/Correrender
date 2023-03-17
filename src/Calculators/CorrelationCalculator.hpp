@@ -176,8 +176,6 @@ public:
     void setVolumeData(VolumeData* _volumeData, int correlationMemberCount, bool isNewData);
     void setCorrelationMemberCount(int correlationMemberCount);
     void setFieldImageViews(const std::vector<sgl::vk::ImageViewPtr>& _fieldImageViews);
-    void setOutputImage(const sgl::vk::ImageViewPtr& _outputImage);
-    void setReferencePoint(const glm::ivec3& referencePointIndex);
     void setCorrelationMeasureType(CorrelationMeasureType _correlationMeasureType);
     void setCalculateAbsoluteValue(bool _calculateAbsoluteValue);
     void setNumBins(int _numBins);
@@ -187,6 +185,16 @@ public:
             CorrelationCalculator* correlationCalculator,
             const std::string& fieldName, int timeStepIdx, int ensembleIdx, const DeviceCacheEntry& deviceCacheEntry,
             glm::ivec3& referencePointIndex);
+
+    // 3D field evaluation mode (one fixed reference point, output image) - for CorrelationCalculator.
+    void setReferencePoint(const glm::ivec3& referencePointIndex);
+    void setOutputImage(const sgl::vk::ImageViewPtr& _outputImage);
+
+    // Request evaluation mode (one request buffer with reference and query positions, output buffer) - for HEBChart.
+    void setUseRequestEvaluationMode(bool _useRequestEvaluationMode);
+    void setNumRequests(uint32_t _numRequests);
+    void setRequestsBuffer(const sgl::vk::BufferPtr& _requestsBuffer);
+    void setOutputBuffer(const sgl::vk::BufferPtr& _outputBuffer);
 
 protected:
     void loadShader() override;
@@ -203,6 +211,7 @@ private:
     const uint32_t batchCorrelationMemberCountThresholdKendall = 10;
     const uint32_t batchCorrelationMemberCountThresholdMiBinned = 10;
     const uint32_t batchCorrelationMemberCountThresholdKraskov = 10;
+    const int computeBlockSize1D = 256;
     const int computeBlockSizeX = 8, computeBlockSizeY = 8, computeBlockSizeZ = 4;
     struct UniformData {
         uint32_t xs, ys, zs, cs;
@@ -211,7 +220,15 @@ private:
     sgl::vk::BufferPtr uniformBuffer;
 
     std::vector<sgl::vk::ImageViewPtr> fieldImageViews;
+
+    // 3D field evaluation mode.
     sgl::vk::ImageViewPtr outputImage;
+
+    // Request evaluation mode.
+    bool useRequestEvaluationMode = false;
+    uint32_t numRequests = 0;
+    sgl::vk::BufferPtr requestsBuffer;
+    sgl::vk::BufferPtr outputBuffer;
 
     // For non-MI correlations.
     bool calculateAbsoluteValue = false;

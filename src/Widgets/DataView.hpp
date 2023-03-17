@@ -44,6 +44,8 @@ class Renderer;
 }}
 
 class Renderer;
+class DataView;
+typedef std::shared_ptr<DataView> DataViewPtr;
 
 class DataView {
 public:
@@ -59,15 +61,17 @@ public:
     void setClearColor(const sgl::Color& color);
     [[nodiscard]] inline int getSupersamplingFactor() const { return supersamplingFactor; }
 
-    [[nodiscard]] inline std::string getWindowName(int index) const {
-        return "Data View (" + std::to_string(index + 1) + ")###data_view_" + std::to_string(index);
-    }
-
+    [[nodiscard]] inline std::string& getViewName() { return viewName; }
+    [[nodiscard]] std::string getWindowNameImGui(const std::vector<DataViewPtr>& dataViews, int index) const;
 
     SceneData* parentSceneData = nullptr;
     bool showWindow = true;
     bool useLinearRGB = false;
     sgl::Color clearColor;
+    std::string viewName = "Data View";
+    int viewIdx;
+    static int globalViewIdx;
+    static std::vector<SceneData*> globalSceneData;
 
     bool reRender = false;
 
@@ -96,7 +100,5 @@ public:
     int supersamplingFactor = 1;
     SceneData sceneData;
 };
-
-typedef std::shared_ptr<DataView> DataViewPtr;
 
 #endif //CORRERENDER_DATAVIEW_HPP

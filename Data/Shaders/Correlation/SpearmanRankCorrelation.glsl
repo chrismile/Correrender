@@ -70,6 +70,9 @@ void heapSort() {
     }
 }
 
+
+-- FractionalRanking
+
 void computeFractionalRanking() {
     float currentRank = 1.0f;
     int idx = 0;
@@ -99,29 +102,49 @@ void computeFractionalRanking() {
 
 layout(local_size_x = BLOCK_SIZE_X, local_size_y = BLOCK_SIZE_Y, local_size_z = BLOCK_SIZE_Z) in;
 
-layout(binding = 0) uniform UniformBuffer {
+#ifdef USE_REQUESTS_BUFFER
+#include "RequestsBuffer.glsl"
+#else
+layout (binding = 0) uniform UniformBuffer {
     uint xs, ys, zs, cs;
 };
 layout(binding = 1, r32f) uniform writeonly image3D outputImage;
-layout(binding = 2) uniform sampler scalarFieldSampler;
-layout(binding = 3) uniform texture3D scalarFields[MEMBER_COUNT];
-
-layout(binding = 4) readonly buffer ReferenceRankBuffer {
-    float referenceRankArray[MEMBER_COUNT];
-};
-
 layout(push_constant) uniform PushConstants {
-    ivec3 paddingVec;
+    ivec3 referencePointIdx;
     int padding0;
     uvec3 batchOffset;
     uint padding1;
 };
+layout(binding = 4) readonly buffer ReferenceRankBuffer {
+    float referenceRankArray[MEMBER_COUNT];
+};
+#endif
+
+layout(binding = 2) uniform sampler scalarFieldSampler;
+layout(binding = 3) uniform texture3D scalarFields[MEMBER_COUNT];
 
 float valueArray[MEMBER_COUNT];
 uint ordinalRankArray[MEMBER_COUNT];
-float rankArray[MEMBER_COUNT];
+#ifdef USE_REQUESTS_BUFFER
+float referenceRankArray[MEMBER_COUNT];
+#endif
+float queryRankArray[MEMBER_COUNT];
 
 #import ".Common"
+
+#ifdef USE_REQUESTS_BUFFER
+#define  computeFractionalRanking computeFractionalRankingReference
+#define rankArray referenceRankArray
+#import ".FractionalRanking"
+#undef computeFractionalRanking
+#undef rankArray
+#endif
+
+#define  computeFractionalRanking computeFractionalRankingQuery
+#define rankArray queryRankArray
+#import ".FractionalRanking"
+#undef computeFractionalRanking
+#undef rankArray
 
 float pearsonCorrelation() {
     float n = float(cs);
@@ -130,7 +153,7 @@ float pearsonCorrelation() {
     float invN = float(1) / n;
     for (uint c = 0; c < cs; c++) {
         float x = referenceRankArray[c];
-        float y = rankArray[c];
+        float y = queryRankArray[c];
         meanX += invN * x;
         meanY += invN * y;
     }
@@ -139,7 +162,7 @@ float pearsonCorrelation() {
     float invNm1 = float(1) / (n - float(1));
     for (uint c = 0; c < cs; c++) {
         float x = referenceRankArray[c];
-        float y = rankArray[c];
+        float y = queryRankArray[c];
         float diffX = x - meanX;
         float diffY = y - meanY;
         varX += invNm1 * diffX * diffX;
@@ -150,21 +173,33 @@ float pearsonCorrelation() {
     float pearsonCorrelation = 0;
     for (uint c = 0; c < cs; c++) {
         float x = referenceRankArray[c];
-        float y = rankArray[c];
+        float y = queryRankArray[c];
         pearsonCorrelation += invNm1 * ((x - meanX) / stdDevX) * ((y - meanY) / stdDevY);
     }
     return pearsonCorrelation;
 }
 
 void main() {
-    ivec3 currentPointIdx = ivec3(gl_GlobalInvocationID.xyz + batchOffset);
-    if (currentPointIdx.x >= xs || currentPointIdx.y >= ys || currentPointIdx.z >= zs) {
-        return;
-    }
+#include "CorrelationMain.glsl"
 
-    // 1. Fill the value array.
     float nanValue = 0.0;
     float value;
+
+#ifdef USE_REQUESTS_BUFFER
+    for (uint c = 0; c < cs; c++) {
+        value = texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), currentPointIdx, 0).r;
+        if (isnan(value)) {
+            nanValue = value;
+        }
+        valueArray[c] = value;
+        ordinalRankArray[c] = c;
+    }
+
+    heapSort();
+    computeFractionalRankingReference();
+#endif
+
+    // 1. Fill the value array.
     for (uint c = 0; c < cs; c++) {
         value = texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), currentPointIdx, 0).r;
         if (isnan(value)) {
@@ -178,7 +213,7 @@ void main() {
     heapSort();
 
     // 3. Compute fractional ranking for ordinal ranking (see https://en.wikipedia.org/wiki/Ranking).
-    computeFractionalRanking();
+    computeFractionalRankingQuery();
 
     // 4. Compute the Pearson correlation of the ranks.
     float correlationValue = pearsonCorrelation();
@@ -187,7 +222,11 @@ void main() {
     correlationValue = abs(correlationValue);
 #endif
 
+#ifdef USE_REQUESTS_BUFFER
+    outputBuffer[requestIdx] = isnan(nanValue) ? nanValue : correlationValue;
+#else
     imageStore(outputImage, currentPointIdx, vec4(isnan(nanValue) ? nanValue : correlationValue));
+#endif
 }
 
 
@@ -216,6 +255,7 @@ float valueArray[MEMBER_COUNT];
 uint ordinalRankArray[MEMBER_COUNT];
 
 #import ".Common"
+#import ".FractionalRanking"
 
 void main() {
     ivec3 currentPointIdx = ivec3(gl_GlobalInvocationID.xyz);

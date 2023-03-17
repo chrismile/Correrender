@@ -102,12 +102,14 @@ void DiagramRenderer::initialize() {
     if (volumeData) {
         parentDiagram->setVolumeData(volumeData, true);
         parentDiagram->setIsEnsembleMode(isEnsembleMode);
+        parentDiagram->setUseSeparateColorVarianceAndCorrelation(separateColorVarianceAndCorrelation);
+        parentDiagram->setColorMapVariance(colorMapVariance);
         parentDiagram->setCorrelationMeasureType(correlationMeasureType);
         parentDiagram->setSamplingMethodType(samplingMethodType);
         parentDiagram->setNumSamples(numSamples);
         parentDiagram->setBeta(beta);
         parentDiagram->setDownscalingFactors(downscalingFactorX, downscalingFactorY, downscalingFactorZ);
-        parentDiagram->setLineCountFactor(lineCountFactor);
+        parentDiagram->setLineCountFactor(lineCountFactorContext);
         parentDiagram->setCurveThickness(curveThickness);
         parentDiagram->setCurveOpacity(curveOpacity);
         parentDiagram->setDiagramRadius(diagramRadius);
@@ -118,6 +120,7 @@ void DiagramRenderer::initialize() {
         parentDiagram->setColorByValue(colorByValue);
         parentDiagram->setUse2DField(use2dField);
         parentDiagram->setClearColor(viewManager->getClearColor());
+        parentDiagram->setUseCorrelationComputationGpu(useCorrelationComputationGpu);
     }
     diagrams.push_back(parentDiagram);
 }
@@ -164,15 +167,6 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
     }
 
     const std::vector<std::string>& fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
-    if (fieldNames.size() > scalarFieldSelectionArray.size()) {
-        scalarFieldSelectionArray.resize(fieldNames.size());
-    }
-    updateScalarFieldComboValue();
-    for (int selectedFieldIdx = 0; selectedFieldIdx < int(selectedScalarFields.size()); selectedFieldIdx++) {
-        auto& selectedScalarField = selectedScalarFields.at(selectedFieldIdx);
-        selectedScalarField.second = fieldNames.at(selectedScalarField.first);
-    }
-
     parentDiagram->setVolumeData(volumeData, isNewData);
     if (isNewData) {
         selectedScalarFields.clear();
@@ -184,18 +178,20 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
         scalarFieldComboValue = fieldNames.at(standardFieldIdx);
         volumeData->acquireScalarField(this, standardFieldIdx);
         parentDiagram->clearScalarFields();
+        parentDiagram->setUseSeparateColorVarianceAndCorrelation(separateColorVarianceAndCorrelation);
         for (int selectedFieldIdx = 0; selectedFieldIdx < int(selectedScalarFields.size()); selectedFieldIdx++) {
             auto& selectedScalarField = selectedScalarFields.at(selectedFieldIdx);
             parentDiagram->addScalarField(selectedScalarField.first, selectedScalarField.second);
             parentDiagram->setColorMap(selectedFieldIdx, selectedScalarField.third);
         }
+        parentDiagram->setColorMapVariance(colorMapVariance);
         parentDiagram->setIsEnsembleMode(isEnsembleMode);
         parentDiagram->setCorrelationMeasureType(correlationMeasureType);
         parentDiagram->setSamplingMethodType(samplingMethodType);
         parentDiagram->setNumSamples(numSamples);
         parentDiagram->setBeta(beta);
         parentDiagram->setDownscalingFactors(downscalingFactorX, downscalingFactorY, downscalingFactorZ);
-        parentDiagram->setLineCountFactor(lineCountFactor);
+        parentDiagram->setLineCountFactor(lineCountFactorContext);
         parentDiagram->setCurveThickness(curveThickness);
         parentDiagram->setCurveOpacity(curveOpacity);
         parentDiagram->setDiagramRadius(diagramRadius);
@@ -206,6 +202,7 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
         parentDiagram->setColorByValue(colorByValue);
         parentDiagram->setUse2DField(use2dField);
         parentDiagram->setClearColor(viewManager->getClearColor());
+        parentDiagram->setUseCorrelationComputationGpu(useCorrelationComputationGpu);
 
         correlationRangeTotal = correlationRange = parentDiagram->getCorrelationRangeTotal();
         cellDistanceRange = cellDistanceRangeTotal = parentDiagram->getCellDistanceRangeTotal();
@@ -217,6 +214,15 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
             auto& diagram = diagrams.at(i);
             diagram->setVolumeData(volumeData, isNewData);
         }
+        if (fieldNames.size() > scalarFieldSelectionArray.size()) {
+            scalarFieldSelectionArray.resize(fieldNames.size());
+        }
+    }
+
+    updateScalarFieldComboValue();
+    for (int selectedFieldIdx = 0; selectedFieldIdx < int(selectedScalarFields.size()); selectedFieldIdx++) {
+        auto& selectedScalarField = selectedScalarFields.at(selectedFieldIdx);
+        selectedScalarField.second = fieldNames.at(selectedScalarField.first);
     }
 }
 
@@ -264,6 +270,8 @@ void DiagramRenderer::recreateDiagramSwapchain(int diagramIdx) {
                 VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                 VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
         if (alignWithParentWindow) {
+            diagram->setBlitTargetSupersamplingFactor(
+                    viewManager->getDataView(diagramViewIdx)->getSupersamplingFactor());
             diagram->updateSizeByParent();
         }
     }
@@ -298,17 +306,19 @@ void DiagramRenderer::resetSelections(int idx) {
             diagram->setDownscalingFactors(dfx, dfy, dfz);
             diagram->setRegions(selectedRegionStack.at(idx - 1));
             diagram->clearScalarFields();
+            diagram->setUseSeparateColorVarianceAndCorrelation(separateColorVarianceAndCorrelation);
             for (int selectedFieldIdx = 0; selectedFieldIdx < int(selectedScalarFields.size()); selectedFieldIdx++) {
                 auto& selectedScalarField = selectedScalarFields.at(selectedFieldIdx);
                 diagram->addScalarField(selectedScalarField.first, selectedScalarField.second);
                 diagram->setColorMap(selectedFieldIdx, selectedScalarField.third);
             }
+            diagram->setColorMapVariance(colorMapVariance);
             diagram->setIsEnsembleMode(isEnsembleMode);
             diagram->setCorrelationMeasureType(correlationMeasureType);
             diagram->setSamplingMethodType(samplingMethodType);
             diagram->setNumSamples(numSamples);
             diagram->setBeta(beta);
-            diagram->setLineCountFactor(lineCountFactor);
+            diagram->setLineCountFactor(lineCountFactorFocus);
             diagram->setCurveThickness(curveThickness);
             diagram->setCurveOpacity(curveOpacity);
             diagram->setDiagramRadius(diagramRadius);
@@ -319,6 +329,7 @@ void DiagramRenderer::resetSelections(int idx) {
             diagram->setColorByValue(colorByValue);
             diagram->setUse2DField(use2dField);
             diagram->setClearColor(viewManager->getClearColor());
+            diagram->setUseCorrelationComputationGpu(useCorrelationComputationGpu);
             diagram->getCorrelationRangeTotal();
             diagram->getCellDistanceRangeTotal();
             //diagram->setCorrelationRange(parentDiagram->getCorrelationRangeTotal());
@@ -336,7 +347,11 @@ void DiagramRenderer::update(float dt, bool isMouseGrabbed) {
         diagram->setIsMouseGrabbedByParent(isMouseGrabbed);
         diagram->update(dt);
         if (diagram->getNeedsReRender() && !reRenderViewArray.empty()) {
-            reRenderViewArray.at(diagramViewIdx) = true;
+            for (int viewIdx = 0; viewIdx < int(viewVisibilityArray.size()); viewIdx++) {
+                if (viewVisibilityArray.at(viewIdx)) {
+                    reRenderViewArray.at(viewIdx) = true;
+                }
+            }
             reRenderTriggeredByDiagram = true;
         }
         isMouseGrabbed |= diagram->getIsMouseGrabbed() || diagram->getIsMouseOverDiagramImGui();
@@ -362,7 +377,11 @@ void DiagramRenderer::update(float dt, bool isMouseGrabbed) {
             diagrams.resize(returnToViewIdx + 1);
             //diagrams.at(returnToViewIdx)->resetSelectedPrimitives();
             diagrams.at(returnToViewIdx)->resetFocusSelection();
-            reRenderViewArray.at(diagramViewIdx) = true;
+            for (int viewIdx = 0; viewIdx < int(viewVisibilityArray.size()); viewIdx++) {
+                if (viewVisibilityArray.at(viewIdx)) {
+                    reRenderViewArray.at(viewIdx) = true;
+                }
+            }
             reRenderTriggeredByDiagram = true;
         }
     }
@@ -531,6 +550,10 @@ void DiagramRenderer::renderViewImpl(uint32_t viewIdx) {
 }
 
 void DiagramRenderer::renderViewPreImpl(uint32_t viewIdx) {
+    if (viewIdx == diagramViewIdx && alignWithParentWindow) {
+        return;
+    }
+
     HEBChart* diagram = nullptr;
     for (auto it = diagrams.rbegin(); it != diagrams.rend(); it++) {
         diagram = it->get();
@@ -730,7 +753,9 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
                 if (ImGui::Selectable(
                         text.c_str(), &useField, ImGuiSelectableFlags_::ImGuiSelectableFlags_DontClosePopups)) {
                     if (useField) {
-                        parentDiagram->addScalarField(int(fieldIdx), text);
+                        for (auto& diagram : diagrams) {
+                            diagram->addScalarField(int(fieldIdx), text);
+                        }
 
                         // Get the next free color map.
                         std::vector<int> colorMapUseCounter(NUM_COLOR_MAPS);
@@ -752,17 +777,23 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
                             if (selectedScalarFields.at(i).first > int(fieldIdx)) {
                                 selectedScalarFields.insert(
                                         selectedScalarFields.begin() + ptrdiff_t(i), newFieldData);
-                                parentDiagram->setColorMap(int(i), newFieldData.third);
+                                for (auto& diagram : diagrams) {
+                                    diagram->setColorMap(int(i), newFieldData.third);
+                                }
                                 foundInsertionPosition = true;
                                 break;
                             }
                         }
                         if (!foundInsertionPosition) {
                             selectedScalarFields.push_back(newFieldData);
-                            parentDiagram->setColorMap(int(selectedScalarFields.size() - 1), newFieldData.third);
+                            for (auto& diagram : diagrams) {
+                                diagram->setColorMap(int(selectedScalarFields.size() - 1), newFieldData.third);
+                            }
                         }
                     } else {
-                        parentDiagram->removeScalarField(int(fieldIdx), false);
+                        for (auto& diagram : diagrams) {
+                            diagram->removeScalarField(int(fieldIdx), false);
+                        }
                         for (size_t i = 0; i < selectedScalarFields.size(); i++) {
                             if (selectedScalarFields.at(i).first == int(fieldIdx)) {
                                 volumeData->releaseScalarField(this, selectedScalarFields.at(i).first);
@@ -799,6 +830,22 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
             reRenderTriggeredByDiagram = true;
         }
         ImGui::PopID();
+    }
+
+    if (propertyEditor.addCheckbox("Separate Color Rings", &separateColorVarianceAndCorrelation)) {
+        for (auto& diagram : diagrams) {
+            diagram->setUseSeparateColorVarianceAndCorrelation(separateColorVarianceAndCorrelation);
+        }
+    }
+
+    if (separateColorVarianceAndCorrelation && propertyEditor.addCombo(
+            "Color Ensemble Spread", (int*)&colorMapVariance, DIAGRAM_COLOR_MAP_NAMES,
+            IM_ARRAYSIZE(DIAGRAM_COLOR_MAP_NAMES))) {
+        for (auto& diagram : diagrams) {
+            diagram->setColorMapVariance(colorMapVariance);
+        }
+        reRender = true;
+        reRenderTriggeredByDiagram = true;
     }
 
     if (propertyEditor.addCheckbox("Value -> Opacity", &opacityByValue)) {
@@ -867,9 +914,16 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
     propertyEditor.addCheckbox("Downscaling PoT", &downscalingPowerOfTwo);
 
     if (propertyEditor.addSliderIntEdit(
-            "#Line Factor", &lineCountFactor, 10, 1000) == ImGui::EditMode::INPUT_FINISHED) {
-        for (auto& diagram : diagrams) {
-            diagram->setLineCountFactor(lineCountFactor);
+            "#Line Factor (Context)", &lineCountFactorContext, 10, 1000) == ImGui::EditMode::INPUT_FINISHED) {
+        parentDiagram->setLineCountFactor(lineCountFactorContext);
+        reRender = true;
+        reRenderTriggeredByDiagram = true;
+    }
+
+    if (propertyEditor.addSliderIntEdit(
+            "#Line Factor (Focus)", &lineCountFactorFocus, 10, 1000) == ImGui::EditMode::INPUT_FINISHED) {
+        for (size_t i = 1; i < diagrams.size(); i++) {
+            diagrams.at(i)->setLineCountFactor(lineCountFactorFocus);
         }
         reRender = true;
         reRenderTriggeredByDiagram = true;
@@ -934,13 +988,21 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         reRenderTriggeredByDiagram = true;
     }
 
-    /*if (propertyEditor.addCheckbox("Use 2D Field", &use2dField)) {
+    if (propertyEditor.addCheckbox("Use GPU Computations", &useCorrelationComputationGpu)) {
         for (auto& diagram : diagrams) {
-            diagram->setUse2DField(use2dField);
+            diagram->setUseCorrelationComputationGpu(useCorrelationComputationGpu);
         }
         reRender = true;
         reRenderTriggeredByDiagram = true;
-    }*/
+    }
+
+    /*if (propertyEditor.addCheckbox("Use 2D Field", &use2dField)) {
+         for (auto& diagram : diagrams) {
+             diagram->setUse2DField(use2dField);
+         }
+         reRender = true;
+         reRenderTriggeredByDiagram = true;
+     }*/
 
     if (parentDiagram->renderGuiPropertyEditor(propertyEditor)) {
         for (size_t i = 1; i < diagrams.size(); i++) {

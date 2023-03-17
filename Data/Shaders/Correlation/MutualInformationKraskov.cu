@@ -239,7 +239,7 @@ __device__ float averageDigamma(float* kthNeighborDistances, float* valueArray) 
         }
         int endRange = upper - 1;
 
-        uint numPoints = uint(endRange + 1 - startRange);
+        uint numPoints = max(uint(endRange + 1 - startRange), 1u);
         meanDigammaValue += factor * digamma(numPoints);
     }
     return meanDigammaValue;

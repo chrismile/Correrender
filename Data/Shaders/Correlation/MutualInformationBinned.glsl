@@ -33,13 +33,14 @@
 
 layout(local_size_x = BLOCK_SIZE_X, local_size_y = BLOCK_SIZE_Y, local_size_z = BLOCK_SIZE_Z) in;
 
+#define NEEDS_MIN_MAX_FIELD_VALUE
+#ifdef USE_REQUESTS_BUFFER
+#include "RequestsBuffer.glsl"
+#else
 layout (binding = 0) uniform UniformBuffer {
     uint xs, ys, zs, cs;
 };
 layout (binding = 1, r32f) uniform writeonly image3D outputImage;
-layout (binding = 2) uniform sampler scalarFieldSampler;
-layout (binding = 3) uniform texture3D scalarFields[MEMBER_COUNT];
-
 layout(push_constant) uniform PushConstants {
     ivec3 referencePointIdx;
     int padding0;
@@ -47,12 +48,13 @@ layout(push_constant) uniform PushConstants {
     uint padding1;
     float minFieldVal, maxFieldVal;
 };
+#endif
+
+layout (binding = 2) uniform sampler scalarFieldSampler;
+layout (binding = 3) uniform texture3D scalarFields[MEMBER_COUNT];
 
 void main() {
-    ivec3 currentPointIdx = ivec3(gl_GlobalInvocationID.xyz + batchOffset);
-    if (currentPointIdx.x >= xs || currentPointIdx.y >= ys || currentPointIdx.z >= zs) {
-        return;
-    }
+#include "CorrelationMain.glsl"
 
     float histogram2d[numBins * numBins];
     float histogram0[numBins];
@@ -135,5 +137,9 @@ void main() {
         }
     }
 
+#ifdef USE_REQUESTS_BUFFER
+    outputBuffer[requestIdx] = isnan(nanValue) ? nanValue : mi;
+#else
     imageStore(outputImage, currentPointIdx, vec4(isnan(nanValue) ? nanValue : mi));
+#endif
 }

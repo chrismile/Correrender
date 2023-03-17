@@ -49,13 +49,25 @@
 
 #include <Math/Math.hpp>
 #include <Utils/Parallel/Reduction.hpp>
+#include <Graphics/Vulkan/Render/Renderer.hpp>
+#include <Graphics/Vulkan/Render/ComputePipeline.hpp>
 
 #include "Loaders/DataSet.hpp"
 #include "Calculators/Correlation.hpp"
+#include "Calculators/CorrelationCalculator.hpp"
 #include "Calculators/MutualInformation.hpp"
 #include "Volume/VolumeData.hpp"
 #include "BSpline.hpp"
 #include "HEBChart.hpp"
+
+HEBChart::~HEBChart() {
+    if (computeRenderer) {
+        correlationComputePass = {};
+        sgl::vk::Device* device = computeRenderer->getDevice();
+        device->freeCommandBuffer(commandPool, commandBuffer);
+        delete computeRenderer;
+    }
+}
 
 void HEBChart::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) {
     this->volumeData = _volumeData;
@@ -83,6 +95,12 @@ int HEBChart::getCorrelationMemberCount() {
 
 VolumeData::HostCacheEntry HEBChart::getFieldEntryCpu(const std::string& fieldName, int fieldIdx) {
     VolumeData::HostCacheEntry ensembleEntryField = volumeData->getFieldEntryCpu(
+            FieldType::SCALAR, fieldName, isEnsembleMode ? -1 : fieldIdx, isEnsembleMode ? fieldIdx : -1);
+    return ensembleEntryField;
+}
+
+DeviceCacheEntry HEBChart::getFieldEntryDevice(const std::string& fieldName, int fieldIdx) {
+    VolumeData::DeviceCacheEntry ensembleEntryField = volumeData->getFieldEntryDevice(
             FieldType::SCALAR, fieldName, isEnsembleMode ? -1 : fieldIdx, isEnsembleMode ? fieldIdx : -1);
     return ensembleEntryField;
 }
@@ -122,9 +140,10 @@ void HEBChart::clearScalarFields() {
 
 void HEBChart::addScalarField(int _selectedFieldIdx, const std::string& _scalarFieldName) {
     auto fieldData = std::make_shared<HEBChartFieldData>(this);
-    fieldData->initializeColorPoints();
     fieldData->selectedFieldIdx = _selectedFieldIdx;
     fieldData->selectedScalarFieldName = _scalarFieldName;
+    fieldData->separateColorVarianceAndCorrelation = separateColorVarianceAndCorrelation;
+    fieldData->setColorMapVariance(colorMapVariance);
 
     bool foundInsertionPosition = false;
     for (size_t i = 0; i < fieldDataArray.size(); i++) {
@@ -188,6 +207,11 @@ void HEBChart::setDownscalingFactors(int _dfx, int _dfy, int _dfz) {
 
 void HEBChart::setUse2DField(bool _use2dField) {
     use2dField = _use2dField;
+    dataDirty = true;
+}
+
+void HEBChart::setUseCorrelationComputationGpu(bool _useGpu) {
+    useCorrelationComputationGpu = _useGpu;
     dataDirty = true;
 }
 
@@ -304,8 +328,7 @@ void HEBChart::computeDownscaledField(
     }
 }
 
-void HEBChart::computeDownscaledFieldVariance(
-        HEBChartFieldData* fieldData, int idx, std::vector<float*>& downscaledFields) {
+void HEBChart::computeDownscaledFieldVariance(HEBChartFieldData* fieldData, int idx) {
     // Compute the standard deviation inside the downscaled grids.
     int cs = getCorrelationMemberCount();
     int xsd = idx == 0 ? xsd0 : xsd1;
@@ -432,15 +455,19 @@ void HEBChart::computeCorrelations(
         HEBChartFieldData* fieldData,
         std::vector<float*>& downscaledFields0, std::vector<float*>& downscaledFields1,
         std::vector<MIFieldEntry>& miFieldEntries) {
-    //auto startTime = std::chrono::system_clock::now();
+    auto startTime = std::chrono::system_clock::now();
     if (samplingMethodType == SamplingMethodType::MEAN) {
         computeCorrelationsMean(fieldData, downscaledFields0, downscaledFields1, miFieldEntries);
     } else {
-        computeCorrelationsSampling(fieldData, miFieldEntries);
+        if (useCorrelationComputationGpu) {
+            computeCorrelationsSamplingGpu(fieldData, miFieldEntries);
+        } else {
+            computeCorrelationsSamplingCpu(fieldData, miFieldEntries);
+        }
     }
-    //auto endTime = std::chrono::system_clock::now();
-    //auto elapsedTime = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
-    //std::cout << "Elapsed time correlations: " << elapsedTime.count() << "ms" << std::endl;
+    auto endTime = std::chrono::system_clock::now();
+    auto elapsedTime = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
+    std::cout << "Elapsed time correlations: " << elapsedTime.count() << "ms" << std::endl;
 
     //auto startTimeSort = std::chrono::system_clock::now();
 #ifdef USE_TBB
@@ -641,7 +668,7 @@ void HEBChart::computeCorrelationsMean(
 #endif
 }
 
-void HEBChart::computeCorrelationsSampling(
+void HEBChart::computeCorrelationsSamplingCpu(
         HEBChartFieldData* fieldData, std::vector<MIFieldEntry>& miFieldEntries) {
     int cs = getCorrelationMemberCount();
     int k = std::max(sgl::iceil(3 * cs, 100), 1); //< CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV
@@ -658,9 +685,11 @@ void HEBChart::computeCorrelationsSampling(
         float* field = fieldEntry.get();
         fieldEntries.push_back(fieldEntry);
         fields.push_back(field);
-        auto [minVal, maxVal] = getMinMaxScalarFieldValue(fieldData->selectedScalarFieldName, fieldIdx);
-        minFieldVal = std::min(minFieldVal, minVal);
-        maxFieldVal = std::max(maxFieldVal, maxVal);
+        if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
+            auto [minVal, maxVal] = getMinMaxScalarFieldValue(fieldData->selectedScalarFieldName, fieldIdx);
+            minFieldVal = std::min(minFieldVal, minVal);
+            maxFieldVal = std::max(maxFieldVal, maxVal);
+        }
     }
 
     int numPointsDownsampled = regionsEqual ? (numPoints0 * numPoints0 - numPoints0) / 2 : numPoints0 * numPoints1;
@@ -670,7 +699,7 @@ void HEBChart::computeCorrelationsSampling(
 
 #ifdef USE_TBB
     miFieldEntries = tbb::parallel_reduce(
-            tbb::blocked_range<int>(0, numPoints0), std::vector<MIFieldEntry>(),
+            tbb::blocked_range<int>(0, numPointsDownsampled), std::vector<MIFieldEntry>(),
             [&](tbb::blocked_range<int> const& r, std::vector<MIFieldEntry> miFieldEntriesThread) -> std::vector<MIFieldEntry> {
                 const CorrelationMeasureType cmt = correlationMeasureType;
                 CORRELATION_CACHE;
@@ -804,6 +833,300 @@ void HEBChart::computeCorrelationsSampling(
     delete[] samples;
 }
 
+struct CorrelationRequestData {
+    uint32_t xi, yi, zi, i, xj, yj, zj, j;
+};
+
+void HEBChart::computeCorrelationsSamplingGpu(
+        HEBChartFieldData* fieldData, std::vector<MIFieldEntry>& miFieldEntries) {
+    int cs = getCorrelationMemberCount();
+    int k = std::max(sgl::iceil(3 * cs, 100), 1); //< CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV
+    int numBins = 80; //< CorrelationMeasureType::MUTUAL_INFORMATION_BINNED
+    int numPoints0 = xsd0 * ysd0 * zsd0;
+    int numPoints1 = xsd1 * ysd1 * zsd1;
+
+    int numPointsDownsampled = regionsEqual ? (numPoints0 * numPoints0 - numPoints0) / 2 : numPoints0 * numPoints1;
+
+    auto* samples = new float[6 * numSamples];
+    generateSamples(samples, numSamples, samplingMethodType);
+
+    uint32_t batchSizeSamplesMax = 1 << 17; // Up to 131072 samples per batch.
+    uint32_t batchSizeCellsMax = batchSizeSamplesMax / numSamples;
+    uint32_t numBatches = sgl::uiceil(uint32_t(numPointsDownsampled), batchSizeCellsMax);
+
+    sgl::vk::Device* device = sgl::AppSettings::get()->getPrimaryDevice();
+    if (!requestsBuffer) {
+        computeRenderer = new sgl::vk::Renderer(device, 100);
+        if (device->getGraphicsQueue() == device->getComputeQueue()) {
+            supportsAsyncCompute = false;
+        }
+        fence = std::make_shared<sgl::vk::Fence>(device);
+
+        sgl::vk::CommandPoolType commandPoolType{};
+        commandPoolType.queueFamilyIndex = device->getComputeQueueIndex();
+        commandPoolType.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+        commandBuffer = device->allocateCommandBuffer(commandPoolType, &commandPool);
+        computeRenderer->setCustomCommandBuffer(commandBuffer, false);
+
+        requestsBuffer = std::make_shared<sgl::vk::Buffer>(
+                device, sizeof(CorrelationRequestData) * batchSizeSamplesMax,
+                VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                VMA_MEMORY_USAGE_GPU_ONLY);
+        requestsStagingBuffer = std::make_shared<sgl::vk::Buffer>(
+                device, sizeof(CorrelationRequestData) * batchSizeSamplesMax,
+                VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                VMA_MEMORY_USAGE_CPU_TO_GPU);
+        correlationOutputBuffer = std::make_shared<sgl::vk::Buffer>(
+                device, sizeof(float) * batchSizeSamplesMax,
+                VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                VMA_MEMORY_USAGE_GPU_ONLY);
+        correlationOutputStagingBuffer = std::make_shared<sgl::vk::Buffer>(
+                device, sizeof(float) * batchSizeSamplesMax,
+                VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                VMA_MEMORY_USAGE_GPU_TO_CPU);
+
+        correlationComputePass = std::make_shared<CorrelationComputePass>(computeRenderer);
+        correlationComputePass->setUseRequestEvaluationMode(true);
+        correlationComputePass->setRequestsBuffer(requestsBuffer);
+        correlationComputePass->setOutputBuffer(correlationOutputBuffer);
+    }
+
+    float minFieldVal = std::numeric_limits<float>::max();
+    float maxFieldVal = std::numeric_limits<float>::lowest();
+    std::vector<VolumeData::DeviceCacheEntry> fieldEntries;
+    std::vector<sgl::vk::ImageViewPtr> fieldImageViews;
+    fieldEntries.reserve(cs);
+    fieldImageViews.reserve(cs);
+    for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
+        VolumeData::DeviceCacheEntry fieldEntry = getFieldEntryDevice(fieldData->selectedScalarFieldName, fieldIdx);
+        fieldEntries.push_back(fieldEntry);
+        fieldImageViews.push_back(fieldEntry->getVulkanImageView());
+        if (fieldEntry->getVulkanImage()->getVkImageLayout() != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+            fieldEntry->getVulkanImage()->transitionImageLayout(
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, computeRenderer->getVkCommandBuffer());
+        }
+        if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
+            auto [minVal, maxVal] = getMinMaxScalarFieldValue(fieldData->selectedScalarFieldName, fieldIdx);
+            minFieldVal = std::min(minFieldVal, minVal);
+            maxFieldVal = std::max(maxFieldVal, maxVal);
+        }
+    }
+
+    uint32_t cellIdxOffset = 0;
+    auto numCellsLeft = uint32_t(numPointsDownsampled);
+    std::vector<CorrelationRequestData> requests;
+    requests.reserve(batchSizeCellsMax);
+    for (uint32_t batchIdx = 0; batchIdx < numBatches; batchIdx++) {
+        uint32_t batchSizeCells;
+        if (numCellsLeft > batchSizeCellsMax) {
+            batchSizeCells = batchSizeCellsMax;
+            numCellsLeft -= batchSizeCellsMax;
+        } else if (numCellsLeft > 0) {
+            batchSizeCells = numCellsLeft;
+            numCellsLeft = 0;
+        } else {
+            break;
+        }
+
+
+        // Create the batch data to upload to the device.
+        uint32_t loopMax = cellIdxOffset + batchSizeCells;
+        requests.clear();
+#ifdef USE_TBB
+        requests = tbb::parallel_reduce(
+            tbb::blocked_range<uint32_t>(cellIdxOffset, loopMax), std::vector<CorrelationRequestData>(),
+            [&](tbb::blocked_range<int> const& r, std::vector<CorrelationRequestData> requestsThread) -> std::vector<CorrelationRequestData> {
+                for (int m = r.begin(); m != r.end(); m++) {
+#else
+#if _OPENMP >= 201107
+        #pragma omp parallel default(none) shared(requests, numPoints0, numPoints1, cs) \
+        shared(cellIdxOffset, loopMax, numSamples, samples)
+#endif
+        {
+            std::vector<CorrelationRequestData> requestsThread;
+
+#if _OPENMP >= 201107
+            #pragma omp for schedule(dynamic)
+#endif
+            for (uint32_t m = cellIdxOffset; m < loopMax; m++) {
+#endif
+                uint32_t i, j;
+                if (regionsEqual) {
+                    i = (1 + sgl::uisqrt(1 + 8 * m)) / 2;
+                    j = uint32_t(m) - i * (i - 1) / 2;
+                } else {
+                    i = m / uint32_t(numPoints1);
+                    j = m % uint32_t(numPoints1);
+                }
+                if (regionsEqual && (cellDistanceRange.x > 0 || cellDistanceRange.y < cellDistanceRangeTotal.y)) {
+                    glm::vec3 pti(i % uint32_t(xsd0), (i / uint32_t(xsd0)) % uint32_t(ysd0), i / uint32_t(xsd0 * ysd0));
+                    glm::vec3 ptj(j % uint32_t(xsd1), (j / uint32_t(xsd1)) % uint32_t(ysd1), j / uint32_t(xsd1 * ysd1));
+                    float cellDist = glm::length(pti - ptj);
+                    if (cellDist < float(cellDistanceRange.x) || cellDist > float(cellDistanceRange.y)) {
+                        continue;
+                    }
+                }
+
+                auto region0 = getGridRegionPointIdx(0, i);
+                auto region1 = getGridRegionPointIdx(1, j);
+
+                CorrelationRequestData request;
+                for (int sampleIdx = 0; sampleIdx < numSamples; sampleIdx++) {
+                    int xi = std::clamp(int(std::round(samples[sampleIdx * 6 + 0] * float(region0.xsr) - 0.5f)), 0, region0.xsr - 1) + region0.xoff;
+                    int yi = std::clamp(int(std::round(samples[sampleIdx * 6 + 1] * float(region0.ysr) - 0.5f)), 0, region0.ysr - 1) + region0.yoff;
+                    int zi = std::clamp(int(std::round(samples[sampleIdx * 6 + 2] * float(region0.zsr) - 0.5f)), 0, region0.zsr - 1) + region0.zoff;
+                    int xj = std::clamp(int(std::round(samples[sampleIdx * 6 + 3] * float(region1.xsr) - 0.5f)), 0, region1.xsr - 1) + region1.xoff;
+                    int yj = std::clamp(int(std::round(samples[sampleIdx * 6 + 4] * float(region1.ysr) - 0.5f)), 0, region1.ysr - 1) + region1.yoff;
+                    int zj = std::clamp(int(std::round(samples[sampleIdx * 6 + 5] * float(region1.zsr) - 0.5f)), 0, region1.zsr - 1) + region1.zoff;
+                    request.i = i;
+                    request.j = j;
+                    request.xi = uint32_t(xi);
+                    request.yi = uint32_t(yi);
+                    request.zi = uint32_t(zi);
+                    request.xj = uint32_t(xj);
+                    request.yj = uint32_t(yj);
+                    request.zj = uint32_t(zj);
+                    requestsThread.emplace_back(request);
+                }
+            }
+
+#ifdef USE_TBB
+                return requestsThread;
+            },
+            [&](std::vector<CorrelationRequestData> lhs, std::vector<CorrelationRequestData> rhs) -> std::vector<CorrelationRequestData> {
+                std::vector<CorrelationRequestData> listOut = std::move(lhs);
+                listOut.insert(listOut.end(), std::make_move_iterator(rhs.begin()), std::make_move_iterator(rhs.end()));
+                return listOut;
+            });
+#else
+
+#if _OPENMP >= 201107
+            #pragma omp for ordered schedule(static, 1)
+            for (int threadIdx = 0; threadIdx < omp_get_num_threads(); ++threadIdx) {
+                #pragma omp ordered
+#else
+                for (int threadIdx = 0; threadIdx < 1; ++threadIdx) {
+#endif
+                {
+                    requests.insert(requests.end(), requestsThread.begin(), requestsThread.end());
+                }
+            }
+        }
+#endif
+        cellIdxOffset += batchSizeCells;
+
+
+        computeRenderer->beginCommandBuffer();
+        if (batchIdx == 0) {
+            correlationComputePass->setCorrelationMeasureType(correlationMeasureType);
+            correlationComputePass->setVolumeData(volumeData.get(), cs, false);
+            correlationComputePass->setCorrelationMemberCount(cs);
+            correlationComputePass->setNumBins(numBins);
+            correlationComputePass->setKraskovNumNeighbors(k);
+            correlationComputePass->setFieldImageViews(fieldImageViews);
+            correlationComputePass->buildIfNecessary();
+        }
+
+        // Upload the requests to the GPU, compute the correlations, and download the correlations back to the CPU.
+        requestsStagingBuffer->uploadData(sizeof(CorrelationRequestData) * requests.size(), requests.data());
+        requestsStagingBuffer->copyDataTo(requestsBuffer, computeRenderer->getVkCommandBuffer());
+        computeRenderer->insertBufferMemoryBarrier(
+                VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+                VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                requestsStagingBuffer);
+        computeRenderer->pushConstants(
+                correlationComputePass->getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                glm::uvec2(batchSizeCells * uint32_t(numSamples), uint32_t(cs)));
+        if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
+            computeRenderer->pushConstants(
+                    correlationComputePass->getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, 2 * sizeof(float),
+                    glm::vec2(minFieldVal, maxFieldVal));
+        }
+        correlationComputePass->setNumRequests(uint32_t(requests.size()));
+        correlationComputePass->render();
+        computeRenderer->insertBufferMemoryBarrier(
+                VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT,
+                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                requestsStagingBuffer);
+        correlationOutputBuffer->copyDataTo(correlationOutputStagingBuffer, computeRenderer->getVkCommandBuffer());
+        computeRenderer->endCommandBuffer();
+        computeRenderer->submitToQueue({}, {}, fence, VK_PIPELINE_STAGE_TRANSFER_BIT);
+        fence->wait();
+        fence->reset();
+
+
+        // Finally, insert the values of this batch.
+        auto* correlationValues = static_cast<float*>(correlationOutputStagingBuffer->mapMemory());
+        auto numValidCells = int(requests.size() / size_t(numSamples));
+#ifdef USE_TBB
+        std::vector<MIFieldEntry> newMiFieldEntries = tbb::parallel_reduce(
+            tbb::blocked_range<int>(0, numPointsDownsampled), std::vector<MIFieldEntry>(),
+            [&](tbb::blocked_range<int> const& r, std::vector<MIFieldEntry> miFieldEntriesThread) -> std::vector<MIFieldEntry> {
+                const CorrelationMeasureType cmt = correlationMeasureType;
+                CORRELATION_CACHE;
+
+                for (int m = r.begin(); m != r.end(); m++) {
+#else
+        miFieldEntries.reserve(numPointsDownsampled);
+#if _OPENMP >= 201107
+        #pragma omp parallel default(none) shared(miFieldEntries, requests, correlationValues, numValidCells)
+#endif
+        {
+            std::vector<MIFieldEntry> miFieldEntriesThread;
+#if _OPENMP >= 201107
+            #pragma omp for
+#endif
+            for (int cellIdx = 0; cellIdx < numValidCells; cellIdx++) {
+#endif
+                int requestIdx = cellIdx * numSamples;
+                auto i = int(requests.at(requestIdx).i);
+                auto j = int(requests.at(requestIdx).j);
+                float correlationValueMax = 0.0f;
+                bool isValidValue = false;
+                for (int sampleIdx = 0; sampleIdx < numSamples; sampleIdx++) {
+                    float correlationValue = correlationValues[requestIdx];
+                    if (std::abs(correlationValue) >= std::abs(correlationValueMax)) {
+                        correlationValueMax = correlationValue;
+                        isValidValue = true;
+                    }
+                    requestIdx++;
+                }
+                if (isValidValue && correlationValueMax >= correlationRange.x && correlationValueMax <= correlationRange.y) {
+                    miFieldEntriesThread.emplace_back(correlationValueMax, i, j);
+                }
+            }
+#ifdef USE_TBB
+            return miFieldEntriesThread;
+            },
+            [&](std::vector<MIFieldEntry> lhs, std::vector<MIFieldEntry> rhs) -> std::vector<MIFieldEntry> {
+                std::vector<MIFieldEntry> listOut = std::move(lhs);
+                listOut.insert(listOut.end(), std::make_move_iterator(rhs.begin()), std::make_move_iterator(rhs.end()));
+                return listOut;
+            });
+#else
+
+#if _OPENMP >= 201107
+            #pragma omp for ordered schedule(static, 1)
+            for (int threadIdx = 0; threadIdx < omp_get_num_threads(); ++threadIdx) {
+                #pragma omp ordered
+#else
+                for (int threadIdx = 0; threadIdx < 1; ++threadIdx) {
+#endif
+                {
+                    miFieldEntries.insert(miFieldEntries.end(), miFieldEntriesThread.begin(), miFieldEntriesThread.end());
+                }
+            }
+        }
+#endif
+#ifdef USE_TBB
+        miFieldEntries.insert(miFieldEntries.end(), newMiFieldEntries.begin(), newMiFieldEntries.end());
+#endif
+        correlationOutputStagingBuffer->unmapMemory();
+    }
+
+    delete[] samples;
+}
+
 void getControlPoints(
         const std::vector<HEBNode>& nodesList,
         const std::vector<uint32_t>& pointToNodeIndexMap0, const std::vector<uint32_t>& pointToNodeIndexMap1,
@@ -885,11 +1208,13 @@ void HEBChart::updateData() {
 
         // Compute the downscaled field.
         std::vector<float*> downscaledFields0, downscaledFields1;
-        downscaledFields0.resize(cs);
-        computeDownscaledField(fieldData, 0, downscaledFields0);
-        if (!regionsEqual) {
-            downscaledFields1.resize(cs);
-            computeDownscaledField(fieldData, 1, downscaledFields1);
+        if (samplingMethodType == SamplingMethodType::MEAN) {
+            downscaledFields0.resize(cs);
+            computeDownscaledField(fieldData, 0, downscaledFields0);
+            if (!regionsEqual) {
+                downscaledFields1.resize(cs);
+                computeDownscaledField(fieldData, 1, downscaledFields1);
+            }
         }
 
         // Compute the correlation matrix.
@@ -898,6 +1223,22 @@ void HEBChart::updateData() {
             computeCorrelations(fieldData, downscaledFields0, downscaledFields0, miFieldEntries);
         } else {
             computeCorrelations(fieldData, downscaledFields0, downscaledFields1, miFieldEntries);
+        }
+
+        // Delete the downscaled fields, as they are no longer used.
+        if (samplingMethodType == SamplingMethodType::MEAN) {
+            for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
+                float *downscaledField = downscaledFields0.at(fieldIdx);
+                delete[] downscaledField;
+            }
+            downscaledFields0.clear();
+            if (!regionsEqual) {
+                for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
+                    float *downscaledField = downscaledFields1.at(fieldIdx);
+                    delete[] downscaledField;
+                }
+                downscaledFields1.clear();
+            }
         }
 
         // Build the octree.
@@ -909,28 +1250,14 @@ void HEBChart::updateData() {
                 xsd0, ysd0, zsd0, xsd1, ysd1, zsd1);
 
         // Compute the standard deviation inside the downscaled grids.
-        computeDownscaledFieldVariance(fieldData, 0, downscaledFields0);
+        computeDownscaledFieldVariance(fieldData, 0);
         if (!regionsEqual) {
-            computeDownscaledFieldVariance(fieldData, 1, downscaledFields1);
+            computeDownscaledFieldVariance(fieldData, 1);
         }
         // Normalize standard deviations for visualization.
         auto [minVal, maxVal] = sgl::reduceFloatArrayMinMax(fieldData->leafStdDevArray);
         fieldData->minStdDev = minVal;
         fieldData->maxStdDev = maxVal;
-
-        // Delete the downscaled field, as it is no longer used.
-        for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
-            float *downscaledField = downscaledFields0.at(fieldIdx);
-            delete[] downscaledField;
-        }
-        downscaledFields0.clear();
-        if (!regionsEqual) {
-            for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
-                float *downscaledField = downscaledFields1.at(fieldIdx);
-                delete[] downscaledField;
-            }
-            downscaledFields1.clear();
-        }
 
         int maxNumLines = numPoints * MAX_NUM_LINES / 100;
         int numLinesLocal = std::min(maxNumLines, int(miFieldEntries.size()));

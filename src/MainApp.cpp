@@ -799,6 +799,9 @@ void MainApp::render() {
             SciVisApp::prepareReRender();
 
             // TODO
+            if (screenshotTransparentBackground) {
+                clearColor.setA(0);
+            }
             rendererVk->insertImageMemoryBarriers(
                     { sceneTextureVk->getImage(), sceneDepthTextureVk->getImage() },
                     VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL,
@@ -808,6 +811,9 @@ void MainApp::render() {
                     clearColor.getFloatColorRGBA(), rendererVk->getVkCommandBuffer());
             sceneDepthTextureVk->getImageView()->clearDepthStencil(
                     1.0f, 0, rendererVk->getVkCommandBuffer());
+            if (screenshotTransparentBackground) {
+                clearColor.setA(255);
+            }
 
             if (volumeData) {
                 volumeData->renderViewCalculator(0);
@@ -1024,11 +1030,20 @@ void MainApp::renderGui() {
             }
         }
 
+        int first3dViewIdx = 0;
+        for (int i = 0; i < int(dataViews.size()); i++) {
+            auto& renderer = volumeRenderers.at(i);
+            if (volumeRenderers.front()->isVisibleInView(i) && !renderer->getIsOverlayRenderer()) {
+                first3dViewIdx = i;
+                break;
+            }
+        }
+
         for (int i = 0; i < int(dataViews.size()); i++) {
             auto viewIdx = uint32_t(i);
             DataViewPtr& dataView = dataViews.at(i);
             if (dataView->showWindow) {
-                std::string windowName = dataView->getWindowName(i);
+                std::string windowName = dataView->getWindowNameImGui(dataViews, i);
                 bool isViewOpen = true;
                 sgl::ImGuiWrapper::get()->setNextWindowStandardSize(800, 600);
                 ImGui::SetNextTabbarMenu([this] {
@@ -1136,10 +1151,10 @@ void MainApp::renderGui() {
                             }
                         }
 
-                        if (i == 0 && showFpsOverlay) {
+                        if (i == first3dViewIdx && showFpsOverlay) {
                             renderGuiFpsOverlay();
                         }
-                        if (i == 0 && showCoordinateAxesOverlay) {
+                        if (i == first3dViewIdx && showCoordinateAxesOverlay) {
                             renderGuiCoordinateAxesOverlay(dataView->camera);
                         }
 
@@ -1478,7 +1493,7 @@ void MainApp::renderGuiMenuBar() {
             ImGui::Separator();
             for (int i = 0; i < int(dataViews.size()); i++) {
                 DataViewPtr& dataView = dataViews.at(i);
-                std::string windowName = dataView->getWindowName(i);
+                std::string windowName = dataView->getWindowNameImGui(dataViews, i);
                 if (ImGui::MenuItem(windowName.c_str(), nullptr, dataView->showWindow)) {
                     dataView->showWindow = !dataView->showWindow;
                 }
@@ -1602,8 +1617,14 @@ void MainApp::renderGuiPropertyEditorCustomNodes() {
     if (useDockSpaceMode && dataViews.size() > 1) {
         for (int i = 0; i < int(dataViews.size()); i++) {
             DataViewPtr& dataView = dataViews.at(i);
-            bool beginNode = propertyEditor.beginNode(dataView->getWindowName(i));
+            bool beginNode = propertyEditor.beginNode(dataView->getWindowNameImGui(dataViews, i));
             if (beginNode) {
+                if (propertyEditor.addInputAction("View Name", &dataView->getViewName())) {
+                    dataView->reRender = true;
+                    for (auto& volumeRenderer : volumeRenderers) {
+                        volumeRenderer->notifyReRenderTriggeredExternally();
+                    }
+                }
                 if (propertyEditor.addCheckbox("Sync with Global Camera", &dataView->syncWithParentCamera)) {
                     dataView->reRender = true;
                     for (auto& volumeRenderer : volumeRenderers) {

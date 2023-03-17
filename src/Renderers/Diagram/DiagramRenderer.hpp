@@ -93,6 +93,8 @@ private:
     std::vector<bool> scalarFieldSelectionArray;
     std::string scalarFieldComboValue;
     std::vector<DiagramSelectedFieldData> selectedScalarFields;
+    DiagramColorMap colorMapVariance = DiagramColorMap::VIRIDIS;
+    bool separateColorVarianceAndCorrelation = false;
     bool isEnsembleMode = true; //< Ensemble or time mode?
     CorrelationMeasureType correlationMeasureType = CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV;
     SamplingMethodType samplingMethodType = SamplingMethodType::MEAN;
@@ -102,7 +104,8 @@ private:
     int downscalingFactorX = 32, downscalingFactorY = 32, downscalingFactorZ = 32;
     bool downscalingPowerOfTwo = true;
     bool downscalingFactorUniform = true;
-    int lineCountFactor = 100;
+    int lineCountFactorContext = 100;
+    int lineCountFactorFocus = 100;
     float curveThickness = 1.5f;
     float curveOpacity = 0.4f;
     glm::vec2 correlationRange{}, correlationRangeTotal{};
@@ -114,6 +117,7 @@ private:
     bool colorByValue = true;
     bool showSelectedRegionsByColor = true;
     bool use2dField = false;
+    bool useCorrelationComputationGpu = true;
 
     // Test data.
     std::vector<std::string> variableNames;

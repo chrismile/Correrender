@@ -40,8 +40,38 @@
 #include "Renderers/Renderer.hpp"
 #include "DataView.hpp"
 
+int DataView::globalViewIdx = 0;
+
+std::string DataView::getWindowNameImGui(const std::vector<DataViewPtr>& dataViews, int index) const {
+    bool foundDuplicateName = false;
+    for (int i = 0; i < int(dataViews.size()); i++) {
+        if (i == index) {
+            continue;
+        }
+        if (dataViews.at(i)->viewName == viewName) {
+            foundDuplicateName = true;
+            break;
+        }
+    }
+
+    if (foundDuplicateName) {
+        int idx = 1;
+        for (int i = 0; i < index; i++) {
+            if (dataViews.at(i)->viewName == viewName) {
+                idx++;
+            }
+        }
+        return viewName + " (" + std::to_string(idx) + ")###data_view_" + std::to_string(viewIdx);
+    } else {
+        return viewName + "###data_view_" + std::to_string(viewIdx);
+    }
+}
+
 DataView::DataView(SceneData* parentSceneData)
         : parentSceneData(parentSceneData), renderer(*parentSceneData->renderer), sceneData(*parentSceneData) {
+    viewIdx = globalViewIdx;
+    globalViewIdx++;
+
     device = renderer->getDevice();
 
     sceneData.sceneTexture = &sceneTextureVk;
@@ -108,8 +138,14 @@ void DataView::resize(int newWidth, int newHeight) {
             VK_IMAGE_ASPECT_COLOR_BIT);
     //sceneTextureVk->getImage()->transitionImageLayout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
     renderer->transitionImageLayout(sceneTextureVk->getImage(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    if (sceneData.screenshotTransparentBackground) {
+        clearColor.setA(0);
+    }
     sceneTextureVk->getImageView()->clearColor(
             clearColor.getFloatColorRGBA(), renderer->getVkCommandBuffer());
+    if (sceneData.screenshotTransparentBackground) {
+        clearColor.setA(255);
+    }
 
     // Create scene depth texture.
     imageSettings.usage =
@@ -172,6 +208,9 @@ void DataView::beginRender() {
     renderer->setViewMatrix(camera->getViewMatrix());
     renderer->setModelMatrix(sgl::matrixIdentity());
 
+    if (sceneData.screenshotTransparentBackground) {
+        clearColor.setA(0);
+    }
     renderer->insertImageMemoryBarriers(
             { sceneTextureVk->getImage(), sceneDepthTextureVk->getImage() },
             VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
@@ -180,6 +219,9 @@ void DataView::beginRender() {
     sceneTextureVk->getImageView()->clearColor(clearColor.getFloatColorRGBA(), renderer->getVkCommandBuffer());
     sceneDepthTextureVk->getImageView()->clearDepthStencil(1.0f, 0, renderer->getVkCommandBuffer());
     sceneData.clearRenderTargetState();
+    if (sceneData.screenshotTransparentBackground) {
+        clearColor.setA(255);
+    }
 }
 
 void DataView::endRender() {
