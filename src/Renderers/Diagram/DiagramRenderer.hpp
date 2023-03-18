@@ -42,6 +42,7 @@ class HEBChart;
 class DomainOutlineRasterPass;
 class DomainOutlineComputePass;
 class ConnectingLineRasterPass;
+class SelectionBoxRasterPass;
 
 struct OutlineRenderData {
     sgl::vk::BufferPtr indexBuffer;
@@ -133,13 +134,17 @@ private:
     std::vector<std::shared_ptr<DomainOutlineRasterPass>> domainOutlineRasterPasses[2];
     std::vector<std::shared_ptr<DomainOutlineComputePass>> domainOutlineComputePasses[2];
     std::vector<std::shared_ptr<ConnectingLineRasterPass>> connectingLineRasterPass;
+    // Opaque selection boxes as an alternative to the outline raster passes.
+    std::vector<std::shared_ptr<SelectionBoxRasterPass>> selectionBoxRasterPasses[2];
+    bool useOpaqueSelectionBoxes = true;
 
     // Camera alignment rotation.
     void updateAlignmentRotation(float dt, HEBChart* diagram);
     bool useAlignmentRotation = false;
     HEBChart* cachedAlignmentRotationDiagram = nullptr;
     uint32_t cachedPointIdx0 = 0, cachedPointIdx1 = 0;
-    const float alignmentRotationTotalTime = 2.0f;
+    const float alignmentRotationTotalTimeMax = 4.0f;
+    float alignmentRotationTotalTime = 0.0f;
     float alignmentRotationTime = 0.0f;
     float rotationAngleTotal = 0.0f;
     glm::vec3 cameraUpStart{};

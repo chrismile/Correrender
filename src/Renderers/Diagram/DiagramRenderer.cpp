@@ -43,6 +43,7 @@
 #include "../RenderingModes.hpp"
 
 #include "ConnectingLineRasterPass.hpp"
+#include "SelectionBoxRasterPass.hpp"
 #include "RadarBarChart.hpp"
 #include "HEBChart.hpp"
 
@@ -276,6 +277,7 @@ void DiagramRenderer::recreateSwapchainView(uint32_t viewIdx, uint32_t width, ui
     for (int idx = 0; idx < 2; idx++) {
         domainOutlineRasterPasses[idx].at(viewIdx)->recreateSwapchain(width, height);
         domainOutlineComputePasses[idx].at(viewIdx)->recreateSwapchain(width, height);
+        selectionBoxRasterPasses[idx].at(viewIdx)->recreateSwapchain(width, height);
     }
     connectingLineRasterPass.at(viewIdx)->recreateSwapchain(width, height);
 }
@@ -495,20 +497,24 @@ void DiagramRenderer::updateAlignmentRotation(float dt, HEBChart* diagram) {
         alignmentRotationTime = 0.0f;
 
         auto lineDirection = diagram->getLineDirection();
-        glm::vec3 lineDirProj = lineDirection - glm::dot(lineDirection, cameraUpStart) * cameraUpStart;
-        float lineDirProjLength = glm::length(lineDirProj);
-        if (lineDirProjLength < 1e-2f) {
+        // Compute the vector perpendicular to both the up direction and the line direction.
+        glm::vec3 normal = glm::cross(lineDirection, cameraUpStart);
+        float normalLength = glm::length(normal);
+        if (normalLength < 1e-2f) {
             // All angles are perpendicular, so we can stop.
-            alignmentRotationTime = alignmentRotationTotalTime;
+            alignmentRotationTotalTime = alignmentRotationTime = 0.0f;
         } else {
-            lineDirProj /= lineDirProjLength;
-            glm::vec3 lineDirProjNormal = glm::cross(cameraUpStart, lineDirProj);
-            if (glm::dot(lineDirProjNormal, camera->getCameraFront()) < 0.0f) {
-                lineDirProjNormal = -lineDirProjNormal;
+            normal /= normalLength;
+            // Take the shorter angle.
+            if (glm::dot(normal, camera->getCameraFront()) < 0.0f) {
+                normal = -normal;
             }
-            float y = glm::dot(glm::cross(lineDirProjNormal, camera->getCameraFront()), camera->getCameraUp());
-            float x = glm::dot(lineDirProjNormal, camera->getCameraFront());
+            // Compute the angle necessary to align the front direction with the normal vector.
+            // Then, the viewing direction will be perpendicular to the line while pertaining the up direction.
+            float y = glm::dot(glm::cross(normal, camera->getCameraFront()), camera->getCameraUp());
+            float x = glm::dot(normal, camera->getCameraFront());
             rotationAngleTotal = std::atan2(y, x);
+            alignmentRotationTotalTime = alignmentRotationTotalTimeMax * std::abs(rotationAngleTotal) / sgl::PI;
         }
     }
 
@@ -594,20 +600,27 @@ void DiagramRenderer::renderViewPreImpl(uint32_t viewIdx) {
 
     for (int idx = 0; idx < 2; idx++) {
         if (diagram->getIsRegionSelected(idx)) {
-            domainOutlineComputePasses[idx].at(viewIdx)->setOutlineSettings(
-                    diagram->getSelectedRegion(idx), lineWidth, 1e-4f);
-            domainOutlineComputePasses[idx].at(viewIdx)->render();
-            if (twoRegionsSelected && diagram->getShowSelectedRegionsByColor()) {
-                domainOutlineRasterPasses[idx].at(viewIdx)->setCustomColor(
+            if (useOpaqueSelectionBoxes) {
+                selectionBoxRasterPasses[idx].at(viewIdx)->setBoxAabb(diagram->getSelectedRegion(idx));
+                selectionBoxRasterPasses[idx].at(viewIdx)->setColor(
                         diagram->getColorSelected(idx).getFloatColorRGBA());
+                selectionBoxRasterPasses[idx].at(viewIdx)->render();
             } else {
-                domainOutlineRasterPasses[idx].at(viewIdx)->resetCustomColor();
+                domainOutlineComputePasses[idx].at(viewIdx)->setOutlineSettings(
+                        diagram->getSelectedRegion(idx), lineWidth, 1e-4f);
+                domainOutlineComputePasses[idx].at(viewIdx)->render();
+                if (twoRegionsSelected && diagram->getShowSelectedRegionsByColor()) {
+                    domainOutlineRasterPasses[idx].at(viewIdx)->setCustomColor(
+                            diagram->getColorSelected(idx).getFloatColorRGBA());
+                } else {
+                    domainOutlineRasterPasses[idx].at(viewIdx)->resetCustomColor();
+                }
+                domainOutlineRasterPasses[idx].at(viewIdx)->render();
             }
-            domainOutlineRasterPasses[idx].at(viewIdx)->render();
         }
     }
     if (twoRegionsSelected) {
-        connectingLineRasterPass.at(viewIdx)->setLineSettings(diagram->getLinePositions(), lineWidth);
+        connectingLineRasterPass.at(viewIdx)->setLineSettings(diagram->getLinePositions(), lineWidth * 2.0f);
         if (diagram->getShowSelectedRegionsByColor()) {
             connectingLineRasterPass.at(viewIdx)->setCustomColors(
                     diagram->getColorSelected0().getFloatColorRGBA(),
@@ -642,6 +655,9 @@ void DiagramRenderer::addViewImpl(uint32_t viewIdx) {
         auto domainOutlineComputePass = std::make_shared<DomainOutlineComputePass>(renderer);
         domainOutlineComputePass->setRenderData(outlineRenderData.indexBuffer, outlineRenderData.vertexPositionBuffer);
         domainOutlineComputePasses[idx].push_back(domainOutlineComputePass);
+
+        selectionBoxRasterPasses[idx].push_back(std::make_shared<SelectionBoxRasterPass>(
+                renderer, viewManager->getViewSceneData(viewIdx)));
     }
 
     connectingLineRasterPass.push_back(std::make_shared<ConnectingLineRasterPass>(
@@ -670,6 +686,7 @@ void DiagramRenderer::removeViewImpl(uint32_t viewIdx) {
         outlineRenderDataList[idx].erase(outlineRenderDataList[idx].begin() + viewIdx);
         domainOutlineRasterPasses[idx].erase(domainOutlineRasterPasses[idx].begin() + viewIdx);
         domainOutlineComputePasses[idx].erase(domainOutlineComputePasses[idx].begin() + viewIdx);
+        selectionBoxRasterPasses[idx].erase(selectionBoxRasterPasses[idx].begin() + viewIdx);
     }
 }
 
@@ -775,6 +792,7 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         }
         correlationRangeTotal = correlationRange = parentDiagram->getCorrelationRangeTotal();
         for (auto& diagram : diagrams) {
+            diagram->setCorrelationRange(correlationRangeTotal);
             diagram->setCorrelationRange(correlationRangeTotal);
         }
         resetSelections();
@@ -1037,12 +1055,23 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         reRenderTriggeredByDiagram = true;
     }
 
-    if (propertyEditor.addCheckbox("Use GPU Computations", &useCorrelationComputationGpu)) {
-        for (auto& diagram : diagrams) {
-            diagram->setUseCorrelationComputationGpu(useCorrelationComputationGpu);
+    if (propertyEditor.beginNode("Advanced Settings")) {
+        if (propertyEditor.addCheckbox("Use GPU Computations", &useCorrelationComputationGpu)) {
+            for (auto& diagram : diagrams) {
+                diagram->setUseCorrelationComputationGpu(useCorrelationComputationGpu);
+            }
+            reRender = true;
+            reRenderTriggeredByDiagram = true;
         }
-        reRender = true;
-        reRenderTriggeredByDiagram = true;
+
+        if (propertyEditor.addCheckbox("Alignment Rotation", &useAlignmentRotation)) {
+            reRender = true;
+        }
+
+        if (propertyEditor.addCheckbox("Opaque Selection Boxes", &useOpaqueSelectionBoxes)) {
+            reRender = true;
+        }
+        propertyEditor.endNode();
     }
 
     /*if (propertyEditor.addCheckbox("Use 2D Field", &use2dField)) {

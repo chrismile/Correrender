@@ -138,12 +138,12 @@ void DataView::resize(int newWidth, int newHeight) {
             VK_IMAGE_ASPECT_COLOR_BIT);
     //sceneTextureVk->getImage()->transitionImageLayout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
     renderer->transitionImageLayout(sceneTextureVk->getImage(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-    if (sceneData.screenshotTransparentBackground) {
+    if (*sceneData.screenshotTransparentBackground) {
         clearColor.setA(0);
     }
     sceneTextureVk->getImageView()->clearColor(
             clearColor.getFloatColorRGBA(), renderer->getVkCommandBuffer());
-    if (sceneData.screenshotTransparentBackground) {
+    if (*sceneData.screenshotTransparentBackground) {
         clearColor.setA(255);
     }
 
@@ -208,7 +208,7 @@ void DataView::beginRender() {
     renderer->setViewMatrix(camera->getViewMatrix());
     renderer->setModelMatrix(sgl::matrixIdentity());
 
-    if (sceneData.screenshotTransparentBackground) {
+    if (*sceneData.screenshotTransparentBackground) {
         clearColor.setA(0);
     }
     renderer->insertImageMemoryBarriers(
@@ -219,7 +219,7 @@ void DataView::beginRender() {
     sceneTextureVk->getImageView()->clearColor(clearColor.getFloatColorRGBA(), renderer->getVkCommandBuffer());
     sceneDepthTextureVk->getImageView()->clearDepthStencil(1.0f, 0, renderer->getVkCommandBuffer());
     sceneData.clearRenderTargetState();
-    if (sceneData.screenshotTransparentBackground) {
+    if (*sceneData.screenshotTransparentBackground) {
         clearColor.setA(255);
     }
 }
