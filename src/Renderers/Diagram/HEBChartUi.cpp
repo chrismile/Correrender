@@ -521,15 +521,30 @@ void HEBChart::update(float dt) {
 
     if (isMouseInWindow && (sgl::Mouse->buttonReleased(1) || sgl::Mouse->buttonReleased(3))
             && !windowMoveOrResizeJustFinished) {
+        bool showCorrelationForClickedPointNew = false;
         clickedLineIdx = -1;
         clickedPointIdx = -1;
+        bool showCorrelationForClickedPointChanged = false;
         if (hoveredLineIdx >= 0) {
             clickedLineIdx = hoveredLineIdx;
+            // Don't reset lines for clicked point if one of those lines was selected.
+            showCorrelationForClickedPointNew = showCorrelationForClickedPoint;
         } else if (hoveredPointIdx >= 0) {
             clickedPointIdx = hoveredPointIdx;
+            if (regionsEqual && (sgl::Keyboard->getModifier() & KMOD_CTRL) != 0) {
+                showCorrelationForClickedPointNew = true;
+                showCorrelationForClickedPointChanged = true;
+                clickedPointGridIdx = uint32_t(std::find(
+                        pointToNodeIndexMap0.begin(), pointToNodeIndexMap0.end(),
+                        int(leafIdxOffset) + clickedPointIdx) - pointToNodeIndexMap0.begin());
+            }
+        }
+        if (showCorrelationForClickedPoint != showCorrelationForClickedPointNew) {
+            showCorrelationForClickedPoint = showCorrelationForClickedPointNew;
+            dataDirty = true;
         }
         // Left click opens focus view, right click only selects the line.
-        isFocusSelectionReset = !sgl::Mouse->buttonReleased(1);
+        isFocusSelectionReset = !sgl::Mouse->buttonReleased(1) || showCorrelationForClickedPointChanged;
         if (isFocusSelectionReset) {
             clickedLineIdxOld = -1;
             clickedPointIdxOld = -1;

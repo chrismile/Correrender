@@ -600,6 +600,10 @@ void HEBChart::computeCorrelationsMean(
                         continue;
                     }
                 }
+                if (regionsEqual && showCorrelationForClickedPoint
+                        && clickedPointGridIdx != uint32_t(i) && clickedPointGridIdx != uint32_t(j)) {
+                    continue;
+                }
                 for (int c = 0; c < cs; c++) {
                     Y[c] = downscaledFields1.at(c)[j];
                     if (std::isnan(Y[c])) {
@@ -745,6 +749,10 @@ void HEBChart::computeCorrelationsSamplingCpu(
                 if (cellDist < float(cellDistanceRange.x) || cellDist > float(cellDistanceRange.y)) {
                     continue;
                 }
+            }
+            if (regionsEqual && showCorrelationForClickedPoint
+                    && clickedPointGridIdx != uint32_t(i) && clickedPointGridIdx != uint32_t(j)) {
+                continue;
             }
 
             auto region0 = getGridRegionPointIdx(0, i);
@@ -972,6 +980,10 @@ void HEBChart::computeCorrelationsSamplingGpu(
                     if (cellDist < float(cellDistanceRange.x) || cellDist > float(cellDistanceRange.y)) {
                         continue;
                     }
+                }
+                if (regionsEqual && showCorrelationForClickedPoint
+                        && clickedPointGridIdx != i && clickedPointGridIdx != j) {
+                    continue;
                 }
 
                 auto region0 = getGridRegionPointIdx(0, i);

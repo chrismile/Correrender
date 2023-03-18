@@ -268,6 +268,8 @@ private:
     int selectedPointIndices[2] = { -1, -1 };
     int selectedLineIdx = -1;
     int clickedPointIdxOld = -1, clickedLineIdxOld = -1; //< For getHasNewFocusSelection.
+    bool showCorrelationForClickedPoint = false;
+    uint32_t clickedPointGridIdx = 0;
     bool isFocusSelectionReset = false;
     float pointRadiusBase = 1.5f;
     sgl::Color circleFillColor = sgl::Color(180, 180, 180, 255);
