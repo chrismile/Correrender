@@ -118,6 +118,8 @@ public:
     void setColorMapVariance(DiagramColorMap _colorMap);
     void setIsEnsembleMode(bool _isEnsembleMode);
     void setCorrelationMeasureType(CorrelationMeasureType _correlationMeasureType);
+    void setNumBins(int _numBins);
+    void setKraskovNumNeighbors(int _k);
     void setSamplingMethodType(SamplingMethodType _samplingMethodType);
     void setNumSamples(int _numSamples);
     void setBeta(float _beta);
@@ -196,6 +198,8 @@ private:
 
     // Hierarchy data.
     CorrelationMeasureType correlationMeasureType = CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV;
+    int numBins = 80; ///< For CorrelationMeasureType::MUTUAL_INFORMATION_BINNED.
+    int k = 3; ///< For CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV.
     SamplingMethodType samplingMethodType = SamplingMethodType::MEAN;
     int numSamples = 100;
     int dfx = 32, dfy = 32, dfz = 32; ///< Downscaling factors.
@@ -282,6 +286,9 @@ private:
     float outerRingOffset = 3.0f;
     float outerRingWidth = 0.0f; //< Determined automatically.
     float outerRingSizePct = 0.1f;
+
+    // Arrow(s) pointing at selected point(s).
+    void drawSelectionArrows();
 
     // Color legend.
     void drawColorLegends();

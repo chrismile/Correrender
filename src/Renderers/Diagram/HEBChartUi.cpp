@@ -799,7 +799,9 @@ void HEBChart::renderBaseNanoVG() {
         }
     }
 
-    if (showSelectedRegionsByColor && isFocusView && !fieldDataArray.empty()) {
+    if (selectedPointIndices[0] >= 0) {
+        drawSelectionArrows();
+    } else if (showSelectedRegionsByColor && isFocusView && !fieldDataArray.empty()) {
         glm::vec2 center(windowWidth / 2.0f, windowHeight / 2.0f);
         auto* fieldData = fieldDataArray.front().get();
         float rhi = totalRadius + std::max(totalRadius * 0.015f, 4.0f);
@@ -817,6 +819,7 @@ void HEBChart::renderBaseNanoVG() {
             nvgStroke(vg);
         }
     }
+
 
     // Render buttons.
     for (auto& button : buttons) {
@@ -1094,7 +1097,9 @@ void HEBChart::renderBaseSkia() {
         }
     }
 
-    if (showSelectedRegionsByColor && isFocusView && !fieldDataArray.empty()) {
+    if (selectedPointIndices[0] >= 0) {
+        drawSelectionArrows();
+    } if (showSelectedRegionsByColor && isFocusView && !fieldDataArray.empty()) {
         glm::vec2 center(windowWidth / 2.0f * s, windowHeight / 2.0f * s);
         auto* fieldData = fieldDataArray.front().get();
         float rhi = (totalRadius + std::max(totalRadius * 0.015f, 4.0f)) * s;
@@ -1375,7 +1380,9 @@ void HEBChart::renderBaseVkvg() {
         }
     }
 
-    if (showSelectedRegionsByColor && isFocusView && !fieldDataArray.empty()) {
+    if (selectedPointIndices[0] >= 0) {
+        drawSelectionArrows();
+    } else if (showSelectedRegionsByColor && isFocusView && !fieldDataArray.empty()) {
         glm::vec2 center(windowWidth / 2.0f * s, windowHeight / 2.0f * s);
         auto* fieldData = fieldDataArray.front().get();
         float rhi = (totalRadius + std::max(totalRadius * 0.015f, 4.0f)) * s;
@@ -1407,6 +1414,72 @@ void HEBChart::renderBaseVkvg() {
     }
 }
 #endif
+
+void HEBChart::drawSelectionArrows() {
+#ifdef SUPPORT_SKIA
+    SkPaint* paint = nullptr;
+    if (canvas) {
+        paint = new SkPaint;
+        static_cast<VectorBackendSkia*>(vectorBackend)->initializePaint(paint);
+    }
+#endif
+
+    // Draw wedges/arrows pointing at the selected points.
+    int numPointsSelected = selectedPointIndices[0] < 0 ? 0 : (selectedPointIndices[1] < 0 ? 1 : 2);
+    for (int idx = 0; idx < numPointsSelected; idx++) {
+        auto fillColor = showSelectedRegionsByColor && idx == 1 ? circleFillColorSelected1 : circleFillColorSelected0;
+        const auto& leaf = nodesList.at(int(leafIdxOffset) + selectedPointIndices[idx]);
+
+        glm::vec2 center(windowWidth / 2.0f, windowHeight / 2.0f);
+        glm::vec2 dir(leaf.normalizedPosition.x, leaf.normalizedPosition.y);
+        glm::vec2 orthoDir(-dir.y, dir.x);
+        float pointRadius = curveThickness * pointRadiusBase;
+        float radius0 = totalRadius;
+        float radius1 = pointRadius * 4.0f;
+        float width = radius1;
+        glm::vec2 p0 = center + radius0 * dir;
+        glm::vec2 p1 = p0 + radius1 * dir - width * orthoDir;
+        glm::vec2 p2 = p0 + radius1 * dir + width * orthoDir;
+
+        if (vg) {
+            NVGcolor fillColorNvg = nvgRGBA(fillColor.getR(), fillColor.getG(), fillColor.getB(), 255);
+            nvgBeginPath(vg);
+            nvgMoveTo(vg, p0.x, p0.y);
+            nvgLineTo(vg, p1.x, p1.y);
+            nvgLineTo(vg, p2.x, p2.y);
+            nvgClosePath(vg);
+            nvgFillColor(vg, fillColorNvg);
+            nvgFill(vg);
+        }
+#ifdef SUPPORT_SKIA
+        else if (canvas) {
+            SkPath path;
+            path.moveTo(p0.x * s, p0.y * s);
+            path.lineTo(p1.x * s, p1.y * s);
+            path.lineTo(p2.x * s, p2.y * s);
+            path.close();
+            paint->setColor(toSkColor(fillColor));
+            canvas->drawPath(path, *paint);
+        }
+#endif
+#ifdef SUPPORT_VKVG
+        else if (context) {
+            vkvg_move_to(context, p0.x * s, p0.y * s);
+            vkvg_line_to(context, p1.x * s, p1.y * s);
+            vkvg_line_to(context, p2.x * s, p2.y * s);
+            vkvg_close_path(context);
+            vkvg_set_source_color(context, fillColor.getColorRGBA());
+            vkvg_fill(context);
+        }
+#endif
+    }
+
+#ifdef SUPPORT_SKIA
+    if (canvas) {
+        delete paint;
+    }
+#endif
+}
 
 void HEBChart::drawColorLegends() {
     const auto& fieldDataArrayLocal = fieldDataArray;

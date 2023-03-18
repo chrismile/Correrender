@@ -105,6 +105,8 @@ void DiagramRenderer::initialize() {
         parentDiagram->setUseSeparateColorVarianceAndCorrelation(separateColorVarianceAndCorrelation);
         parentDiagram->setColorMapVariance(colorMapVariance);
         parentDiagram->setCorrelationMeasureType(correlationMeasureType);
+        parentDiagram->setNumBins(numBins);
+        parentDiagram->setKraskovNumNeighbors(k);
         parentDiagram->setSamplingMethodType(samplingMethodType);
         parentDiagram->setNumSamples(numSamples);
         parentDiagram->setBeta(beta);
@@ -125,6 +127,10 @@ void DiagramRenderer::initialize() {
     diagrams.push_back(parentDiagram);
 }
 
+int DiagramRenderer::getCorrelationMemberCount() {
+    return isEnsembleMode ? volumeData->getEnsembleMemberCount() : volumeData->getTimeStepCount();
+}
+
 void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) {
     if (!volumeData) {
         isNewData = true;
@@ -138,6 +144,20 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
     } else if (!isEnsembleMode && ts <= 1 && es > 1) {
         isEnsembleMode = true;
     }
+
+    int cs = getCorrelationMemberCount();
+    int kNew = std::max(sgl::iceil(3 * cs, 100), 1);
+    int kMaxNew = std::max(sgl::iceil(7 * cs, 100), 20);
+    if (kNew != k) {
+        for (auto& diagram : diagrams) {
+            diagram->setKraskovNumNeighbors(kNew);
+        }
+        if (parentDiagram) {
+            correlationRangeTotal = correlationRange = parentDiagram->getCorrelationRangeTotal();
+        }
+    }
+    k = kNew;
+    kMax = kMaxNew;
 
     if (isNewData) {
         reRenderTriggeredByDiagram = true;
@@ -187,6 +207,8 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
         parentDiagram->setColorMapVariance(colorMapVariance);
         parentDiagram->setIsEnsembleMode(isEnsembleMode);
         parentDiagram->setCorrelationMeasureType(correlationMeasureType);
+        parentDiagram->setNumBins(numBins);
+        parentDiagram->setKraskovNumNeighbors(k);
         parentDiagram->setSamplingMethodType(samplingMethodType);
         parentDiagram->setNumSamples(numSamples);
         parentDiagram->setBeta(beta);
@@ -315,6 +337,8 @@ void DiagramRenderer::resetSelections(int idx) {
             diagram->setColorMapVariance(colorMapVariance);
             diagram->setIsEnsembleMode(isEnsembleMode);
             diagram->setCorrelationMeasureType(correlationMeasureType);
+            diagram->setNumBins(numBins);
+            diagram->setKraskovNumNeighbors(k);
             diagram->setSamplingMethodType(samplingMethodType);
             diagram->setNumSamples(numSamples);
             diagram->setBeta(beta);
@@ -707,6 +731,31 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
             CORRELATION_MEASURE_TYPE_NAMES, IM_ARRAYSIZE(CORRELATION_MEASURE_TYPE_NAMES))) {
         for (auto& diagram : diagrams) {
             diagram->setCorrelationMeasureType(correlationMeasureType);
+        }
+        correlationRangeTotal = correlationRange = parentDiagram->getCorrelationRangeTotal();
+        for (auto& diagram : diagrams) {
+            diagram->setCorrelationRange(correlationRangeTotal);
+        }
+        resetSelections();
+        dirty = true;
+        reRender = true;
+        reRenderTriggeredByDiagram = true;
+    }
+
+    if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED && propertyEditor.addSliderIntEdit(
+            "#Bins", &numBins, 10, 100) == ImGui::EditMode::INPUT_FINISHED) {
+        for (auto& diagram : diagrams) {
+            diagram->setNumBins(numBins);
+        }
+        resetSelections();
+        dirty = true;
+        reRender = true;
+        reRenderTriggeredByDiagram = true;
+    }
+    if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV && propertyEditor.addSliderIntEdit(
+            "#Neighbors", &k, 1, kMax) == ImGui::EditMode::INPUT_FINISHED) {
+        for (auto& diagram : diagrams) {
+            diagram->setKraskovNumNeighbors(k);
         }
         correlationRangeTotal = correlationRange = parentDiagram->getCorrelationRangeTotal();
         for (auto& diagram : diagrams) {

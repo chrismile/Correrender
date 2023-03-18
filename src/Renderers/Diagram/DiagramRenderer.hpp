@@ -90,6 +90,7 @@ private:
     std::vector<std::pair<GridRegion, GridRegion>> selectedRegionStack; //< Selected regions stack.
 
     // UI renderer settings.
+    int getCorrelationMemberCount();
     std::vector<bool> scalarFieldSelectionArray;
     std::string scalarFieldComboValue;
     std::vector<DiagramSelectedFieldData> selectedScalarFields;
@@ -97,6 +98,9 @@ private:
     bool separateColorVarianceAndCorrelation = false;
     bool isEnsembleMode = true; //< Ensemble or time mode?
     CorrelationMeasureType correlationMeasureType = CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV;
+    int numBins = 80; ///< For CorrelationMeasureType::MUTUAL_INFORMATION_BINNED.
+    int k = 3; ///< For CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV.
+    int kMax = 20; ///< For CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV.
     SamplingMethodType samplingMethodType = SamplingMethodType::MEAN;
     int numSamples = 100;
     float beta = 0.75f;

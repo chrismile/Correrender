@@ -188,6 +188,20 @@ void HEBChart::setCorrelationMeasureType(CorrelationMeasureType _correlationMeas
     dataDirty = true;
 }
 
+void HEBChart::setNumBins(int _numBins) {
+    if (numBins != _numBins) {
+        numBins = _numBins;
+        dataDirty = true;
+    }
+}
+
+void HEBChart::setKraskovNumNeighbors(int _k) {
+    if (k != _k) {
+        k = _k;
+        dataDirty = true;
+    }
+}
+
 void HEBChart::setSamplingMethodType(SamplingMethodType _samplingMethodType) {
     samplingMethodType = _samplingMethodType;
     dataDirty = true;
@@ -220,7 +234,6 @@ glm::vec2 HEBChart::getCorrelationRangeTotal() {
     if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV
             || correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
         int cs = getCorrelationMemberCount();
-        int k = std::max(sgl::iceil(3 * cs, 100), 1);
         correlationRangeTotal.x = 0.0f;
         correlationRangeTotal.y = computeMaximumMutualInformationKraskov(k, cs);
     } else {
@@ -523,8 +536,6 @@ void HEBChart::computeCorrelationsMean(
         std::vector<float*>& downscaledFields0, std::vector<float*>& downscaledFields1,
         std::vector<MIFieldEntry>& miFieldEntries) {
     int cs = getCorrelationMemberCount();
-    int k = std::max(sgl::iceil(3 * cs, 100), 1); //< CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV
-    int numBins = 80; //< CorrelationMeasureType::MUTUAL_INFORMATION_BINNED
     int numPoints0 = xsd0 * ysd0 * zsd0;
     int numPoints1 = xsd1 * ysd1 * zsd1;
 #ifdef USE_TBB
@@ -671,8 +682,6 @@ void HEBChart::computeCorrelationsMean(
 void HEBChart::computeCorrelationsSamplingCpu(
         HEBChartFieldData* fieldData, std::vector<MIFieldEntry>& miFieldEntries) {
     int cs = getCorrelationMemberCount();
-    int k = std::max(sgl::iceil(3 * cs, 100), 1); //< CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV
-    int numBins = 80; //< CorrelationMeasureType::MUTUAL_INFORMATION_BINNED
     int numPoints0 = xsd0 * ysd0 * zsd0;
     int numPoints1 = xsd1 * ysd1 * zsd1;
 
@@ -840,8 +849,6 @@ struct CorrelationRequestData {
 void HEBChart::computeCorrelationsSamplingGpu(
         HEBChartFieldData* fieldData, std::vector<MIFieldEntry>& miFieldEntries) {
     int cs = getCorrelationMemberCount();
-    int k = std::max(sgl::iceil(3 * cs, 100), 1); //< CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV
-    int numBins = 80; //< CorrelationMeasureType::MUTUAL_INFORMATION_BINNED
     int numPoints0 = xsd0 * ysd0 * zsd0;
     int numPoints1 = xsd1 * ysd1 * zsd1;
 
