@@ -84,11 +84,15 @@ private:
     void recreateDiagramSwapchain(int diagramIdx = -1);
     void resetSelections(int idx = 0);
     VolumeDataPtr volumeData;
-    uint32_t diagramViewIdx = 0;
+    uint32_t contextDiagramViewIdx = 0, focusDiagramViewIdx = 0;
     bool reRenderTriggeredByDiagram = false;
     std::shared_ptr<HEBChart> parentDiagram; //< Parent diagram.
     std::vector<std::shared_ptr<HEBChart>> diagrams; //< Diagram stack.
     std::vector<std::pair<GridRegion, GridRegion>> selectedRegionStack; //< Selected regions stack.
+    void renderDiagramViewSelectionGui(
+            sgl::PropertyEditor& propertyEditor, const std::string& name, uint32_t& diagramViewIdx);
+    bool adaptIdxOnViewRemove(uint32_t viewIdx, uint32_t& diagramViewIdx);
+    bool renderOnlyLastFocusDiagram = true;
 
     // UI renderer settings.
     int getCorrelationMemberCount();

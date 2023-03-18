@@ -311,6 +311,7 @@ private:
     float textWidthMax = 32;
 
     // Buttons for closing the window/going back by one view.
+    void updateButtonsLayout();
     std::vector<DiagramButton> buttons;
     int returnToViewIdx = -1;
 };

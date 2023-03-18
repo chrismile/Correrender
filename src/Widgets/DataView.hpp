@@ -70,7 +70,8 @@ public:
     sgl::Color clearColor;
     std::string viewName = "Data View";
     int viewIdx;
-    static int globalViewIdx;
+    static std::set<int> usedViewIndices;
+    static std::set<int> freeViewIndices;
     static std::vector<SceneData*> globalSceneData;
 
     bool reRender = false;

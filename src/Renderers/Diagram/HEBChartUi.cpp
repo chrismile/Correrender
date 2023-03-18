@@ -346,6 +346,22 @@ void HEBChart::updateSizeByParent() {
     windowHeight = float(parentHeight) / (scaleFactor * float(ssf));
     onUpdatedWindowSize();
     onWindowSizeChanged();
+    updateButtonsLayout();
+}
+
+void HEBChart::updateButtonsLayout() {
+    const float buttonSize = std::clamp(totalRadius * 0.125f, 10.0f, 30.0f);
+    for (size_t buttonIdx = 0; buttonIdx < buttons.size(); buttonIdx++) {
+        auto& button = buttons.at(buttonIdx);
+        if (button.getButtonType() == ButtonType::CLOSE) {
+            // The close button is on the right.
+            button.setPosition(windowWidth - borderSizeX - buttonSize, borderSizeY);
+        } else {
+            // Order the other buttons from left to right with spacing.
+            button.setPosition(borderSizeX + float(buttonIdx) * (buttonSize * 1.25f), borderSizeY);
+        }
+        button.setSize(buttonSize);
+    }
 }
 
 void HEBChart::update(float dt) {
@@ -381,18 +397,10 @@ void HEBChart::update(float dt) {
     bool isMouseInWindow = windowAabb.contains(mousePosition) && !isMouseGrabbedByParent;
 
     // Update the buttons.
-    const float buttonSize = std::clamp(totalRadius * 0.125f, 10.0f, 30.0f);
+    updateButtonsLayout();
     isAnyButtonHovered = false;
     for (size_t buttonIdx = 0; buttonIdx < buttons.size(); buttonIdx++) {
         auto& button = buttons.at(buttonIdx);
-        if (button.getButtonType() == ButtonType::CLOSE) {
-            // The close button is on the right.
-            button.setPosition(windowWidth - borderSizeX - buttonSize, borderSizeY);
-        } else {
-            // Order the other buttons from left to right with spacing.
-            button.setPosition(borderSizeX + float(buttonIdx) * (buttonSize * 1.25f), borderSizeY);
-        }
-        button.setSize(buttonSize);
         if (button.update(dt, mousePosition)) {
             needsReRender = true;
         }

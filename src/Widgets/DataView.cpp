@@ -40,7 +40,8 @@
 #include "Renderers/Renderer.hpp"
 #include "DataView.hpp"
 
-int DataView::globalViewIdx = 0;
+std::set<int> DataView::usedViewIndices;
+std::set<int> DataView::freeViewIndices;
 
 std::string DataView::getWindowNameImGui(const std::vector<DataViewPtr>& dataViews, int index) const {
     bool foundDuplicateName = false;
@@ -69,8 +70,14 @@ std::string DataView::getWindowNameImGui(const std::vector<DataViewPtr>& dataVie
 
 DataView::DataView(SceneData* parentSceneData)
         : parentSceneData(parentSceneData), renderer(*parentSceneData->renderer), sceneData(*parentSceneData) {
-    viewIdx = globalViewIdx;
-    globalViewIdx++;
+    if (freeViewIndices.empty()) {
+        viewIdx = int(usedViewIndices.size());
+    } else {
+        auto it = freeViewIndices.begin();
+        viewIdx = *it;
+        freeViewIndices.erase(it);
+    }
+    usedViewIndices.insert(viewIdx);
 
     device = renderer->getDevice();
 
@@ -105,6 +112,7 @@ DataView::~DataView() {
         sgl::ImGuiWrapper::get()->freeDescriptorSet(descriptorSetImGui);
         descriptorSetImGui = nullptr;
     }
+    freeViewIndices.insert(viewIdx);
 }
 
 void DataView::resize(int newWidth, int newHeight) {

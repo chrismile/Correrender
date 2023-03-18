@@ -271,7 +271,7 @@ void DiagramRenderer::onFieldRemoved(FieldType fieldType, int fieldIdx) {
 }
 
 void DiagramRenderer::recreateSwapchainView(uint32_t viewIdx, uint32_t width, uint32_t height) {
-    if (viewIdx == diagramViewIdx) {
+    if (viewIdx == contextDiagramViewIdx || viewIdx == focusDiagramViewIdx) {
         recreateDiagramSwapchain();
     }
     for (int idx = 0; idx < 2; idx++) {
@@ -283,11 +283,15 @@ void DiagramRenderer::recreateSwapchainView(uint32_t viewIdx, uint32_t width, ui
 }
 
 void DiagramRenderer::recreateDiagramSwapchain(int diagramIdx) {
-    SceneData* sceneData = viewManager->getViewSceneData(diagramViewIdx);
     for (size_t idx = 0; idx < diagrams.size(); idx++) {
         if (diagramIdx >= 0 && diagramIdx != int(idx)) {
             continue;
         }
+        uint32_t diagramViewIdx = contextDiagramViewIdx;
+        if (renderOnlyLastFocusDiagram && idx > 0) {
+            diagramViewIdx = focusDiagramViewIdx;
+        }
+        SceneData* sceneData = viewManager->getViewSceneData(diagramViewIdx);
         auto& diagram = diagrams.at(idx);
         diagram->setBlitTargetVk(
                 (*sceneData->sceneTexture)->getImageView(),
@@ -349,7 +353,9 @@ void DiagramRenderer::resetSelections(int idx) {
             diagram->setCurveOpacity(curveOpacity);
             diagram->setDiagramRadius(diagramRadius);
             diagram->setOuterRingSizePercentage(outerRingSizePct);
-            diagram->setAlignWithParentWindow(alignWithParentWindow);
+            if (renderOnlyLastFocusDiagram) {
+                diagram->setAlignWithParentWindow(alignWithParentWindow);
+            }
             diagram->setOpacityByValue(opacityByValue);
             diagram->setShowSelectedRegionsByColor(showSelectedRegionsByColor);
             diagram->setColorByValue(colorByValue);
@@ -469,11 +475,11 @@ void DiagramRenderer::onHasMoved(uint32_t viewIdx) {
 
 void DiagramRenderer::updateAlignmentRotation(float dt, HEBChart* diagram) {
     sgl::Camera* camera;
-    auto* dataView = viewManager->getDataView(diagramViewIdx);
+    auto* dataView = viewManager->getDataView(contextDiagramViewIdx);
     if (dataView->syncWithParentCamera) {
         camera = dataView->parentSceneData->camera.get();
     } else {
-        camera = viewManager->getViewSceneData(diagramViewIdx)->camera.get();
+        camera = viewManager->getViewSceneData(contextDiagramViewIdx)->camera.get();
     }
 
     bool needsRestart = false;
@@ -557,21 +563,37 @@ void DiagramRenderer::setClearColor(const sgl::Color& clearColor) {
 }
 
 void DiagramRenderer::renderViewImpl(uint32_t viewIdx) {
-    if (viewIdx != diagramViewIdx) {
+    if (viewIdx != contextDiagramViewIdx && viewIdx != focusDiagramViewIdx) {
         return;
     }
 
     SceneData* sceneData = viewManager->getViewSceneData(viewIdx);
     sceneData->switchColorState(RenderTargetAccess::RASTERIZER);
 
-    for (auto& diagram : diagrams) {
+    for (size_t i = 0; i < diagrams.size(); i++) {
+        uint32_t diagramViewIdx = contextDiagramViewIdx;
+        if (renderOnlyLastFocusDiagram) {
+            // Only render the diagrams in the appropriate views.
+            if ((viewIdx != contextDiagramViewIdx && i == 0) || (viewIdx != focusDiagramViewIdx && i > 0)) {
+                continue;
+            }
+            // Only render the last view.
+            if (i > 0 && i != diagrams.size() - 1) {
+                continue;
+            }
+            if (i > 0) {
+                diagramViewIdx = focusDiagramViewIdx;
+            }
+        }
+
+        auto& diagram = diagrams.at(i);
         if (sgl::ImGuiWrapper::get()->getUseDockSpaceMode()) {
             ImVec2 pos = ImGui::GetCursorScreenPos();
             diagram->setImGuiWindowOffset(int(pos.x), int(pos.y));
         } else {
             diagram->setImGuiWindowOffset(0, 0);
         }
-        if (reRenderTriggeredByDiagram) {
+        if (reRenderTriggeredByDiagram || diagram->getIsFirstRender()) {
             diagram->render();
         }
         diagram->setBlitTargetSupersamplingFactor(viewManager->getDataView(diagramViewIdx)->getSupersamplingFactor());
@@ -580,7 +602,7 @@ void DiagramRenderer::renderViewImpl(uint32_t viewIdx) {
 }
 
 void DiagramRenderer::renderViewPreImpl(uint32_t viewIdx) {
-    if (viewIdx == diagramViewIdx && alignWithParentWindow) {
+    if ((viewIdx == contextDiagramViewIdx || viewIdx == focusDiagramViewIdx) && alignWithParentWindow) {
         return;
     }
 
@@ -664,16 +686,25 @@ void DiagramRenderer::addViewImpl(uint32_t viewIdx) {
             renderer, viewManager->getViewSceneData(viewIdx)));
 }
 
-void DiagramRenderer::removeViewImpl(uint32_t viewIdx) {
-    bool diagramViewIdxChanged = false;
+bool DiagramRenderer::adaptIdxOnViewRemove(uint32_t viewIdx, uint32_t& diagramViewIdx) {
     if (diagramViewIdx >= viewIdx && diagramViewIdx != 0) {
         if (diagramViewIdx != 0) {
             diagramViewIdx--;
+            return true;
         } else if (viewManager->getNumViews() > 0) {
             diagramViewIdx++;
+            return true;
         }
     }
+    return false;
+}
 
+void DiagramRenderer::removeViewImpl(uint32_t viewIdx) {
+    bool diagramViewIdxChanged = false;
+    diagramViewIdxChanged |= adaptIdxOnViewRemove(viewIdx, contextDiagramViewIdx);
+    if (renderOnlyLastFocusDiagram) {
+        diagramViewIdxChanged |= adaptIdxOnViewRemove(viewIdx, focusDiagramViewIdx);
+    }
     if (diagramViewIdxChanged) {
         reRender = true;
         reRenderTriggeredByDiagram = true;
@@ -708,10 +739,10 @@ void DiagramRenderer::updateScalarFieldComboValue() {
     }
 }
 
-void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
+void DiagramRenderer::renderDiagramViewSelectionGui(
+        sgl::PropertyEditor& propertyEditor, const std::string& name, uint32_t& diagramViewIdx) {
     std::string textDefault = "View " + std::to_string(diagramViewIdx + 1);
-    if (propertyEditor.addBeginCombo(
-            "Diagram View", textDefault, ImGuiComboFlags_NoArrowButton)) {
+    if (propertyEditor.addBeginCombo(name, textDefault, ImGuiComboFlags_NoArrowButton)) {
         for (size_t viewIdx = 0; viewIdx < viewVisibilityArray.size(); viewIdx++) {
             std::string text = "View " + std::to_string(viewIdx + 1);
             bool showInView = diagramViewIdx == uint32_t(viewIdx);
@@ -727,6 +758,16 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
             }
         }
         propertyEditor.addEndCombo();
+    }
+}
+
+void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
+    if (renderOnlyLastFocusDiagram) {
+        renderDiagramViewSelectionGui(propertyEditor, "Context Diagram View", contextDiagramViewIdx);
+        renderDiagramViewSelectionGui(propertyEditor, "Focus Diagram View", focusDiagramViewIdx);
+    } else {
+        renderDiagramViewSelectionGui(propertyEditor, "Diagram View", contextDiagramViewIdx);
+        focusDiagramViewIdx = contextDiagramViewIdx;
     }
 
     if (volumeData->getEnsembleMemberCount() > 1 && volumeData->getTimeStepCount() > 1) {
@@ -1051,6 +1092,11 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
 
     if (propertyEditor.addCheckbox("Align with Window", &alignWithParentWindow)) {
         parentDiagram->setAlignWithParentWindow(alignWithParentWindow);
+        if (renderOnlyLastFocusDiagram) {
+            for (size_t i = 1; i < diagrams.size(); i++) {
+                diagrams.at(i)->setAlignWithParentWindow(alignWithParentWindow);
+            }
+        }
         reRender = true;
         reRenderTriggeredByDiagram = true;
     }
@@ -1062,6 +1108,14 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
             }
             reRender = true;
             reRenderTriggeredByDiagram = true;
+        }
+
+        if (propertyEditor.addCheckbox("Focus+Context Mode", &renderOnlyLastFocusDiagram)) {
+            reRender = true;
+            reRenderTriggeredByDiagram = true;
+            for (size_t i = 1; i < diagrams.size(); i++) {
+                diagrams.at(i)->setAlignWithParentWindow(alignWithParentWindow && renderOnlyLastFocusDiagram);
+            }
         }
 
         if (propertyEditor.addCheckbox("Alignment Rotation", &useAlignmentRotation)) {
