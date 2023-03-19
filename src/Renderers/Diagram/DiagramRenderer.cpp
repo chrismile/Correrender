@@ -146,20 +146,6 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
         isEnsembleMode = true;
     }
 
-    int cs = getCorrelationMemberCount();
-    int kNew = std::max(sgl::iceil(3 * cs, 100), 1);
-    int kMaxNew = std::max(sgl::iceil(7 * cs, 100), 20);
-    if (kNew != k) {
-        for (auto& diagram : diagrams) {
-            diagram->setKraskovNumNeighbors(kNew);
-        }
-        if (parentDiagram) {
-            correlationRangeTotal = correlationRange = parentDiagram->getCorrelationRangeTotal();
-        }
-    }
-    k = kNew;
-    kMax = kMaxNew;
-
     if (isNewData) {
         reRenderTriggeredByDiagram = true;
         int xs = volumeData->getGridSizeX();
@@ -242,6 +228,20 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
         }
     }
 
+    int cs = getCorrelationMemberCount();
+    int kNew = std::max(sgl::iceil(3 * cs, 100), 1);
+    int kMaxNew = std::max(sgl::iceil(7 * cs, 100), 20);
+    if (kNew != k) {
+        for (auto& diagram : diagrams) {
+            diagram->setKraskovNumNeighbors(kNew);
+        }
+        if (parentDiagram) {
+            correlationRangeTotal = correlationRange = parentDiagram->getCorrelationRangeTotal();
+        }
+    }
+    k = kNew;
+    kMax = kMaxNew;
+
     updateScalarFieldComboValue();
     for (int selectedFieldIdx = 0; selectedFieldIdx < int(selectedScalarFields.size()); selectedFieldIdx++) {
         auto& selectedScalarField = selectedScalarFields.at(selectedFieldIdx);
@@ -271,8 +271,19 @@ void DiagramRenderer::onFieldRemoved(FieldType fieldType, int fieldIdx) {
 }
 
 void DiagramRenderer::recreateSwapchainView(uint32_t viewIdx, uint32_t width, uint32_t height) {
-    if (viewIdx == contextDiagramViewIdx || viewIdx == focusDiagramViewIdx) {
-        recreateDiagramSwapchain();
+    if (renderOnlyLastFocusDiagram) {
+        if (viewIdx == contextDiagramViewIdx) {
+            recreateDiagramSwapchain(0);
+        }
+        if (viewIdx == focusDiagramViewIdx) {
+            for (size_t idx = 1; idx < diagrams.size(); idx++) {
+                recreateDiagramSwapchain(int(idx));
+            }
+        }
+    } else {
+        if (viewIdx == contextDiagramViewIdx || viewIdx == focusDiagramViewIdx) {
+            recreateDiagramSwapchain();
+        }
     }
     for (int idx = 0; idx < 2; idx++) {
         domainOutlineRasterPasses[idx].at(viewIdx)->recreateSwapchain(width, height);

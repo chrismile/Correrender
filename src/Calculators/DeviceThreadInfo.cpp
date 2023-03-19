@@ -53,7 +53,7 @@ DeviceThreadInfo getDeviceThreadInfo(sgl::vk::Device* device) {
     info.numCoresPerMultiprocessor = info.warpSize;
     info.numMultiprocessors = 64;
     info.numCoresTotal = info.numMultiprocessors * info.numCoresPerMultiprocessor;
-    info.numCudaCoresEquivalent = info.numCudaCoresEquivalent * 2;
+    info.numCudaCoresEquivalent = info.numCoresTotal * 2;
 
 #ifdef SUPPORT_CUDA_INTEROP
     if (device->getDeviceDriverId() == VK_DRIVER_ID_NVIDIA_PROPRIETARY
@@ -81,7 +81,7 @@ DeviceThreadInfo getDeviceThreadInfo(sgl::vk::Device* device) {
             info.numMultiprocessors = maxComputeUnits;
             // On AMD for example, the core count is the number of CUs times the warp size. We will assume this is true.
             info.numCoresTotal = info.numMultiprocessors * info.numCoresPerMultiprocessor;
-            info.numCudaCoresEquivalent = info.numCudaCoresEquivalent * 2;
+            info.numCudaCoresEquivalent = info.numCoresTotal * 2;
         }
     }
 #endif
@@ -160,6 +160,7 @@ DeviceThreadInfo getCudaDeviceThreadInfo(CUdevice cuDevice) {
     }
     info.numCoresPerMultiprocessor = uint32_t(numCoresPerMultiprocessor);
     info.numCoresTotal = info.numMultiprocessors * info.numCoresPerMultiprocessor;
+    info.numCudaCoresEquivalent = info.numCoresTotal;
 
     return info;
 }

@@ -865,7 +865,13 @@ void HEBChart::computeCorrelationsSamplingGpu(
     auto* samples = new float[6 * numSamples];
     generateSamples(samples, numSamples, samplingMethodType);
 
-    uint32_t batchSizeSamplesMax = 1 << 17; // Up to 131072 samples per batch.
+    const uint32_t batchSizeSamplesMaxAllCs = 1 << 17; // Up to 131072 samples per batch.
+    uint32_t batchSizeSamplesMax = batchSizeSamplesMaxAllCs;
+    if (cs > 100) {
+        double factorN = double(cs) / 100.0 * std::log2(double(cs) / 100.0 + 1.0);
+        batchSizeSamplesMax = std::ceil(double(batchSizeSamplesMax) / factorN);
+        batchSizeSamplesMax = uint32_t(sgl::nextPowerOfTwo(int(batchSizeSamplesMax)));
+    }
     uint32_t batchSizeCellsMax = batchSizeSamplesMax / numSamples;
     uint32_t numBatches = sgl::uiceil(uint32_t(numPointsDownsampled), batchSizeCellsMax);
 
@@ -884,19 +890,19 @@ void HEBChart::computeCorrelationsSamplingGpu(
         computeRenderer->setCustomCommandBuffer(commandBuffer, false);
 
         requestsBuffer = std::make_shared<sgl::vk::Buffer>(
-                device, sizeof(CorrelationRequestData) * batchSizeSamplesMax,
+                device, sizeof(CorrelationRequestData) * batchSizeSamplesMaxAllCs,
                 VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                 VMA_MEMORY_USAGE_GPU_ONLY);
         requestsStagingBuffer = std::make_shared<sgl::vk::Buffer>(
-                device, sizeof(CorrelationRequestData) * batchSizeSamplesMax,
+                device, sizeof(CorrelationRequestData) * batchSizeSamplesMaxAllCs,
                 VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                 VMA_MEMORY_USAGE_CPU_TO_GPU);
         correlationOutputBuffer = std::make_shared<sgl::vk::Buffer>(
-                device, sizeof(float) * batchSizeSamplesMax,
+                device, sizeof(float) * batchSizeSamplesMaxAllCs,
                 VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                 VMA_MEMORY_USAGE_GPU_ONLY);
         correlationOutputStagingBuffer = std::make_shared<sgl::vk::Buffer>(
-                device, sizeof(float) * batchSizeSamplesMax,
+                device, sizeof(float) * batchSizeSamplesMaxAllCs,
                 VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                 VMA_MEMORY_USAGE_GPU_TO_CPU);
 

@@ -1032,10 +1032,11 @@ void MainApp::renderGui() {
 
         int first3dViewIdx = 0;
         for (int i = 0; i < int(dataViews.size()); i++) {
-            auto& renderer = volumeRenderers.at(i);
-            if (volumeRenderers.front()->isVisibleInView(i) && !renderer->getIsOverlayRenderer()) {
-                first3dViewIdx = i;
-                break;
+            for (auto& renderer : volumeRenderers) {
+                if (renderer->isVisibleInView(i) && !renderer->getIsOverlayRenderer()) {
+                    first3dViewIdx = i;
+                    break;
+                }
             }
         }
 
