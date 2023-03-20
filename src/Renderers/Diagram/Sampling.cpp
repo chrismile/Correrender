@@ -47,8 +47,7 @@ void generateSamplesRandomUniform(float* samples, int numSamples) {
 }
 
 /**
- * For more details on this quasi-random sequence, please refer to:
- * http://extremelearning.com.au/unreasonable-effectiveness-of-quasirandom-sequences/
+ * For more details on this quasi-random sequence, please refer to: https://en.wikipedia.org/wiki/Halton_sequence
  * @param samples An array of numSamples * 6 quasi-random samples in [0, 1].
  * @param numSamples The number of samples.
  */
@@ -78,7 +77,8 @@ void generateSamplesQuasirandomHalton(float* samples, int numSamples) {
 }
 
 /**
- * For more details on this quasi-random sequence, please refer to: https://en.wikipedia.org/wiki/Halton_sequence
+ * For more details on this quasi-random sequence, please refer to:
+ * http://extremelearning.com.au/unreasonable-effectiveness-of-quasirandom-sequences/
  * @param samples An array of numSamples * 6 quasi-random samples in [0, 1].
  * @param numSamples The number of samples.
  */

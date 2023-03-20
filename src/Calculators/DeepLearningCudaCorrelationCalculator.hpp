@@ -57,6 +57,16 @@ public:
         }
         return outputFieldName;
     }
+    [[nodiscard]] bool getHasFixedRange() const override {
+        return !isMutualInformationData;
+    }
+    [[nodiscard]] std::pair<float, float> getFixedRange() const override {
+        if (calculateAbsoluteValue) {
+            return std::make_pair(0.0f, 1.0f);
+        } else {
+            return std::make_pair(-1.0f, 1.0f);
+        }
+    }
     FilterDevice getFilterDevice() override { return FilterDevice::CUDA; }
     void calculateDevice(int timeStepIdx, int ensembleIdx, const DeviceCacheEntry& deviceCacheEntry) override;
 
@@ -82,6 +92,9 @@ protected:
     std::string modelFilePath;
     std::string fileDialogDirectory;
     NetworkType networkType = NetworkType::MINE;
+    std::vector<std::string> modelPresets;
+    std::vector<std::string> modelPresetFilenames;
+    int modelPresetIndex = 0;
 
     /// For networkType == NetworkType::MINE.
     SymmetrizerType symmetrizerType = SymmetrizerType::Add;
@@ -90,6 +103,8 @@ protected:
     /// For networkType == NetworkType::SRN_MINE.
     const int srnGpuBatchSize1DBase = 131072;
     size_t cachedVolumeDataSlice3dSize = 0;
+    bool isMutualInformationData = true;
+    bool calculateAbsoluteValue = false;
 
     size_t cachedCorrelationMemberCountDevice = std::numeric_limits<size_t>::max();
     bool cacheNeedsRecreate = false;
@@ -110,6 +125,7 @@ protected:
     CUfunction writeGridPositionsFunctionCu{}, writeGridPositionReferenceFunctionCu{};
 
 private:
+    void parseModelPresetsFile(const std::string& filename);
     std::string implName, implNameKey, implNameKeyUpper, fileDialogKey, fileDialogDescription, modelFilePathSettingsKey;
 };
 

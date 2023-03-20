@@ -265,10 +265,22 @@ template<class T> __global__ void combineDecoderOutput(
     miValues[globalThreadIdx] = fmaxf(meanReference - meanQuery, 0.0f);
 }
 
-template<class T> __global__ void copyDecoderOutputSrn(
+template<class T> __global__ void copyDecoderOutputSrnMutualInformation(
         const T* __restrict__ decodedValues, float* __restrict__ miValues, uint32_t paddingFactor) {
     uint32_t globalThreadIdx = blockIdx.x * blockDim.x + threadIdx.x;
     miValues[globalThreadIdx] = fmaxf(decodedValues[globalThreadIdx * paddingFactor], 0.0f);
+}
+
+template<class T> __global__ void copyDecoderOutputSrnCorrelationCoefficient(
+        const T* __restrict__ decodedValues, float* __restrict__ miValues, uint32_t paddingFactor) {
+    uint32_t globalThreadIdx = blockIdx.x * blockDim.x + threadIdx.x;
+    miValues[globalThreadIdx] = decodedValues[globalThreadIdx * paddingFactor];
+}
+
+template<class T> __global__ void copyDecoderOutputSrnCorrelationCoefficientAbs(
+        const T* __restrict__ decodedValues, float* __restrict__ miValues, uint32_t paddingFactor) {
+    uint32_t globalThreadIdx = blockIdx.x * blockDim.x + threadIdx.x;
+    miValues[globalThreadIdx] = fabsf(decodedValues[globalThreadIdx * paddingFactor]);
 }
 
 #endif //CORRERENDER_MUTUALINFORMATION_CUH

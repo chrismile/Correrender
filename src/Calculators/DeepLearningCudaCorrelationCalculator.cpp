@@ -28,6 +28,7 @@
 
 #include <iostream>
 #include <boost/algorithm/string/case_conv.hpp>
+#include <json/json.h>
 
 #include <Math/Math.hpp>
 #include <Utils/AppSettings.hpp>
@@ -65,6 +66,41 @@ DeepLearningCudaCorrelationCalculator::DeepLearningCudaCorrelationCalculator(
         sgl::Logfile::get()->throwError(
                 "Error in DeepLearningCudaCorrelationCalculator::DeepLearningCudaCorrelationCalculator: "
                 "sgl::vk::getIsCudaDeviceApiFunctionTableInitialized() returned false.");
+    }
+
+    std::string implNameKeyLower = boost::to_lower_copy(implNameKeyUpper);
+    std::string modelPresetsJsonFilename =
+            sgl::AppSettings::get()->getDataDirectory() + "VolumeDataSets/models-" + implNameKeyLower + ".json";
+    if (sgl::FileUtils::get()->exists(modelPresetsJsonFilename)) {
+        parseModelPresetsFile(modelPresetsJsonFilename);
+    }
+}
+
+void DeepLearningCudaCorrelationCalculator::parseModelPresetsFile(const std::string& filename) {
+    // Parse the passed JSON file.
+    std::ifstream jsonFileStream(filename.c_str());
+    Json::CharReaderBuilder builder;
+    JSONCPP_STRING errorString;
+    Json::Value root;
+    if (!parseFromStream(builder, jsonFileStream, &root, &errorString)) {
+        sgl::Logfile::get()->writeError(errorString);
+        return;
+    }
+    jsonFileStream.close();
+
+    modelPresets.emplace_back("---");
+    modelPresetFilenames.emplace_back("---");
+
+    DataSetInformationPtr dataSetInformationRoot(new DataSetInformation);
+    Json::Value& modelsNode = root["models"];
+    for (Json::Value& model : modelsNode) {
+        modelPresets.push_back(model["name"].asString());
+        modelPresetFilenames.push_back(model["filename"].asString());
+    }
+
+    if (modelPresets.size() == 1) {
+        modelPresets.clear();
+        modelPresetFilenames.clear();
     }
 }
 
@@ -186,6 +222,19 @@ void DeepLearningCudaCorrelationCalculator::renderGuiImpl(sgl::PropertyEditor& p
                 fileDialogDirectory.c_str(),
                 "", 1, nullptr,
                 ImGuiFileDialogFlags_ConfirmOverwrite);
+    }
+
+    if (!modelPresets.empty() && propertyEditor.addCombo(
+            "Model Presets", &modelPresetIndex, modelPresets.data(), int(modelPresets.size()))) {
+        if (modelPresetIndex != 0) {
+            modelFilePath = modelPresetFilenames.at(modelPresetIndex);
+            loadModelFromFile(modelFilePath);
+            dirty = true;
+        }
+    }
+
+    if (!isMutualInformationData && propertyEditor.addCheckbox("Absolute Value", &calculateAbsoluteValue)) {
+        dirty = true;
     }
 
     // TODO

@@ -190,6 +190,8 @@ void QuickMLPCorrelationCalculator::loadModelFromFile(const std::string& modelPa
                     + symmetrizerTypeName + "\".");
             return;
         }
+
+        isMutualInformationData = moduleWrapper->configGeneral.value("is_mutual_information", true);
     }
 
     // Encoder and decoder configuration files are mandatory.
@@ -348,11 +350,27 @@ void QuickMLPCorrelationCalculator::runInferenceBatch(uint32_t batchOffset, uint
         }
     } else {
         if (moduleWrapper->networkEncoder->precisionOut() == qmlp::Tensor::Precision::FLOAT) {
-            copyDecoderOutputSrn<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
-                    cacheWrapper->queryDecoded.dataPtr<float>(), miOutput, numLayersOutDecoder);
+            if (isMutualInformationData) {
+                copyDecoderOutputSrnMutualInformation<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
+                        cacheWrapper->queryDecoded.dataPtr<float>(), miOutput, numLayersOutDecoder);
+            } else if (calculateAbsoluteValue) {
+                copyDecoderOutputSrnCorrelationCoefficientAbs<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
+                        cacheWrapper->queryDecoded.dataPtr<float>(), miOutput, numLayersOutDecoder);
+            } else {
+                copyDecoderOutputSrnCorrelationCoefficient<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
+                        cacheWrapper->queryDecoded.dataPtr<float>(), miOutput, numLayersOutDecoder);
+            }
         } else if (moduleWrapper->networkEncoder->precisionOut() == qmlp::Tensor::Precision::HALF) {
-            copyDecoderOutputSrn<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
-                    cacheWrapper->queryDecoded.dataPtr<half>(), miOutput, numLayersOutDecoder);
+            if (isMutualInformationData) {
+                copyDecoderOutputSrnMutualInformation<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
+                        cacheWrapper->queryDecoded.dataPtr<half>(), miOutput, numLayersOutDecoder);
+            } else if (calculateAbsoluteValue) {
+                copyDecoderOutputSrnCorrelationCoefficientAbs<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
+                        cacheWrapper->queryDecoded.dataPtr<half>(), miOutput, numLayersOutDecoder);
+            } else {
+                copyDecoderOutputSrnCorrelationCoefficient<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
+                        cacheWrapper->queryDecoded.dataPtr<half>(), miOutput, numLayersOutDecoder);
+            }
         }
     }
 }

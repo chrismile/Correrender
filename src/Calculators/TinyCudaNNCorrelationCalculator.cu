@@ -241,6 +241,8 @@ void TinyCudaNNCorrelationCalculator::loadModelFromFile(const std::string& model
                     + networkTypeName + "\".");
             return;
         }
+
+        isMutualInformationData = moduleWrapper->configGeneral.value("is_mutual_information", true);
     }
 
     // Encoder and decoder configuration files are mandatory.
@@ -765,8 +767,16 @@ void TinyCudaNNCorrelationCalculator::runInferenceBatch(uint32_t batchOffset, ui
                 cacheWrapper->referenceDecoded.data(), cacheWrapper->queryDecoded.data(), miOutput,
                 uint32_t(cs), numLayersOutDecoder);
     } else {
-        copyDecoderOutputSrn<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
-                cacheWrapper->queryDecoded.data(), miOutput, numLayersOutDecoder);
+        if (isMutualInformationData) {
+            copyDecoderOutputSrnMutualInformation<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
+                    cacheWrapper->queryDecoded.data(), miOutput, numLayersOutDecoder);
+        } else if (calculateAbsoluteValue) {
+            copyDecoderOutputSrnCorrelationCoefficientAbs<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
+                    cacheWrapper->queryDecoded.data(), miOutput, numLayersOutDecoder);
+        } else {
+            copyDecoderOutputSrnCorrelationCoefficient<<<sgl::uiceil(batchSize, 256), 256, 0, stream>>>(
+                    cacheWrapper->queryDecoded.data(), miOutput, numLayersOutDecoder);
+        }
     }
 
     /*copySize = batchSize;
