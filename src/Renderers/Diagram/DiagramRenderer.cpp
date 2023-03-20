@@ -120,6 +120,8 @@ void DiagramRenderer::initialize() {
         parentDiagram->setAlignWithParentWindow(alignWithParentWindow);
         parentDiagram->setOpacityByValue(opacityByValue);
         parentDiagram->setShowSelectedRegionsByColor(showSelectedRegionsByColor);
+        parentDiagram->setDesaturateUnselectedRing(desaturateUnselectedRing);
+        parentDiagram->setUseNeonSelectionColors(useNeonSelectionColors);
         parentDiagram->setColorByValue(colorByValue);
         parentDiagram->setUse2DField(use2dField);
         parentDiagram->setClearColor(viewManager->getClearColor());
@@ -208,6 +210,8 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
         parentDiagram->setAlignWithParentWindow(alignWithParentWindow);
         parentDiagram->setOpacityByValue(opacityByValue);
         parentDiagram->setShowSelectedRegionsByColor(showSelectedRegionsByColor);
+        parentDiagram->setDesaturateUnselectedRing(desaturateUnselectedRing);
+        parentDiagram->setUseNeonSelectionColors(useNeonSelectionColors);
         parentDiagram->setColorByValue(colorByValue);
         parentDiagram->setUse2DField(use2dField);
         parentDiagram->setClearColor(viewManager->getClearColor());
@@ -369,6 +373,8 @@ void DiagramRenderer::resetSelections(int idx) {
             }
             diagram->setOpacityByValue(opacityByValue);
             diagram->setShowSelectedRegionsByColor(showSelectedRegionsByColor);
+            diagram->setDesaturateUnselectedRing(desaturateUnselectedRing);
+            diagram->setUseNeonSelectionColors(useNeonSelectionColors);
             diagram->setColorByValue(colorByValue);
             diagram->setUse2DField(use2dField);
             diagram->setClearColor(viewManager->getClearColor());
@@ -1136,6 +1142,23 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         if (propertyEditor.addCheckbox("Opaque Selection Boxes", &useOpaqueSelectionBoxes)) {
             reRender = true;
         }
+
+        if (propertyEditor.addCheckbox("Desaturate Unselected Ring", &desaturateUnselectedRing)) {
+            for (auto& diagram : diagrams) {
+                diagram->setDesaturateUnselectedRing(desaturateUnselectedRing);
+            }
+            reRender = true;
+            reRenderTriggeredByDiagram = true;
+        }
+
+        if (propertyEditor.addCheckbox("Neon Selection Colors", &useNeonSelectionColors)) {
+            for (auto& diagram : diagrams) {
+                diagram->setUseNeonSelectionColors(useNeonSelectionColors);
+            }
+            reRender = true;
+            reRenderTriggeredByDiagram = true;
+        }
+
         propertyEditor.endNode();
     }
 

@@ -99,8 +99,9 @@ private:
     std::vector<bool> scalarFieldSelectionArray;
     std::string scalarFieldComboValue;
     std::vector<DiagramSelectedFieldData> selectedScalarFields;
-    DiagramColorMap colorMapVariance = DiagramColorMap::VIRIDIS;
-    bool separateColorVarianceAndCorrelation = false;
+    DiagramColorMap colorMapVariance = DiagramColorMap::HEATMAP;
+    bool separateColorVarianceAndCorrelation = true;
+    bool desaturateUnselectedRing = true;
     bool isEnsembleMode = true; //< Ensemble or time mode?
     CorrelationMeasureType correlationMeasureType = CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV;
     int numBins = 80; ///< For CorrelationMeasureType::MUTUAL_INFORMATION_BINNED.
@@ -125,6 +126,7 @@ private:
     bool opacityByValue = false;
     bool colorByValue = true;
     bool showSelectedRegionsByColor = true;
+    bool useNeonSelectionColors = false;
     bool use2dField = false;
     bool useCorrelationComputationGpu = true;
 

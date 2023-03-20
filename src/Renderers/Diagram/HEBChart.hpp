@@ -62,7 +62,8 @@ struct HEBChartFieldUpdateData {
 };
 
 struct HEBChartFieldData {
-    explicit HEBChartFieldData(HEBChart* parent) : parent(parent) {}
+    explicit HEBChartFieldData(HEBChart* parent, bool* desaturateUnselectedRing)
+            : parent(parent), desaturateUnselectedRing(desaturateUnselectedRing) {}
 
     // General data.
     HEBChart* parent = nullptr;
@@ -89,6 +90,7 @@ struct HEBChartFieldData {
     sgl::Color evalColorMapVariance(float t, bool saturated);
     DiagramColorMap colorMapLines = DiagramColorMap::CIVIDIS, colorMapVariance = DiagramColorMap::CIVIDIS;
     std::vector<glm::vec3> colorPointsLines, colorPointsVariance;
+    bool* desaturateUnselectedRing = nullptr;
     bool separateColorVarianceAndCorrelation = true;
 };
 typedef std::shared_ptr<HEBChartFieldData> HEBChartFieldDataPtr;
@@ -133,6 +135,8 @@ public:
     void setOpacityByValue(bool _opacityByValue);
     void setColorByValue(bool _colorByValue);
     void setUseSeparateColorVarianceAndCorrelation(bool _separate);
+    void setDesaturateUnselectedRing(bool _desaturate);
+    void setUseNeonSelectionColors(bool _useNeonSelectionColors);
     void setShowSelectedRegionsByColor(bool _show);
     void setUse2DField(bool _use2dField);
     void setUseCorrelationComputationGpu(bool _useGpu);
@@ -273,8 +277,8 @@ private:
     bool isFocusSelectionReset = false;
     float pointRadiusBase = 1.5f;
     sgl::Color circleFillColor = sgl::Color(180, 180, 180, 255);
-    sgl::Color circleFillColorSelected0 = sgl::Color(180, 80, 80, 255);
-    sgl::Color circleFillColorSelected1 = sgl::Color(50, 100, 180, 255);
+    sgl::Color circleFillColorSelected0 = sgl::Color(180, 80, 80, 255); //< Overwritten in setUseNeonSelectionColors.
+    sgl::Color circleFillColorSelected1 = sgl::Color(50, 100, 180, 255); //< Overwritten in setUseNeonSelectionColors.
     sgl::Color circleStrokeColorDark = sgl::Color(255, 255, 255, 255);
     sgl::Color circleStrokeColorBright = sgl::Color(0, 0, 0, 255);
     bool alignWithParentWindow = false;
@@ -282,6 +286,8 @@ private:
     bool colorByValue = true;
     bool showSelectedRegionsByColor = true;
     bool separateColorVarianceAndCorrelation = true;
+    bool desaturateUnselectedRing = true;
+    bool useNeonSelectionColors = false;
 
     // Outer ring.
     bool showRing = true;

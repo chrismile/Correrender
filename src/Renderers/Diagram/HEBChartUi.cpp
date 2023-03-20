@@ -117,7 +117,7 @@ glm::vec4 HEBChartFieldData::evalColorMapVec4Variance(float t, bool saturated) {
     const glm::vec3& c0 = colorPointsVariance.at(lastIdx);
     const glm::vec3& c1 = colorPointsVariance.at(nextIdx);
     glm::vec3 colorResult = glm::mix(c0, c1, f1);
-    if (!saturated) {
+    if (!saturated && *desaturateUnselectedRing) {
         colorResult = rgbToHsl(colorResult);
         colorResult.g = 0.0f;
         colorResult = hslToRgb(colorResult);
@@ -173,6 +173,11 @@ void HEBChart::initialize() {
 }
 
 void HEBChart::onUpdatedWindowSize() {
+    if (windowWidth < 360.0f || windowHeight < 360.0f) {
+        borderSizeX = borderSizeY = 10.0f;
+    } else {
+        borderSizeX = borderSizeY = std::min(windowWidth, windowHeight) / 36.0f;
+    }
     float minDim = std::min(windowWidth - 2.0f * borderSizeX, windowHeight - 2.0f * borderSizeY);
     totalRadius = std::round(0.5f * minDim);
     if (showRing) {
@@ -228,6 +233,7 @@ void HEBChart::setDiagramRadius(int radius) {
 
     windowWidth = (totalRadius + borderSizeX) * 2.0f + colorLegendWidth * 4.0f;
     windowHeight = (totalRadius + borderSizeY) * 2.0f;
+    onUpdatedWindowSize();
     onWindowSizeChanged();
 }
 
@@ -271,6 +277,27 @@ void HEBChart::setUseSeparateColorVarianceAndCorrelation(bool _separate) {
         }
     }
     computeColorLegendHeight();
+    needsReRender = true;
+}
+
+void HEBChart::setDesaturateUnselectedRing(bool _desaturate) {
+    desaturateUnselectedRing = _desaturate;
+    needsReRender = true;
+}
+
+void HEBChart::setUseNeonSelectionColors(bool _useNeonSelectionColors) {
+    useNeonSelectionColors = _useNeonSelectionColors;
+    if (useNeonSelectionColors) {
+        //sgl::Color(100, 255, 100), // NEON_GREEN
+        //sgl::Color(255, 60, 50),   // NEON_RED
+        //sgl::Color(0, 170, 255),   // NEON_BLUE
+        //sgl::Color(255, 148, 60),  // NEON_ORANGE
+        circleFillColorSelected0 = sgl::Color(255, 60, 50, 255);
+        circleFillColorSelected1 = sgl::Color(0, 170, 255, 255);
+    } else {
+        circleFillColorSelected0 = sgl::Color(180, 80, 80, 255);
+        circleFillColorSelected1 = sgl::Color(50, 100, 180, 255);
+    }
     needsReRender = true;
 }
 
@@ -1456,7 +1483,7 @@ void HEBChart::drawSelectionArrows() {
         glm::vec2 center(windowWidth / 2.0f, windowHeight / 2.0f);
         glm::vec2 dir(leaf.normalizedPosition.x, leaf.normalizedPosition.y);
         glm::vec2 orthoDir(-dir.y, dir.x);
-        float pointRadius = curveThickness * pointRadiusBase;
+        float pointRadius = curveThickness * pointRadiusBase * borderSizeX / 10.0f;
         float radius0 = totalRadius;
         float radius1 = pointRadius * 4.0f;
         float width = radius1;

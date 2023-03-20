@@ -139,7 +139,7 @@ void HEBChart::clearScalarFields() {
 }
 
 void HEBChart::addScalarField(int _selectedFieldIdx, const std::string& _scalarFieldName) {
-    auto fieldData = std::make_shared<HEBChartFieldData>(this);
+    auto fieldData = std::make_shared<HEBChartFieldData>(this, &desaturateUnselectedRing);
     fieldData->selectedFieldIdx = _selectedFieldIdx;
     fieldData->selectedScalarFieldName = _scalarFieldName;
     fieldData->separateColorVarianceAndCorrelation = separateColorVarianceAndCorrelation;

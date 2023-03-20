@@ -29,10 +29,10 @@
 #include "DiagramColorMap.hpp"
 
 std::vector<sgl::Color> defaultColors = {
-        sgl::Color(100, 255, 100),
-        sgl::Color(255, 60, 50),
-        sgl::Color(0, 170, 255),
-        sgl::Color(255, 148, 60),
+        sgl::Color(100, 255, 100), // NEON_GREEN
+        sgl::Color(255, 60, 50),   // NEON_RED
+        sgl::Color(0, 170, 255),   // NEON_BLUE
+        sgl::Color(255, 148, 60),  // NEON_ORANGE
 };
 
 std::vector<glm::vec3> getColorPoints(DiagramColorMap colorMap) {
