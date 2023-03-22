@@ -42,7 +42,7 @@
 #include "DiagramBase.hpp"
 #include "../../Calculators/CorrelationDefines.hpp"
 
-typedef std::shared_ptr<float[]> HostCacheEntry;
+typedef std::shared_ptr<HostCacheEntryType> HostCacheEntry;
 class CorrelationComputePass;
 class HEBChart;
 

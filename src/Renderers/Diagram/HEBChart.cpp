@@ -274,7 +274,7 @@ void HEBChart::computeDownscaledField(
     GridRegion r = idx == 0 ? r0 : r1;
     for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
         VolumeData::HostCacheEntry fieldEntry = getFieldEntryCpu(fieldData->selectedScalarFieldName, fieldIdx);
-        float* field = fieldEntry.get();
+        const float* field = fieldEntry->data<float>();
         auto* downscaledField = new float[numPoints];
 
         if (!use2dField) {
@@ -353,10 +353,10 @@ void HEBChart::computeDownscaledFieldVariance(HEBChartFieldData* fieldData, int 
     fieldData->leafStdDevArray.resize(xsd0 * ysd0 * zsd0 + (idx == 0 ? 0 : + xsd1 * ysd1 * zsd1));
 
     std::vector<VolumeData::HostCacheEntry> fieldEntries;
-    std::vector<float*> fields;
+    std::vector<const float*> fields;
     for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
         VolumeData::HostCacheEntry fieldEntry = getFieldEntryCpu(fieldData->selectedScalarFieldName, fieldIdx);
-        float* field = fieldEntry.get();
+        const float* field = fieldEntry->data<float>();
         fieldEntries.push_back(fieldEntry);
         fields.push_back(field);
     }
@@ -387,7 +387,7 @@ void HEBChart::computeDownscaledFieldVariance(HEBChartFieldData* fieldData, int 
                             int numValid = 0;
                             float fieldMean = 0.0f;
                             for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
-                                float* field = fields.at(fieldIdx);
+                                const float* field = fields.at(fieldIdx);
                                 float val = field[IDXS(x, y, z)];
                                 if (!std::isnan(val)) {
                                     fieldMean += val;
@@ -398,7 +398,7 @@ void HEBChart::computeDownscaledFieldVariance(HEBChartFieldData* fieldData, int 
                                 fieldMean = fieldMean / float(numValid);
                                 float fieldVarianceSum = 0.0f;
                                 for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
-                                    float* field = fields.at(fieldIdx);
+                                    const float* field = fields.at(fieldIdx);
                                     float val = field[IDXS(x, y, z)];
                                     if (!std::isnan(val)) {
                                         float diff = fieldMean - val;
@@ -422,7 +422,7 @@ void HEBChart::computeDownscaledFieldVariance(HEBChartFieldData* fieldData, int 
                         int numValid = 0;
                         float fieldMean = 0.0f;
                         for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
-                            float* field = fields.at(fieldIdx);
+                            const float* field = fields.at(fieldIdx);
                             float val = field[IDXS(x, y, zCenter)];
                             if (!std::isnan(val)) {
                                 fieldMean += val;
@@ -433,7 +433,7 @@ void HEBChart::computeDownscaledFieldVariance(HEBChartFieldData* fieldData, int 
                             fieldMean = fieldMean / float(numValid);
                             float fieldVarianceSum = 0.0f;
                             for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
-                                float* field = fields.at(fieldIdx);
+                                const float* field = fields.at(fieldIdx);
                                 float val = field[IDXS(x, y, zCenter)];
                                 if (!std::isnan(val)) {
                                     float diff = fieldMean - val;
@@ -692,10 +692,10 @@ void HEBChart::computeCorrelationsSamplingCpu(
     float minFieldVal = std::numeric_limits<float>::max();
     float maxFieldVal = std::numeric_limits<float>::lowest();
     std::vector<VolumeData::HostCacheEntry> fieldEntries;
-    std::vector<float*> fields;
+    std::vector<const float*> fields;
     for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
         VolumeData::HostCacheEntry fieldEntry = getFieldEntryCpu(fieldData->selectedScalarFieldName, fieldIdx);
-        float* field = fieldEntry.get();
+        const float* field = fieldEntry->data<float>();
         fieldEntries.push_back(fieldEntry);
         fields.push_back(field);
         if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {

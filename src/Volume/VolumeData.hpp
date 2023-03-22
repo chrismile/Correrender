@@ -47,6 +47,7 @@
 #include "Loaders/DataSetList.hpp"
 #include "Cache/FieldCache.hpp"
 #include "Cache/DeviceCacheEntry.hpp"
+#include "Cache/HostCacheEntry.hpp"
 #include "FieldType.hpp"
 #include "FieldAccess.hpp"
 
@@ -75,7 +76,7 @@ class ICorrelationCalculator;
 
 class VolumeData {
 public:
-    using HostCacheEntry = std::shared_ptr<float[]>;
+    using HostCacheEntry = std::shared_ptr<HostCacheEntryType>;
     using DeviceCacheEntry = std::shared_ptr<DeviceCacheEntryType>;
 
 public:
@@ -140,6 +141,15 @@ public:
     [[nodiscard]] inline int getEnsembleMemberCount() const { return es; }
     [[nodiscard]] inline size_t getSlice3dSizeInBytes(FieldType fieldType) const {
         return size_t(xs) * size_t(ys) * size_t(zs) * sizeof(float) * (fieldType == FieldType::SCALAR ? 1 : 3);
+    }
+    [[nodiscard]] inline size_t getSlice3dSizeInBytes(FieldType fieldType, ScalarDataFormat dataFormat) const {
+        size_t sizeInBytes = size_t(xs) * size_t(ys) * size_t(zs) * (fieldType == FieldType::SCALAR ? 1 : 3);
+        if (dataFormat == ScalarDataFormat::FLOAT) {
+            sizeInBytes *= sizeof(float);
+        } else if (dataFormat == ScalarDataFormat::SHORT) {
+            sizeInBytes *= sizeof(uint16_t);
+        }
+        return sizeInBytes;
     }
     [[nodiscard]] inline size_t getSlice3dEntryCount() const { return size_t(xs) * size_t(ys) * size_t(zs); }
     [[nodiscard]] inline float getDx() const { return dx; }

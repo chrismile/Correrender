@@ -72,13 +72,13 @@ void VelocityCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float* b
 
     VolumeData::HostCacheEntry entryVelocityX = volumeData->getFieldEntryCpu(
             FieldType::SCALAR, velocityFieldNameX, timeStepIdx, ensembleIdx);
-    float* velocityX = entryVelocityX.get();
+    const float* velocityX = entryVelocityX->data<float>();
     VolumeData::HostCacheEntry entryVelocityY = volumeData->getFieldEntryCpu(
             FieldType::SCALAR, velocityFieldNameY, timeStepIdx, ensembleIdx);
-    float* velocityY = entryVelocityY.get();
+    const float* velocityY = entryVelocityY->data<float>();
     VolumeData::HostCacheEntry entryVelocityZ = volumeData->getFieldEntryCpu(
             FieldType::SCALAR, velocityFieldNameZ, timeStepIdx, ensembleIdx);
-    float* velocityZ = entryVelocityZ.get();
+    const float* velocityZ = entryVelocityZ->data<float>();
 
 #ifdef USE_TBB
     tbb::parallel_for(tbb::blocked_range<int>(0, zs), [&](auto const& r) {
@@ -114,7 +114,7 @@ void VectorMagnitudeCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, f
     VolumeData::HostCacheEntry entryVectorField = volumeData->getFieldEntryCpu(
             FieldType::VECTOR, vectorFieldName, timeStepIdx, ensembleIdx);
     computeVectorMagnitudeField(
-            entryVectorField.get(), buffer,
+            entryVectorField->data<float>(), buffer,
             volumeData->getGridSizeX(), volumeData->getGridSizeY(), volumeData->getGridSizeZ());
 }
 
@@ -130,7 +130,7 @@ void VorticityCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float* 
     VolumeData::HostCacheEntry entryVelocity = volumeData->getFieldEntryCpu(
             FieldType::VECTOR, "Velocity", timeStepIdx, ensembleIdx);
     computeVorticityField(
-            entryVelocity.get(), buffer,
+            entryVelocity->data<float>(), buffer,
             volumeData->getGridSizeX(), volumeData->getGridSizeY(), volumeData->getGridSizeZ(),
             volumeData->getDx(), volumeData->getDy(), volumeData->getDz());
 }
@@ -149,6 +149,6 @@ void HelicityCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float* b
     VolumeData::HostCacheEntry entryVorticity = volumeData->getFieldEntryCpu(
             FieldType::VECTOR, "Vorticity", timeStepIdx, ensembleIdx);
     computeHelicityField(
-            entryVelocity.get(), entryVorticity.get(), buffer,
+            entryVelocity->data<float>(), entryVorticity->data<float>(), buffer,
             volumeData->getGridSizeX(), volumeData->getGridSizeY(), volumeData->getGridSizeZ());
 }

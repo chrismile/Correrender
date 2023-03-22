@@ -403,14 +403,14 @@ void CorrelationCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float
 #endif
 
     std::vector<VolumeData::HostCacheEntry> fieldEntries;
-    std::vector<float*> fields;
+    std::vector<const float*> fields;
     fieldEntries.reserve(cs);
     fields.reserve(cs);
     for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
         VolumeData::HostCacheEntry fieldEntry = getFieldEntryCpu(
                 scalarFieldNames.at(fieldIndexGui), fieldIdx, timeStepIdx, ensembleIdx);
         fieldEntries.push_back(fieldEntry);
-        fields.push_back(fieldEntry.get());
+        fields.push_back(fieldEntry->data<float>());
     }
 
     //size_t referencePointIdx =

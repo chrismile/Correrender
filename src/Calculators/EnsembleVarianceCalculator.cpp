@@ -95,11 +95,11 @@ void EnsembleVarianceCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, 
     int es = volumeData->getEnsembleMemberCount();
 
     std::vector<VolumeData::HostCacheEntry> scalarFieldEntries;
-    std::vector<float*> scalarFields;
+    std::vector<const float*> scalarFields;
     for (ensembleIdx = 0; ensembleIdx < es; ensembleIdx++) {
         VolumeData::HostCacheEntry entryScalarField = volumeData->getFieldEntryCpu(
                 FieldType::SCALAR, scalarFieldNames.at(scalarFieldIndex), timeStepIdx, ensembleIdx);
-        float* scalarField = entryScalarField.get();
+        const float* scalarField = entryScalarField->data<float>();
         scalarFieldEntries.push_back(entryScalarField);
         scalarFields.push_back(scalarField);
     }
@@ -115,7 +115,7 @@ void EnsembleVarianceCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, 
         int numValid = 0;
         float ensembleMean = 0.0f;
         for (int ensembleIdx = 0; ensembleIdx < es; ensembleIdx++) {
-            float* field = scalarFields.at(ensembleIdx);
+            const float* field = scalarFields.at(ensembleIdx);
             float val = field[pointIdx];
             if (!std::isnan(val)) {
                 ensembleMean += val;
@@ -127,7 +127,7 @@ void EnsembleVarianceCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, 
             ensembleMean = ensembleMean / float(numValid);
             float ensembleVarianceSum = 0.0f;
             for (int ensembleIdx = 0; ensembleIdx < es; ensembleIdx++) {
-                float* field = scalarFields.at(ensembleIdx);
+                const float* field = scalarFields.at(ensembleIdx);
                 float val = field[pointIdx];
                 if (!std::isnan(val)) {
                     float diff = ensembleMean - val;

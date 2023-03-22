@@ -33,13 +33,13 @@
 
 template<class T>
 inline float computePearson1(
-        const float* referenceValues, const std::vector<float*>& ensembleFields, int es, size_t gridPointIdx);
+        const float* referenceValues, const std::vector<const float*>& ensembleFields, int es, size_t gridPointIdx);
 extern template
 float computePearson1<float>(
-        const float* referenceValues, const std::vector<float*>& ensembleFields, int es, size_t gridPointIdx);
+        const float* referenceValues, const std::vector<const float*>& ensembleFields, int es, size_t gridPointIdx);
 extern template
 float computePearson1<double>(
-        const float* referenceValues, const std::vector<float*>& ensembleFields, int es, size_t gridPointIdx);
+        const float* referenceValues, const std::vector<const float*>& ensembleFields, int es, size_t gridPointIdx);
 
 template<class T>
 float computePearson1(
@@ -53,13 +53,13 @@ float computePearson1<double>(
 
 template<class T>
 float computePearson2(
-        const float* referenceValues, const std::vector<float*>& ensembleFields, int es, size_t gridPointIdx);
+        const float* referenceValues, const std::vector<const float*>& ensembleFields, int es, size_t gridPointIdx);
 extern template
 float computePearson2<float>(
-        const float* referenceValues, const std::vector<float*>& ensembleFields, int es, size_t gridPointIdx);
+        const float* referenceValues, const std::vector<const float*>& ensembleFields, int es, size_t gridPointIdx);
 extern template
 float computePearson2<double>(
-        const float* referenceValues, const std::vector<float*>& ensembleFields, int es, size_t gridPointIdx);
+        const float* referenceValues, const std::vector<const float*>& ensembleFields, int es, size_t gridPointIdx);
 
 template<class T>
 float computePearson2(

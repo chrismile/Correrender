@@ -99,10 +99,10 @@ void BinaryOperatorCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, fl
 
     VolumeData::HostCacheEntry entryScalarField0 = volumeData->getFieldEntryCpu(
             FieldType::SCALAR, scalarFieldNames.at(scalarFieldIndices[0]), timeStepIdx, ensembleIdx);
-    float* scalarField0 = entryScalarField0.get();
+    const float* scalarField0 = entryScalarField0->data<float>();
     VolumeData::HostCacheEntry entryScalarField1 = volumeData->getFieldEntryCpu(
             FieldType::SCALAR, scalarFieldNames.at(scalarFieldIndices[1]), timeStepIdx, ensembleIdx);
-    float* scalarField1 = entryScalarField1.get();
+    const float* scalarField1 = entryScalarField1->data<float>();
 
     std::function<float(float val0, float val1)> binaryOperator;
     if (binaryOperatorType == BinaryOperatorType::IDENTITY_1) {

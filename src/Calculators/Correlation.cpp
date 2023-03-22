@@ -33,7 +33,7 @@
 
 template<class T>
 float computePearson1(
-        const float* referenceValues, const std::vector<float*>& ensembleFields, int es, size_t gridPointIdx) {
+        const float* referenceValues, const std::vector<const float*>& ensembleFields, int es, size_t gridPointIdx) {
     auto n = T(es);
     T sumX = 0;
     T sumY = 0;
@@ -55,10 +55,10 @@ float computePearson1(
 }
 template
 float computePearson1<float>(
-        const float* referenceValues, const std::vector<float*>& ensembleFields, int es, size_t gridPointIdx);
+        const float* referenceValues, const std::vector<const float*>& ensembleFields, int es, size_t gridPointIdx);
 template
 float computePearson1<double>(
-        const float* referenceValues, const std::vector<float*>& ensembleFields, int es, size_t gridPointIdx);
+        const float* referenceValues, const std::vector<const float*>& ensembleFields, int es, size_t gridPointIdx);
 
 template<class T>
 float computePearson1(
@@ -91,7 +91,7 @@ float computePearson1<double>(
 
 template<class T>
 float computePearson2(
-        const float* referenceValues, const std::vector<float*>& ensembleFields, int es, size_t gridPointIdx) {
+        const float* referenceValues, const std::vector<const float*>& ensembleFields, int es, size_t gridPointIdx) {
     auto n = T(es);
     T meanX = 0;
     T meanY = 0;
@@ -125,10 +125,10 @@ float computePearson2(
 }
 template
 float computePearson2<float>(
-        const float* referenceValues, const std::vector<float*>& ensembleFields, int es, size_t gridPointIdx);
+        const float* referenceValues, const std::vector<const float*>& ensembleFields, int es, size_t gridPointIdx);
 template
 float computePearson2<double>(
-        const float* referenceValues, const std::vector<float*>& ensembleFields, int es, size_t gridPointIdx);
+        const float* referenceValues, const std::vector<const float*>& ensembleFields, int es, size_t gridPointIdx);
 
 template<class T>
 float computePearson2(

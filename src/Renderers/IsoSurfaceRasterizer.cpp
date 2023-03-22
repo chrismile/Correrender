@@ -164,13 +164,13 @@ void IsoSurfaceRasterizer::createIsoSurfaceData(
     std::vector<glm::vec3> isosurfaceVertexNormals;
     if (isoSurfaceExtractionTechnique == IsoSurfaceExtractionTechnique::MARCHING_CUBES) {
         polygonizeMarchingCubes(
-                scalarFieldData.get(),
+                scalarFieldData->data<float>(),
                 volumeData->getGridSizeX(), volumeData->getGridSizeY(), volumeData->getGridSizeZ(),
                 volumeData->getDx(), volumeData->getDy(), volumeData->getDz(),
                 isoValue, isosurfaceVertexPositions, isosurfaceVertexNormals);
     } else {
         polygonizeSnapMC(
-                scalarFieldData.get(),
+                scalarFieldData->data<float>(),
                 volumeData->getGridSizeX(), volumeData->getGridSizeY(), volumeData->getGridSizeZ(),
                 volumeData->getDx(), volumeData->getDy(), volumeData->getDz(),
                 isoValue, gammaSnapMC, isosurfaceVertexPositions, isosurfaceVertexNormals);

@@ -111,7 +111,7 @@ bool NetCdfWriter::writeFieldToFile(
         start[0] = z;
         for (int y = 0; y < ys; y++) {
             start[1] = y;
-            nc_put_vara_float(ncid, scalarVar, start, count, fieldData.get() + y * xs + z * xs * ys);
+            nc_put_vara_float(ncid, scalarVar, start, count, fieldData->data<float>() + y * xs + z * xs * ys);
         }
     }
 

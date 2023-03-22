@@ -305,7 +305,7 @@ void PyTorchCorrelationCalculator::calculateCpu(int timeStepIdx, int ensembleIdx
     float minEnsembleVal = std::numeric_limits<float>::max();
     float maxEnsembleVal = std::numeric_limits<float>::lowest();
     std::vector<VolumeData::HostCacheEntry> ensembleEntryFields;
-    std::vector<float*> ensembleFields;
+    std::vector<const float*> ensembleFields;
     if (networkType == NetworkType::MINE) {
         ensembleEntryFields.reserve(cs);
         ensembleFields.reserve(cs);
@@ -317,7 +317,7 @@ void PyTorchCorrelationCalculator::calculateCpu(int timeStepIdx, int ensembleIdx
             minEnsembleVal = std::min(minEnsembleVal, minVal);
             maxEnsembleVal = std::max(maxEnsembleVal, maxVal);
             ensembleEntryFields.push_back(ensembleEntryField);
-            ensembleFields.push_back(ensembleEntryField.get());
+            ensembleFields.push_back(ensembleEntryField->data<float>());
         }
     }
 

@@ -417,7 +417,16 @@ void VolumeData::addField(
         delete[] fieldData;
         return;
     }
-    hostFieldCache->push(access, HostCacheEntry(fieldData));
+
+    size_t numEntries = 0;
+    if (fieldType == FieldType::SCALAR) {
+        numEntries = xs * ys * zs;
+    } else if (fieldType == FieldType::VECTOR) {
+        numEntries = 3 * size_t(xs * ys * zs);
+    } else {
+        sgl::Logfile::get()->throwError("Error in VolumeData::addField: Invalid field type.");
+    }
+    hostFieldCache->push(access, HostCacheEntry(new HostCacheEntryType(numEntries, fieldData)));
 
     /*if (fieldType == FieldType::VECTOR) {
 #ifdef USE_TBB
@@ -569,10 +578,21 @@ bool VolumeData::setInputFiles(
 
     const auto& scalarFieldNames = typeToFieldNamesMap[FieldType::SCALAR];
     multiVarTransferFunctionWindow.setRequestAttributeValuesCallback([this](
-            int varIdx, std::shared_ptr<float[]>& values, size_t& numValues, float& minValue, float& maxValue) {
+            int varIdx, const void** values, int* nb, size_t& numValues, float& minValue, float& maxValue) {
         std::string fieldName = typeToFieldNamesMap[FieldType::SCALAR].at(varIdx);
-        HostCacheEntry cacheEntry = this->getFieldEntryCpu(FieldType::SCALAR, fieldName);
-        values = cacheEntry;
+        if (values && nb) {
+            HostCacheEntry cacheEntry = this->getFieldEntryCpu(FieldType::SCALAR, fieldName);
+            if (cacheEntry->getScalarDataFormatNative() == ScalarDataFormat::BYTE) {
+                *values = cacheEntry->data<uint8_t>();
+                *nb = 1;
+            } else if (cacheEntry->getScalarDataFormatNative() == ScalarDataFormat::SHORT) {
+                *values = cacheEntry->data<uint16_t>();
+                *nb = 2;
+            } else if (cacheEntry->getScalarDataFormatNative() == ScalarDataFormat::FLOAT) {
+                *values = cacheEntry->data<float>();
+                *nb = 4;
+            }
+        }
         numValues = this->getSlice3dEntryCount();
         std::tie(minValue, maxValue) = getMinMaxScalarFieldValue(fieldName);
     });
@@ -782,7 +802,15 @@ VolumeData::HostCacheEntry VolumeData::getFieldEntryCpu(
         }
     }
 
-    auto buffer = std::shared_ptr<float[]>(fieldEntryBuffer);
+    size_t numEntries = 0;
+    if (fieldType == FieldType::SCALAR) {
+        numEntries = xs * ys * zs;
+    } else if (fieldType == FieldType::VECTOR) {
+        numEntries = 3 * size_t(xs * ys * zs);
+    } else {
+        sgl::Logfile::get()->throwError("Error in VolumeData::addField: Invalid field type.");
+    }
+    auto buffer = HostCacheEntry(new HostCacheEntryType(numEntries, fieldEntryBuffer));
     hostFieldCache->push(access, buffer);
     return buffer;
 }
@@ -795,9 +823,15 @@ VolumeData::DeviceCacheEntry VolumeData::getFieldEntryDevice(
         return deviceFieldCache->reaccess(access);
     }
 
-    size_t bufferSize = getSlice3dSizeInBytes(fieldType);
-    deviceFieldCache->ensureSufficientMemory(bufferSize);
     auto itCalc = calculatorsDevice.find(fieldName);
+    HostCacheEntry bufferCpu;
+    ScalarDataFormat scalarDataFormat = ScalarDataFormat::FLOAT;
+    if (itCalc == calculatorsDevice.end()) {
+        bufferCpu = getFieldEntryCpu(fieldType, fieldName, timeStepIdx, ensembleIdx);
+        scalarDataFormat = bufferCpu->getScalarDataFormatNative();
+    }
+    size_t bufferSize = getSlice3dSizeInBytes(fieldType, scalarDataFormat);
+    deviceFieldCache->ensureSufficientMemory(bufferSize);
 
 #ifdef SUPPORT_CUDA_INTEROP
     bool canUseCuda = sgl::vk::getIsCudaDeviceApiFunctionTableInitialized();
@@ -810,7 +844,13 @@ VolumeData::DeviceCacheEntry VolumeData::getFieldEntryDevice(
     imageSettings.height = uint32_t(ys);
     imageSettings.depth = uint32_t(zs);
     imageSettings.imageType = VK_IMAGE_TYPE_3D;
-    imageSettings.format = fieldType == FieldType::SCALAR ? VK_FORMAT_R32_SFLOAT : VK_FORMAT_R32G32B32A32_SFLOAT;
+    if (scalarDataFormat == ScalarDataFormat::FLOAT) {
+        imageSettings.format = fieldType == FieldType::SCALAR ? VK_FORMAT_R32_SFLOAT : VK_FORMAT_R32G32B32A32_SFLOAT;
+    } else if (scalarDataFormat == ScalarDataFormat::BYTE) {
+        imageSettings.format = fieldType == FieldType::SCALAR ? VK_FORMAT_R8_UNORM : VK_FORMAT_R8G8B8A8_UNORM;
+    } else if (scalarDataFormat == ScalarDataFormat::SHORT) {
+        imageSettings.format = fieldType == FieldType::SCALAR ? VK_FORMAT_R16_UNORM : VK_FORMAT_R16G16B16A16_UNORM;
+    }
     imageSettings.tiling = VK_IMAGE_TILING_OPTIMAL;
     imageSettings.usage =
             VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
@@ -835,35 +875,84 @@ VolumeData::DeviceCacheEntry VolumeData::getFieldEntryDevice(
         }
         calculator->calculateDevice(timeStepIdx, ensembleIdx, deviceCacheEntry);
     } else {
-        auto bufferCpu = getFieldEntryCpu(fieldType, fieldName, timeStepIdx, ensembleIdx);
         if (fieldType == FieldType::SCALAR) {
-            image->uploadData(access.sizeInBytes, bufferCpu.get());
+            image->uploadData(access.sizeInBytes, bufferCpu->getDataNative());
         } else {
             size_t bufferEntriesCount = size_t(xs) * size_t(ys) * size_t(zs);
-            float* bufferIn = bufferCpu.get();
-            auto* bufferPadded = new float[bufferEntriesCount * 4];
+            if (scalarDataFormat == ScalarDataFormat::FLOAT) {
+                const float* bufferIn = bufferCpu->data<float>();
+                auto* bufferPadded = new float[bufferEntriesCount * 4];
 #ifdef USE_TBB
-            tbb::parallel_for(tbb::blocked_range<size_t>(0, bufferEntriesCount), [&](auto const& r) {
-                for (auto i = r.begin(); i != r.end(); i++) {
+                tbb::parallel_for(tbb::blocked_range<size_t>(0, bufferEntriesCount), [&](auto const& r) {
+                    for (auto i = r.begin(); i != r.end(); i++) {
 #else
 #if _OPENMP >= 200805
-            #pragma omp parallel for shared(bufferEntriesCount, bufferPadded, bufferIn) default(none)
+                #pragma omp parallel for shared(bufferEntriesCount, bufferPadded, bufferIn) default(none)
 #endif
-            for (size_t i = 0; i < bufferEntriesCount; i++) {
+                for (size_t i = 0; i < bufferEntriesCount; i++) {
 #endif
-                size_t iPadded = i * 4;
-                size_t iIn = i * 3;
-                bufferPadded[iPadded] = bufferIn[iIn];
-                bufferPadded[iPadded + 1] = bufferIn[iIn + 1];
-                bufferPadded[iPadded + 2] = bufferIn[iIn + 2];
-                bufferPadded[iPadded + 3] = 0.0f;
-            }
+                    size_t iPadded = i * 4;
+                    size_t iIn = i * 3;
+                    bufferPadded[iPadded] = bufferIn[iIn];
+                    bufferPadded[iPadded + 1] = bufferIn[iIn + 1];
+                    bufferPadded[iPadded + 2] = bufferIn[iIn + 2];
+                    bufferPadded[iPadded + 3] = 0.0f;
+                }
 #ifdef USE_TBB
-            });
+                });
 #endif
-            image->uploadData(bufferEntriesCount * sizeof(glm::vec4), bufferPadded);
+                image->uploadData(bufferEntriesCount * 4 * sizeof(float), bufferPadded);
+                delete[] bufferPadded;
+            } else if (scalarDataFormat == ScalarDataFormat::BYTE) {
+                const uint8_t* bufferIn = bufferCpu->data<uint8_t>();
+                auto* bufferPadded = new uint8_t[bufferEntriesCount * 4];
+#ifdef USE_TBB
+                tbb::parallel_for(tbb::blocked_range<size_t>(0, bufferEntriesCount), [&](auto const& r) {
+                    for (auto i = r.begin(); i != r.end(); i++) {
+#else
+#if _OPENMP >= 200805
+                #pragma omp parallel for shared(bufferEntriesCount, bufferPadded, bufferIn) default(none)
+#endif
+                for (size_t i = 0; i < bufferEntriesCount; i++) {
+#endif
+                    size_t iPadded = i * 4;
+                    size_t iIn = i * 3;
+                    bufferPadded[iPadded] = bufferIn[iIn];
+                    bufferPadded[iPadded + 1] = bufferIn[iIn + 1];
+                    bufferPadded[iPadded + 2] = bufferIn[iIn + 2];
+                    bufferPadded[iPadded + 3] = 0.0f;
+                }
+#ifdef USE_TBB
+                });
+#endif
+                image->uploadData(bufferEntriesCount * 4 * sizeof(uint8_t), bufferPadded);
+                delete[] bufferPadded;
+            } else if (scalarDataFormat == ScalarDataFormat::SHORT) {
+                const uint16_t* bufferIn = bufferCpu->data<uint16_t>();
+                auto* bufferPadded = new uint16_t[bufferEntriesCount * 4];
+#ifdef USE_TBB
+                tbb::parallel_for(tbb::blocked_range<size_t>(0, bufferEntriesCount), [&](auto const& r) {
+                    for (auto i = r.begin(); i != r.end(); i++) {
+#else
+#if _OPENMP >= 200805
+                #pragma omp parallel for shared(bufferEntriesCount, bufferPadded, bufferIn) default(none)
+#endif
+                for (size_t i = 0; i < bufferEntriesCount; i++) {
+#endif
+                    size_t iPadded = i * 4;
+                    size_t iIn = i * 3;
+                    bufferPadded[iPadded] = bufferIn[iIn];
+                    bufferPadded[iPadded + 1] = bufferIn[iIn + 1];
+                    bufferPadded[iPadded + 2] = bufferIn[iIn + 2];
+                    bufferPadded[iPadded + 3] = 0.0f;
+                }
+#ifdef USE_TBB
+                });
+#endif
+                image->uploadData(bufferEntriesCount * 4 * sizeof(uint16_t), bufferPadded);
+                delete[] bufferPadded;
+            }
         }
-        image->uploadData(access.sizeInBytes, bufferCpu.get());
     }
 
     deviceFieldCache->push(access, deviceCacheEntry);
@@ -887,8 +976,15 @@ std::pair<float, float> VolumeData::getMinMaxScalarFieldValue(
         return fieldMinMaxCache->get(access);
     }
 
+    std::pair<float, float> minMaxVal;
     HostCacheEntry scalarValues = getFieldEntryCpu(FieldType::SCALAR, fieldName, timeStepIdx, ensembleIdx);
-    auto minMaxVal = sgl::reduceFloatArrayMinMax(scalarValues.get(), getSlice3dEntryCount());
+    if (scalarValues->getScalarDataFormatNative() == ScalarDataFormat::FLOAT) {
+        minMaxVal = sgl::reduceFloatArrayMinMax(scalarValues->data<float>(), getSlice3dEntryCount());
+    } else if (scalarValues->getScalarDataFormatNative() == ScalarDataFormat::BYTE) {
+        minMaxVal = sgl::reduceUnormByteArrayMinMax(scalarValues->data<uint8_t>(), getSlice3dEntryCount());
+    } else if (scalarValues->getScalarDataFormatNative() == ScalarDataFormat::SHORT) {
+        minMaxVal = sgl::reduceUnormShortArrayMinMax(scalarValues->data<uint16_t>(), getSlice3dEntryCount());
+    }
 
     // Is this a divergent scalar field? If yes, the transfer function etc. should be centered at zero.
     if (getIsScalarFieldDivergent(fieldName)) {

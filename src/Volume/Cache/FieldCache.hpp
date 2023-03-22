@@ -34,6 +34,7 @@
 #include <Utils/File/Logfile.hpp>
 
 #include "LRUCache.hpp"
+#include "HostCacheEntry.hpp"
 #include "DeviceCacheEntry.hpp"
 #include "Volume/FieldAccess.hpp"
 
@@ -114,7 +115,7 @@ public:
 protected:
     size_t cacheSize = 0, cacheSizeMax = 0;
     // What percentage of the available host/device memory should be used for caching?
-    double availableMemoryFactor = 28.0 / 32.0; // 3,5/4, 7/8, 14/16, 21/24, 28/32.
+    double availableMemoryFactor = 28.0 / 32.0; // 3.5/4, 7/8, 14/16, 21/24, 28/32.
 
     void evictLast() {
         auto lruEntry = cache.pop_last();
@@ -132,7 +133,7 @@ private:
 };
 
 // Host (i.e., CPU) memory cache.
-class HostFieldCache : public FieldCache<float[]> {
+class HostFieldCache : public FieldCache<HostCacheEntryType> {
 public:
     HostFieldCache();
 };

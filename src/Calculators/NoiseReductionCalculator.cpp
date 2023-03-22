@@ -101,7 +101,7 @@ void NoiseReductionCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, fl
 
     VolumeData::HostCacheEntry entryScalarField = volumeData->getFieldEntryCpu(
             FieldType::SCALAR, scalarFieldNames.at(scalarFieldIndex), timeStepIdx, ensembleIdx);
-    float* scalarField = entryScalarField.get();
+    const float* scalarField = entryScalarField->data<float>();
 
     int kernelSizeHalf = kernelSize / 2;
 

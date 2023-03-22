@@ -33,6 +33,8 @@
 #include <glm/vec3.hpp>
 #include <Graphics/Vulkan/Render/Passes/Pass.hpp>
 
+#include "Volume/Cache/HostCacheEntry.hpp"
+#include "Volume/Cache/DeviceCacheEntry.hpp"
 #include "Calculator.hpp"
 #include "CorrelationDefines.hpp"
 
@@ -47,7 +49,7 @@ typedef std::shared_ptr<SemaphoreVkCudaDriverApiInterop> SemaphoreVkCudaDriverAp
 
 class ReferencePointSelectionRenderer;
 
-typedef std::shared_ptr<float[]> HostCacheEntry;
+typedef std::shared_ptr<HostCacheEntryType> HostCacheEntry;
 typedef std::shared_ptr<DeviceCacheEntryType> DeviceCacheEntry;
 
 class ICorrelationCalculator : public Calculator {
