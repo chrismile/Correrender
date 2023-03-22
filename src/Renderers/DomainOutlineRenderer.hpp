@@ -54,6 +54,7 @@ private:
 
     // UI renderer settings.
     float lineWidth = 0.001f;
+    bool useDepthCues = true;
 
     void recreateBuffers();
     std::vector<uint32_t> triangleIndices;
@@ -71,6 +72,8 @@ public:
             const sgl::vk::BufferPtr& _indexBuffer, const sgl::vk::BufferPtr& _vertexPositionBuffer);
     void setCustomColor(const glm::vec4& color);
     void resetCustomColor();
+    void setUseDepthCues(bool _useDepthCues);
+    void setAabb(const sgl::AABB3& aabb); //< Only needed for depth cues.
     void recreateSwapchain(uint32_t width, uint32_t height) override;
 
 protected:
@@ -86,9 +89,13 @@ private:
     sgl::vk::BufferPtr indexBuffer;
     sgl::vk::BufferPtr vertexPositionBuffer;
     bool useCustomColor = false;
+    bool useDepthCues = false;
+    glm::vec3 aabbMin{};
+    glm::vec3 aabbMax{};
 
     struct UniformData {
-        glm::vec4 objectColor;
+        glm::vec4 objectColor{};
+        float minDepth{}, maxDepth{};
     };
     UniformData uniformData{};
     sgl::vk::BufferPtr uniformDataBuffer;

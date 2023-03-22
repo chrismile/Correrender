@@ -71,6 +71,9 @@ void DomainOutlineRenderer::recreateSwapchainView(uint32_t viewIdx, uint32_t wid
 }
 
 void DomainOutlineRenderer::renderViewImpl(uint32_t viewIdx) {
+    if (useDepthCues) {
+        domainOutlineRasterPasses.at(viewIdx)->setAabb(volumeData->getBoundingBoxRendering());
+    }
     domainOutlineRasterPasses.at(viewIdx)->render();
 }
 
@@ -78,6 +81,7 @@ void DomainOutlineRenderer::addViewImpl(uint32_t viewIdx) {
     auto domainOutlineRasterPass = std::make_shared<DomainOutlineRasterPass>(
             renderer, viewManager->getViewSceneData(viewIdx));
     domainOutlineRasterPass->setRenderData(indexBuffer, vertexPositionBuffer);
+    domainOutlineRasterPass->setUseDepthCues(useDepthCues);
     domainOutlineRasterPasses.push_back(domainOutlineRasterPass);
 }
 
@@ -88,6 +92,12 @@ void DomainOutlineRenderer::removeViewImpl(uint32_t viewIdx) {
 void DomainOutlineRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
     if (propertyEditor.addSliderFloat("Line Width", &lineWidth, 0.001f, 0.020f, "%.4f")) {
         recreateBuffers();
+        reRender = true;
+    }
+    if (propertyEditor.addCheckbox("Depth Cues", &useDepthCues)) {
+        for (auto& domainOutlineRasterPass : domainOutlineRasterPasses) {
+            domainOutlineRasterPass->setUseDepthCues(useDepthCues);
+        }
         reRender = true;
     }
 }
@@ -176,8 +186,26 @@ void DomainOutlineRasterPass::resetCustomColor() {
     useCustomColor = false;
 }
 
+void DomainOutlineRasterPass::setUseDepthCues(bool _useDepthCues) {
+    if (useDepthCues != _useDepthCues) {
+        useDepthCues = _useDepthCues;
+        setShaderDirty();
+    }
+}
+
+void DomainOutlineRasterPass::setAabb(const sgl::AABB3& aabb) {
+    aabbMin = aabb.min;
+    aabbMax = aabb.max;
+}
+
 void DomainOutlineRasterPass::loadShader() {
-    shaderStages = sgl::vk::ShaderManager->getShaderStages({ "DomainOutline.Vertex", "DomainOutline.Fragment" });
+    sgl::vk::ShaderManager->invalidateShaderCache();
+    std::map<std::string, std::string> preprocessorDefines;
+    if (useDepthCues) {
+        preprocessorDefines.insert(std::make_pair("USE_DEPTH_CUES", ""));
+    }
+    shaderStages = sgl::vk::ShaderManager->getShaderStages(
+            { "DomainOutline.Vertex", "DomainOutline.Fragment" }, preprocessorDefines);
 }
 
 void DomainOutlineRasterPass::setGraphicsPipelineInfo(sgl::vk::GraphicsPipelineInfo& pipelineInfo) {
@@ -218,6 +246,27 @@ void DomainOutlineRasterPass::recreateSwapchain(uint32_t width, uint32_t height)
 void DomainOutlineRasterPass::_render() {
     glm::vec3 backgroundColor = sceneData->clearColor->getFloatColorRGB();
     glm::vec3 foregroundColor = glm::vec3(1.0f) - backgroundColor;
+
+    if (useDepthCues) {
+        uniformData.minDepth = std::numeric_limits<float>::max();
+        uniformData.maxDepth = std::numeric_limits<float>::lowest();
+        glm::vec4 corners[8] = {
+                glm::vec4(aabbMin.x, aabbMin.y, aabbMin.z, 1.0f),
+                glm::vec4(aabbMax.x, aabbMin.y, aabbMin.z, 1.0f),
+                glm::vec4(aabbMin.x, aabbMax.y, aabbMin.z, 1.0f),
+                glm::vec4(aabbMax.x, aabbMax.y, aabbMin.z, 1.0f),
+                glm::vec4(aabbMin.x, aabbMin.y, aabbMax.z, 1.0f),
+                glm::vec4(aabbMax.x, aabbMin.y, aabbMax.z, 1.0f),
+                glm::vec4(aabbMin.x, aabbMax.y, aabbMax.z, 1.0f),
+                glm::vec4(aabbMax.x, aabbMax.y, aabbMax.z, 1.0f),
+        };
+        for (int i = 0; i < 8; i++) {
+            glm::vec4 screenSpacePosition = sceneData->camera->getViewMatrix() * glm::vec4(corners[i]);
+            float depth = -screenSpacePosition.z;
+            uniformData.minDepth = std::min(uniformData.minDepth, depth);
+            uniformData.maxDepth = std::max(uniformData.maxDepth, depth);
+        }
+    }
 
     if (!useCustomColor) {
         uniformData.objectColor = glm::vec4(foregroundColor.x, foregroundColor.y, foregroundColor.z, 1.0f);

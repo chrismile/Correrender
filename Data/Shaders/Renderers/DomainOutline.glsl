@@ -32,7 +32,14 @@
 
 layout(location = 0) in vec3 vertexPosition;
 
+#ifdef USE_DEPTH_CUES
+layout(location = 0) out vec3 screenSpacePosition;
+#endif
+
 void main() {
+#ifdef USE_DEPTH_CUES
+    screenSpacePosition = (vMatrix * vec4(vertexPosition, 1.0)).xyz;
+#endif
     gl_Position = mvpMatrix * vec4(vertexPosition, 1.0);
 }
 
@@ -43,12 +50,27 @@ void main() {
 
 layout(binding = 0) uniform UniformDataBuffer {
     vec4 objectColor;
+    float minDepth;
+    float maxDepth;
 };
+
+#ifdef USE_DEPTH_CUES
+layout(location = 0) in vec3 screenSpacePosition;
+#endif
 
 layout(location = 0) out vec4 fragColor;
 
 void main() {
-    fragColor = objectColor;
+    vec4 color = objectColor;
+
+#ifdef USE_DEPTH_CUES
+    const float depthCueStrength = 0.8;
+    float depthCueFactor = clamp((-screenSpacePosition.z - minDepth) / (maxDepth - minDepth), 0.0, 1.0);
+    depthCueFactor = depthCueFactor * depthCueFactor * depthCueStrength;
+    color.rgb = mix(color.rgb, vec3(0.5, 0.5, 0.5), depthCueFactor);
+#endif
+
+    fragColor = color;
 }
 
 

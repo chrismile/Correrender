@@ -62,38 +62,6 @@ DiagramRenderer::~DiagramRenderer() {
 void DiagramRenderer::initialize() {
     Renderer::initialize();
 
-    variableNames = {
-            "Pressure", "NI_OUT", "NR_OUT", "NS_OUT", "QC", "QG", "QG_OUT", "QH", "QH_OUT", "QI", "QI_OUT",
-            "NCCLOUD", "QR", "QR_OUT", "QS", "QS_OUT", "QV", "S", "T", "artificial", "artificial (threshold)",
-            "conv_400", "NCGRAUPEL", "conv_600", "dD_rainfrz_gh", "dD_rainfrz_ig", "dT_mult_max", "dT_mult_min",
-            "da_HET", "da_ccn_1", "da_ccn_4", "db_HET", "db_ccn_1", "NCHAIL", "db_ccn_3", "db_ccn_4", "dc_ccn_1",
-            "dc_ccn_4", "dcloud_c_z", "dd_ccn_1", "dd_ccn_2", "dd_ccn_3", "dd_ccn_4", "dgraupel_a_vel", "NCICE",
-            "dgraupel_b_geo", "dgraupel_b_vel", "dgraupel_vsedi_max", "dhail_vsedi_max", "dice_a_f", "dice_a_geo",
-            "dice_b_geo", "dice_b_vel", "dice_c_s", "dice_vsedi_max", "NCRAIN", "dinv_z", "dk_r",
-            "dp_sat_ice_const_b", "dp_sat_melt", "drain_a_geo", "drain_a_vel", "drain_alpha", "drain_b_geo",
-            "drain_b_vel", "drain_beta", "NCSNOW", "drain_c_z", "drain_g1", "drain_g2", "drain_gamma",
-            "drain_min_x", "drain_min_x_freezing", "drain_mu", "drain_nu", "drho_vel", "dsnow_a_geo", "NG_OUT",
-            "dsnow_b_geo", "dsnow_b_vel", "dsnow_vsedi_max", "mean of artificial", "mean of artificial (threshold)",
-            "mean of physical", "mean of physical (high variability)", "physical", "physical (high variability)",
-            "time_after_ascent", "NH_OUT", "w", "z"
-    };
-
-    {
-        std::mt19937 generator(2);
-        std::uniform_real_distribution<> dis(0, 1);
-
-        int numVariables = int(variableNames.size());
-        int numTimesteps = 10;
-        variableValuesTimeDependent.resize(numTimesteps);
-        for (int timeStepIdx = 0; timeStepIdx < numTimesteps; timeStepIdx++) {
-            std::vector<float>& variableValuesAtTime = variableValuesTimeDependent.at(timeStepIdx);
-            variableValuesAtTime.reserve(numVariables);
-            for (int varIdx = 1; varIdx <= numVariables; varIdx++) {
-                variableValuesAtTime.push_back(float(dis(generator)));
-            }
-        }
-    }
-
     parentDiagram = std::make_shared<HEBChart>();
     //auto diagram = std::make_shared<RadarBarChart>(true);
     parentDiagram->setRendererVk(renderer);
@@ -343,6 +311,7 @@ void DiagramRenderer::resetSelections(int idx) {
         auto diagram = diagrams.at(idx);
         if (volumeData) {
             diagram->setVolumeData(volumeData, true);
+            // TODO
             int dfx = sgl::iceil(downscalingFactorX, 1 << 2 * idx);
             int dfy = sgl::iceil(downscalingFactorY, 1 << 2 * idx);
             int dfz = sgl::iceil(downscalingFactorZ, 1 << 2 * idx);

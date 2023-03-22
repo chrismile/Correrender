@@ -130,10 +130,6 @@ private:
     bool use2dField = false;
     bool useCorrelationComputationGpu = true;
 
-    // Test data.
-    std::vector<std::string> variableNames;
-    std::vector<std::vector<float>> variableValuesTimeDependent;
-
     // Selected region.
     float lineWidth = 0.001f;
     std::vector<OutlineRenderData> outlineRenderDataList[2];
