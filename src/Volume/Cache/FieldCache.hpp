@@ -114,7 +114,7 @@ public:
 protected:
     size_t cacheSize = 0, cacheSizeMax = 0;
     // What percentage of the available host/device memory should be used for caching?
-    double availableMemoryFactor = 3.0 / 4.0;
+    double availableMemoryFactor = 28.0 / 32.0; // 3,5/4, 7/8, 14/16, 21/24, 28/32.
 
     void evictLast() {
         auto lruEntry = cache.pop_last();

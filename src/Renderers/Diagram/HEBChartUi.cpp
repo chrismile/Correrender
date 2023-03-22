@@ -108,6 +108,13 @@ glm::vec4 HEBChartFieldData::evalColorMapVec4Variance(float t, bool saturated) {
     if (!separateColorVarianceAndCorrelation) {
         return evalColorMapVec4(t);
     }
+    if (std::isnan(t)) {
+        if (colorMapLines == DiagramColorMap::VIRIDIS) {
+            return glm::vec4(1.0f, 0.0f, 1.0f, 1.0f);
+        } else {
+            return glm::vec4(1.0f, 1.0f, 0.0f, 1.0f);
+        }
+    }
     t = glm::clamp(t, 0.0f, 1.0f);
     auto N = int(colorPointsVariance.size());
     float arrayPosFlt = t * float(N - 1);

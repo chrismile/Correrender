@@ -82,7 +82,7 @@ void DiagramRenderer::initialize() {
         parentDiagram->setDownscalingFactors(downscalingFactorX, downscalingFactorY, downscalingFactorZ);
         parentDiagram->setLineCountFactor(lineCountFactorContext);
         parentDiagram->setCurveThickness(curveThickness);
-        parentDiagram->setCurveOpacity(curveOpacity);
+        parentDiagram->setCurveOpacity(curveOpacityContext);
         parentDiagram->setDiagramRadius(diagramRadius);
         parentDiagram->setOuterRingSizePercentage(outerRingSizePct);
         parentDiagram->setAlignWithParentWindow(alignWithParentWindow);
@@ -172,7 +172,7 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
         parentDiagram->setDownscalingFactors(downscalingFactorX, downscalingFactorY, downscalingFactorZ);
         parentDiagram->setLineCountFactor(lineCountFactorContext);
         parentDiagram->setCurveThickness(curveThickness);
-        parentDiagram->setCurveOpacity(curveOpacity);
+        parentDiagram->setCurveOpacity(curveOpacityContext);
         parentDiagram->setDiagramRadius(diagramRadius);
         parentDiagram->setOuterRingSizePercentage(outerRingSizePct);
         parentDiagram->setAlignWithParentWindow(alignWithParentWindow);
@@ -312,9 +312,12 @@ void DiagramRenderer::resetSelections(int idx) {
         if (volumeData) {
             diagram->setVolumeData(volumeData, true);
             // TODO
-            int dfx = sgl::iceil(downscalingFactorX, 1 << 2 * idx);
-            int dfy = sgl::iceil(downscalingFactorY, 1 << 2 * idx);
-            int dfz = sgl::iceil(downscalingFactorZ, 1 << 2 * idx);
+            //int dfx = sgl::iceil(downscalingFactorX, 1 << 2 * idx);
+            //int dfy = sgl::iceil(downscalingFactorY, 1 << 2 * idx);
+            //int dfz = sgl::iceil(downscalingFactorZ, 1 << 2 * idx);
+            int dfx = sgl::iceil(downscalingFactorX, int(std::pow(downscalingFactorFocusX, idx)));
+            int dfy = sgl::iceil(downscalingFactorY, int(std::pow(downscalingFactorFocusY, idx)));
+            int dfz = sgl::iceil(downscalingFactorZ, int(std::pow(downscalingFactorFocusZ, idx)));
             diagram->setDownscalingFactors(dfx, dfy, dfz);
             diagram->setRegions(selectedRegionStack.at(idx - 1));
             diagram->clearScalarFields();
@@ -334,7 +337,7 @@ void DiagramRenderer::resetSelections(int idx) {
             diagram->setBeta(beta);
             diagram->setLineCountFactor(lineCountFactorFocus);
             diagram->setCurveThickness(curveThickness);
-            diagram->setCurveOpacity(curveOpacity);
+            diagram->setCurveOpacity(curveOpacityFocus);
             diagram->setDiagramRadius(diagramRadius);
             diagram->setOuterRingSizePercentage(outerRingSizePct);
             if (renderOnlyLastFocusDiagram) {
@@ -970,11 +973,11 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         bool downscalingChanged;
         if (downscalingPowerOfTwo) {
             downscalingChanged = propertyEditor.addSliderIntPowerOfTwoEdit(
-                    "Downscaling", &downscalingFactorX, minDownscalingFactor, maxDownscalingFactor)
+                    "Downscaling Context", &downscalingFactorX, minDownscalingFactor, maxDownscalingFactor)
                                     == ImGui::EditMode::INPUT_FINISHED;
         } else {
             downscalingChanged = propertyEditor.addSliderIntEdit(
-                    "Downscaling", &downscalingFactorX, minDownscalingFactor, maxDownscalingFactor)
+                    "Downscaling Context", &downscalingFactorX, minDownscalingFactor, maxDownscalingFactor)
                                     == ImGui::EditMode::INPUT_FINISHED;
         }
         if (downscalingChanged) {
@@ -985,21 +988,55 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
             reRender = true;
             reRenderTriggeredByDiagram = true;
         }
+
+        if (downscalingPowerOfTwo) {
+            downscalingChanged = propertyEditor.addSliderIntPowerOfTwoEdit(
+                    "Downscaling Focus", &downscalingFactorFocusX, minDownscalingFactorFocus, maxDownscalingFactorFocus)
+                                 == ImGui::EditMode::INPUT_FINISHED;
+        } else {
+            downscalingChanged = propertyEditor.addSliderIntEdit(
+                    "Downscaling Focus", &downscalingFactorFocusX, minDownscalingFactorFocus, maxDownscalingFactorFocus)
+                                 == ImGui::EditMode::INPUT_FINISHED;
+        }
+        if (downscalingChanged) {
+            downscalingFactorFocusY = downscalingFactorFocusX;
+            downscalingFactorFocusZ = downscalingFactorFocusX;
+            resetSelections();
+            reRender = true;
+            reRenderTriggeredByDiagram = true;
+        }
     } else {
         ImGui::EditMode downscalingChanged;
         int dfs[3] = { downscalingFactorX, downscalingFactorY, downscalingFactorZ };
         if (downscalingPowerOfTwo) {
             downscalingChanged = propertyEditor.addSliderInt3PowerOfTwoEdit(
-                    "Downscaling", dfs, minDownscalingFactor, maxDownscalingFactor);
+                    "Downscaling Context", dfs, minDownscalingFactor, maxDownscalingFactor);
         } else {
             downscalingChanged = propertyEditor.addSliderInt3Edit(
-                    "Downscaling", dfs, minDownscalingFactor, maxDownscalingFactor);
+                    "Downscaling Context", dfs, minDownscalingFactor, maxDownscalingFactor);
         }
         downscalingFactorX = dfs[0];
         downscalingFactorY = dfs[1];
         downscalingFactorZ = dfs[2];
         if (downscalingChanged == ImGui::EditMode::INPUT_FINISHED) {
             parentDiagram->setDownscalingFactors(downscalingFactorX, downscalingFactorY, downscalingFactorZ);
+            resetSelections();
+            reRender = true;
+            reRenderTriggeredByDiagram = true;
+        }
+
+        int dfsf[3] = { downscalingFactorFocusX, downscalingFactorFocusY, downscalingFactorFocusZ };
+        if (downscalingPowerOfTwo) {
+            downscalingChanged = propertyEditor.addSliderInt3PowerOfTwoEdit(
+                    "Downscaling Focus", dfsf, minDownscalingFactorFocus, maxDownscalingFactorFocus);
+        } else {
+            downscalingChanged = propertyEditor.addSliderInt3Edit(
+                    "Downscaling Focus", dfsf, minDownscalingFactorFocus, maxDownscalingFactorFocus);
+        }
+        downscalingFactorFocusX = dfsf[0];
+        downscalingFactorFocusY = dfsf[1];
+        downscalingFactorFocusZ = dfsf[2];
+        if (downscalingChanged == ImGui::EditMode::INPUT_FINISHED) {
             resetSelections();
             reRender = true;
             reRenderTriggeredByDiagram = true;
@@ -1031,9 +1068,14 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         reRenderTriggeredByDiagram = true;
     }
 
-    if (propertyEditor.addSliderFloat("Opacity", &curveOpacity, 0.0f, 1.0f)) {
-        for (auto& diagram : diagrams) {
-            diagram->setCurveOpacity(curveOpacity);
+    if (propertyEditor.addSliderFloat("Opacity Context", &curveOpacityContext, 0.0f, 1.0f)) {
+        parentDiagram->setCurveOpacity(curveOpacityFocus);
+        reRender = true;
+        reRenderTriggeredByDiagram = true;
+    }
+    if (propertyEditor.addSliderFloat("Opacity Focus", &curveOpacityFocus, 0.0f, 1.0f)) {
+        for (size_t i = 1; i < diagrams.size(); i++) {
+            diagrams.at(i)->setCurveOpacity(curveOpacityFocus);
         }
         reRender = true;
         reRenderTriggeredByDiagram = true;

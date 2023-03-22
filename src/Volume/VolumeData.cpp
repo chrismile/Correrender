@@ -498,7 +498,7 @@ bool VolumeData::setInputFiles(
         volumeLoaders.push_back(volumeLoader);
     }
 
-    currentTimeStepIdx = std::clamp(dataSetInformation.standardTimeStepIdx, 0, ts - 1);
+    currentTimeStepIdx = std::clamp(dataSetInformation.standardTimeStepIdx, 0, std::max(ts - 1, 0));
     if (!dataSetInformation.standardScalarFieldName.empty()) {
         const std::vector<std::string>& scalarFieldNames = getFieldNames(FieldType::SCALAR);
         auto it = std::find(
@@ -945,13 +945,13 @@ void VolumeData::renderGui(sgl::PropertyEditor& propertyEditor) {
                 "Volume Size", std::to_string(xs) + "x" + std::to_string(ys) + "x" + std::to_string(zs));
         if (ts > 1 && propertyEditor.addSliderIntEdit(
                 "Time Step", &currentTimeStepIdx, 0, ts - 1) == ImGui::EditMode::INPUT_FINISHED) {
-            currentTimeStepIdx = std::clamp(currentTimeStepIdx, 0, ts - 1);
+            currentTimeStepIdx = std::clamp(currentTimeStepIdx, 0, std::max(ts - 1, 0));
             dirty = true;
             reRender = true;
         }
         if (es > 1 && propertyEditor.addSliderIntEdit(
                 "Ensemble Member", &currentEnsembleIdx, 0, es - 1) == ImGui::EditMode::INPUT_FINISHED) {
-            currentEnsembleIdx = std::clamp(currentEnsembleIdx, 0, es - 1);
+            currentEnsembleIdx = std::clamp(currentEnsembleIdx, 0, std::max(es - 1, 0));
             dirty = true;
             reRender = true;
         }

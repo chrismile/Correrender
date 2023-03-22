@@ -204,7 +204,7 @@ bool DatRawFileLoader::setInputFiles(
     if (formatString == "float") {
         numComponents = 1;
         bytesPerEntry = 4;
-    } else if (formatString == "uchar") {
+    } else if (formatString == "uchar" || formatString == "byte") {
         numComponents = 1;
         bytesPerEntry = 1;
     } else if (formatString == "ushort") {
@@ -239,15 +239,17 @@ bool DatRawFileLoader::setInputFiles(
     }
 
     if (numComponents > 1) {
-        fieldNameMap[FieldType::VECTOR].push_back("Velocity");
-        fieldNameMap[FieldType::VECTOR].push_back("Vorticity");
-        fieldNameMap[FieldType::SCALAR].push_back("Velocity Magnitude");
-        fieldNameMap[FieldType::SCALAR].push_back("Vorticity Magnitude");
-        fieldNameMap[FieldType::SCALAR].push_back("Helicity");
+        fieldNameMap[FieldType::VECTOR].emplace_back("Velocity");
+        fieldNameMap[FieldType::VECTOR].emplace_back("Vorticity");
+        fieldNameMap[FieldType::SCALAR].emplace_back("Velocity Magnitude");
+        fieldNameMap[FieldType::SCALAR].emplace_back("Vorticity Magnitude");
+        fieldNameMap[FieldType::SCALAR].emplace_back("Helicity");
     }
 
     volumeData->setGridExtent(xs, ys, zs, cellStep, cellStep, cellStep);
-    volumeData->setTimeSteps(timeSteps);
+    if (timeSteps.size() > 0) {
+        volumeData->setTimeSteps(timeSteps);
+    }
     volumeData->setFieldNames(fieldNameMap);
 
     delete[] bufferDat;
@@ -260,18 +262,18 @@ bool DatRawFileLoader::getFieldEntry(
     // Finally, load the data from the .raw file.
     uint8_t* bufferRaw = nullptr;
     size_t lengthRaw = 0;
-    bool loadedRaw = sgl::loadFileFromSource(rawFilePaths.at(timestepIdx), bufferRaw, lengthRaw, true);
+    std::string rawFilename = rawFilePaths.at(rawFilePaths.size() == 1 ? 0 : timestepIdx);
+    bool loadedRaw = sgl::loadFileFromSource(rawFilename, bufferRaw, lengthRaw, true);
     if (!loadedRaw) {
         sgl::Logfile::get()->throwError(
-                "Error in DatRawFileLoader::load: Couldn't open file \"" + rawFilePaths.at(timestepIdx) + "\".");
+                "Error in DatRawFileLoader::load: Couldn't open file \"" + rawFilename + "\".");
     }
 
     size_t numBytesData = lengthRaw;
     size_t totalSize = size_t(xs) * size_t(ys) * size_t(zs);
     if (numBytesData != totalSize * numComponents * bytesPerEntry) {
         sgl::Logfile::get()->throwError(
-                "Error in DatRawFileLoader::load: Invalid number of entries for file \""
-                + rawFilePaths.at(timestepIdx) + "\".");
+                "Error in DatRawFileLoader::load: Invalid number of entries for file \"" + rawFilename + "\".");
     }
 
     int vectorFieldNumEntries = xs * ys * zs * 3;
@@ -298,7 +300,7 @@ bool DatRawFileLoader::getFieldEntry(
 
     if (formatString == "float") {
         memcpy(scalarAttributeField, bufferRaw, sizeof(float) * totalSize);
-    } else if (formatString == "uchar") {
+    } else if (formatString == "uchar" || formatString == "byte") {
         auto* dataField = bufferRaw;
 #ifdef USE_TBB
         tbb::parallel_for(tbb::blocked_range<size_t>(0, totalSize), [&](auto const& r) {

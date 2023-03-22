@@ -111,13 +111,16 @@ private:
     int numSamples = 100;
     float beta = 0.75f;
     int minDownscalingFactor = 16, maxDownscalingFactor = 64;
+    int minDownscalingFactorFocus = 1, maxDownscalingFactorFocus = 16;
     int downscalingFactorX = 32, downscalingFactorY = 32, downscalingFactorZ = 32;
+    int downscalingFactorFocusX = 4, downscalingFactorFocusY = 4, downscalingFactorFocusZ = 4;
     bool downscalingPowerOfTwo = true;
     bool downscalingFactorUniform = true;
     int lineCountFactorContext = 100;
     int lineCountFactorFocus = 100;
     float curveThickness = 1.5f;
-    float curveOpacity = 0.4f;
+    float curveOpacityContext = 0.4f;
+    float curveOpacityFocus = 0.4f;
     glm::vec2 correlationRange{}, correlationRangeTotal{};
     glm::ivec2 cellDistanceRange{}, cellDistanceRangeTotal{};
     int diagramRadius = 160;
