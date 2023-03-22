@@ -747,10 +747,9 @@ void CorrelationCalculator::calculateDevice(int timeStepIdx, int ensembleIdx, co
             fieldEntry->getVulkanImage()->transitionImageLayout(
                     VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, renderer->getVkCommandBuffer());
         }
-        // CUDA expects a float array. Vulkan uses samplers.
-        if (fieldEntry->getScalarDataFormat() != ScalarDataFormat::FLOAT) {
-            useCuda = false;
-        }
+        //if (fieldEntry->getScalarDataFormat() != ScalarDataFormat::FLOAT) {
+        //    useCuda = false;
+        //}
     }
 
 #ifdef TEST_INFERENCE_SPEED

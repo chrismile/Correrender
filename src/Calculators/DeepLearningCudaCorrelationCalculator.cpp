@@ -283,6 +283,7 @@ void DeepLearningCudaCorrelationCalculator::calculateDevice(
         if (outputImageBufferCu != 0) {
             sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
                     outputImageBufferCu, stream), "Error in cuMemFreeAsync: ");
+            outputImageBufferCu = 0;
         }
         cachedVolumeDataSlice3dSize = volumeDataSlice3dSize;
         sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
@@ -293,10 +294,12 @@ void DeepLearningCudaCorrelationCalculator::calculateDevice(
         if (permutationIndicesBufferCu != 0) {
             sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
                     permutationIndicesBufferCu, stream), "Error in cuMemFreeAsync: ");
+            permutationIndicesBufferCu = 0;
         }
         if (fieldTextureArrayCu != 0) {
             sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
                     fieldTextureArrayCu, stream), "Error in cuMemFreeAsync: ");
+            fieldTextureArrayCu = 0;
         }
         cachedCorrelationMemberCountDevice = size_t(cs);
         if (networkType == NetworkType::MINE) {
