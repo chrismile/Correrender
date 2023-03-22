@@ -262,7 +262,7 @@ bool ZarrLoader::setInputFiles(
 
 bool ZarrLoader::getFieldEntry(
         VolumeData* volumeData, FieldType fieldType, const std::string& fieldName,
-        int timestepIdx, int memberIdx, float*& fieldEntryBuffer) {
+        int timestepIdx, int memberIdx, HostCacheEntryType*& fieldEntry) {
     auto it = datasetNameMap.find(fieldName);
     if (it == datasetNameMap.end()) {
         sgl::Logfile::get()->throwError(
@@ -271,7 +271,9 @@ bool ZarrLoader::getFieldEntry(
     }
 
     size_t datasetIdx = getDatasetIndex(fieldName);
+    float* fieldEntryBuffer = nullptr;
     loadFloatArray3D(datasetIdx, timestepIdx, zs, ys, xs, fieldEntryBuffer);
+    fieldEntry = new HostCacheEntryType(xs * ys * zs, fieldEntryBuffer);
 
     return true;
 }

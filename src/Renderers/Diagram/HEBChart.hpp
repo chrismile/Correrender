@@ -287,7 +287,7 @@ private:
     bool showSelectedRegionsByColor = true;
     bool separateColorVarianceAndCorrelation = true;
     bool desaturateUnselectedRing = true;
-    bool useNeonSelectionColors = false;
+    bool useNeonSelectionColors = true;
 
     // Outer ring.
     bool showRing = true;

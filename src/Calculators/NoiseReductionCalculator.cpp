@@ -222,9 +222,18 @@ void SmoothingComputePass::setInputOutputImages(
         const sgl::vk::ImageViewPtr& _inputImage,
         const sgl::vk::ImageViewPtr& _outputImage) {
     if (inputImage != _inputImage) {
+        bool formatMatches = true;
+        if (inputImage) {
+            formatMatches =
+                    getImageFormatGlslString(inputImage->getImage())
+                    == getImageFormatGlslString(_inputImage->getImage());
+        }
         inputImage = _inputImage;
-        if (computeData) {
+        if (formatMatches && computeData) {
             computeData->setStaticImageView(inputImage, "inputImage");
+        }
+        if (!formatMatches) {
+            setShaderDirty();
         }
     }
     if (outputImage != _outputImage) {
@@ -280,6 +289,8 @@ void SmoothingComputePass::createKernel() {
 void SmoothingComputePass::loadShader() {
     sgl::vk::ShaderManager->invalidateShaderCache();
     std::map<std::string, std::string> preprocessorDefines;
+    preprocessorDefines.insert(std::make_pair(
+            "INPUT_IMAGE_FORMAT", getImageFormatGlslString(inputImage->getImage())));
     preprocessorDefines.insert(std::make_pair("BLOCK_SIZE_X", std::to_string(computeBlockSizeX)));
     preprocessorDefines.insert(std::make_pair("BLOCK_SIZE_Y", std::to_string(computeBlockSizeY)));
     preprocessorDefines.insert(std::make_pair("BLOCK_SIZE_Z", std::to_string(computeBlockSizeZ)));

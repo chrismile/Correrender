@@ -203,11 +203,11 @@ bool AmiraMeshLoader::setInputFiles(
     volumeData->setGridExtent(xs, ys, zs, dx, dy, dz);
 
     std::unordered_map<FieldType, std::vector<std::string>> fieldNameMap;
-    fieldNameMap[FieldType::VECTOR].push_back("Velocity");
-    fieldNameMap[FieldType::VECTOR].push_back("Vorticity");
-    fieldNameMap[FieldType::SCALAR].push_back("Velocity Magnitude");
-    fieldNameMap[FieldType::SCALAR].push_back("Vorticity Magnitude");
-    fieldNameMap[FieldType::SCALAR].push_back("Helicity");
+    fieldNameMap[FieldType::VECTOR].emplace_back("Velocity");
+    fieldNameMap[FieldType::VECTOR].emplace_back("Vorticity");
+    fieldNameMap[FieldType::SCALAR].emplace_back("Velocity Magnitude");
+    fieldNameMap[FieldType::SCALAR].emplace_back("Vorticity Magnitude");
+    fieldNameMap[FieldType::SCALAR].emplace_back("Helicity");
     volumeData->setFieldNames(fieldNameMap);
 
     return true;
@@ -215,7 +215,7 @@ bool AmiraMeshLoader::setInputFiles(
 
 bool AmiraMeshLoader::getFieldEntry(
         VolumeData* volumeData, FieldType fieldType, const std::string& fieldName,
-        int timestepIdx, int memberIdx, float*& fieldEntryBuffer) {
+        int timestepIdx, int memberIdx, HostCacheEntryType*& fieldEntry) {
     auto* velocityField = new float[3 * numPoints];
     memcpy(velocityField, dataSectionStart, sizeof(float) * 3 * numPoints);
 

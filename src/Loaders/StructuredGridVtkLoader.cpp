@@ -669,19 +669,21 @@ bool StructuredGridVtkLoader::setInputFiles(
 
 bool StructuredGridVtkLoader::getFieldEntry(
         VolumeData* volumeData, FieldType fieldType, const std::string& fieldName,
-        int timestepIdx, int memberIdx, float*& fieldEntryBuffer) {
+        int timestepIdx, int memberIdx, HostCacheEntryType*& fieldEntry) {
     if (fieldType == FieldType::SCALAR) {
         auto it = scalarFieldsCache.find(fieldName);
         if (it != scalarFieldsCache.end()) {
-            fieldEntryBuffer = new float[numPoints];
+            auto* fieldEntryBuffer = new float[numPoints];
             memcpy(fieldEntryBuffer, it->second, sizeof(float) * numPoints);
+            fieldEntry = new HostCacheEntryType(numPoints, fieldEntryBuffer);
             return true;
         }
     } else if (fieldType == FieldType::VECTOR) {
         auto it = vectorFieldsCache.find(fieldName);
         if (it != vectorFieldsCache.end()) {
-            fieldEntryBuffer = new float[numPoints * 3];
+            auto* fieldEntryBuffer = new float[numPoints * 3];
             memcpy(fieldEntryBuffer, it->second, sizeof(float) * numPoints * 3);
+            fieldEntry = new HostCacheEntryType(numPoints * 3, fieldEntryBuffer);
             return true;
         }
     }

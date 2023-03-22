@@ -36,8 +36,8 @@ layout (binding = 0) uniform UniformBuffer {
     uint xs, ys, zs, es;
 };
 
-layout (binding = 1, r32f) uniform readonly image3D inputImage0;
-layout (binding = 2, r32f) uniform readonly image3D inputImage1;
+layout (binding = 1, INPUT_IMAGE_0_FORMAT) uniform readonly image3D inputImage0;
+layout (binding = 2, INPUT_IMAGE_1_FORMAT) uniform readonly image3D inputImage1;
 layout (binding = 3, r32f) uniform writeonly image3D outputImage;
 
 void main() {

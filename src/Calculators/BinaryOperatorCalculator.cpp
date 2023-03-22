@@ -192,15 +192,33 @@ void BinaryOperatorComputePass::setInputOutputImages(
         const sgl::vk::ImageViewPtr& _inputImage1,
         const sgl::vk::ImageViewPtr& _outputImage) {
     if (inputImage0 != _inputImage0) {
+        bool formatMatches = true;
+        if (inputImage0) {
+            formatMatches =
+                    getImageFormatGlslString(inputImage0->getImage())
+                    == getImageFormatGlslString(_inputImage0->getImage());
+        }
         inputImage0 = _inputImage0;
-        if (computeData) {
+        if (formatMatches && computeData) {
             computeData->setStaticImageView(inputImage0, "inputImage0");
+        }
+        if (!formatMatches) {
+            setShaderDirty();
         }
     }
     if (inputImage1 != _inputImage1) {
+        bool formatMatches = true;
+        if (inputImage1) {
+            formatMatches =
+                    getImageFormatGlslString(inputImage1->getImage())
+                    == getImageFormatGlslString(_inputImage1->getImage());
+        }
         inputImage1 = _inputImage1;
-        if (computeData) {
+        if (formatMatches && computeData) {
             computeData->setStaticImageView(inputImage1, "inputImage1");
+        }
+        if (!formatMatches) {
+            setShaderDirty();
         }
     }
     if (outputImage != _outputImage) {
@@ -221,6 +239,10 @@ void BinaryOperatorComputePass::setBinaryOperatorType(BinaryOperatorType _binary
 void BinaryOperatorComputePass::loadShader() {
     sgl::vk::ShaderManager->invalidateShaderCache();
     std::map<std::string, std::string> preprocessorDefines;
+    preprocessorDefines.insert(std::make_pair(
+            "INPUT_IMAGE_0_FORMAT", getImageFormatGlslString(inputImage0->getImage())));
+    preprocessorDefines.insert(std::make_pair(
+            "INPUT_IMAGE_1_FORMAT", getImageFormatGlslString(inputImage1->getImage())));
     preprocessorDefines.insert(std::make_pair("BLOCK_SIZE_X", std::to_string(computeBlockSizeX)));
     preprocessorDefines.insert(std::make_pair("BLOCK_SIZE_Y", std::to_string(computeBlockSizeY)));
     preprocessorDefines.insert(std::make_pair("BLOCK_SIZE_Z", std::to_string(computeBlockSizeZ)));

@@ -31,11 +31,12 @@
 
 #include <memory>
 
-enum ScalarDataFormat {
-    BYTE, SHORT, FLOAT
-};
+#include "ScalarDataFormat.hpp"
+
+class VolumeData;
 
 class HostCacheEntryType {
+    friend class VolumeData;
 public:
     explicit HostCacheEntryType(size_t numEntries, uint8_t* dataByte)
             : scalarDataFormatNative(ScalarDataFormat::BYTE), numEntries(numEntries), dataByte(dataByte) {}

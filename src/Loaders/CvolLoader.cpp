@@ -109,7 +109,7 @@ bool CvolLoader::setInputFiles(
 
 bool CvolLoader::getFieldEntry(
         VolumeData* volumeData, FieldType fieldType, const std::string& fieldName,
-        int timestepIdx, int memberIdx, float*& fieldEntryBuffer) {
+        int timestepIdx, int memberIdx, HostCacheEntryType*& fieldEntry) {
     uint8_t* buffer = nullptr;
     size_t length = 0;
     bool loaded = sgl::loadFileFromSource(dataSourceFilename, buffer, length, true);
@@ -124,9 +124,20 @@ bool CvolLoader::getFieldEntry(
     auto* bufferRaw = reinterpret_cast<uint8_t*>(buffer + sizeof(CvolFileHeader));
 
     size_t totalSize = size_t(xs) * size_t(ys) * size_t(zs);
-    fieldEntryBuffer = new float[totalSize];
-
     if (fileHeader.fieldType == CvolDataType::FLOAT) {
+        auto* fieldEntryBuffer = new float[totalSize];
+        memcpy(fieldEntryBuffer, bufferRaw, sizeof(float) * totalSize);
+        fieldEntry = new HostCacheEntryType(totalSize, fieldEntryBuffer);
+    } else if (fileHeader.fieldType == CvolDataType::UNSIGNED_CHAR) {
+        auto* fieldEntryBuffer = new uint8_t[totalSize];
+        memcpy(fieldEntryBuffer, bufferRaw, sizeof(uint8_t) * totalSize);
+        fieldEntry = new HostCacheEntryType(totalSize, fieldEntryBuffer);
+    } else if (fileHeader.fieldType == CvolDataType::UNSIGNED_SHORT) {
+        auto* fieldEntryBuffer = new uint16_t[totalSize];
+        memcpy(fieldEntryBuffer, bufferRaw, sizeof(uint16_t) * totalSize);
+        fieldEntry = new HostCacheEntryType(totalSize, fieldEntryBuffer);
+    }
+    /*if (fileHeader.fieldType == CvolDataType::FLOAT) {
         memcpy(fieldEntryBuffer, bufferRaw, sizeof(float) * totalSize);
     } else if (fileHeader.fieldType == CvolDataType::UNSIGNED_CHAR) {
         auto* dataField = bufferRaw;
@@ -160,7 +171,7 @@ bool CvolLoader::getFieldEntry(
 #ifdef USE_TBB
         });
 #endif
-    }
+    }*/
 
     delete[] buffer;
     return true;

@@ -141,7 +141,7 @@ bool FieldFileLoader::setInputFiles(
 
 bool FieldFileLoader::getFieldEntry(
         VolumeData* volumeData, FieldType fieldType, const std::string& fieldName,
-        int timestepIdx, int memberIdx, float*& fieldEntryBuffer) {
+        int timestepIdx, int memberIdx, HostCacheEntryType*& fieldEntry) {
     uint8_t* buffer = nullptr;
     size_t length = 0;
     bool loaded = sgl::loadFileFromSource(dataSourceFilename, buffer, length, true);

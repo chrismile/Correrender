@@ -258,7 +258,7 @@ bool DatRawFileLoader::setInputFiles(
 
 bool DatRawFileLoader::getFieldEntry(
         VolumeData* volumeData, FieldType fieldType, const std::string& fieldName,
-        int timestepIdx, int memberIdx, float*& fieldEntryBuffer) {
+        int timestepIdx, int memberIdx, HostCacheEntryType*& fieldEntry) {
     // Finally, load the data from the .raw file.
     uint8_t* bufferRaw = nullptr;
     size_t lengthRaw = 0;
@@ -284,7 +284,7 @@ bool DatRawFileLoader::getFieldEntry(
     float* vorticityField = nullptr;
     float* vorticityMagnitudeField = nullptr;
     float* helicityField = nullptr;
-    float* scalarAttributeField = nullptr;
+    void* scalarAttributeField = nullptr;
 
     if (numComponents > 1) {
         velocityField = new float[vectorFieldNumEntries];
@@ -294,11 +294,45 @@ bool DatRawFileLoader::getFieldEntry(
         helicityField = new float[scalarFieldNumEntries];
     }
 
-    if (numComponents == 1 || numComponents == 4) {
-        scalarAttributeField = new float[scalarFieldNumEntries];
-    }
-
+    ScalarDataFormat dataFormat = ScalarDataFormat::FLOAT;
     if (formatString == "float") {
+        scalarAttributeField = new float[scalarFieldNumEntries];
+        memcpy(scalarAttributeField, bufferRaw, sizeof(float) * totalSize);
+    } else if (formatString == "uchar" || formatString == "byte") {
+        dataFormat = ScalarDataFormat::BYTE;
+        scalarAttributeField = new uint8_t[scalarFieldNumEntries];
+        memcpy(scalarAttributeField, bufferRaw, sizeof(uint8_t) * totalSize);
+    } else if (formatString == "ushort") {
+        dataFormat = ScalarDataFormat::SHORT;
+        scalarAttributeField = new uint16_t[scalarFieldNumEntries];
+        memcpy(scalarAttributeField, bufferRaw, sizeof(uint16_t) * totalSize);
+    } else if (formatString == "float3") {
+        auto* dataField = reinterpret_cast<float*>(bufferRaw);
+        for (int z = 0; z < zs; z++) {
+            for (int y = 0; y < ys; y++) {
+                for (int x = 0; x < xs; x++) {
+                    velocityField[IDXV(x, y, z, 0)] = dataField[IDXV(x, y, z, 0)];
+                    velocityField[IDXV(x, y, z, 1)] = dataField[IDXV(x, y, z, 1)];
+                    velocityField[IDXV(x, y, z, 2)] = dataField[IDXV(x, y, z, 2)];
+                }
+            }
+        }
+    } else if (formatString == "float4") {
+        auto* scalarAttributeFieldFloat = new float[scalarFieldNumEntries];
+        scalarAttributeField = scalarAttributeFieldFloat;
+        auto* dataField = reinterpret_cast<float*>(bufferRaw);
+        for (int z = 0; z < zs; z++) {
+            for (int y = 0; y < ys; y++) {
+                for (int x = 0; x < xs; x++) {
+                    velocityField[IDXV(x, y, z, 0)] = dataField[IDXV4(x, y, z, 0)];
+                    velocityField[IDXV(x, y, z, 1)] = dataField[IDXV4(x, y, z, 1)];
+                    velocityField[IDXV(x, y, z, 2)] = dataField[IDXV4(x, y, z, 2)];
+                    scalarAttributeFieldFloat[IDXS(x, y, z)] = dataField[IDXV4(x, y, z, 3)];
+                }
+            }
+        }
+    }
+    /*if (formatString == "float") {
         memcpy(scalarAttributeField, bufferRaw, sizeof(float) * totalSize);
     } else if (formatString == "uchar" || formatString == "byte") {
         auto* dataField = bufferRaw;
@@ -355,10 +389,11 @@ bool DatRawFileLoader::getFieldEntry(
                 }
             }
         }
-    }
+    }*/
 
     if (scalarAttributeField) {
-        volumeData->addField(scalarAttributeField, FieldType::SCALAR, scalarAttributeName, timestepIdx, memberIdx);
+        volumeData->addField(
+                scalarAttributeField, dataFormat, FieldType::SCALAR, scalarAttributeName, timestepIdx, memberIdx);
     }
 
     if (numComponents > 1) {

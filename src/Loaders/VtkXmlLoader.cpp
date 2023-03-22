@@ -265,7 +265,7 @@ bool VtkXmlLoader::setInputFiles(
 
 bool VtkXmlLoader::getFieldEntry(
         VolumeData* volumeData, FieldType fieldType, const std::string& fieldName,
-        int timestepIdx, int memberIdx, float*& fieldEntryBuffer) {
+        int timestepIdx, int memberIdx, HostCacheEntryType*& fieldEntry) {
     auto* uField = new float[numPoints];
     auto* vField = new float[numPoints];
     auto* wField = new float[numPoints];

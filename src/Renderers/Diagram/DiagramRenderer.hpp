@@ -129,7 +129,7 @@ private:
     bool opacityByValue = false;
     bool colorByValue = true;
     bool showSelectedRegionsByColor = true;
-    bool useNeonSelectionColors = false;
+    bool useNeonSelectionColors = true;
     bool use2dField = false;
     bool useCorrelationComputationGpu = true;
 

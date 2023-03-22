@@ -42,7 +42,7 @@ public:
             VolumeData* volumeData, const std::string& filePath, const DataSetInformation& dataSetInformation) override;
     bool getFieldEntry(
             VolumeData* volumeData, FieldType fieldType, const std::string& fieldName,
-            int timestepIdx, int memberIdx, float*& fieldEntryBuffer) override;
+            int timestepIdx, int memberIdx, HostCacheEntryType*& fieldEntry) override;
 
 private:
     char* skipLine(char* fileBuffer, char* fileBufferEnd);

@@ -1,7 +1,7 @@
 /*
  * BSD 2-Clause License
  *
- * Copyright (c) 2022, Christoph Neuhauser
+ * Copyright (c) 2023, Christoph Neuhauser
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -26,25 +26,11 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef CORRERENDER_VOLUMELOADER_HPP
-#define CORRERENDER_VOLUMELOADER_HPP
+#ifndef CORRERENDER_SCALARDATAFORMAT_HPP
+#define CORRERENDER_SCALARDATAFORMAT_HPP
 
-#include <vector>
-#include <string>
-#include "Volume/FieldType.hpp"
-#include "DataSetList.hpp"
-
-class HostCacheEntryType;
-class VolumeData;
-
-class VolumeLoader {
-public:
-    virtual ~VolumeLoader() = default;
-    virtual bool setInputFiles(
-            VolumeData* volumeData, const std::string& filePath, const DataSetInformation& dataSetInformation) = 0;
-    virtual bool getFieldEntry(
-            VolumeData* volumeData, FieldType fieldType, const std::string& fieldName,
-            int timestepIdx, int memberIdx, HostCacheEntryType*& fieldEntry) = 0;
+enum class ScalarDataFormat {
+    BYTE, SHORT, FLOAT
 };
 
-#endif //CORRERENDER_VOLUMELOADER_HPP
+#endif //CORRERENDER_SCALARDATAFORMAT_HPP

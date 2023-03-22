@@ -41,7 +41,7 @@ layout (binding = 1) readonly buffer KernelBuffer {
     float kernelWeights[KERNEL_SIZE * KERNEL_SIZE * KERNEL_SIZE];
 };
 
-layout (binding = 2, r32f) uniform readonly image3D inputImage;
+layout (binding = 2, INPUT_IMAGE_FORMAT) uniform readonly image3D inputImage;
 layout (binding = 3, r32f) uniform writeonly image3D outputImage;
 
 #define IDXK(x,y,z) ((z)*KERNEL_SIZE*KERNEL_SIZE + (y)*KERNEL_SIZE + (x))

@@ -419,7 +419,7 @@ bool NetCdfLoader::setInputFiles(
 
 bool NetCdfLoader::getFieldEntry(
         VolumeData* volumeData, FieldType fieldType, const std::string& fieldName,
-        int timestepIdx, int memberIdx, float*& fieldEntryBuffer) {
+        int timestepIdx, int memberIdx, HostCacheEntryType*& fieldEntry) {
     auto it = datasetNameMap.find(fieldName);
     if (it == datasetNameMap.end()) {
         sgl::Logfile::get()->throwError(
@@ -437,6 +437,7 @@ bool NetCdfLoader::getFieldEntry(
     myassert(nc_inq_varndims(ncid, varid, &numDims) == NC_NOERR);
     //myassert(nc_inq_vardimid(ncid, varid, dimids) == NC_NOERR);
 
+    float* fieldEntryBuffer = nullptr;
     if (numDims == 3) {
         loadFloatArray3D(varid, zs, ys, xs, fieldEntryBuffer);
     } else if (numDims == 4 && ts > 1) {
@@ -444,6 +445,7 @@ bool NetCdfLoader::getFieldEntry(
     } else if (numDims == 4 && es > 1) {
         loadFloatArray3D(varid, memberIdx, zs, ys, xs, fieldEntryBuffer);
     }
+    fieldEntry = new HostCacheEntryType(xs * ys * zs, fieldEntryBuffer);
 
     return true;
 }

@@ -322,7 +322,7 @@ bool GribLoader::setInputFiles(
 
 bool GribLoader::getFieldEntry(
         VolumeData* volumeData, FieldType fieldType, const std::string& fieldName,
-        int timestepIdx, int memberIdx, float*& fieldEntryBuffer) {
+        int timestepIdx, int memberIdx, HostCacheEntryType*& fieldEntry) {
     //long dataDateLoad = 20161002; // 2016-10-02
     //long dataTimeLoad = 600; // 6:00 o'clock
     //long dataDateLoad = dataSetInformation.date;
@@ -382,7 +382,8 @@ bool GribLoader::getFieldEntry(
     }
 
     // Merge the variable slice arrays.
-    fieldEntryBuffer = new float[numLevelsGlobal * size_t(numLatsGlobal) * size_t(numLonsGlobal)];
+    size_t numEntries = numLevelsGlobal * size_t(numLatsGlobal) * size_t(numLonsGlobal);
+    float* fieldEntryBuffer = new float[numEntries];
     for (size_t level = 0; level < variableSliceArray.size(); level++) {
         const float* variableSlice = variableSliceArray.at(level);
         if (variableSlice == nullptr) {
@@ -404,6 +405,7 @@ bool GribLoader::getFieldEntry(
             delete[] variableSlice;
         }
     }
+    fieldEntry = new HostCacheEntryType(numEntries, fieldEntryBuffer);
 
     return true;
 }

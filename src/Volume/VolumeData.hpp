@@ -129,6 +129,11 @@ public:
     void setEnsembleMemberCount(int _es);
     void setFieldNames(const std::unordered_map<FieldType, std::vector<std::string>>& fieldNamesMap);
     void addField(float* fieldData, FieldType fieldType, const std::string& fieldName, int timeStepIdx, int ensembleIdx);
+    void addField(uint8_t* fieldData, FieldType fieldType, const std::string& fieldName, int timeStepIdx, int ensembleIdx);
+    void addField(uint16_t* fieldData, FieldType fieldType, const std::string& fieldName, int timeStepIdx, int ensembleIdx);
+    void addField(
+            void* fieldData, ScalarDataFormat dataFormat, FieldType fieldType,
+            const std::string& fieldName, int timeStepIdx, int ensembleIdx);
     void addCalculator(const CalculatorPtr& calculator);
     const std::vector<std::string>& getFieldNames(FieldType fieldType);
     const std::vector<std::string>& getFieldNamesBase(FieldType fieldType);
@@ -160,6 +165,8 @@ public:
     [[nodiscard]] inline const sgl::AABB3& getBoundingBoxRendering() { return boxRendering; }
     inline const std::vector<std::string>& getFilePaths() { return filePaths; }
     inline const DataSetInformation& getDataSetInformation() { return dataSetInformation; }
+    FieldAccess createFieldAccessStruct(
+            FieldType fieldType, const std::string& fieldName, int& timeStepIdx, int& ensembleIdx) const;
 
     virtual bool setInputFiles(
             const std::vector<std::string>& _filePaths, DataSetInformation _dataSetInformation,
@@ -322,9 +329,6 @@ protected:
     std::unordered_map<CalculatorType, size_t> calculatorTypeUseCounts;
 
 private:
-    FieldAccess createFieldAccessStruct(
-            FieldType fieldType, const std::string& fieldName, int& timeStepIdx, int& ensembleIdx) const;
-
     static glm::vec3 screenPosToRayDir(SceneData* sceneData, int globalX, int globalY);
     static bool _rayBoxIntersection(
             const glm::vec3& rayOrigin, const glm::vec3& rayDirection, const glm::vec3& lower, const glm::vec3& upper,

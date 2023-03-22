@@ -36,6 +36,44 @@ DeviceCacheEntryType::DeviceCacheEntryType(sgl::vk::ImagePtr vulkanImage, sgl::v
         : vulkanImage(std::move(vulkanImage)), vulkanSampler(std::move(vulkanSampler)) {
 }
 
+std::string getImageFormatGlslString(const sgl::vk::ImagePtr& image) {
+    auto format = image->getImageSettings().format;
+    if (format == VK_FORMAT_R32_SFLOAT) {
+        return "r32f";
+    } else if (format == VK_FORMAT_R32G32B32A32_SFLOAT) {
+        return "rgba32f";
+    } else if (format == VK_FORMAT_R8_UNORM) {
+        return "r8";
+    } else if (format == VK_FORMAT_R8G8B8A8_UNORM) {
+        return "rgba8";
+    } else if (format == VK_FORMAT_R16_UNORM) {
+        return "r16";
+    } else if (format == VK_FORMAT_R16G16B16A16_UNORM) {
+        return "rgba16";
+    } else {
+        sgl::Logfile::get()->throwError("Error in getImageFormatGlslString: Invalid format.");
+        return "r32f";
+    }
+}
+
+ScalarDataFormat DeviceCacheEntryType::getScalarDataFormat() const {
+    auto format = vulkanImage->getImageSettings().format;
+    if (format == VK_FORMAT_R32_SFLOAT || format == VK_FORMAT_R32G32B32A32_SFLOAT) {
+        return ScalarDataFormat::FLOAT;
+    } else if (format == VK_FORMAT_R8_UNORM || format == VK_FORMAT_R8G8B8A8_UNORM) {
+        return ScalarDataFormat::BYTE;
+    } else if (format == VK_FORMAT_R16_UNORM || format == VK_FORMAT_R16G16B16A16_UNORM) {
+        return ScalarDataFormat::SHORT;
+    } else {
+        sgl::Logfile::get()->throwError("Error in DeviceCacheEntryType::getScalarDataFormat: Invalid format.");
+        return ScalarDataFormat::FLOAT;
+    }
+}
+
+std::string DeviceCacheEntryType::getImageFormatGlslString() const {
+    return ::getImageFormatGlslString(vulkanImage);
+}
+
 const sgl::vk::ImageViewPtr& DeviceCacheEntryType::getVulkanImageView() {
     if (!vulkanImageView) {
         vulkanImageView = std::make_shared<sgl::vk::ImageView>(vulkanImage, VK_IMAGE_VIEW_TYPE_3D);

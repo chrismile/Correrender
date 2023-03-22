@@ -35,6 +35,8 @@
 #include <Graphics/Vulkan/Utils/InteropCuda.hpp>
 #endif
 
+#include "ScalarDataFormat.hpp"
+
 namespace sgl { namespace vk {
 class Image;
 typedef std::shared_ptr<Image> ImagePtr;
@@ -50,10 +52,14 @@ class TextureCudaExternalMemoryVk;
 typedef std::shared_ptr<TextureCudaExternalMemoryVk> TextureCudaExternalMemoryVkPtr;
 }}
 
+std::string getImageFormatGlslString(const sgl::vk::ImagePtr& image);
+
 class DeviceCacheEntryType {
 public:
     DeviceCacheEntryType(sgl::vk::ImagePtr vulkanImage, sgl::vk::ImageSamplerPtr vulkanSampler);
     inline const sgl::vk::ImagePtr& getVulkanImage() { return vulkanImage; }
+    [[nodiscard]] ScalarDataFormat getScalarDataFormat() const;
+    [[nodiscard]] std::string getImageFormatGlslString() const;
     const sgl::vk::ImageViewPtr& getVulkanImageView();
     const sgl::vk::TexturePtr& getVulkanTexture();
 #ifdef SUPPORT_CUDA_INTEROP

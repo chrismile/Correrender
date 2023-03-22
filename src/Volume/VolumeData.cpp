@@ -290,8 +290,11 @@ void VolumeData::setFieldNames(const std::unordered_map<FieldType, std::vector<s
     typeToFieldNamesMapBase = fieldNamesMap;
 }
 
-void VolumeData::addField(
-        float* fieldData, FieldType fieldType, const std::string& fieldName, int timeStepIdx, int ensembleIdx) {
+template<class T>
+static void addFieldGlobal(
+        T* fieldData, FieldType fieldType, const std::string& fieldName, int timeStepIdx, int ensembleIdx,
+        int xs, int ys, int zs, int ssxs, int ssys, int sszs, int subsamplingFactor,
+        bool transpose, const glm::ivec3& transposeAxes, VolumeData* volumeData, HostFieldCache* hostFieldCache) {
     if (transpose) {
         if (transposeAxes != glm::ivec3(0, 2, 1)) {
             sgl::Logfile::get()->throwError(
@@ -299,14 +302,14 @@ void VolumeData::addField(
                     "Y and Z axis is supported.");
         }
         if (fieldType == FieldType::SCALAR) {
-            auto* scalarFieldCopy = new float[ssxs * ssys * sszs];
-            memcpy(scalarFieldCopy, fieldData, sizeof(float) * ssxs * ssys * sszs);
+            auto* scalarFieldCopy = new T[ssxs * ssys * sszs];
+            memcpy(scalarFieldCopy, fieldData, sizeof(T) * ssxs * ssys * sszs);
 #ifdef USE_TBB
             tbb::parallel_for(tbb::blocked_range<int>(0, sszs), [&](auto const& r) {
                 for (auto z = r.begin(); z != r.end(); z++) {
 #else
 #if _OPENMP >= 201107
-            #pragma omp parallel for shared(fieldData, scalarFieldCopy) default(none)
+            #pragma omp parallel for shared(ssxs, ssys, sszs, fieldData, scalarFieldCopy) default(none)
 #endif
             for (int z = 0; z < sszs; z++) {
 #endif
@@ -323,14 +326,14 @@ void VolumeData::addField(
 #endif
             delete[] scalarFieldCopy;
         } else {
-            auto* vectorFieldCopy = new float[3 * ssxs * ssys * sszs];
-            memcpy(vectorFieldCopy, fieldData, sizeof(float) * 3 * ssxs * ssys * sszs);
+            auto* vectorFieldCopy = new T[3 * ssxs * ssys * sszs];
+            memcpy(vectorFieldCopy, fieldData, sizeof(T) * 3 * ssxs * ssys * sszs);
 #ifdef USE_TBB
             tbb::parallel_for(tbb::blocked_range<int>(0, sszs), [&](auto const& r) {
                 for (auto z = r.begin(); z != r.end(); z++) {
 #else
 #if _OPENMP >= 201107
-            #pragma omp parallel for shared(fieldData, vectorFieldCopy) default(none)
+            #pragma omp parallel for shared(ssxs, ssys, sszs, fieldData, vectorFieldCopy) default(none)
 #endif
             for (int z = 0; z < sszs; z++) {
 #endif
@@ -353,14 +356,14 @@ void VolumeData::addField(
 
     if (subsamplingFactor > 1) {
         if (fieldType == FieldType::SCALAR) {
-            float* scalarFieldOld = fieldData;
-            fieldData = new float[xs * ys * zs];
+            T* scalarFieldOld = fieldData;
+            fieldData = new T[xs * ys * zs];
 #ifdef USE_TBB
             tbb::parallel_for(tbb::blocked_range<int>(0, zs), [&](auto const& r) {
                 for (auto z = r.begin(); z != r.end(); z++) {
 #else
 #if _OPENMP >= 201107
-            #pragma omp parallel for shared(fieldData, scalarFieldOld) default(none)
+            #pragma omp parallel for shared(xs, ys, zs, ssxs, ssys, subsamplingFactor, fieldData, scalarFieldOld) default(none)
 #endif
             for (int z = 0; z < zs; z++) {
 #endif
@@ -380,14 +383,15 @@ void VolumeData::addField(
 #endif
             delete[] scalarFieldOld;
         } else {
-            float* vectorFieldOld = fieldData;
-            fieldData = new float[3 * xs * ys * zs];
+            T* vectorFieldOld = fieldData;
+            fieldData = new T[3 * xs * ys * zs];
 #ifdef USE_TBB
             tbb::parallel_for(tbb::blocked_range<int>(0, zs), [&](auto const& r) {
                 for (auto z = r.begin(); z != r.end(); z++) {
 #else
 #if _OPENMP >= 201107
-            #pragma omp parallel for shared(fieldData, vectorFieldOld) default(none)
+            #pragma omp parallel for shared(xs, ys, zs, ssxs, ssys, subsamplingFactor, fieldData, vectorFieldOld) \
+            default(none)
 #endif
             for (int z = 0; z < zs; z++) {
 #endif
@@ -411,7 +415,7 @@ void VolumeData::addField(
         }
     }
 
-    FieldAccess access = createFieldAccessStruct(fieldType, fieldName, timeStepIdx, ensembleIdx);
+    FieldAccess access = volumeData->createFieldAccessStruct(fieldType, fieldName, timeStepIdx, ensembleIdx);
 
     if (hostFieldCache->exists(access)) {
         delete[] fieldData;
@@ -427,35 +431,39 @@ void VolumeData::addField(
         sgl::Logfile::get()->throwError("Error in VolumeData::addField: Invalid field type.");
     }
     hostFieldCache->push(access, HostCacheEntry(new HostCacheEntryType(numEntries, fieldData)));
+}
 
-    /*if (fieldType == FieldType::VECTOR) {
-#ifdef USE_TBB
-        float maxVectorMagnitude = tbb::parallel_reduce(
-                tbb::blocked_range<int>(0, zs), 0.0f,
-                [&vectorField, this](tbb::blocked_range<int> const& r, float maxVectorMagnitude) {
-                    for (auto z = r.begin(); z != r.end(); z++) {
-#else
-        float maxVectorMagnitude = 0.0f;
-#if _OPENMP >= 201107
-        #pragma omp parallel for shared(fieldData) reduction(max: maxVectorMagnitude) default(none)
-#endif
-        for (int z = 0; z < zs; z++) {
-#endif
-            for (int y = 0; y < ys; y++) {
-                for (int x = 0; x < xs; x++) {
-                    float vx = fieldData[IDXV(x, y, z, 0)];
-                    float vy = fieldData[IDXV(x, y, z, 1)];
-                    float vz = fieldData[IDXV(x, y, z, 2)];
-                    float vectorMagnitude = std::sqrt(vx * vx + vy * vy + vz * vz);
-                    maxVectorMagnitude = std::max(maxVectorMagnitude, vectorMagnitude);
-                }
-            }
-        }
-#ifdef USE_TBB
-                    return maxVectorMagnitude;
-                }, sgl::max_predicate());
-#endif
-    }*/
+void VolumeData::addField(
+        float* fieldData, FieldType fieldType, const std::string& fieldName, int timeStepIdx, int ensembleIdx) {
+    addFieldGlobal(
+            fieldData, fieldType, fieldName, timeStepIdx, ensembleIdx,
+            xs, ys, zs, ssxs, ssys, sszs, subsamplingFactor, transpose, transposeAxes, this, hostFieldCache.get());
+}
+
+void VolumeData::addField(
+        uint8_t* fieldData, FieldType fieldType, const std::string& fieldName, int timeStepIdx, int ensembleIdx) {
+    addFieldGlobal(
+            fieldData, fieldType, fieldName, timeStepIdx, ensembleIdx,
+            xs, ys, zs, ssxs, ssys, sszs, subsamplingFactor, transpose, transposeAxes, this, hostFieldCache.get());
+}
+
+void VolumeData::addField(
+        uint16_t* fieldData, FieldType fieldType, const std::string& fieldName, int timeStepIdx, int ensembleIdx) {
+    addFieldGlobal(
+            fieldData, fieldType, fieldName, timeStepIdx, ensembleIdx,
+            xs, ys, zs, ssxs, ssys, sszs, subsamplingFactor, transpose, transposeAxes, this, hostFieldCache.get());
+}
+
+void VolumeData::addField(
+        void* fieldData, ScalarDataFormat dataFormat, FieldType fieldType,
+        const std::string& fieldName, int timeStepIdx, int ensembleIdx) {
+    if (dataFormat == ScalarDataFormat::FLOAT) {
+        addField(static_cast<float*>(fieldData), fieldType, fieldName, timeStepIdx, ensembleIdx);
+    } else if (dataFormat == ScalarDataFormat::BYTE) {
+        addField(static_cast<uint8_t*>(fieldData), fieldType, fieldName, timeStepIdx, ensembleIdx);
+    } else if (dataFormat == ScalarDataFormat::SHORT) {
+        addField(static_cast<uint16_t*>(fieldData), fieldType, fieldName, timeStepIdx, ensembleIdx);
+    }
 }
 
 const std::vector<std::string>& VolumeData::getFieldNames(FieldType fieldType) {
@@ -668,6 +676,62 @@ FieldAccess VolumeData::createFieldAccessStruct(
     return access;
 }
 
+template<class T>
+static void transposeScalarField(T* fieldEntryBuffer, int ssxs, int ssys, int sszs) {
+    auto* scalarFieldCopy = new T[ssxs * ssys * sszs];
+    memcpy(scalarFieldCopy, fieldEntryBuffer, sizeof(T) * ssxs * ssys * sszs);
+#ifdef USE_TBB
+    tbb::parallel_for(tbb::blocked_range<int>(0, sszs), [&](auto const& r) {
+        for (auto z = r.begin(); z != r.end(); z++) {
+#else
+#if _OPENMP >= 201107
+    #pragma omp parallel for shared(ssxs, ssys, sszs, fieldEntryBuffer, scalarFieldCopy) default(none)
+#endif
+    for (int z = 0; z < sszs; z++) {
+#endif
+        for (int y = 0; y < ssys; y++) {
+            for (int x = 0; x < ssxs; x++) {
+                int readPos = ((y)*ssxs*sszs + (z)*ssxs + (x));
+                int writePos = ((z)*ssxs*ssys + (y)*ssxs + (x));
+                fieldEntryBuffer[writePos] = scalarFieldCopy[readPos];
+            }
+        }
+    }
+#ifdef USE_TBB
+    });
+#endif
+    delete[] scalarFieldCopy;
+}
+
+template<class T>
+static void transposeVectorField(T* fieldEntryBuffer, int ssxs, int ssys, int sszs) {
+    auto* vectorFieldCopy = new T[3 * ssxs * ssys * sszs];
+    memcpy(vectorFieldCopy, fieldEntryBuffer, sizeof(T) * 3 * ssxs * ssys * sszs);
+#ifdef USE_TBB
+    tbb::parallel_for(tbb::blocked_range<int>(0, sszs), [&](auto const& r) {
+        for (auto z = r.begin(); z != r.end(); z++) {
+#else
+#if _OPENMP >= 201107
+#pragma omp parallel for shared(ssxs, ssys, sszs, fieldEntryBuffer, vectorFieldCopy) default(none)
+#endif
+    for (int z = 0; z < sszs; z++) {
+#endif
+        for (int y = 0; y < ssys; y++) {
+            for (int x = 0; x < ssxs; x++) {
+                int readPos = ((y)*ssxs*sszs*3 + (z)*ssxs*3 + (x)*3);
+                int writePos = ((z)*ssxs*ssys*3 + (y)*ssxs*3 + (x)*3);
+                fieldEntryBuffer[writePos] = vectorFieldCopy[readPos];
+                fieldEntryBuffer[writePos + 1] = vectorFieldCopy[readPos + 2];
+                fieldEntryBuffer[writePos + 2] = vectorFieldCopy[readPos + 1];
+            }
+        }
+    }
+#ifdef USE_TBB
+    });
+#endif
+    delete[] vectorFieldCopy;
+}
+
 VolumeData::HostCacheEntry VolumeData::getFieldEntryCpu(
         FieldType fieldType, const std::string& fieldName, int timeStepIdx, int ensembleIdx) {
     FieldAccess access = createFieldAccessStruct(fieldType, fieldName, timeStepIdx, ensembleIdx);
@@ -679,7 +743,7 @@ VolumeData::HostCacheEntry VolumeData::getFieldEntryCpu(
     size_t bufferSize = getSlice3dSizeInBytes(fieldType);
     hostFieldCache->ensureSufficientMemory(bufferSize);
 
-    float* fieldEntryBuffer = nullptr;
+    HostCacheEntryType* fieldEntry = nullptr;
     auto itCalc = calculatorsHost.find(fieldName);
     if (itCalc != calculatorsHost.end()) {
         Calculator* calculator = itCalc->second.get();
@@ -689,12 +753,15 @@ VolumeData::HostCacheEntry VolumeData::getFieldEntryCpu(
                     "field \"" + fieldName + "\".");
         }
         size_t numComponents = fieldType == FieldType::SCALAR ? 1 : 3;
-        fieldEntryBuffer = new float[size_t(xs) * size_t(ys) * size_t(zs) * numComponents];
+        size_t numEntries = size_t(xs) * size_t(ys) * size_t(zs) * numComponents;
+        auto* fieldEntryBuffer = new float[numEntries];
         calculator->calculateCpu(timeStepIdx, ensembleIdx, fieldEntryBuffer);
+        fieldEntry = new HostCacheEntryType(numEntries, fieldEntryBuffer);
     } else if (calculatorsDevice.find(fieldName) != calculatorsDevice.end()) {
         auto deviceEntry = getFieldEntryDevice(fieldType, fieldName, timeStepIdx, ensembleIdx);
         size_t numComponents = fieldType == FieldType::SCALAR ? 1 : 3;
-        size_t sizeInBytes = numComponents * size_t(xs) * size_t(ys) * size_t(zs) * sizeof(float);
+        size_t numEntries = numComponents * size_t(xs) * size_t(ys) * size_t(zs);
+        size_t sizeInBytes = numEntries * sizeof(float);
         if (!stagingBuffer) {
             stagingBuffer = std::make_shared<sgl::vk::Buffer>(
                     device, sizeInBytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_TO_CPU);
@@ -703,12 +770,13 @@ VolumeData::HostCacheEntry VolumeData::getFieldEntryCpu(
                 VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, renderer->getVkCommandBuffer());
         deviceEntry->getVulkanImage()->copyToBuffer(stagingBuffer, renderer->getVkCommandBuffer());
         renderer->syncWithCpu();
-        fieldEntryBuffer = new float[size_t(xs) * size_t(ys) * size_t(zs) * numComponents];
+        auto* fieldEntryBuffer = new float[numEntries];
         void* data = stagingBuffer->mapMemory();
         memcpy(fieldEntryBuffer, data, sizeInBytes);
         stagingBuffer->unmapMemory();
         deviceEntry->getVulkanImage()->transitionImageLayout(
                 VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, renderer->getVkCommandBuffer());
+        fieldEntry = new HostCacheEntryType(numEntries, fieldEntryBuffer);
     } else {
         VolumeLoader* volumeLoader = nullptr;
         if (tsFileCount == 1 && esFileCount == 1) {
@@ -725,8 +793,7 @@ VolumeData::HostCacheEntry VolumeData::getFieldEntryCpu(
             return {};
         }
 
-        if (!volumeLoader->getFieldEntry(
-                this, fieldType, fieldName, timeStepIdx, ensembleIdx, fieldEntryBuffer)) {
+        if (!volumeLoader->getFieldEntry(this, fieldType, fieldName, timeStepIdx, ensembleIdx, fieldEntry)) {
             sgl::Logfile::get()->throwError(
                     "Fatal error in VolumeData::getFieldEntryCpu: Volume loader failed to load the data entry.");
             return {};
@@ -734,7 +801,7 @@ VolumeData::HostCacheEntry VolumeData::getFieldEntryCpu(
     }
 
     // Loaders may load multiple fields at once and leave fieldEntryBuffer empty.
-    if (!fieldEntryBuffer) {
+    if (!fieldEntry) {
         if (!hostFieldCache->exists(access)) {
             sgl::Logfile::get()->throwError(
                     "Error in VolumeData::getFieldEntryCpu: Loader supporting loading multiple fields at once "
@@ -749,68 +816,26 @@ VolumeData::HostCacheEntry VolumeData::getFieldEntryCpu(
                         "Y and Z axis is supported.");
             }
             if (fieldType == FieldType::SCALAR) {
-                auto* scalarFieldCopy = new float[ssxs * ssys * sszs];
-                memcpy(scalarFieldCopy, fieldEntryBuffer, sizeof(float) * ssxs * ssys * sszs);
-#ifdef USE_TBB
-                tbb::parallel_for(tbb::blocked_range<int>(0, sszs), [&](auto const& r) {
-                    for (auto z = r.begin(); z != r.end(); z++) {
-#else
-#if _OPENMP >= 201107
-                #pragma omp parallel for shared(fieldEntryBuffer, scalarFieldCopy) default(none)
-#endif
-                for (int z = 0; z < sszs; z++) {
-#endif
-                    for (int y = 0; y < ssys; y++) {
-                        for (int x = 0; x < ssxs; x++) {
-                            int readPos = ((y)*ssxs*sszs + (z)*ssxs + (x));
-                            int writePos = ((z)*ssxs*ssys + (y)*ssxs + (x));
-                            fieldEntryBuffer[writePos] = scalarFieldCopy[readPos];
-                        }
-                    }
+                if (fieldEntry->getScalarDataFormatNative() == ScalarDataFormat::FLOAT) {
+                    transposeScalarField(fieldEntry->dataFloat, ssxs, ssys, sszs);
+                } else if (fieldEntry->getScalarDataFormatNative() == ScalarDataFormat::BYTE) {
+                    transposeScalarField(fieldEntry->dataByte, ssxs, ssys, sszs);
+                } else if (fieldEntry->getScalarDataFormatNative() == ScalarDataFormat::SHORT) {
+                    transposeScalarField(fieldEntry->dataShort, ssxs, ssys, sszs);
                 }
-#ifdef USE_TBB
-                });
-#endif
-                delete[] scalarFieldCopy;
             } else {
-                auto* vectorFieldCopy = new float[3 * ssxs * ssys * sszs];
-                memcpy(vectorFieldCopy, fieldEntryBuffer, sizeof(float) * 3 * ssxs * ssys * sszs);
-#ifdef USE_TBB
-                tbb::parallel_for(tbb::blocked_range<int>(0, sszs), [&](auto const& r) {
-                    for (auto z = r.begin(); z != r.end(); z++) {
-#else
-#if _OPENMP >= 201107
-                #pragma omp parallel for shared(fieldEntryBuffer, vectorFieldCopy) default(none)
-#endif
-                for (int z = 0; z < sszs; z++) {
-#endif
-                    for (int y = 0; y < ssys; y++) {
-                        for (int x = 0; x < ssxs; x++) {
-                            int readPos = ((y)*ssxs*sszs*3 + (z)*ssxs*3 + (x)*3);
-                            int writePos = ((z)*ssxs*ssys*3 + (y)*ssxs*3 + (x)*3);
-                            fieldEntryBuffer[writePos] = vectorFieldCopy[readPos];
-                            fieldEntryBuffer[writePos + 1] = vectorFieldCopy[readPos + 2];
-                            fieldEntryBuffer[writePos + 2] = vectorFieldCopy[readPos + 1];
-                        }
-                    }
+                if (fieldEntry->getScalarDataFormatNative() == ScalarDataFormat::FLOAT) {
+                    transposeVectorField(fieldEntry->dataFloat, ssxs, ssys, sszs);
+                } else if (fieldEntry->getScalarDataFormatNative() == ScalarDataFormat::BYTE) {
+                    transposeVectorField(fieldEntry->dataByte, ssxs, ssys, sszs);
+                } else if (fieldEntry->getScalarDataFormatNative() == ScalarDataFormat::SHORT) {
+                    transposeVectorField(fieldEntry->dataShort, ssxs, ssys, sszs);
                 }
-#ifdef USE_TBB
-                });
-#endif
-                delete[] vectorFieldCopy;
             }
         }
     }
 
-    size_t numEntries = 0;
-    if (fieldType == FieldType::SCALAR) {
-        numEntries = xs * ys * zs;
-    } else if (fieldType == FieldType::VECTOR) {
-        numEntries = 3 * size_t(xs * ys * zs);
-    } else {
-        sgl::Logfile::get()->throwError("Error in VolumeData::addField: Invalid field type.");
-    }
-    auto buffer = HostCacheEntry(new HostCacheEntryType(numEntries, fieldEntryBuffer));
+    auto buffer = HostCacheEntry(fieldEntry);
     hostFieldCache->push(access, buffer);
     return buffer;
 }
@@ -829,6 +854,11 @@ VolumeData::DeviceCacheEntry VolumeData::getFieldEntryDevice(
     if (itCalc == calculatorsDevice.end()) {
         bufferCpu = getFieldEntryCpu(fieldType, fieldName, timeStepIdx, ensembleIdx);
         scalarDataFormat = bufferCpu->getScalarDataFormatNative();
+        if (scalarDataFormat == ScalarDataFormat::BYTE) {
+            access.sizeInBytes /= 4;
+        } else if (scalarDataFormat == ScalarDataFormat::SHORT) {
+            access.sizeInBytes /= 2;
+        }
     }
     size_t bufferSize = getSlice3dSizeInBytes(fieldType, scalarDataFormat);
     deviceFieldCache->ensureSufficientMemory(bufferSize);
@@ -1116,6 +1146,8 @@ void VolumeData::renderGuiNewCalculators() {
     for (auto& factory : factoriesCalculator) {
         if (ImGui::MenuItem(factory.first.c_str())) {
             addCalculator(CalculatorPtr(factory.second()));
+            dirty = true; //< Necessary for new transfer function map.
+            reRender = true;
         }
     }
 }
