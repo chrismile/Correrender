@@ -76,10 +76,10 @@ void heapSort() {
 void computeFractionalRanking() {
     float currentRank = 1.0f;
     int idx = 0;
-    while (idx < cs) {
+    while (idx < MEMBER_COUNT) {
         float value = valueArray[idx];
         int idxEqualEnd = idx + 1;
-        while (idxEqualEnd < cs && value == valueArray[idxEqualEnd]) {
+        while (idxEqualEnd < MEMBER_COUNT && value == valueArray[idxEqualEnd]) {
             idxEqualEnd++;
         }
 
@@ -151,7 +151,7 @@ float pearsonCorrelation() {
     float meanX = 0;
     float meanY = 0;
     float invN = float(1) / n;
-    for (uint c = 0; c < cs; c++) {
+    for (uint c = 0; c < MEMBER_COUNT; c++) {
         float x = referenceRankArray[c];
         float y = queryRankArray[c];
         meanX += invN * x;
@@ -160,7 +160,7 @@ float pearsonCorrelation() {
     float varX = 0;
     float varY = 0;
     float invNm1 = float(1) / (n - float(1));
-    for (uint c = 0; c < cs; c++) {
+    for (uint c = 0; c < MEMBER_COUNT; c++) {
         float x = referenceRankArray[c];
         float y = queryRankArray[c];
         float diffX = x - meanX;
@@ -171,7 +171,7 @@ float pearsonCorrelation() {
     float stdDevX = sqrt(varX);
     float stdDevY = sqrt(varY);
     float pearsonCorrelation = 0;
-    for (uint c = 0; c < cs; c++) {
+    for (uint c = 0; c < MEMBER_COUNT; c++) {
         float x = referenceRankArray[c];
         float y = queryRankArray[c];
         pearsonCorrelation += invNm1 * ((x - meanX) / stdDevX) * ((y - meanY) / stdDevY);
@@ -186,7 +186,7 @@ void main() {
     float value;
 
 #ifdef USE_REQUESTS_BUFFER
-    for (uint c = 0; c < cs; c++) {
+    for (uint c = 0; c < MEMBER_COUNT; c++) {
         value = texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), currentPointIdx, 0).r;
         if (isnan(value)) {
             nanValue = value;
@@ -200,7 +200,7 @@ void main() {
 #endif
 
     // 1. Fill the value array.
-    for (uint c = 0; c < cs; c++) {
+    for (uint c = 0; c < MEMBER_COUNT; c++) {
         value = texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), currentPointIdx, 0).r;
         if (isnan(value)) {
             nanValue = value;
@@ -264,7 +264,7 @@ void main() {
     }
 
     // 1. Fill the value array.
-    for (uint c = 0; c < cs; c++) {
+    for (uint c = 0; c < MEMBER_COUNT; c++) {
         valueArray[c] = texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), referencePointIdx, 0).r;
         ordinalRankArray[c] = c;
     }

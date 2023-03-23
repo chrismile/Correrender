@@ -54,22 +54,27 @@ layout (binding = 3) uniform texture3D scalarFields[MEMBER_COUNT];
 void main() {
 #include "CorrelationMain.glsl"
 
+    float referenceValues[MEMBER_COUNT];
+    float queryValues[MEMBER_COUNT];
+
     float n = float(cs);
     float meanX = 0;
     float meanY = 0;
     float invN = float(1) / n;
-    for (uint c = 0; c < cs; c++) {
+    for (uint c = 0; c < MEMBER_COUNT; c++) {
         float x = texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), referencePointIdx, 0).r;
         float y = texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), currentPointIdx, 0).r;
         meanX += invN * x;
         meanY += invN * y;
+        referenceValues[c] = x;
+        queryValues[c] = y;
     }
     float varX = 0;
     float varY = 0;
     float invNm1 = float(1) / (n - float(1));
-    for (uint c = 0; c < cs; c++) {
-        float x = texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), referencePointIdx, 0).r;
-        float y = texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), currentPointIdx, 0).r;
+    for (uint c = 0; c < MEMBER_COUNT; c++) {
+        float x = referenceValues[c];
+        float y = queryValues[c];
         float diffX = x - meanX;
         float diffY = y - meanY;
         varX += invNm1 * diffX * diffX;
@@ -78,9 +83,9 @@ void main() {
     float stdDevX = sqrt(varX);
     float stdDevY = sqrt(varY);
     float correlationValue = 0;
-    for (uint c = 0; c < cs; c++) {
-        float x = texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), referencePointIdx, 0).r;
-        float y = texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), currentPointIdx, 0).r;
+    for (uint c = 0; c < MEMBER_COUNT; c++) {
+        float x = referenceValues[c];
+        float y = queryValues[c];
         correlationValue += invNm1 * ((x - meanX) / stdDevX) * ((y - meanY) / stdDevY);
     }
 

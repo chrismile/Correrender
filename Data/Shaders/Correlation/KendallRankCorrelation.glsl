@@ -174,7 +174,7 @@ void main() {
 
     float nanValue = 0.0;
     float value;
-    for (uint c = 0; c < cs; c++) {
+    for (uint c = 0; c < MEMBER_COUNT; c++) {
         value = texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), referencePointIdx, 0).r;
         if (isnan(value)) {
             nanValue = value;

@@ -501,10 +501,12 @@ void CorrelationCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float
 #if _OPENMP >= 200805
         #pragma omp parallel shared(numGridPoints, cs, referenceRanks, fields, buffer) default(none)
         {
+#endif
             auto* gridPointValues = new float[cs];
             auto* gridPointRanks = new float[cs];
             std::vector<std::pair<float, int>> ordinalRankArray;
             ordinalRankArray.reserve(cs);
+#if _OPENMP >= 200805
             #pragma omp for
 #endif
             for (size_t gridPointIdx = 0; gridPointIdx < numGridPoints; gridPointIdx++) {
@@ -563,6 +565,7 @@ void CorrelationCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float
 #if _OPENMP >= 200805
         #pragma omp parallel shared(numGridPoints, cs, referenceValues, fields, buffer) default(none)
         {
+#endif
             auto* gridPointValues = new float[cs];
             std::vector<std::pair<float, float>> jointArray;
             std::vector<float> ordinalRankArray;
@@ -570,6 +573,7 @@ void CorrelationCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float
             jointArray.reserve(cs);
             ordinalRankArray.reserve(cs);
             y.reserve(cs);
+#if _OPENMP >= 200805
             #pragma omp for
 #endif
             for (size_t gridPointIdx = 0; gridPointIdx < numGridPoints; gridPointIdx++) {
@@ -616,10 +620,12 @@ void CorrelationCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float
         #pragma omp parallel shared(numGridPoints, cs, referenceValues, fields, buffer) default(none) \
         shared(minFieldVal, maxFieldVal)
         {
+#endif
             auto* gridPointValues = new float[cs];
             auto* histogram0 = new double[numBins];
             auto* histogram1 = new double[numBins];
             auto* histogram2d = new double[numBins * numBins];
+#if _OPENMP >= 200805
             #pragma omp for
 #endif
             for (size_t gridPointIdx = 0; gridPointIdx < numGridPoints; gridPointIdx++) {
@@ -668,8 +674,10 @@ void CorrelationCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float
         #pragma omp parallel shared(numGridPoints, cs, k, referenceValues, fields, buffer) default(none) \
         shared(minFieldVal, maxFieldVal)
         {
+#endif
             auto* gridPointValues = new float[cs];
             KraskovEstimatorCache<double> kraskovEstimatorCache;
+#if _OPENMP >= 200805
             #pragma omp for
 #endif
             for (size_t gridPointIdx = 0; gridPointIdx < numGridPoints; gridPointIdx++) {

@@ -128,7 +128,7 @@ float averageDigamma() {
 
     float factor = 1.0 / float(cs);
     float meanDigammaValue = 0.0;
-    for (uint c = 0; c < cs; c++) {
+    for (uint c = 0; c < MEMBER_COUNT; c++) {
         float kthDist = kthNeighborDistances[c] - EPSILON;
         float currentValue = valueArray[c];
         float searchValueLower = currentValue - kthDist;
@@ -429,7 +429,7 @@ void main() {
     rngState.z = 521288629u ^ seed;
 
     // Optionally add noise.
-    for (uint c = 0; c < cs; c++) {
+    for (uint c = 0; c < MEMBER_COUNT; c++) {
         value =
                 texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), referencePointIdx, 0).r
                 + EPSILON_NOISE * getRandomFloatNorm(rngState);
@@ -448,7 +448,7 @@ void main() {
 #else
     float nanValue = 0.0;
     float value;
-    for (uint c = 0; c < cs; c++) {
+    for (uint c = 0; c < MEMBER_COUNT; c++) {
         value = texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), referencePointIdx, 0).r;
         if (isnan(value)) {
             nanValue = value;
@@ -464,7 +464,7 @@ void main() {
 
     buildKdTree();
 
-    for (uint c = 0; c < cs; c++) {
+    for (uint c = 0; c < MEMBER_COUNT; c++) {
         kthNeighborDistances[c] = findKNearestNeighbors(vec2(referenceValues[c], queryValues[c]), c);
     }
 

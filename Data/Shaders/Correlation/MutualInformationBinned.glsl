@@ -73,7 +73,7 @@ void main() {
 
     // Compute the 2D joint histogram.
     float nanValue = 0.0;
-    for (int c = 0; c < cs; c++) {
+    for (int c = 0; c < MEMBER_COUNT; c++) {
         float val0 = texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), referencePointIdx, 0).r;
         float val1 = texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), currentPointIdx, 0).r;
         if (!isnan(val0) && !isnan(val1)) {

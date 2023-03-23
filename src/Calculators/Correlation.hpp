@@ -30,9 +30,10 @@
 #define CORRERENDER_CORRELATION_HPP
 
 #include <vector>
+#include <cstddef>
 
 template<class T>
-inline float computePearson1(
+float computePearson1(
         const float* referenceValues, const std::vector<const float*>& ensembleFields, int es, size_t gridPointIdx);
 extern template
 float computePearson1<float>(
