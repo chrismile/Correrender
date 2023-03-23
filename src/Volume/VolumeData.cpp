@@ -286,8 +286,13 @@ void VolumeData::setEnsembleMemberCount(int _es) {
 }
 
 void VolumeData::setFieldNames(const std::unordered_map<FieldType, std::vector<std::string>>& fieldNamesMap) {
-    typeToFieldNamesMap = fieldNamesMap;
-    typeToFieldNamesMapBase = fieldNamesMap;
+    if (separateFilesPerAttribute) {
+        typeToFieldNamesMap[FieldType::SCALAR] = dataSetInformation.attributeNames;
+        typeToFieldNamesMapBase[FieldType::SCALAR] = dataSetInformation.attributeNames;
+    } else {
+        typeToFieldNamesMap = fieldNamesMap;
+        typeToFieldNamesMapBase = fieldNamesMap;
+    }
 }
 
 template<class T>
@@ -457,12 +462,23 @@ void VolumeData::addField(
 void VolumeData::addField(
         void* fieldData, ScalarDataFormat dataFormat, FieldType fieldType,
         const std::string& fieldName, int timeStepIdx, int ensembleIdx) {
-    if (dataFormat == ScalarDataFormat::FLOAT) {
-        addField(static_cast<float*>(fieldData), fieldType, fieldName, timeStepIdx, ensembleIdx);
-    } else if (dataFormat == ScalarDataFormat::BYTE) {
-        addField(static_cast<uint8_t*>(fieldData), fieldType, fieldName, timeStepIdx, ensembleIdx);
-    } else if (dataFormat == ScalarDataFormat::SHORT) {
-        addField(static_cast<uint16_t*>(fieldData), fieldType, fieldName, timeStepIdx, ensembleIdx);
+    if (separateFilesPerAttribute) {
+        std::string attributeName = typeToFieldNamesMapBase[FieldType::SCALAR][currentLoaderAttributeIdx];
+        if (dataFormat == ScalarDataFormat::FLOAT) {
+            addField(static_cast<float*>(fieldData), fieldType, attributeName, timeStepIdx, ensembleIdx);
+        } else if (dataFormat == ScalarDataFormat::BYTE) {
+            addField(static_cast<uint8_t*>(fieldData), fieldType, attributeName, timeStepIdx, ensembleIdx);
+        } else if (dataFormat == ScalarDataFormat::SHORT) {
+            addField(static_cast<uint16_t*>(fieldData), fieldType, attributeName, timeStepIdx, ensembleIdx);
+        }
+    } else {
+        if (dataFormat == ScalarDataFormat::FLOAT) {
+            addField(static_cast<float*>(fieldData), fieldType, fieldName, timeStepIdx, ensembleIdx);
+        } else if (dataFormat == ScalarDataFormat::BYTE) {
+            addField(static_cast<uint8_t*>(fieldData), fieldType, fieldName, timeStepIdx, ensembleIdx);
+        } else if (dataFormat == ScalarDataFormat::SHORT) {
+            addField(static_cast<uint16_t*>(fieldData), fieldType, fieldName, timeStepIdx, ensembleIdx);
+        }
     }
 }
 
@@ -493,13 +509,24 @@ bool VolumeData::setInputFiles(
     filePaths = _filePaths;
     dataSetInformation = std::move(_dataSetInformation);
 
+    if (dataSetInformation.susamplingFactorSet) {
+        subsamplingFactor = dataSetInformation.subsamplingFactor;
+    }
+    if (dataSetInformation.separateFilesPerAttribute) {
+        separateFilesPerAttribute = dataSetInformation.separateFilesPerAttribute;
+    }
+
     if (dataSetInformation.timeSteps.empty()) {
         ts = 1;
     } else {
         setTimeSteps(dataSetInformation.timeSteps);
     }
     tsFileCount = ts;
-    esFileCount = es = int(filePaths.size()) / tsFileCount;
+    if (separateFilesPerAttribute) {
+        esFileCount = es = 1;
+    } else {
+        esFileCount = es = int(filePaths.size()) / tsFileCount;
+    }
 
     for (size_t i = 0; i < filePaths.size(); i++) {
         std::string filePath = filePaths.at(i);
@@ -779,7 +806,12 @@ VolumeData::HostCacheEntry VolumeData::getFieldEntryCpu(
         fieldEntry = new HostCacheEntryType(numEntries, fieldEntryBuffer);
     } else {
         VolumeLoader* volumeLoader = nullptr;
-        if (tsFileCount == 1 && esFileCount == 1) {
+        if (separateFilesPerAttribute) {
+            auto& names = typeToFieldNamesMapBase[fieldType];
+            auto itName = std::find(names.begin(), names.end(), fieldName);
+            currentLoaderAttributeIdx = int(itName - names.begin());
+            volumeLoader = volumeLoaders.at(currentLoaderAttributeIdx);
+        } else if (tsFileCount == 1 && esFileCount == 1) {
             volumeLoader = volumeLoaders.front();
         } else if (tsFileCount > 1 && esFileCount == 1) {
             volumeLoader = volumeLoaders.at(timeStepIdx);

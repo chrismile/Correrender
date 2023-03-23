@@ -67,6 +67,7 @@ struct DataSetInformation {
     bool hasCustomTransform = false;
     glm::mat4 transformMatrix = sgl::matrixIdentity();
     std::vector<std::string> attributeNames; ///< Names of the associated attributes.
+    bool separateFilesPerAttribute = false;
     float heightScale = 1.0f;
 
     // Date can be left 0. It is used for GRIB files storing time in a date-time format.

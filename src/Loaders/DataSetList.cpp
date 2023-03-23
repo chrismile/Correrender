@@ -182,6 +182,11 @@ void processDataSetNodeChildren(Json::Value& childList, DataSetInformation* data
             }
         }
 
+        // Optional data: Use one separate file per attribute?
+        if (source.isMember("separate_files_per_attribute")) {
+            dataSetInformation->separateFilesPerAttribute = jsonValueToBool(source["separate_files_per_attribute"]);
+        }
+
         // Optional data: The scaling in y direction.
         if (source.isMember("heightscale")) {
             dataSetInformation->heightScale = source["heightscale"].asFloat();

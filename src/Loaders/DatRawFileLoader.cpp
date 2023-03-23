@@ -143,14 +143,14 @@ bool DatRawFileLoader::setInputFiles(
         if (itIndices != datDict.end()) {
             std::vector<std::string> indicesSplit;
             sgl::splitStringWhitespace(itIndices->second, indicesSplit);
-            if (indicesSplit.size() != 3) {
+            if (indicesSplit.size() != 2 && indicesSplit.size() != 3) {
                 sgl::Logfile::get()->throwError(
                         "Error in DatRawFileLoader::load: Entry 'ObjectIndices' in \"" + datFilePath
                         + "\" does not have three values (start, stop, step).");
             }
             int start = int(sgl::fromString<int>(indicesSplit.at(0)));
             int stop = int(sgl::fromString<int>(indicesSplit.at(1)));
-            int step = int(sgl::fromString<int>(indicesSplit.at(2)));
+            int step = indicesSplit.size() == 2 ? 1 : int(sgl::fromString<int>(indicesSplit.at(2)));
 
             size_t bufferSize = it->second.size() + 100;
             for (int idx = start; idx <= stop; idx += step) {
@@ -228,7 +228,7 @@ bool DatRawFileLoader::setInputFiles(
         // Make an educated guess about the type of the attribute.
         std::string filenameRawLower = sgl::FileUtils::get()->getPureFilename(dataSourceFilename);
         if (filenameRawLower.find("borromean") != std::string::npos
-            || filenameRawLower.find("magnet") != std::string::npos) {
+                || filenameRawLower.find("magnet") != std::string::npos) {
             scalarAttributeName = "Field Strength";
         } else if (numComponents > 1) {
             scalarAttributeName = "Scalar Attribute";
@@ -247,7 +247,7 @@ bool DatRawFileLoader::setInputFiles(
     }
 
     volumeData->setGridExtent(xs, ys, zs, cellStep, cellStep, cellStep);
-    if (timeSteps.size() > 0) {
+    if (!timeSteps.empty()) {
         volumeData->setTimeSteps(timeSteps);
     }
     volumeData->setFieldNames(fieldNameMap);

@@ -305,6 +305,8 @@ protected:
     std::unordered_multimap<Calculator*, Calculator*> calculatorUseMapRefToParent;
     std::unordered_multimap<Calculator*, Calculator*> calculatorUseMapParentToRef;
     int standardScalarFieldIdx = 0;
+    bool separateFilesPerAttribute = true;
+    int currentLoaderAttributeIdx = 0;
 
     // File loaders.
     VolumeLoader* createVolumeLoaderByExtension(const std::string& fileExtension);
