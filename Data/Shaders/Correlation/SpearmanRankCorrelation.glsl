@@ -148,9 +148,9 @@ float queryRankArray[MEMBER_COUNT];
 
 float pearsonCorrelation() {
     float n = float(cs);
-    float meanX = 0;
-    float meanY = 0;
-    float invN = float(1) / n;
+    float meanX = 0.0;
+    float meanY = 0.0;
+    float invN = 1.0 / n;
     for (uint c = 0; c < MEMBER_COUNT; c++) {
         float x = referenceRankArray[c];
         float y = queryRankArray[c];
@@ -159,7 +159,8 @@ float pearsonCorrelation() {
     }
     float varX = 0;
     float varY = 0;
-    float invNm1 = float(1) / (n - float(1));
+    float invNm1 = 1.0 / (n - 1.0);
+    float correlationValue = 0.0;
     for (uint c = 0; c < MEMBER_COUNT; c++) {
         float x = referenceRankArray[c];
         float y = queryRankArray[c];
@@ -167,16 +168,12 @@ float pearsonCorrelation() {
         float diffY = y - meanY;
         varX += invNm1 * diffX * diffX;
         varY += invNm1 * diffY * diffY;
+        correlationValue += invNm1 * (x - meanX) * (y - meanY);
     }
     float stdDevX = sqrt(varX);
     float stdDevY = sqrt(varY);
-    float pearsonCorrelation = 0;
-    for (uint c = 0; c < MEMBER_COUNT; c++) {
-        float x = referenceRankArray[c];
-        float y = queryRankArray[c];
-        pearsonCorrelation += invNm1 * ((x - meanX) / stdDevX) * ((y - meanY) / stdDevY);
-    }
-    return pearsonCorrelation;
+    correlationValue /= stdDevX * stdDevY;
+    return correlationValue;
 }
 
 void main() {
