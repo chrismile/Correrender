@@ -57,7 +57,7 @@ void main() {
     float referenceValues[MEMBER_COUNT];
     float queryValues[MEMBER_COUNT];
 
-    float n = float(cs);
+    float n = float(MEMBER_COUNT);
     float meanX = 0;
     float meanY = 0;
     float invN = 1.0 / n;

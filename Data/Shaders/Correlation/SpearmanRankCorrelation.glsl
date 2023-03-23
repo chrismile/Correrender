@@ -147,7 +147,7 @@ float queryRankArray[MEMBER_COUNT];
 #undef rankArray
 
 float pearsonCorrelation() {
-    float n = float(cs);
+    float n = float(MEMBER_COUNT);
     float meanX = 0.0;
     float meanY = 0.0;
     float invN = 1.0 / n;
