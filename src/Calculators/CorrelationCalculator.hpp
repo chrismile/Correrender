@@ -183,10 +183,13 @@ public:
     void setNumBins(int _numBins);
     void setKraskovNumNeighbors(int _k);
     void setKraskovEstimatorIndex(int _kraskovEstimatorIndex);
+
+#ifdef SUPPORT_CUDA_INTEROP
     void computeCuda(
             CorrelationCalculator* correlationCalculator,
             const std::string& fieldName, int timeStepIdx, int ensembleIdx, const DeviceCacheEntry& deviceCacheEntry,
             glm::ivec3& referencePointIndex);
+#endif
 
     // 3D field evaluation mode (one fixed reference point, output image) - for CorrelationCalculator.
     void setReferencePoint(const glm::ivec3& referencePointIndex);

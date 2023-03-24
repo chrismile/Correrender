@@ -295,7 +295,9 @@ void ICorrelationCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEditor) 
 
 
 CorrelationCalculator::CorrelationCalculator(sgl::vk::Renderer* renderer) : ICorrelationCalculator(renderer) {
+#ifdef SUPPORT_CUDA_INTEROP
     useCuda = sgl::vk::getIsCudaDeviceApiFunctionTableInitialized() && sgl::vk::getIsNvrtcFunctionTableInitialized();
+#endif
 
     correlationComputePass = std::make_shared<CorrelationComputePass>(renderer);
     correlationComputePass->setCorrelationMeasureType(correlationMeasureType);
@@ -800,9 +802,11 @@ void CorrelationCalculator::calculateDevice(int timeStepIdx, int ensembleIdx, co
         correlationComputePass->render();
     } else {
         correlationComputePass->setFieldImageViews(fieldImageViews);
+#ifdef SUPPORT_CUDA_INTEROP
         correlationComputePass->computeCuda(
                 this, scalarFieldNames.at(fieldIndexGui), timeStepIdx, ensembleIdx, deviceCacheEntry,
                 referencePointIndex);
+#endif
     }
 
 #ifdef TEST_INFERENCE_SPEED
@@ -830,6 +834,7 @@ CorrelationComputePass::CorrelationComputePass(sgl::vk::Renderer* renderer) : Co
 #endif
 }
 
+#ifdef SUPPORT_CUDA_INTEROP
 struct CorrelationCalculatorKernelCache {
     ~CorrelationCalculatorKernelCache() {
         if (cumodule) {
@@ -842,6 +847,7 @@ struct CorrelationCalculatorKernelCache {
     CUmodule cumodule{};
     CUfunction kernel{};
 };
+#endif
 
 CorrelationComputePass::~CorrelationComputePass() {
 #ifdef SUPPORT_CUDA_INTEROP
@@ -1154,6 +1160,7 @@ void CorrelationComputePass::_render() {
     }
 }
 
+#ifdef SUPPORT_CUDA_INTEROP
 void CorrelationComputePass::computeCuda(
         CorrelationCalculator* correlationCalculator,
         const std::string& fieldName, int timeStepIdx, int ensembleIdx, const DeviceCacheEntry& deviceCacheEntry,
@@ -1390,6 +1397,7 @@ void CorrelationComputePass::computeCuda(
     postRenderCommandBuffer->pushWaitSemaphore(
             cudaFinishedSemaphore, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
 }
+#endif
 
 
 
