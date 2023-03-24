@@ -29,6 +29,7 @@
 #ifndef CORRERENDER_DEVICECACHEENTRY_HPP
 #define CORRERENDER_DEVICECACHEENTRY_HPP
 
+#include <string>
 #include <memory>
 
 #ifdef SUPPORT_CUDA_INTEROP

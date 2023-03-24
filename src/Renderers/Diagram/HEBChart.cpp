@@ -49,6 +49,7 @@
 
 #include <Math/Math.hpp>
 #include <Utils/Parallel/Reduction.hpp>
+#include <Graphics/Vulkan/Utils/SyncObjects.hpp>
 #include <Graphics/Vulkan/Render/Renderer.hpp>
 #include <Graphics/Vulkan/Render/ComputePipeline.hpp>
 
