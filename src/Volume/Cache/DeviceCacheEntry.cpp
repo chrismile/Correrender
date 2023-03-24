@@ -28,6 +28,7 @@
 
 #include <utility>
 
+#include <Utils/File/Logfile.hpp>
 #include <Graphics/Vulkan/Image/Image.hpp>
 
 #include "DeviceCacheEntry.hpp"
