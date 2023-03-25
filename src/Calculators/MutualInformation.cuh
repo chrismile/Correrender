@@ -154,6 +154,29 @@ template<class T> __global__ void symmetrizerAddDiffPermuted_Diff(
     outputValues[writeOffset] = absT(referenceValues[readOffsetRef] - queryValues[readOffset]);
 }
 
+template<class T> __global__ void symmetrizerMul(
+        const T* __restrict__ referenceValues, const T* __restrict__ queryValues, T* __restrict__ outputValues,
+        uint32_t es, uint32_t numChannels) {
+    uint32_t globalThreadIdx = blockIdx.x * blockDim.x + threadIdx.x;
+    uint32_t readOffset = globalThreadIdx;
+    uint32_t readOffsetRef = globalThreadIdx % (es * numChannels);
+    outputValues[readOffset] = referenceValues[readOffsetRef] * queryValues[readOffset];
+}
+
+template<class T> __global__ void symmetrizerMulPermuted(
+        const T* __restrict__ referenceValues, const T* __restrict__ queryValues, T* __restrict__ outputValues,
+        const uint32_t* __restrict__ permutationIndicesBuffer, uint32_t es, uint32_t numChannels) {
+    uint32_t globalThreadIdx = blockIdx.x * blockDim.x + threadIdx.x;
+    uint32_t channelIdx = globalThreadIdx % numChannels;
+    uint32_t ensembleIdx = (globalThreadIdx / numChannels) % es;
+    uint32_t batchIdx = globalThreadIdx / (numChannels * es);
+    uint32_t ensembleMemberPermuted = permutationIndicesBuffer[ensembleIdx + batchIdx * es];
+    uint32_t writeOffset = globalThreadIdx;
+    uint32_t readOffset = channelIdx + (ensembleMemberPermuted + batchIdx * es) * numChannels;
+    uint32_t readOffsetRef = globalThreadIdx % (es * numChannels);
+    outputValues[writeOffset] = referenceValues[readOffsetRef] * queryValues[readOffset];
+}
+
 template<class T> void symmetrizer(
         const T* __restrict__ referenceValues, const T* __restrict__ queryValues,
         T* __restrict__ symmetrizedReferenceValues, T* __restrict__ symmetrizedQueryValues,
@@ -177,6 +200,12 @@ template<class T> void symmetrizer(
                 referenceValues, queryValues, symmetrizedQueryValues, permutationIndicesBuffer,
                 uint32_t(es), numLayersOutEncoder);
         symmetrizerAddDiffPermuted_Diff<<<numBlocks, blockSize, 0, stream>>>(
+                referenceValues, queryValues, symmetrizedQueryValues, permutationIndicesBuffer,
+                uint32_t(es), numLayersOutEncoder);
+    } else if (symmetrizerType == SymmetrizerType::Mul) {
+        symmetrizerMul<<<numBlocks, blockSize, 0, stream>>>(
+                referenceValues, queryValues, symmetrizedReferenceValues, uint32_t(es), numLayersOutEncoder);
+        symmetrizerMulPermuted<<<numBlocks, blockSize, 0, stream>>>(
                 referenceValues, queryValues, symmetrizedQueryValues, permutationIndicesBuffer,
                 uint32_t(es), numLayersOutEncoder);
     }
@@ -216,6 +245,15 @@ template<class T> __global__ void symmetrizerSrnAddDiff_Diff(
     outputValues[writeOffset] = absT(referenceValues[readOffsetRef] - queryValues[readOffset]);
 }
 
+template<class T> __global__ void symmetrizerSrnMul(
+        const T* __restrict__ referenceValues, const T* __restrict__ queryValues, T* __restrict__ outputValues,
+        uint32_t numChannels) {
+    uint32_t globalThreadIdx = blockIdx.x * blockDim.x + threadIdx.x;
+    uint32_t readOffset = globalThreadIdx;
+    uint32_t readOffsetRef = globalThreadIdx % numChannels;
+    outputValues[readOffset] = referenceValues[readOffsetRef] * queryValues[readOffset];
+}
+
 template<class T> void symmetrizerSrn(
         const T* __restrict__ referenceValues, const T* __restrict__ queryValues, T* __restrict__ symmetrizedValues,
         uint32_t batchSize, uint32_t numLayersOutEncoder, SymmetrizerType symmetrizerType, CUstream stream) {
@@ -228,6 +266,9 @@ template<class T> void symmetrizerSrn(
         symmetrizerSrnAddDiff_Add<<<numBlocks, blockSize, 0, stream>>>(
                 referenceValues, queryValues, symmetrizedValues, numLayersOutEncoder);
         symmetrizerSrnAddDiff_Diff<<<numBlocks, blockSize, 0, stream>>>(
+                referenceValues, queryValues, symmetrizedValues, numLayersOutEncoder);
+    } else if (symmetrizerType == SymmetrizerType::Mul) {
+        symmetrizerSrnMul<<<numBlocks, blockSize, 0, stream>>>(
                 referenceValues, queryValues, symmetrizedValues, numLayersOutEncoder);
     }
 }

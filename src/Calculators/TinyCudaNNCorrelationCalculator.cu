@@ -290,7 +290,7 @@ void TinyCudaNNCorrelationCalculator::loadModelFromFile(const std::string& model
     if (encoderNetworkOpts.find("n_output_dims") == encoderNetworkOpts.end()) {
         moduleWrapper->configEncoder["network"]["n_output_dims"] = moduleWrapper->configEncoder["network"]["n_neurons"];
     }
-    uint32_t symmetrizerFactor = symmetrizerType == SymmetrizerType::Add ? 1 : 2;
+    uint32_t symmetrizerFactor = symmetrizerType == SymmetrizerType::AddDiff ? 2 : 1;
     if (decoderNetworkOpts.find("n_input_dims") == decoderNetworkOpts.end()) {
         uint32_t encoderOutputDims = moduleWrapper->configEncoder["network"].value("n_output_dims", 0);
         moduleWrapper->configDecoder["network"]["n_input_dims"] = encoderOutputDims * symmetrizerFactor;

@@ -192,6 +192,11 @@ void PyTorchCorrelationCalculator::onCorrelationMemberCountChanged() {
     correlationMembersCombinePass->setCorrelationMemberCount(cs);
 }
 
+void PyTorchCorrelationCalculator::clearFieldImageViews() {
+    referenceCorrelationMembersCombinePass->setFieldImageViews({});
+    correlationMembersCombinePass->setFieldImageViews({});
+}
+
 bool PyTorchCorrelationCalculator::loadModelFromFile(int idx, const std::string& modelPath) {
     torch::DeviceType deviceType = getTorchDeviceType(pyTorchDevice);
     torch::jit::ExtraFilesMap extraFilesMap;

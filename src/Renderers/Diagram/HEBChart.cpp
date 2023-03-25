@@ -230,6 +230,11 @@ void HEBChart::setUseCorrelationComputationGpu(bool _useGpu) {
     dataDirty = true;
 }
 
+void HEBChart::setShowVariablesForFieldIdxOnly(int _limitedFieldIdx) {
+    limitedFieldIdx = _limitedFieldIdx;
+    dataDirty = true;
+}
+
 
 glm::vec2 HEBChart::getCorrelationRangeTotal() {
     if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV
@@ -1231,6 +1236,9 @@ void HEBChart::updateData() {
     auto numFields = int(fieldDataArray.size());
     for (int i = 0; i < numFields; i++) {
         auto* fieldData = fieldDataArray.at(i).get();
+        if (limitedFieldIdx >= 0 && limitedFieldIdx != fieldData->selectedFieldIdx) {
+            continue;
+        }
 
         // Compute the downscaled field.
         std::vector<float*> downscaledFields0, downscaledFields1;
@@ -1554,9 +1562,13 @@ GridRegion HEBChart::getGridRegionPointIdx(int idx, uint32_t pointIdx) {
     return rf;
 }
 
-int HEBChart::getLeafIdxGroup(int leafIdx) {
+int HEBChart::getLeafIdxGroup(int leafIdx) const {
     if (regionsEqual) {
         return 0;
     }
     return leafIdx >= int(leafIdxOffset1 - leafIdxOffset) ? 1 : 0;
+}
+
+int HEBChart::getFocusSelectionFieldIndex() {
+    return fieldDataArray.at(lineFieldIndexArray.at(clickedLineIdx))->selectedFieldIdx;
 }

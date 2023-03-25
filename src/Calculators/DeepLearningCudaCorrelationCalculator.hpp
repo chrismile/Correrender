@@ -36,7 +36,7 @@
 
 /// Symmetrizer operation used between encoder and decoder (@see SymmetrizerType.hpp).
 const char* const SYMMETRIZER_TYPE_SHORT_NAMES[] = {
-        "Add", "AddDiff"
+        "Add", "AddDiff", "Mul"
 };
 
 class DeepLearningCudaCorrelationCalculator : public ICorrelationCalculator {
@@ -72,6 +72,7 @@ public:
 
 protected:
     virtual void loadModelFromFile(const std::string& modelPath) = 0;
+    void clearFieldImageViews() override {}
 
     // Inference steps to be implemented by subclasses.
     virtual void callbackBeginCompute() {}

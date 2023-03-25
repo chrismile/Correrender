@@ -308,6 +308,11 @@ void HEBChart::setUseNeonSelectionColors(bool _useNeonSelectionColors) {
     needsReRender = true;
 }
 
+void HEBChart::setUseGlobalStdDevRange(bool _useGlobalStdDevRange) {
+    useGlobalStdDevRange = _useGlobalStdDevRange;
+    needsReRender = true;
+}
+
 void HEBChart::setShowSelectedRegionsByColor(bool _show) {
     showSelectedRegionsByColor = _show;
     needsReRender = true;
@@ -745,16 +750,32 @@ void HEBChart::renderBaseNanoVG() {
         glm::vec2 center(windowWidth / 2.0f, windowHeight / 2.0f);
 
         auto numFields = int(fieldDataArray.size());
+        auto numFieldsSize = limitedFieldIdx >= 0 ? std::min(int(fieldDataArray.size()), 1) : int(fieldDataArray.size());
         for (int i = 0; i < numFields; i++) {
             auto* fieldData = fieldDataArray.at(i).get();
-            float pctLower = float(i) / float(numFields);
-            float pctMiddle = (float(i) + 0.5f) / float(numFields);
-            float pctUpper = float(i + 1) / float(numFields);
+            int ip = i;
+            if (limitedFieldIdx >= 0) {
+                if (limitedFieldIdx != fieldData->selectedFieldIdx) {
+                    continue;
+                } else {
+                    ip = 0;
+                }
+            }
+            std::pair<float, float> stdDevRange;
+            if (useGlobalStdDevRange) {
+                stdDevRange = getGlobalStdDevRange(fieldData->selectedFieldIdx);
+            } else {
+                stdDevRange = std::make_pair(fieldData->minStdDev, fieldData->maxStdDev);
+            }
+            float pctLower = float(ip) / float(numFieldsSize);
+            float pctMiddle = (float(ip) + 0.5f) / float(numFieldsSize);
+            float pctUpper = float(ip + 1) / float(numFieldsSize);
             float rlo = chartRadius + outerRingOffset + pctLower * outerRingWidth;
             float rmi = chartRadius + outerRingOffset + pctMiddle * outerRingWidth;
             float rhi = chartRadius + outerRingOffset + pctUpper * outerRingWidth;
             bool isSaturated =
-                    !separateColorVarianceAndCorrelation || selectedLineIdx < 0
+                    (separateColorVarianceAndCorrelation && getIsGrayscaleColorMap(colorMapVariance))
+                    || !separateColorVarianceAndCorrelation || selectedLineIdx < 0
                     || lineFieldIndexArray.at(selectedLineIdx) == i;
 
             for (int leafIdx = int(leafIdxOffset); leafIdx < int(nodesList.size()); leafIdx++) {
@@ -805,13 +826,13 @@ void HEBChart::renderBaseNanoVG() {
                 nvgClosePath(vg);
 
                 float stdev0 = fieldData->leafStdDevArray.at(leafIdx - int(leafIdxOffset));
-                float t0 = fieldData->minStdDev == fieldData->maxStdDev ? 0.0f : (stdev0 - fieldData->minStdDev) / (fieldData->maxStdDev - fieldData->minStdDev);
+                float t0 = stdDevRange.first == stdDevRange.second ? 0.0f : (stdev0 - stdDevRange.first) / (stdDevRange.second - stdDevRange.first);
                 glm::vec4 rgbColor0 = fieldData->evalColorMapVec4Variance(t0, isSaturated);
                 //glm::vec4 rgbColor0 = fieldData->evalColorMapVec4Variance(leafCurr.angle / sgl::TWO_PI, false);
                 rgbColor0.w = 1.0f;
                 NVGcolor fillColor0 = nvgRGBAf(rgbColor0.x, rgbColor0.y, rgbColor0.z, rgbColor0.w);
                 float stdev1 = fieldData->leafStdDevArray.at(nextIdx - int(leafIdxOffset));
-                float t1 = fieldData->minStdDev == fieldData->maxStdDev ? 0.0f : (stdev1 - fieldData->minStdDev) / (fieldData->maxStdDev - fieldData->minStdDev);
+                float t1 = stdDevRange.first == stdDevRange.second ? 0.0f : (stdev1 - stdDevRange.first) / (stdDevRange.second - stdDevRange.first);
                 glm::vec4 rgbColor1 = fieldData->evalColorMapVec4Variance(t1, isSaturated);
                 //glm::vec4 rgbColor1 = fieldData->evalColorMapVec4Variance(leafNext.angle / sgl::TWO_PI, false);
                 rgbColor1.w = 1.0f;
@@ -827,16 +848,41 @@ void HEBChart::renderBaseNanoVG() {
         NVGcolor circleStrokeColorNvg = nvgRGBA(
                 circleStrokeColor.getR(), circleStrokeColor.getG(),
                 circleStrokeColor.getB(), circleStrokeColor.getA());
+        NVGcolor currentCircleColor;
         for (int i = 0; i < numFields; i++) {
-            auto* fieldData = fieldDataArray.at(i).get();
-            float pctLower = float(i) / float(numFields);
-            float pctUpper = float(i + 1) / float(numFields);
+            currentCircleColor = circleStrokeColorNvg;
+            int fieldIdx = i;
+            int ip = i;
+            bool isSelectedRing = false;
+            if (separateColorVarianceAndCorrelation && getIsGrayscaleColorMap(colorMapVariance) && numFieldsSize > 1
+                    && selectedLineIdx >= 0 && limitedFieldIdx < 0) {
+                int selectedLineFieldIdx = lineFieldIndexArray.at(selectedLineIdx);
+                if (i == numFields - 1) {
+                    fieldIdx = selectedLineFieldIdx;
+                    currentCircleColor = nvgRGBA(
+                            ringStrokeColorSelected.getR(), ringStrokeColorSelected.getG(),
+                            ringStrokeColorSelected.getB(), ringStrokeColorSelected.getA());
+                    isSelectedRing = true;
+                } else if (i >= selectedLineFieldIdx) {
+                    fieldIdx++;
+                }
+            }
+            auto* fieldData = fieldDataArray.at(fieldIdx).get();
+            if (limitedFieldIdx >= 0) {
+                if (limitedFieldIdx != fieldData->selectedFieldIdx) {
+                    continue;
+                } else {
+                    ip = 0;
+                }
+            }
+            float pctLower = float(ip) / float(numFieldsSize);
+            float pctUpper = float(ip + 1) / float(numFieldsSize);
             float rlo = chartRadius + outerRingOffset + pctLower * outerRingWidth;
             float rhi = chartRadius + outerRingOffset + pctUpper * outerRingWidth;
             nvgBeginPath(vg);
             if (regionsEqual) {
                 nvgCircle(vg, center.x, center.y, rlo);
-                if (i == numFields - 1) {
+                if (ip == numFieldsSize - 1 || isSelectedRing || limitedFieldIdx >= 0) {
                     nvgCircle(vg, center.x, center.y, rhi);
                 }
             } else {
@@ -851,7 +897,7 @@ void HEBChart::renderBaseNanoVG() {
                 nvgLineTo(vg, center.x + rlo * std::cos(fieldData->a10), center.y + rlo * std::sin(fieldData->a10));
             }
             nvgStrokeWidth(vg, 1.0f);
-            nvgStrokeColor(vg, circleStrokeColorNvg);
+            nvgStrokeColor(vg, currentCircleColor);
             nvgStroke(vg);
         }
     }
@@ -1026,16 +1072,32 @@ void HEBChart::renderBaseSkia() {
 
         glm::vec2 center(windowWidth / 2.0f * s, windowHeight / 2.0f * s);
         auto numFields = int(fieldDataArray.size());
+        auto numFieldsSize = limitedFieldIdx >= 0 ? std::min(int(fieldDataArray.size()), 1) : int(fieldDataArray.size());
         for (int i = 0; i < numFields; i++) {
             auto* fieldData = fieldDataArray.at(i).get();
-            float pctLower = float(i) / float(numFields);
-            float pctMiddle = (float(i) + 0.5f) / float(numFields);
-            float pctUpper = float(i + 1) / float(numFields);
+            int ip = i;
+            if (limitedFieldIdx >= 0) {
+                if (limitedFieldIdx != fieldData->selectedFieldIdx) {
+                    continue;
+                } else {
+                    ip = 0;
+                }
+            }
+            std::pair<float, float> stdDevRange;
+            if (useGlobalStdDevRange) {
+                stdDevRange = getGlobalStdDevRange(fieldData->selectedFieldIdx);
+            } else {
+                stdDevRange = std::make_pair(fieldData->minStdDev, fieldData->maxStdDev);
+            }
+            float pctLower = float(ip) / float(numFieldsSize);
+            float pctMiddle = (float(ip) + 0.5f) / float(numFieldsSize);
+            float pctUpper = float(ip + 1) / float(numFieldsSize);
             float rlo = (chartRadius + outerRingOffset + pctLower * outerRingWidth) * s;
             float rmi = (chartRadius + outerRingOffset + pctMiddle * outerRingWidth) * s;
             float rhi = (chartRadius + outerRingOffset + pctUpper * outerRingWidth) * s;
             bool isSaturated =
-                    !separateColorVarianceAndCorrelation || selectedLineIdx < 0
+                    (separateColorVarianceAndCorrelation && getIsGrayscaleColorMap(colorMapVariance))
+                    || !separateColorVarianceAndCorrelation || selectedLineIdx < 0
                     || lineFieldIndexArray.at(selectedLineIdx) == i;
 
             for (int leafIdx = int(leafIdxOffset); leafIdx < int(nodesList.size()); leafIdx++) {
@@ -1082,11 +1144,11 @@ void HEBChart::renderBaseSkia() {
                 glm::vec2 mi1 = center + rmi * glm::vec2(cosMid1, sinMid1);
 
                 float stdev0 = fieldData->leafStdDevArray.at(leafIdx - int(leafIdxOffset));
-                float t0 = fieldData->minStdDev == fieldData->maxStdDev ? 0.0f : (stdev0 - fieldData->minStdDev) / (fieldData->maxStdDev - fieldData->minStdDev);
+                float t0 = stdDevRange.first == stdDevRange.second ? 0.0f : (stdev0 - stdDevRange.first) / (stdDevRange.second - stdDevRange.first);
                 sgl::Color rgbColor0 = fieldData->evalColorMapVariance(t0, isSaturated);
                 rgbColor0.setA(255);
                 float stdev1 = fieldData->leafStdDevArray.at(nextIdx - int(leafIdxOffset));
-                float t1 = fieldData->minStdDev == fieldData->maxStdDev ? 0.0f : (stdev1 - fieldData->minStdDev) / (fieldData->maxStdDev - fieldData->minStdDev);
+                float t1 = stdDevRange.first == stdDevRange.second ? 0.0f : (stdev1 - stdDevRange.first) / (stdDevRange.second - stdDevRange.first);
                 sgl::Color rgbColor1 = fieldData->evalColorMapVariance(t1, isSaturated);
                 rgbColor1.setA(255);
 
@@ -1111,18 +1173,41 @@ void HEBChart::renderBaseSkia() {
         }
 
         sgl::Color circleStrokeColor = isDarkMode ? circleStrokeColorDark : circleStrokeColorBright;
+        sgl::Color currentCircleColor;
         for (int i = 0; i < numFields; i++) {
-            auto* fieldData = fieldDataArray.at(i).get();
-            float pctLower = float(i) / float(numFields);
-            float pctUpper = float(i + 1) / float(numFields);
+            currentCircleColor = circleStrokeColor;
+            int fieldIdx = i;
+            int ip = i;
+            bool isSelectedRing = false;
+            if (separateColorVarianceAndCorrelation && getIsGrayscaleColorMap(colorMapVariance) && numFieldsSize > 1
+                    && selectedLineIdx >= 0 && limitedFieldIdx < 0) {
+                int selectedLineFieldIdx = lineFieldIndexArray.at(selectedLineIdx);
+                if (i == numFields - 1) {
+                    fieldIdx = selectedLineFieldIdx;
+                    currentCircleColor = ringStrokeColorSelected;
+                    isSelectedRing = true;
+                } else if (i >= selectedLineFieldIdx) {
+                    fieldIdx++;
+                }
+            }
+            auto* fieldData = fieldDataArray.at(fieldIdx).get();
+            if (limitedFieldIdx >= 0) {
+                if (limitedFieldIdx != fieldData->selectedFieldIdx) {
+                    continue;
+                } else {
+                    ip = 0;
+                }
+            }
+            float pctLower = float(ip) / float(numFieldsSize);
+            float pctUpper = float(ip + 1) / float(numFieldsSize);
             float rlo = (chartRadius + outerRingOffset + pctLower * outerRingWidth) * s;
             float rhi = (chartRadius + outerRingOffset + pctUpper * outerRingWidth) * s;
             paint.setStroke(true);
             paint.setStrokeWidth(1.0f * s);
-            paint.setColor(toSkColor(circleStrokeColor));
+            paint.setColor(toSkColor(currentCircleColor));
             if (regionsEqual) {
                 canvas->drawCircle(center.x, center.y, rlo, paint);
-                if (i == numFields - 1) {
+                if (ip == numFieldsSize - 1 || isSelectedRing || limitedFieldIdx >= 0) {
                     canvas->drawCircle(center.x, center.y, rhi, paint);
                 }
             } else {
@@ -1335,16 +1420,32 @@ void HEBChart::renderBaseVkvg() {
     if (showRing) {
         glm::vec2 center(windowWidth / 2.0f * s, windowHeight / 2.0f * s);
         auto numFields = int(fieldDataArray.size());
+        auto numFieldsSize = limitedFieldIdx >= 0 ? std::min(int(fieldDataArray.size()), 1) : int(fieldDataArray.size());
         for (int i = 0; i < numFields; i++) {
             auto* fieldData = fieldDataArray.at(i).get();
-            float pctLower = float(i) / float(numFields);
-            float pctMiddle = (float(i) + 0.5f) / float(numFields);
-            float pctUpper = float(i + 1) / float(numFields);
+            int ip = i;
+            if (limitedFieldIdx >= 0) {
+                if (limitedFieldIdx != fieldData->selectedFieldIdx) {
+                    continue;
+                } else {
+                    ip = 0;
+                }
+            }
+            std::pair<float, float> stdDevRange;
+            if (useGlobalStdDevRange) {
+                stdDevRange = getGlobalStdDevRange(fieldData->selectedFieldIdx);
+            } else {
+                stdDevRange = std::make_pair(fieldData->minStdDev, fieldData->maxStdDev);
+            }
+            float pctLower = float(ip) / float(numFieldsSize);
+            float pctMiddle = (float(ip) + 0.5f) / float(numFieldsSize);
+            float pctUpper = float(ip + 1) / float(numFieldsSize);
             float rlo = (chartRadius + outerRingOffset + pctLower * outerRingWidth) * s;
             float rmi = (chartRadius + outerRingOffset + pctMiddle * outerRingWidth) * s;
             float rhi = (chartRadius + outerRingOffset + pctUpper * outerRingWidth) * s;
             bool isSaturated =
-                    !separateColorVarianceAndCorrelation || selectedLineIdx < 0
+                    (separateColorVarianceAndCorrelation && getIsGrayscaleColorMap(colorMapVariance))
+                    || !separateColorVarianceAndCorrelation || selectedLineIdx < 0
                     || lineFieldIndexArray.at(selectedLineIdx) == i;
 
             for (int leafIdx = int(leafIdxOffset); leafIdx < int(nodesList.size()); leafIdx++) {
@@ -1393,10 +1494,10 @@ void HEBChart::renderBaseVkvg() {
                 vkvg_line_to(context, lo1.x, lo1.y);
 
                 float stdev0 = fieldData->leafStdDevArray.at(leafIdx - int(leafIdxOffset));
-                float t0 = fieldData->minStdDev == fieldData->maxStdDev ? 0.0f : (stdev0 - fieldData->minStdDev) / (fieldData->maxStdDev - fieldData->minStdDev);
+                float t0 = stdDevRange.first == stdDevRange.second ? 0.0f : (stdev0 - stdDevRange.first) / (stdDevRange.second - stdDevRange.first);
                 glm::vec4 rgbColor0 = fieldData->evalColorMapVec4Variance(t0, isSaturated);
                 float stdev1 = fieldData->leafStdDevArray.at(nextIdx - int(leafIdxOffset));
-                float t1 = fieldData->minStdDev == fieldData->maxStdDev ? 0.0f : (stdev1 - fieldData->minStdDev) / (fieldData->maxStdDev - fieldData->minStdDev);
+                float t1 = stdDevRange.first == stdDevRange.second ? 0.0f : (stdev1 - stdDevRange.first) / (stdDevRange.second - stdDevRange.first);
                 glm::vec4 rgbColor1 = fieldData->evalColorMapVec4Variance(t1, isSaturated);
 
                 auto pattern = vkvg_pattern_create_linear(mi0.x, mi0.y, mi1.x, mi1.y);
@@ -1409,15 +1510,38 @@ void HEBChart::renderBaseVkvg() {
         }
 
         sgl::Color circleStrokeColor = isDarkMode ? circleStrokeColorDark : circleStrokeColorBright;
+        sgl::Color currentCircleColor;
         for (int i = 0; i < numFields; i++) {
-            auto* fieldData = fieldDataArray.at(i).get();
-            float pctLower = float(i) / float(numFields);
-            float pctUpper = float(i + 1) / float(numFields);
+            currentCircleColor = circleStrokeColor;
+            int fieldIdx = i;
+            int ip = i;
+            bool isSelectedRing = false;
+            if (separateColorVarianceAndCorrelation && getIsGrayscaleColorMap(colorMapVariance) && numFieldsSize > 1
+                    && selectedLineIdx >= 0 && limitedFieldIdx < 0) {
+                int selectedLineFieldIdx = lineFieldIndexArray.at(selectedLineIdx);
+                if (i == numFields - 1) {
+                    fieldIdx = selectedLineFieldIdx;
+                    currentCircleColor = ringStrokeColorSelected;
+                    isSelectedRing = true;
+                } else if (i >= selectedLineFieldIdx) {
+                    fieldIdx++;
+                }
+            }
+            auto* fieldData = fieldDataArray.at(fieldIdx).get();
+            if (limitedFieldIdx >= 0) {
+                if (limitedFieldIdx != fieldData->selectedFieldIdx) {
+                    continue;
+                } else {
+                    ip = 0;
+                }
+            }
+            float pctLower = float(ip) / float(numFieldsSize);
+            float pctUpper = float(ip + 1) / float(numFieldsSize);
             float rlo = (chartRadius + outerRingOffset + pctLower * outerRingWidth) * s;
             float rhi = (chartRadius + outerRingOffset + pctUpper * outerRingWidth) * s;
             if (regionsEqual) {
                 vkvg_arc(context, center.x, center.y, rlo, 0.0f, sgl::TWO_PI);
-                if (i == numFields - 1) {
+                if (ip == numFieldsSize - 1 || isSelectedRing || limitedFieldIdx >= 0) {
                     vkvg_arc(context, center.x, center.y, rhi, 0.0f, sgl::TWO_PI);
                 }
             } else {
@@ -1432,7 +1556,7 @@ void HEBChart::renderBaseVkvg() {
                 vkvg_line_to(context, center.x + rlo * std::cos(fieldData->a10), center.y + rlo * std::sin(fieldData->a10));
             }
             vkvg_set_line_width(context, 1.0f * s);
-            vkvg_set_source_color(context, circleStrokeColor.getColorRGBA());
+            vkvg_set_source_color(context, currentCircleColor.getColorRGBA());
             vkvg_stroke(context);
         }
     }
@@ -1541,17 +1665,18 @@ void HEBChart::drawSelectionArrows() {
 void HEBChart::drawColorLegends() {
     const auto& fieldDataArrayLocal = fieldDataArray;
     auto numFields = int(fieldDataArray.size());
-    if (numFields == 0) {
+    auto numFieldsSize = limitedFieldIdx >= 0 ? std::min(int(fieldDataArray.size()), 1) : int(fieldDataArray.size());
+    if (numFieldsSize == 0) {
         return;
     }
     if (separateColorVarianceAndCorrelation) {
-        numFields++;
+        numFieldsSize++;
     }
 
     float maxMi = correlationValuesArray.empty() ? 0.0f : correlationValuesArray.back();
     float minMi = correlationValuesArray.empty() ? 0.0f : correlationValuesArray.front();
-    for (int i = 0; i < numFields; i++) {
-        int ix = numFields - i;
+    for (int i = 0; i < numFieldsSize; i++) {
+        int ix = numFieldsSize - i;
         HEBChartFieldData* fieldData = nullptr;
         std::string variableName;
         std::function<glm::vec4(float)> colorMap;
@@ -1566,7 +1691,16 @@ void HEBChart::drawColorLegends() {
                 return t < 0.0001f ? "min" : (t > 0.9999f ? "max" : "");
             };
         } else {
-            int fieldIdx = separateColorVarianceAndCorrelation ? i - 1 : i;
+            int fieldIdx = 0;
+            if (limitedFieldIdx >= 0) {
+                for (int j = 0; j < numFields; j++) {
+                    if (fieldDataArray.at(j)->selectedFieldIdx == limitedFieldIdx) {
+                        fieldIdx = j;
+                    }
+                }
+            } else {
+                fieldIdx = separateColorVarianceAndCorrelation ? i - 1 : i;
+            }
             fieldData = fieldDataArray.at(fieldIdx).get();
             variableName = fieldData->selectedScalarFieldName;
             colorMap = [fieldData](float t) {
@@ -1591,7 +1725,7 @@ void HEBChart::drawColorLegends() {
         }
 
         float posX;
-        if (arrangeColorLegendsBothSides && i < numFields / 2) {
+        if (arrangeColorLegendsBothSides && i < numFieldsSize / 2) {
             posX = borderSizeX + float(i) * (colorLegendWidth + textWidthMax + colorLegendSpacing);
         } else {
             posX =
@@ -1862,19 +1996,42 @@ float HEBChart::computeColorLegendHeightForNumFields(int numFields, float maxHei
 
 void HEBChart::computeColorLegendHeight() {
     textWidthMax = textWidthMaxBase * textSize / 8.0f;
-    auto numFields = int(fieldDataArray.size());
+    auto numFieldsSize = limitedFieldIdx >= 0 ? std::min(int(fieldDataArray.size()), 1) : int(fieldDataArray.size());
 
     // Add transfer function for ensemble spread.
     if (separateColorVarianceAndCorrelation) {
-        numFields++;
+        numFieldsSize++;
     }
 
     const float maxHeight = std::min(maxColorLegendHeight, totalRadius * 0.5f);
-    colorLegendHeight = computeColorLegendHeightForNumFields(numFields, maxHeight);
-    if (numFields > 1 && colorLegendHeight < maxHeight * 0.5f) {
-        colorLegendHeight = computeColorLegendHeightForNumFields(sgl::iceil(numFields, 2), maxHeight);
+    colorLegendHeight = computeColorLegendHeightForNumFields(numFieldsSize, maxHeight);
+    if (numFieldsSize > 1 && colorLegendHeight < maxHeight * 0.5f) {
+        colorLegendHeight = computeColorLegendHeightForNumFields(sgl::iceil(numFieldsSize, 2), maxHeight);
         arrangeColorLegendsBothSides = true;
     } else {
         arrangeColorLegendsBothSides = false;
     }
+}
+
+std::pair<float, float> HEBChart::getLocalStdDevRange(int fieldIdx) {
+    auto numFields = int(fieldDataArray.size());
+    for (int i = 0; i < numFields; i++) {
+        auto* fieldData = fieldDataArray.at(i).get();
+        if (limitedFieldIdx >= 0 && limitedFieldIdx != fieldData->selectedFieldIdx) {
+            continue;
+        }
+        if (fieldData->selectedFieldIdx == fieldIdx) {
+            return std::make_pair(fieldData->minStdDev, fieldData->maxStdDev);
+        }
+    }
+    return std::make_pair(std::numeric_limits<float>::max(), std::numeric_limits<float>::lowest());
+}
+
+void HEBChart::setGlobalStdDevRangeQueryCallback(
+        std::function<std::pair<float, float>(int)> callback) {
+    globalStdDevRangeQueryCallback = std::move(callback);
+}
+
+std::pair<float, float> HEBChart::getGlobalStdDevRange(int fieldIdx) {
+    return globalStdDevRangeQueryCallback(fieldIdx);
 }

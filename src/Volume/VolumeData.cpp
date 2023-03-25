@@ -427,6 +427,12 @@ static void addFieldGlobal(
         return;
     }
 
+    if constexpr(std::is_same<T, uint8_t>()) {
+        access.sizeInBytes /= 4;
+    } else if constexpr(std::is_same<T, uint16_t>()) {
+        access.sizeInBytes /= 2;
+    }
+
     size_t numEntries = 0;
     if (fieldType == FieldType::SCALAR) {
         numEntries = xs * ys * zs;
@@ -1017,6 +1023,7 @@ VolumeData::DeviceCacheEntry VolumeData::getFieldEntryDevice(
         }
     }
 
+    access.sizeInBytes = image->getDeviceMemoryAllocationSize();
     deviceFieldCache->push(access, deviceCacheEntry);
     return deviceCacheEntry;
 }

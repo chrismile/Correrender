@@ -255,6 +255,7 @@ void ICorrelationCalculator::setReferencePointFromFocusPoint() {
 void ICorrelationCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
     if (propertyEditor.addCombo(
             "Scalar Field", &fieldIndexGui, scalarFieldNames.data(), int(scalarFieldNames.size()))) {
+        clearFieldImageViews();
         fieldIndex = int(scalarFieldIndexArray.at(fieldIndexGui));
         dirty = true;
     }
@@ -319,6 +320,10 @@ void CorrelationCalculator::onCorrelationMemberCountChanged() {
     kMax = std::max(sgl::iceil(7 * cs, 100), 20);
     correlationComputePass->setCorrelationMemberCount(cs);
     correlationComputePass->setKraskovNumNeighbors(k);
+}
+
+void CorrelationCalculator::clearFieldImageViews() {
+    correlationComputePass->setFieldImageViews({});
 }
 
 FilterDevice CorrelationCalculator::getFilterDevice() {

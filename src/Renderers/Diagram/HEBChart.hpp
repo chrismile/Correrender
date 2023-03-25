@@ -75,7 +75,7 @@ struct HEBChartFieldData {
 
     // Outer ring.
     std::vector<float> leafStdDevArray;
-    float minStdDev = 0.0f, maxStdDev = 0.0f;
+    float minStdDev = std::numeric_limits<float>::max(), maxStdDev = std::numeric_limits<float>::lowest();
     // Angle ranges for !regionsEqual.
     float a00 = 0.0f, a01 = 0.0f, a10 = 0.0f, a11 = 0.0f;
 
@@ -105,7 +105,7 @@ class HEBChart : public DiagramBase {
     friend struct HEBChartFieldData;
 public:
     HEBChart();
-    ~HEBChart();
+    ~HEBChart() override;
     DiagramType getDiagramType() override { return DiagramType::HEB_CHART; }
     void initialize() override;
     void update(float dt) override;
@@ -137,9 +137,11 @@ public:
     void setUseSeparateColorVarianceAndCorrelation(bool _separate);
     void setDesaturateUnselectedRing(bool _desaturate);
     void setUseNeonSelectionColors(bool _useNeonSelectionColors);
+    void setUseGlobalStdDevRange(bool _useGlobalStdDevRange);
     void setShowSelectedRegionsByColor(bool _show);
     void setUse2DField(bool _use2dField);
     void setUseCorrelationComputationGpu(bool _useGpu);
+    void setShowVariablesForFieldIdxOnly(int _limitedFieldIdx);
 
     // Selection query.
     void resetSelectedPrimitives();
@@ -158,10 +160,11 @@ public:
 
     // Queries for showing children.
     void resetFocusSelection();
-    bool getHasNewFocusSelection(bool& isDeselection);
-    std::pair<GridRegion, GridRegion> getFocusSelection();
-    GridRegion getGridRegionPointIdx(int idx, uint32_t pointIdx);
-    int getLeafIdxGroup(int leafIdx);
+    [[nodiscard]] bool getHasNewFocusSelection(bool& isDeselection);
+    [[nodiscard]] std::pair<GridRegion, GridRegion> getFocusSelection();
+    [[nodiscard]] GridRegion getGridRegionPointIdx(int idx, uint32_t pointIdx);
+    [[nodiscard]] int getLeafIdxGroup(int leafIdx) const;
+    [[nodiscard]] int getFocusSelectionFieldIndex();
 
     // Range queries.
     glm::vec2 getCorrelationRangeTotal();
@@ -174,6 +177,11 @@ public:
 
     /// Returns whether ensemble or time correlation mode is used.
     [[nodiscard]] inline bool getIsEnsembleMode() const { return isEnsembleMode; }
+
+    // For computing a global min/max over all diagrams.
+    std::pair<float, float> getLocalStdDevRange(int fieldIdx);
+    void setGlobalStdDevRangeQueryCallback(std::function<std::pair<float, float>(int)> callback);
+    std::pair<float, float> getGlobalStdDevRange(int fieldIdx);
 
 protected:
     bool hasData() override {
@@ -261,6 +269,9 @@ private:
     std::vector<int> lineFieldIndexArray;
     float minCorrelationValueGlobal = 0.0f, maxCorrelationValueGlobal = 0.0f;
     DiagramColorMap colorMapVariance = DiagramColorMap::VIRIDIS;
+    std::function<std::pair<float, float>(int)> globalStdDevRangeQueryCallback;
+    bool useGlobalStdDevRange = true;
+    int limitedFieldIdx = -1;
 
     // GUI data.
     float chartRadius{};
@@ -294,6 +305,7 @@ private:
     float outerRingOffset = 3.0f;
     float outerRingWidth = 0.0f; //< Determined automatically.
     float outerRingSizePct = 0.1f;
+    sgl::Color ringStrokeColorSelected = sgl::Color(255, 255, 130);
 
     // Arrow(s) pointing at selected point(s).
     void drawSelectionArrows();

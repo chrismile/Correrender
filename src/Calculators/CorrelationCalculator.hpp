@@ -82,6 +82,7 @@ public:
 
 protected:
     void renderGuiImpl(sgl::PropertyEditor& propertyEditor) override;
+    virtual void clearFieldImageViews()=0;
 
     ViewManager* viewManager = nullptr;
     std::vector<std::string> scalarFieldNames;
@@ -155,6 +156,7 @@ protected:
     /// Renders the GUI. Returns whether re-rendering has become necessary due to the user's actions.
     void renderGuiImpl(sgl::PropertyEditor& propertyEditor) override;
     void onCorrelationMemberCountChanged() override;
+    void clearFieldImageViews() override;
 
 private:
     std::shared_ptr<CorrelationComputePass> correlationComputePass;

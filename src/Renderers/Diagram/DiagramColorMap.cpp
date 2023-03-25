@@ -61,6 +61,15 @@ std::vector<glm::vec3> getColorPoints(DiagramColorMap colorMap) {
                 { 124.0f / 255.0f, 123.0f / 255.0f, 120.0f / 255.0f },
                 { 253.0f / 255.0f, 231.0f / 255.0f, 55.0f / 255.0f },
         };
+    } else if (colorMap == DiagramColorMap::GRAY) {
+        // Gray (https://matplotlib.org/stable/tutorials/colors/colormaps.html).
+        colorPoints = {
+                { 0.0000f, 0.0000f, 0.0000f },
+                { 0.2510f, 0.2510f, 0.2510f },
+                { 0.5020f, 0.5020f, 0.5020f },
+                { 0.7529f, 0.7529f, 0.7529f },
+                { 1.0000f, 1.0000f, 1.0000f },
+        };
     } else if (colorMap == DiagramColorMap::SPRING) {
         // Spring (https://matplotlib.org/stable/tutorials/colors/colormaps.html).
         colorPoints = {

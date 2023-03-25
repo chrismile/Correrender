@@ -35,17 +35,18 @@
 #include <Graphics/Color.hpp>
 
 enum class DiagramColorMap {
-    VIRIDIS, HEATMAP, CIVIDIS,
+    VIRIDIS, HEATMAP, CIVIDIS, GRAY,
     SPRING, SUMMER, AUTUMN, WINTER, COOL, WISTIA,
     NEON_GREENS, NEON_GREEN, NEON_RED, NEON_BLUE, NEON_ORANGE
 };
 const char* const DIAGRAM_COLOR_MAP_NAMES[] = {
-        "Viridis", "Heatmap", "Cividis",
+        "Viridis", "Heatmap", "Cividis", "Gray",
         "Spring", "Summer", "Autumn", "Winter", "Cool", "Wistia",
         "Neon Greens", "Neon Green", "Neon Red", "Neon Blue", "Neon Orange"
 };
 const int NUM_COLOR_MAPS = ((int)(sizeof(DIAGRAM_COLOR_MAP_NAMES) / sizeof(*(DIAGRAM_COLOR_MAP_NAMES))));
 std::vector<glm::vec3> getColorPoints(DiagramColorMap colorMap);
+inline bool getIsGrayscaleColorMap(DiagramColorMap colorMap) { return colorMap == DiagramColorMap::GRAY; }
 
 extern std::vector<sgl::Color> defaultColors;
 

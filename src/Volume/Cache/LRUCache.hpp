@@ -73,12 +73,13 @@ public:
     std::pair<K, V> pop_last() {
         auto it = itemList.end();
         it--;
+        std::pair<K, V> lastKeyValue = *it;
         itemMap.erase(it->first);
         itemList.pop_back();
-        return *it;
+        return lastKeyValue;
     }
 
-    void remove_if(std::function<bool(const std::pair<K, V>&)> predicate) {
+    void remove_if(std::function<bool(std::pair<K, V>&)> predicate) {
         auto it = itemList.begin();
         while (it != itemList.end()) {
             if (predicate(*it)) {

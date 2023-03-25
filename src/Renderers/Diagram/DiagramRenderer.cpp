@@ -72,6 +72,7 @@ void DiagramRenderer::initialize() {
         parentDiagram->setVolumeData(volumeData, true);
         parentDiagram->setIsEnsembleMode(isEnsembleMode);
         parentDiagram->setUseSeparateColorVarianceAndCorrelation(separateColorVarianceAndCorrelation);
+        parentDiagram->setGlobalStdDevRangeQueryCallback([this](int idx) { return computeGlobalStdDevRange(idx); });
         parentDiagram->setColorMapVariance(colorMapVariance);
         parentDiagram->setCorrelationMeasureType(correlationMeasureType);
         parentDiagram->setNumBins(numBins);
@@ -90,6 +91,7 @@ void DiagramRenderer::initialize() {
         parentDiagram->setShowSelectedRegionsByColor(showSelectedRegionsByColor);
         parentDiagram->setDesaturateUnselectedRing(desaturateUnselectedRing);
         parentDiagram->setUseNeonSelectionColors(useNeonSelectionColors);
+        parentDiagram->setUseGlobalStdDevRange(useGlobalStdDevRange);
         parentDiagram->setColorByValue(colorByValue);
         parentDiagram->setUse2DField(use2dField);
         parentDiagram->setClearColor(viewManager->getClearColor());
@@ -161,6 +163,7 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
             parentDiagram->addScalarField(selectedScalarField.first, selectedScalarField.second);
             parentDiagram->setColorMap(selectedFieldIdx, selectedScalarField.third);
         }
+        parentDiagram->setGlobalStdDevRangeQueryCallback([this](int idx) { return computeGlobalStdDevRange(idx); });
         parentDiagram->setColorMapVariance(colorMapVariance);
         parentDiagram->setIsEnsembleMode(isEnsembleMode);
         parentDiagram->setCorrelationMeasureType(correlationMeasureType);
@@ -180,6 +183,7 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
         parentDiagram->setShowSelectedRegionsByColor(showSelectedRegionsByColor);
         parentDiagram->setDesaturateUnselectedRing(desaturateUnselectedRing);
         parentDiagram->setUseNeonSelectionColors(useNeonSelectionColors);
+        parentDiagram->setUseGlobalStdDevRange(useGlobalStdDevRange);
         parentDiagram->setColorByValue(colorByValue);
         parentDiagram->setUse2DField(use2dField);
         parentDiagram->setClearColor(viewManager->getClearColor());
@@ -321,12 +325,19 @@ void DiagramRenderer::resetSelections(int idx) {
             diagram->setDownscalingFactors(dfx, dfy, dfz);
             diagram->setRegions(selectedRegionStack.at(idx - 1));
             diagram->clearScalarFields();
+            if (showOnlySelectedVariableInFocusDiagrams) {
+                // TODO: Also on update!
+                diagram->setShowVariablesForFieldIdxOnly(parentDiagram->getFocusSelectionFieldIndex());
+            } else {
+                diagram->setShowVariablesForFieldIdxOnly(-1);
+            }
             diagram->setUseSeparateColorVarianceAndCorrelation(separateColorVarianceAndCorrelation);
             for (int selectedFieldIdx = 0; selectedFieldIdx < int(selectedScalarFields.size()); selectedFieldIdx++) {
                 auto& selectedScalarField = selectedScalarFields.at(selectedFieldIdx);
                 diagram->addScalarField(selectedScalarField.first, selectedScalarField.second);
                 diagram->setColorMap(selectedFieldIdx, selectedScalarField.third);
             }
+            diagram->setGlobalStdDevRangeQueryCallback([this](int idx) { return computeGlobalStdDevRange(idx); });
             diagram->setColorMapVariance(colorMapVariance);
             diagram->setIsEnsembleMode(isEnsembleMode);
             diagram->setCorrelationMeasureType(correlationMeasureType);
@@ -347,6 +358,7 @@ void DiagramRenderer::resetSelections(int idx) {
             diagram->setShowSelectedRegionsByColor(showSelectedRegionsByColor);
             diagram->setDesaturateUnselectedRing(desaturateUnselectedRing);
             diagram->setUseNeonSelectionColors(useNeonSelectionColors);
+            diagram->setUseGlobalStdDevRange(useGlobalStdDevRange);
             diagram->setColorByValue(colorByValue);
             diagram->setUse2DField(use2dField);
             diagram->setClearColor(viewManager->getClearColor());
@@ -359,6 +371,21 @@ void DiagramRenderer::resetSelections(int idx) {
             diagram->setCellDistanceRange(diagram->getCellDistanceRangeTotal());
         }
     }
+}
+
+std::pair<float, float> DiagramRenderer::computeGlobalStdDevRange(int fieldIdx) {
+    std::pair<float, float> minMaxPair = parentDiagram->getLocalStdDevRange(fieldIdx);
+    for (size_t i = 1; i < diagrams.size(); i++) {
+        auto diagram = diagrams.at(i);
+        auto newMinMax = diagram->getLocalStdDevRange(fieldIdx);
+        if (newMinMax.first < minMaxPair.first) {
+            newMinMax.first = newMinMax.first;
+        }
+        if (newMinMax.second > minMaxPair.second) {
+            newMinMax.second = newMinMax.second;
+        }
+    }
+    return minMaxPair;
 }
 
 void DiagramRenderer::update(float dt, bool isMouseGrabbed) {
@@ -1138,6 +1165,12 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
             reRenderTriggeredByDiagram = true;
         }
 
+        if (propertyEditor.addCheckbox("Focus: Only Selected Var.", &showOnlySelectedVariableInFocusDiagrams)) {
+            resetSelections();
+            reRender = true;
+            reRenderTriggeredByDiagram = true;
+        }
+
         if (propertyEditor.addCheckbox("Focus+Context Mode", &renderOnlyLastFocusDiagram)) {
             reRender = true;
             reRenderTriggeredByDiagram = true;
@@ -1165,6 +1198,14 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         if (propertyEditor.addCheckbox("Neon Selection Colors", &useNeonSelectionColors)) {
             for (auto& diagram : diagrams) {
                 diagram->setUseNeonSelectionColors(useNeonSelectionColors);
+            }
+            reRender = true;
+            reRenderTriggeredByDiagram = true;
+        }
+
+        if (propertyEditor.addCheckbox("Global Ens. Spread Range", &useGlobalStdDevRange)) {
+            for (auto& diagram : diagrams) {
+                diagram->setUseGlobalStdDevRange(useGlobalStdDevRange);
             }
             reRender = true;
             reRenderTriggeredByDiagram = true;

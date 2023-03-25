@@ -83,6 +83,7 @@ private:
     void updateScalarFieldComboValue();
     void recreateDiagramSwapchain(int diagramIdx = -1);
     void resetSelections(int idx = 0);
+    std::pair<float, float> computeGlobalStdDevRange(int fieldIdx);
     VolumeDataPtr volumeData;
     uint32_t contextDiagramViewIdx = 0, focusDiagramViewIdx = 0;
     bool reRenderTriggeredByDiagram = false;
@@ -130,8 +131,10 @@ private:
     bool colorByValue = true;
     bool showSelectedRegionsByColor = true;
     bool useNeonSelectionColors = true;
+    bool useGlobalStdDevRange = true;
     bool use2dField = false;
     bool useCorrelationComputationGpu = true;
+    bool showOnlySelectedVariableInFocusDiagrams = true;
 
     // Selected region.
     float lineWidth = 0.001f;

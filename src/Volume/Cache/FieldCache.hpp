@@ -29,6 +29,7 @@
 #ifndef CORRERENDER_FIELDCACHE_HPP
 #define CORRERENDER_FIELDCACHE_HPP
 
+#include <iostream>
 #include <memory>
 
 #include <Utils/File/Logfile.hpp>
@@ -97,9 +98,10 @@ public:
 
     void removeEntriesForFieldName(const std::string& fieldName) {
         cache.remove_if(
-                [this, fieldName](const std::pair<FieldAccess, CacheEntry>& entry) {
+                [this, fieldName](std::pair<FieldAccess, CacheEntry>& entry) {
                     if (entry.first.fieldName == fieldName) {
                         typename CacheEntry::weak_type weakBufferPtr = entry.second;
+                        entry.second = {};
                         if (!weakBufferPtr.expired()) {
                             evictionWaitList.emplace_back(entry.first, weakBufferPtr);
                         } else {
@@ -118,12 +120,17 @@ protected:
     double availableMemoryFactor = 28.0 / 32.0; // 3.5/4, 7/8, 14/16, 21/24, 28/32.
 
     void evictLast() {
-        auto lruEntry = cache.pop_last();
-        typename CacheEntry::weak_type weakBufferPtr = lruEntry.second;
+        FieldAccess access;
+        typename CacheEntry::weak_type weakBufferPtr;
+        {
+            auto lruEntry = cache.pop_last();
+            access = lruEntry.first;
+            weakBufferPtr = lruEntry.second;
+        }
         if (!weakBufferPtr.expired()) {
-            evictionWaitList.emplace_back(lruEntry.first, weakBufferPtr);
+            evictionWaitList.emplace_back(access, weakBufferPtr);
         } else {
-            cacheSize -= lruEntry.first.sizeInBytes;
+            cacheSize -= access.sizeInBytes;
         }
     }
 

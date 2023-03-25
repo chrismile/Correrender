@@ -236,7 +236,7 @@ void QuickMLPCorrelationCalculator::loadModelFromFile(const std::string& modelPa
     numLayersInDecoder = uint32_t(moduleWrapper->networkDecoder->channelsIn());
     numLayersOutDecoder = uint32_t(moduleWrapper->networkDecoder->channelsOut());
 
-    uint32_t symmetrizerFactor = symmetrizerType == SymmetrizerType::Add ? 1 : 2;
+    uint32_t symmetrizerFactor = symmetrizerType == SymmetrizerType::AddDiff ? 2 : 1;
     if (numLayersOutEncoder * symmetrizerFactor != numLayersInDecoder) {
         sgl::Logfile::get()->throwError(
                 "Error in QuickMLPCorrelationCalculator::loadModelFromFile: Mismatch between encoder output and "

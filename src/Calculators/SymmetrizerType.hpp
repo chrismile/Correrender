@@ -31,7 +31,7 @@
 
 /// Symmetrizer operation used between encoder and decoder.
 enum class SymmetrizerType {
-    Add, AddDiff
+    Add, AddDiff, Mul
 };
 
 #endif //CORRERENDER_SYMMETRIZERTYPE_HPP

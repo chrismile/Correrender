@@ -99,6 +99,7 @@ protected:
     bool loadModelFromFile(int idx, const std::string& modelPath);
     void setPyTorchDevice(PyTorchDevice pyTorchDeviceNew);
     void onCorrelationMemberCountChanged() override;
+    void clearFieldImageViews();
 
     /// Renders the GUI. Returns whether re-rendering has become necessary due to the user's actions.
     void renderGuiImpl(sgl::PropertyEditor& propertyEditor) override;
