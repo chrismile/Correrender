@@ -88,7 +88,7 @@ struct HEBChartFieldData {
     sgl::Color evalColorMap(float t);
     glm::vec4 evalColorMapVec4Variance(float t, bool saturated);
     sgl::Color evalColorMapVariance(float t, bool saturated);
-    DiagramColorMap colorMapLines = DiagramColorMap::CIVIDIS, colorMapVariance = DiagramColorMap::CIVIDIS;
+    DiagramColorMap colorMapLines = DiagramColorMap::WISTIA, colorMapVariance = DiagramColorMap::GRAY;
     std::vector<glm::vec3> colorPointsLines, colorPointsVariance;
     bool* desaturateUnselectedRing = nullptr;
     bool separateColorVarianceAndCorrelation = true;
@@ -142,6 +142,7 @@ public:
     void setUse2DField(bool _use2dField);
     void setUseCorrelationComputationGpu(bool _useGpu);
     void setShowVariablesForFieldIdxOnly(int _limitedFieldIdx);
+    void setOctreeMethod(OctreeMethod _octreeMethod);
 
     // Selection query.
     void resetSelectedPrimitives();
@@ -240,6 +241,7 @@ private:
             std::vector<MIFieldEntry>& miFieldEntries);
     void computeCorrelationsSamplingCpu(HEBChartFieldData* fieldData, std::vector<MIFieldEntry>& miFieldEntries);
     void computeCorrelationsSamplingGpu(HEBChartFieldData* fieldData, std::vector<MIFieldEntry>& miFieldEntries);
+    OctreeMethod octreeMethod = OctreeMethod::TOP_DOWN_POT;
     int numLinesTotal = 0;
     int MAX_NUM_LINES = 100;
     const int NUM_SUBDIVISIONS = 50;

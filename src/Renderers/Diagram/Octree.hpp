@@ -34,6 +34,13 @@
 
 #define IDXSD(x,y,z) ((z)*xsd*ysd + (y)*xsd + (x))
 
+enum class OctreeMethod {
+    TOP_DOWN_CEIL, TOP_DOWN_POT
+};
+const char* const OCTREE_METHOD_NAMES[] = {
+        "Top Down (ceil)", "Top Down (PoT)"
+};
+
 struct HEBNode {
     HEBNode() {
         parentIdx = std::numeric_limits<uint32_t>::max();
@@ -49,7 +56,7 @@ struct HEBNode {
 };
 
 void buildHebTree(
-        std::vector<HEBNode>& nodesList,
+        OctreeMethod octreeMethod, std::vector<HEBNode>& nodesList,
         std::vector<uint32_t>& pointToNodeIndexMap0, std::vector<uint32_t>& pointToNodeIndexMap1,
         uint32_t& leafIdxOffset0, uint32_t& leafIdxOffset1,
         bool regionsEqual, int xsd0, int ysd0, int zsd0, int xsd1, int ysd1, int zsd1);

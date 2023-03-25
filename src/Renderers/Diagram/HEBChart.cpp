@@ -235,6 +235,11 @@ void HEBChart::setShowVariablesForFieldIdxOnly(int _limitedFieldIdx) {
     dataDirty = true;
 }
 
+void HEBChart::setOctreeMethod(OctreeMethod _octreeMethod) {
+    octreeMethod = _octreeMethod;
+    dataDirty = true;
+}
+
 
 glm::vec2 HEBChart::getCorrelationRangeTotal() {
     if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV
@@ -1280,8 +1285,8 @@ void HEBChart::updateData() {
         pointToNodeIndexMap0.clear();
         pointToNodeIndexMap1.clear();
         buildHebTree(
-                nodesList, pointToNodeIndexMap0, pointToNodeIndexMap1, leafIdxOffset, leafIdxOffset1, regionsEqual,
-                xsd0, ysd0, zsd0, xsd1, ysd1, zsd1);
+                octreeMethod, nodesList, pointToNodeIndexMap0, pointToNodeIndexMap1, leafIdxOffset, leafIdxOffset1,
+                regionsEqual, xsd0, ysd0, zsd0, xsd1, ysd1, zsd1);
 
         // Compute the standard deviation inside the downscaled grids.
         computeDownscaledFieldVariance(fieldData, 0);
@@ -1303,7 +1308,7 @@ void HEBChart::updateData() {
         correlationValuesArrayLocal.resize(numLinesLocal);
         connectedPointsArrayLocal.resize(numLinesLocal);
 
-        if (!miFieldEntries.empty()) {
+        if (!miFieldEntries.empty() && numLinesLocal > 0) {
             fieldData->minCorrelationValue = miFieldEntries.at(numLinesLocal - 1).correlationValue;
             fieldData->maxCorrelationValue = miFieldEntries.at(0).correlationValue;
         } else {
@@ -1367,7 +1372,7 @@ void HEBChart::updateData() {
         const std::vector<float>& correlationValuesArrayLocal = updateDataArray.at(i).correlationValuesArray;
         auto numLines = int(correlationValuesArrayLocal.size());
         for (int lineIdx = 0; lineIdx < numLines; lineIdx++) {
-            lineSortArray.emplace_back(correlationValuesArrayLocal.at(lineIdx), i, lineIdx);
+            lineSortArray.emplace_back(std::abs(correlationValuesArrayLocal.at(lineIdx)), i, lineIdx);
         }
     }
     std::sort(lineSortArray.begin(), lineSortArray.end());
@@ -1375,7 +1380,7 @@ void HEBChart::updateData() {
     maxCorrelationValueGlobal = std::numeric_limits<float>::lowest();
     for (int lineIdx = 0; lineIdx < numLinesTotal; lineIdx++) {
         auto [correlationValue, i, localLineIdx] = lineSortArray.at(lineIdx);
-        correlationValuesArray.at(lineIdx) = correlationValue;
+        correlationValuesArray.at(lineIdx) = updateDataArray.at(i).correlationValuesArray.at(localLineIdx);
         connectedPointsArray.at(lineIdx) = updateDataArray.at(i).connectedPointsArray.at(localLineIdx);
         lineFieldIndexArray.at(lineIdx) = i;
         minCorrelationValueGlobal = std::min(minCorrelationValueGlobal, fieldDataArray.at(i)->minCorrelationValue);

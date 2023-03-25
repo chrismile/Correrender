@@ -92,6 +92,7 @@ void DiagramRenderer::initialize() {
         parentDiagram->setDesaturateUnselectedRing(desaturateUnselectedRing);
         parentDiagram->setUseNeonSelectionColors(useNeonSelectionColors);
         parentDiagram->setUseGlobalStdDevRange(useGlobalStdDevRange);
+        parentDiagram->setOctreeMethod(octreeMethod);
         parentDiagram->setColorByValue(colorByValue);
         parentDiagram->setUse2DField(use2dField);
         parentDiagram->setClearColor(viewManager->getClearColor());
@@ -150,7 +151,7 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
     if (isNewData) {
         selectedScalarFields.clear();
         int standardFieldIdx = volumeData->getStandardScalarFieldIdx();
-        selectedScalarFields.emplace_back(standardFieldIdx, fieldNames.at(standardFieldIdx), DiagramColorMap::VIRIDIS);
+        selectedScalarFields.emplace_back(standardFieldIdx, fieldNames.at(standardFieldIdx), DiagramColorMap::WISTIA);
         scalarFieldSelectionArray.clear();
         scalarFieldSelectionArray.resize(fieldNames.size());
         scalarFieldSelectionArray.at(standardFieldIdx) = true;
@@ -184,6 +185,7 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
         parentDiagram->setDesaturateUnselectedRing(desaturateUnselectedRing);
         parentDiagram->setUseNeonSelectionColors(useNeonSelectionColors);
         parentDiagram->setUseGlobalStdDevRange(useGlobalStdDevRange);
+        parentDiagram->setOctreeMethod(octreeMethod);
         parentDiagram->setColorByValue(colorByValue);
         parentDiagram->setUse2DField(use2dField);
         parentDiagram->setClearColor(viewManager->getClearColor());
@@ -359,6 +361,7 @@ void DiagramRenderer::resetSelections(int idx) {
             diagram->setDesaturateUnselectedRing(desaturateUnselectedRing);
             diagram->setUseNeonSelectionColors(useNeonSelectionColors);
             diagram->setUseGlobalStdDevRange(useGlobalStdDevRange);
+            diagram->setOctreeMethod(octreeMethod);
             diagram->setColorByValue(colorByValue);
             diagram->setUse2DField(use2dField);
             diagram->setClearColor(viewManager->getClearColor());
@@ -1096,7 +1099,7 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
     }
 
     if (propertyEditor.addSliderFloat("Opacity Context", &curveOpacityContext, 0.0f, 1.0f)) {
-        parentDiagram->setCurveOpacity(curveOpacityFocus);
+        parentDiagram->setCurveOpacity(curveOpacityContext);
         reRender = true;
         reRenderTriggeredByDiagram = true;
     }
@@ -1206,6 +1209,15 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         if (propertyEditor.addCheckbox("Global Ens. Spread Range", &useGlobalStdDevRange)) {
             for (auto& diagram : diagrams) {
                 diagram->setUseGlobalStdDevRange(useGlobalStdDevRange);
+            }
+            reRender = true;
+            reRenderTriggeredByDiagram = true;
+        }
+
+        if (propertyEditor.addCombo(
+                "Octree Method", (int*)&octreeMethod, OCTREE_METHOD_NAMES, IM_ARRAYSIZE(OCTREE_METHOD_NAMES))) {
+            for (auto& diagram : diagrams) {
+                diagram->setOctreeMethod(octreeMethod);
             }
             reRender = true;
             reRenderTriggeredByDiagram = true;

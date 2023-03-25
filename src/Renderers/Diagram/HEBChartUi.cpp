@@ -704,13 +704,26 @@ void HEBChart::renderBaseNanoVG() {
 
     // Draw the point circles.
     float pointRadius = curveThickness * pointRadiusBase;
-    nvgBeginPath(vg);
-    /*for (int i = 0; i < int(nodesList.size()); i++) {
+    //sgl::Color colors[8] = {
+    //        sgl::Color(179,226,205), sgl::Color(253,205,172), sgl::Color(203,213,232), sgl::Color(244,202,228),
+    //        sgl::Color(230,245,201), sgl::Color(255,242,174), sgl::Color(241,226,204), sgl::Color(204,204,204)
+    //};
+    /*sgl::Color colors[8] = {
+            sgl::Color(228,26,28), sgl::Color(55,126,184), sgl::Color(77,175,74), sgl::Color(152,78,163),
+            sgl::Color(255,127,0), sgl::Color(255,255,51), sgl::Color(166,86,40), sgl::Color(247,129,191),
+    };
+    for (int i = 0; i < int(nodesList.size()); i++) {
         const auto& leaf = nodesList.at(i);
         float pointX = windowWidth / 2.0f + leaf.normalizedPosition.x * chartRadius;
         float pointY = windowHeight / 2.0f + leaf.normalizedPosition.y * chartRadius;
+        nvgBeginPath(vg);
         nvgCircle(vg, pointX, pointY, pointRadius);
+        sgl::Color col = colors[std::hash<int>{}(int(leaf.parentIdx)) % 8];
+        NVGcolor circleFillColorNvg = nvgRGBA(col.getR(), col.getG(), col.getB(), 255);
+        nvgFillColor(vg, circleFillColorNvg);
+        nvgFill(vg);
     }*/
+    nvgBeginPath(vg);
     for (int leafIdx = int(leafIdxOffset); leafIdx < int(nodesList.size()); leafIdx++) {
         const auto& leaf = nodesList.at(leafIdx);
         int pointIdx = leafIdx - int(leafIdxOffset);

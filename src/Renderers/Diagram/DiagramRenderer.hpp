@@ -34,6 +34,7 @@
 
 #include "../../Calculators/CorrelationDefines.hpp"
 #include "../Renderer.hpp"
+#include "Octree.hpp"
 #include "Sampling.hpp"
 #include "DiagramColorMap.hpp"
 #include "Region.hpp"
@@ -100,7 +101,7 @@ private:
     std::vector<bool> scalarFieldSelectionArray;
     std::string scalarFieldComboValue;
     std::vector<DiagramSelectedFieldData> selectedScalarFields;
-    DiagramColorMap colorMapVariance = DiagramColorMap::HEATMAP;
+    DiagramColorMap colorMapVariance = DiagramColorMap::GRAY;
     bool separateColorVarianceAndCorrelation = true;
     bool desaturateUnselectedRing = true;
     bool isEnsembleMode = true; //< Ensemble or time mode?
@@ -135,6 +136,7 @@ private:
     bool use2dField = false;
     bool useCorrelationComputationGpu = true;
     bool showOnlySelectedVariableInFocusDiagrams = true;
+    OctreeMethod octreeMethod = OctreeMethod::TOP_DOWN_POT;
 
     // Selected region.
     float lineWidth = 0.001f;

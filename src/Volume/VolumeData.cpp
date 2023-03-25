@@ -601,7 +601,7 @@ bool VolumeData::setInputFiles(
 
     if (ts > 1 || es > 1) {
         addCalculator(std::make_shared<CorrelationCalculator>(renderer));
-#ifdef SUPPORT_PYTORCH
+/*#ifdef SUPPORT_PYTORCH
         addCalculator(std::make_shared<PyTorchCorrelationCalculator>(renderer));
 #endif
 #ifdef SUPPORT_CUDA_INTEROP
@@ -614,7 +614,7 @@ bool VolumeData::setInputFiles(
             addCalculator(std::make_shared<QuickMLPCorrelationCalculator>(renderer));
 #endif
         }
-#endif
+#endif*/
     }
 
     const auto& scalarFieldNames = typeToFieldNamesMap[FieldType::SCALAR];

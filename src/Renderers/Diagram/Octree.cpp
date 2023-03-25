@@ -44,7 +44,17 @@ struct StackDomain {
     glm::ivec3 min, max;
 };
 
-void buildHebTreeIterative(
+struct StackDomain2 {
+    StackDomain2() {}
+    StackDomain2(uint32_t nodeIdx, uint32_t depth, int subdivSize, const glm::ivec3& min, const glm::ivec3& max)
+            : nodeIdx(nodeIdx), depth(depth), subdivSize(subdivSize), min(min), max(max) {}
+    uint32_t nodeIdx;
+    uint32_t depth;
+    int subdivSize;
+    glm::ivec3 min, max;
+};
+
+void buildHebTreeIterativeTopDown(
         std::vector<HEBNode>& nodesList, std::vector<uint32_t>& pointToNodeIndexMap, uint32_t& leafIdxOffset,
         bool regionsEqual, int groupIdx, int xsd, int ysd, int zsd, uint32_t treeHeight) {
     std::queue<StackDomain> domainStack;
@@ -137,8 +147,109 @@ void buildHebTreeIterative(
     }
 }
 
+void buildHebTreeIterativeTopDownZOrder(
+        std::vector<HEBNode>& nodesList, std::vector<uint32_t>& pointToNodeIndexMap, uint32_t& leafIdxOffset,
+        bool regionsEqual, int groupIdx, int xsd, int ysd, int zsd, uint32_t treeHeight) {
+    int maxDim = std::max(xsd, std::max(ysd, zsd));
+    if (!sgl::isPowerOfTwo(maxDim)) {
+        maxDim = sgl::nextPowerOfTwo(maxDim);
+    }
+    std::queue<StackDomain2> domainStack;
+    StackDomain2 rootDomain;
+    rootDomain.nodeIdx = regionsEqual ? 0 : (groupIdx == 0 ? 1 : 2);
+    rootDomain.depth = 0;
+    rootDomain.min = glm::ivec3(0, 0, 0);
+    rootDomain.max = glm::ivec3(xsd - 1, ysd - 1, zsd - 1);
+    rootDomain.subdivSize = maxDim / 2;
+    domainStack.push(rootDomain);
+    leafIdxOffset = std::numeric_limits<uint32_t>::max();
+    while (!domainStack.empty()) {
+        auto stackEntry = domainStack.front();
+        domainStack.pop();
+        auto extent = stackEntry.max - stackEntry.min + glm::ivec3(1);
+        // Leaf?
+        //if (extent.x == 1 && extent.y == 1 && extent.z == 1) {
+        if (stackEntry.depth == treeHeight) {
+            pointToNodeIndexMap.at(IDXSD(stackEntry.min.x, stackEntry.min.y, stackEntry.min.z)) = stackEntry.nodeIdx;
+            if (leafIdxOffset == std::numeric_limits<uint32_t>::max()) {
+                leafIdxOffset = stackEntry.nodeIdx;
+            }
+            continue;
+        }
+        glm::ivec3 maxHalf = stackEntry.max, minHalf = stackEntry.min;
+        minHalf.x = stackEntry.min.x + std::min(stackEntry.subdivSize, extent.x);
+        minHalf.y = stackEntry.min.y + std::min(stackEntry.subdivSize, extent.y);
+        minHalf.z = stackEntry.min.z + std::min(stackEntry.subdivSize, extent.z);
+        maxHalf.x = minHalf.x - 1;
+        maxHalf.y = minHalf.y - 1;
+        maxHalf.z = minHalf.z - 1;
+        auto childrenOffset = uint32_t(nodesList.size());
+        domainStack.emplace(
+                uint32_t(nodesList.size()), stackEntry.depth + 1, stackEntry.subdivSize / 2,
+                glm::vec3(stackEntry.min.x, stackEntry.min.y, stackEntry.min.z),
+                glm::vec3(maxHalf.x, maxHalf.y, maxHalf.z));
+        nodesList.emplace_back(stackEntry.nodeIdx);
+        bool subdivX = stackEntry.max.x - minHalf.x >= 0;
+        bool subdivY = stackEntry.max.y - minHalf.y >= 0;
+        bool subdivZ = stackEntry.max.z - minHalf.z >= 0;
+        if (subdivX) {
+            domainStack.emplace(
+                    uint32_t(nodesList.size()), stackEntry.depth + 1, stackEntry.subdivSize / 2,
+                    glm::vec3(minHalf.x, stackEntry.min.y, stackEntry.min.z),
+                    glm::vec3(stackEntry.max.x, maxHalf.y, maxHalf.z));
+            nodesList.emplace_back(stackEntry.nodeIdx);
+        }
+        if (subdivY) {
+            domainStack.emplace(
+                    uint32_t(nodesList.size()), stackEntry.depth + 1, stackEntry.subdivSize / 2,
+                    glm::vec3(stackEntry.min.x, minHalf.y, stackEntry.min.z),
+                    glm::vec3(maxHalf.x, stackEntry.max.y, maxHalf.z));
+            nodesList.emplace_back(stackEntry.nodeIdx);
+        }
+        if (subdivX && subdivY) {
+            domainStack.emplace(
+                    uint32_t(nodesList.size()), stackEntry.depth + 1, stackEntry.subdivSize / 2,
+                    glm::vec3(minHalf.x, minHalf.y, stackEntry.min.z),
+                    glm::vec3(stackEntry.max.x, stackEntry.max.y, maxHalf.z));
+            nodesList.emplace_back(stackEntry.nodeIdx);
+        }
+        if (subdivZ) {
+            domainStack.emplace(
+                    uint32_t(nodesList.size()), stackEntry.depth + 1, stackEntry.subdivSize / 2,
+                    glm::vec3(stackEntry.min.x, stackEntry.min.y, minHalf.z),
+                    glm::vec3(maxHalf.x, maxHalf.y, stackEntry.max.z));
+            nodesList.emplace_back(stackEntry.nodeIdx);
+            if (subdivX) {
+                domainStack.emplace(
+                        uint32_t(nodesList.size()), stackEntry.depth + 1, stackEntry.subdivSize / 2,
+                        glm::vec3(minHalf.x, stackEntry.min.y, minHalf.z),
+                        glm::vec3(stackEntry.max.x, maxHalf.y, stackEntry.max.z));
+                nodesList.emplace_back(stackEntry.nodeIdx);
+            }
+            if (subdivY) {
+                domainStack.emplace(
+                        uint32_t(nodesList.size()), stackEntry.depth + 1, stackEntry.subdivSize / 2,
+                        glm::vec3(stackEntry.min.x, minHalf.y, minHalf.z),
+                        glm::vec3(maxHalf.x, stackEntry.max.y, stackEntry.max.z));
+                nodesList.emplace_back(stackEntry.nodeIdx);
+            }
+            if (subdivX && subdivY) {
+                domainStack.emplace(
+                        uint32_t(nodesList.size()), stackEntry.depth + 1, stackEntry.subdivSize / 2,
+                        glm::vec3(minHalf.x, minHalf.y, minHalf.z),
+                        glm::vec3(stackEntry.max.x, stackEntry.max.y, stackEntry.max.z));
+                nodesList.emplace_back(stackEntry.nodeIdx);
+            }
+        }
+        uint32_t numChildren = uint32_t(nodesList.size()) - childrenOffset;
+        for (uint32_t i = 0; i < numChildren; i++) {
+            nodesList[stackEntry.nodeIdx].childIndices[i] = childrenOffset + i;
+        }
+    }
+}
+
 void buildHebTree(
-        std::vector<HEBNode>& nodesList,
+        OctreeMethod octreeMethod, std::vector<HEBNode>& nodesList,
         std::vector<uint32_t>& pointToNodeIndexMap0, std::vector<uint32_t>& pointToNodeIndexMap1,
         uint32_t& leafIdxOffset0, uint32_t& leafIdxOffset1,
         bool regionsEqual, int xsd0, int ysd0, int zsd0, int xsd1, int ysd1, int zsd1) {
@@ -163,16 +274,28 @@ void buildHebTree(
     }
     pointToNodeIndexMap0.resize(xsd0 * ysd0 * zsd0);
     pointToNodeIndexMap1.resize(xsd1 * ysd1 * zsd1);
-    buildHebTreeIterative(
-            nodesList, pointToNodeIndexMap0, leafIdxOffset0,
-            regionsEqual, 0, xsd0, ysd0, zsd0, treeHeight0);
+    if (octreeMethod == OctreeMethod::TOP_DOWN_CEIL) {
+        buildHebTreeIterativeTopDown(
+                nodesList, pointToNodeIndexMap0, leafIdxOffset0,
+                regionsEqual, 0, xsd0, ysd0, zsd0, treeHeight0);
+    } else {
+        buildHebTreeIterativeTopDownZOrder(
+                nodesList, pointToNodeIndexMap0, leafIdxOffset0,
+                regionsEqual, 0, xsd0, ysd0, zsd0, treeHeight0);
+    }
     if (!regionsEqual) {
         std::vector<HEBNode> leaves0 = { nodesList.begin() + leafIdxOffset0, nodesList.end() };
         nodesList.resize(leafIdxOffset0);
         uint32_t leafIdxOffset0Old = leafIdxOffset0;
-        buildHebTreeIterative(
-                nodesList, pointToNodeIndexMap1, leafIdxOffset1,
-                regionsEqual, 1, xsd1, ysd1, zsd1, treeHeight1);
+        if (octreeMethod == OctreeMethod::TOP_DOWN_CEIL) {
+            buildHebTreeIterativeTopDown(
+                    nodesList, pointToNodeIndexMap1, leafIdxOffset1,
+                    regionsEqual, 1, xsd1, ysd1, zsd1, treeHeight1);
+        } else {
+            buildHebTreeIterativeTopDownZOrder(
+                    nodesList, pointToNodeIndexMap1, leafIdxOffset1,
+                    regionsEqual, 1, xsd1, ysd1, zsd1, treeHeight1);
+        }
         std::vector<HEBNode> leaves1 = { nodesList.begin() + leafIdxOffset1, nodesList.end() };
         nodesList.resize(leafIdxOffset1);
         uint32_t leafIdxOffset1Old = leafIdxOffset1;
