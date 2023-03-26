@@ -41,7 +41,9 @@ VelocityCalculator::VelocityCalculator(sgl::vk::Renderer* renderer) : Calculator
 
 void VelocityCalculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
     Calculator::setVolumeData(_volumeData, isNewData);
-    calculatorConstructorUseCount = volumeData->getNewCalculatorUseCount(CalculatorType::VELOCITY);
+    if (isNewData) {
+        calculatorConstructorUseCount = volumeData->getNewCalculatorUseCount(CalculatorType::VELOCITY);
+    }
 }
 
 void VelocityCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float* buffer) {
@@ -107,7 +109,9 @@ VectorMagnitudeCalculator::VectorMagnitudeCalculator(sgl::vk::Renderer* renderer
 
 void VectorMagnitudeCalculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
     Calculator::setVolumeData(_volumeData, isNewData);
-    calculatorConstructorUseCount = volumeData->getNewCalculatorUseCount(CalculatorType::VECTOR_MAGNITUDE);
+    if (isNewData) {
+        calculatorConstructorUseCount = volumeData->getNewCalculatorUseCount(CalculatorType::VECTOR_MAGNITUDE);
+    }
 }
 
 void VectorMagnitudeCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float* buffer) {
@@ -123,7 +127,9 @@ VorticityCalculator::VorticityCalculator(sgl::vk::Renderer* renderer) : Calculat
 
 void VorticityCalculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
     Calculator::setVolumeData(_volumeData, isNewData);
-    calculatorConstructorUseCount = volumeData->getNewCalculatorUseCount(CalculatorType::VORTICITY);
+    if (isNewData) {
+        calculatorConstructorUseCount = volumeData->getNewCalculatorUseCount(CalculatorType::VORTICITY);
+    }
 }
 
 void VorticityCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float* buffer) {
@@ -140,7 +146,9 @@ HelicityCalculator::HelicityCalculator(sgl::vk::Renderer* renderer) : Calculator
 
 void HelicityCalculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
     Calculator::setVolumeData(_volumeData, isNewData);
-    calculatorConstructorUseCount = volumeData->getNewCalculatorUseCount(CalculatorType::HELICITY);
+    if (isNewData) {
+        calculatorConstructorUseCount = volumeData->getNewCalculatorUseCount(CalculatorType::HELICITY);
+    }
 }
 
 void HelicityCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float* buffer) {

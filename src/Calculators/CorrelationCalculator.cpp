@@ -309,7 +309,9 @@ CorrelationCalculator::CorrelationCalculator(sgl::vk::Renderer* renderer) : ICor
 
 void CorrelationCalculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
     ICorrelationCalculator::setVolumeData(_volumeData, isNewData);
-    calculatorConstructorUseCount = volumeData->getNewCalculatorUseCount(CalculatorType::CORRELATION);
+    if (isNewData) {
+        calculatorConstructorUseCount = volumeData->getNewCalculatorUseCount(CalculatorType::CORRELATION);
+    }
     correlationComputePass->setVolumeData(volumeData, getCorrelationMemberCount(), isNewData);
     onCorrelationMemberCountChanged();
 }

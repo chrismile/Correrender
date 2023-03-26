@@ -1082,6 +1082,9 @@ void VolumeData::resetDirty() {
         for (int varIdx = 0; varIdx < numScalarFields; varIdx++) {
             multiVarTransferFunctionWindow.setAttributeDataDirty(varIdx);
         }
+        for (auto& calculator : calculators) {
+            calculator->setVolumeData(this, false);
+        }
     }
     dirty = false;
 }

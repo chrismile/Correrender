@@ -54,7 +54,9 @@ std::string BinaryOperatorCalculator::getOutputFieldName() {
 
 void BinaryOperatorCalculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
     Calculator::setVolumeData(_volumeData, isNewData);
-    calculatorConstructorUseCount = volumeData->getNewCalculatorUseCount(CalculatorType::BINARY_OPERATOR);
+    if (isNewData) {
+        calculatorConstructorUseCount = volumeData->getNewCalculatorUseCount(CalculatorType::BINARY_OPERATOR);
+    }
 
     scalarFieldNames = {};
     scalarFieldIndexArray = {};

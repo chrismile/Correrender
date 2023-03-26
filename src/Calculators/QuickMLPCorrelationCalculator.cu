@@ -77,7 +77,9 @@ QuickMLPCorrelationCalculator::~QuickMLPCorrelationCalculator() = default;
 
 void QuickMLPCorrelationCalculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
     DeepLearningCudaCorrelationCalculator::setVolumeData(_volumeData, isNewData);
-    calculatorConstructorUseCount = volumeData->getNewCalculatorUseCount(CalculatorType::QUICK_MLP);
+    if (isNewData) {
+        calculatorConstructorUseCount = volumeData->getNewCalculatorUseCount(CalculatorType::QUICK_MLP);
+    }
 }
 
 void loadNetwork(

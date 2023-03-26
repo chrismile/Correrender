@@ -58,7 +58,9 @@ std::string NoiseReductionCalculator::getOutputFieldName() {
 
 void NoiseReductionCalculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
     Calculator::setVolumeData(_volumeData, isNewData);
-    calculatorConstructorUseCount = volumeData->getNewCalculatorUseCount(CalculatorType::NOISE_REDUCTION);
+    if (isNewData) {
+        calculatorConstructorUseCount = volumeData->getNewCalculatorUseCount(CalculatorType::NOISE_REDUCTION);
+    }
 
     scalarFieldNames = {};
     scalarFieldIndexArray = {};

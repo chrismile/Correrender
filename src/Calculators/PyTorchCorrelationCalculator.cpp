@@ -130,8 +130,6 @@ PyTorchCorrelationCalculator::PyTorchCorrelationCalculator(sgl::vk::Renderer* re
 }
 
 PyTorchCorrelationCalculator::~PyTorchCorrelationCalculator() {
-    calculatorConstructorUseCount = volumeData->getNewCalculatorUseCount(CalculatorType::TORCH);
-
     sgl::AppSettings::get()->getSettings().addKeyValue(
             "pyTorchCorrelationCalculatorModelFilePathEncoder", modelFilePathEncoder);
     sgl::AppSettings::get()->getSettings().addKeyValue(
@@ -161,6 +159,9 @@ PyTorchCorrelationCalculator::~PyTorchCorrelationCalculator() {
 
 void PyTorchCorrelationCalculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
     ICorrelationCalculator::setVolumeData(_volumeData, isNewData);
+    if (isNewData) {
+        calculatorConstructorUseCount = volumeData->getNewCalculatorUseCount(CalculatorType::TORCH);
+    }
 
     referenceCorrelationMembersCombinePass->setVolumeData(volumeData, getCorrelationMemberCount(), isNewData);
     correlationMembersCombinePass->setVolumeData(volumeData, getCorrelationMemberCount(), isNewData);

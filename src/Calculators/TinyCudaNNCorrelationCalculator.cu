@@ -93,7 +93,9 @@ TinyCudaNNCorrelationCalculator::~TinyCudaNNCorrelationCalculator() = default;
 
 void TinyCudaNNCorrelationCalculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
     DeepLearningCudaCorrelationCalculator::setVolumeData(_volumeData, isNewData);
-    calculatorConstructorUseCount = volumeData->getNewCalculatorUseCount(CalculatorType::TINY_CUDA_NN);
+    if (isNewData) {
+        calculatorConstructorUseCount = volumeData->getNewCalculatorUseCount(CalculatorType::TINY_CUDA_NN);
+    }
 }
 
 template<class T, class PARAMS_T> static void loadNetwork(
