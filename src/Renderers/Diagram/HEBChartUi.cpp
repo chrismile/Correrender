@@ -617,6 +617,17 @@ void HEBChart::update(float dt) {
     selectedPointIndices[1] = newSelectedPointIndices[1];
 }
 
+std::pair<float, float> HEBChart::getMinMaxCorrelationValue() {
+    float minValue = correlationValuesArray.empty() ? 0.0f : correlationValuesArray.front();
+    float maxValue = correlationValuesArray.empty() ? 0.0f : correlationValuesArray.back();
+    if (!useAbsoluteCorrelationMeasure && correlationMeasureType != CorrelationMeasureType::MUTUAL_INFORMATION_BINNED
+            && correlationMeasureType != CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV) {
+        maxValue = std::abs(maxValue);
+        minValue = -maxValue;
+    }
+    return std::make_pair(minValue, maxValue);
+}
+
 void HEBChart::renderBaseNanoVG() {
     DiagramBase::renderBaseNanoVG();
 
@@ -624,6 +635,7 @@ void HEBChart::renderBaseNanoVG() {
         updateData();
         dataDirty = false;
     }
+    auto [minMi, maxMi] = getMinMaxCorrelationValue();
 
     // Draw the B-spline curves.
     NVGcolor curveStrokeColor = nvgRGBA(
@@ -649,8 +661,6 @@ void HEBChart::renderBaseNanoVG() {
             if (colorByValue) {
                 float factor = 1.0f;
                 if (correlationValuesArray.size() > 1) {
-                    float maxMi = correlationValuesArray.back();
-                    float minMi = correlationValuesArray.front();
                     factor = (correlationValuesArray.at(lineIdx) - minMi) / (maxMi - minMi);
                 }
                 HEBChartFieldData* fieldData = fieldDataArray.at(lineFieldIndexArray.at(lineIdx)).get();
@@ -659,8 +669,6 @@ void HEBChart::renderBaseNanoVG() {
             } else if (opacityByValue) {
                 float factor = 1.0f;
                 if (correlationValuesArray.size() > 1) {
-                    float maxMi = correlationValuesArray.back();
-                    float minMi = correlationValuesArray.front();
                     factor = (correlationValuesArray.at(lineIdx) - minMi) / (maxMi - minMi) * 0.75f + 0.25f;
                 }
                 curveStrokeColor.a = curveOpacity * factor;
@@ -686,8 +694,6 @@ void HEBChart::renderBaseNanoVG() {
             }
 
             if (colorByValue) {
-                float maxMi = correlationValuesArray.empty() ? 0.0f : correlationValuesArray.back();
-                float minMi = correlationValuesArray.empty() ? 0.0f : correlationValuesArray.front();
                 float factor = 1.0f;
                 if (correlationValuesArray.size() > 1) {
                     factor = (correlationValuesArray.at(selectedLineIdx) - minMi) / (maxMi - minMi);
@@ -964,6 +970,7 @@ void HEBChart::renderBaseSkia() {
         updateData();
         dataDirty = false;
     }
+    auto [minMi, maxMi] = getMinMaxCorrelationValue();
 
     SkPaint paint;
     static_cast<VectorBackendSkia*>(vectorBackend)->initializePaint(&paint);
@@ -995,8 +1002,6 @@ void HEBChart::renderBaseSkia() {
             if (colorByValue) {
                 float factor = 1.0f;
                 if (correlationValuesArray.size() > 1) {
-                    float maxMi = correlationValuesArray.back();
-                    float minMi = correlationValuesArray.front();
                     factor = (correlationValuesArray.at(lineIdx) - minMi) / (maxMi - minMi);
                 }
                 HEBChartFieldData* fieldData = fieldDataArray.at(lineFieldIndexArray.at(lineIdx)).get();
@@ -1005,8 +1010,6 @@ void HEBChart::renderBaseSkia() {
             } else if (opacityByValue) {
                 float factor = 1.0f;
                 if (correlationValuesArray.size() > 1) {
-                    float maxMi = correlationValuesArray.back();
-                    float minMi = correlationValuesArray.front();
                     factor = (correlationValuesArray.at(lineIdx) - minMi) / (maxMi - minMi) * 0.75f + 0.25f;
                 }
                 curveStrokeColor.setFloatA(curveOpacity * factor);
@@ -1029,8 +1032,6 @@ void HEBChart::renderBaseSkia() {
             }
 
             if (colorByValue) {
-                float maxMi = correlationValuesArray.empty() ? 0.0f : correlationValuesArray.back();
-                float minMi = correlationValuesArray.empty() ? 0.0f : correlationValuesArray.front();
                 float factor = 1.0f;
                 if (correlationValuesArray.size() > 1) {
                     factor = (correlationValuesArray.at(selectedLineIdx) - minMi) / (maxMi - minMi);
@@ -1302,6 +1303,7 @@ void HEBChart::renderBaseVkvg() {
         updateData();
         dataDirty = false;
     }
+    auto [minMi, maxMi] = getMinMaxCorrelationValue();
 
     // Draw the B-spline curves.
     sgl::Color curveStrokeColor = sgl::Color(100, 255, 100, 255);
@@ -1310,8 +1312,6 @@ void HEBChart::renderBaseVkvg() {
         vkvg_set_source_color(context, curveStrokeColor.getColorRGBA());
 
         if (colorByValue || opacityByValue) {
-            float maxMi = correlationValuesArray.empty() ? 0.0f : correlationValuesArray.back();
-            float minMi = correlationValuesArray.empty() ? 0.0f : correlationValuesArray.front();
             for (int lineIdx = 0; lineIdx < numLinesTotal; lineIdx++) {
                 if (lineIdx == selectedLineIdx) {
                     continue;
@@ -1369,8 +1369,6 @@ void HEBChart::renderBaseVkvg() {
         if (selectedLineIdx >= 0) {
             vkvg_set_line_width(context, curveThickness * 2.0f * s);
             if (colorByValue) {
-                float maxMi = correlationValuesArray.empty() ? 0.0f : correlationValuesArray.back();
-                float minMi = correlationValuesArray.empty() ? 0.0f : correlationValuesArray.front();
                 float factor = 1.0f;
                 if (correlationValuesArray.size() > 1) {
                     factor = (correlationValuesArray.at(selectedLineIdx) - minMi) / (maxMi - minMi);
@@ -1686,8 +1684,7 @@ void HEBChart::drawColorLegends() {
         numFieldsSize++;
     }
 
-    float maxMi = correlationValuesArray.empty() ? 0.0f : correlationValuesArray.back();
-    float minMi = correlationValuesArray.empty() ? 0.0f : correlationValuesArray.front();
+    auto [minMi, maxMi] = getMinMaxCorrelationValue();
     for (int i = 0; i < numFieldsSize; i++) {
         int ix = numFieldsSize - i;
         HEBChartFieldData* fieldData = nullptr;

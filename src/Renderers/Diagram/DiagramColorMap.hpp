@@ -37,11 +37,15 @@
 enum class DiagramColorMap {
     VIRIDIS, HEATMAP, CIVIDIS, GRAY,
     SPRING, SUMMER, AUTUMN, WINTER, COOL, WISTIA,
+    COOL_TO_WARM, //< Diverging.
+    PIYG, PRGN, BRBG, PUOR, RDGY, RDBU, RDYLBU, RDYLGN, SPECTRAL, COOLWARM, BWR, SEISMIC, //< Diverging from Matplotlib.
     NEON_GREENS, NEON_GREEN, NEON_RED, NEON_BLUE, NEON_ORANGE
 };
 const char* const DIAGRAM_COLOR_MAP_NAMES[] = {
         "Viridis", "Heatmap", "Cividis", "Gray",
         "Spring", "Summer", "Autumn", "Winter", "Cool", "Wistia",
+        "Cool to Warm",
+        "PiYG", "PRGn", "BrBG", "PuOr", "RdGy", "RdBu", "RdYlBu", "RdYlGn", "Spectral", "Coolwarm", "bwr", "Seismic",
         "Neon Greens", "Neon Green", "Neon Red", "Neon Blue", "Neon Orange"
 };
 const int NUM_COLOR_MAPS = ((int)(sizeof(DIAGRAM_COLOR_MAP_NAMES) / sizeof(*(DIAGRAM_COLOR_MAP_NAMES))));

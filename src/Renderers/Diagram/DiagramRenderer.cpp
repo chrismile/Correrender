@@ -75,6 +75,7 @@ void DiagramRenderer::initialize() {
         parentDiagram->setGlobalStdDevRangeQueryCallback([this](int idx) { return computeGlobalStdDevRange(idx); });
         parentDiagram->setColorMapVariance(colorMapVariance);
         parentDiagram->setCorrelationMeasureType(correlationMeasureType);
+        parentDiagram->setUseAbsoluteCorrelationMeasure(useAbsoluteCorrelationMeasure);
         parentDiagram->setNumBins(numBins);
         parentDiagram->setKraskovNumNeighbors(k);
         parentDiagram->setSamplingMethodType(samplingMethodType);
@@ -168,6 +169,7 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
         parentDiagram->setColorMapVariance(colorMapVariance);
         parentDiagram->setIsEnsembleMode(isEnsembleMode);
         parentDiagram->setCorrelationMeasureType(correlationMeasureType);
+        parentDiagram->setUseAbsoluteCorrelationMeasure(useAbsoluteCorrelationMeasure);
         parentDiagram->setNumBins(numBins);
         parentDiagram->setKraskovNumNeighbors(k);
         parentDiagram->setSamplingMethodType(samplingMethodType);
@@ -327,7 +329,7 @@ void DiagramRenderer::resetSelections(int idx) {
             diagram->setDownscalingFactors(dfx, dfy, dfz);
             diagram->setRegions(selectedRegionStack.at(idx - 1));
             diagram->clearScalarFields();
-            if (showOnlySelectedVariableInFocusDiagrams) {
+            if (showOnlySelectedVariableInFocusDiagrams && parentDiagram->getHasFocusSelectionField()) {
                 // TODO: Also on update!
                 diagram->setShowVariablesForFieldIdxOnly(parentDiagram->getFocusSelectionFieldIndex());
             } else {
@@ -343,6 +345,7 @@ void DiagramRenderer::resetSelections(int idx) {
             diagram->setColorMapVariance(colorMapVariance);
             diagram->setIsEnsembleMode(isEnsembleMode);
             diagram->setCorrelationMeasureType(correlationMeasureType);
+            diagram->setUseAbsoluteCorrelationMeasure(useAbsoluteCorrelationMeasure);
             diagram->setNumBins(numBins);
             diagram->setKraskovNumNeighbors(k);
             diagram->setSamplingMethodType(samplingMethodType);
@@ -819,6 +822,22 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         reRenderTriggeredByDiagram = true;
     }
 
+    if (correlationMeasureType != CorrelationMeasureType::MUTUAL_INFORMATION_BINNED
+            && correlationMeasureType != CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV
+            && propertyEditor.addCheckbox("Absolute Correlations", &useAbsoluteCorrelationMeasure)) {
+        for (auto& diagram : diagrams) {
+            diagram->setUseAbsoluteCorrelationMeasure(useAbsoluteCorrelationMeasure);
+        }
+        correlationRangeTotal = correlationRange = parentDiagram->getCorrelationRangeTotal();
+        for (auto& diagram : diagrams) {
+            diagram->setCorrelationRange(correlationRangeTotal);
+        }
+        resetSelections();
+        dirty = true;
+        reRender = true;
+        reRenderTriggeredByDiagram = true;
+    }
+
     if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED && propertyEditor.addSliderIntEdit(
             "#Bins", &numBins, 10, 100) == ImGui::EditMode::INPUT_FINISHED) {
         for (auto& diagram : diagrams) {
@@ -1014,6 +1033,7 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
             downscalingFactorY = downscalingFactorX;
             downscalingFactorZ = downscalingFactorX;
             parentDiagram->setDownscalingFactors(downscalingFactorX, downscalingFactorY, downscalingFactorZ);
+            cellDistanceRange = cellDistanceRangeTotal = parentDiagram->getCellDistanceRangeTotal();
             resetSelections();
             reRender = true;
             reRenderTriggeredByDiagram = true;
@@ -1050,6 +1070,7 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         downscalingFactorZ = dfs[2];
         if (downscalingChanged == ImGui::EditMode::INPUT_FINISHED) {
             parentDiagram->setDownscalingFactors(downscalingFactorX, downscalingFactorY, downscalingFactorZ);
+            cellDistanceRange = cellDistanceRangeTotal = parentDiagram->getCellDistanceRangeTotal();
             resetSelections();
             reRender = true;
             reRenderTriggeredByDiagram = true;

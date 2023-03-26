@@ -32,7 +32,6 @@
 #include <chrono>
 
 //#define USE_TBB
-
 #ifdef USE_TBB
 #include <tbb/parallel_for.h>
 #include <tbb/parallel_reduce.h>
@@ -189,6 +188,11 @@ void HEBChart::setCorrelationMeasureType(CorrelationMeasureType _correlationMeas
     dataDirty = true;
 }
 
+void HEBChart::setUseAbsoluteCorrelationMeasure(bool _useAbsoluteCorrelationMeasure) {
+    useAbsoluteCorrelationMeasure = _useAbsoluteCorrelationMeasure;
+    dataDirty = true;
+}
+
 void HEBChart::setNumBins(int _numBins) {
     if (numBins != _numBins) {
         numBins = _numBins;
@@ -247,6 +251,9 @@ glm::vec2 HEBChart::getCorrelationRangeTotal() {
         int cs = getCorrelationMemberCount();
         correlationRangeTotal.x = 0.0f;
         correlationRangeTotal.y = computeMaximumMutualInformationKraskov(k, cs);
+    } else if (useAbsoluteCorrelationMeasure) {
+        correlationRangeTotal.x = 0.0f;
+        correlationRangeTotal.y = 1.0f;
     } else {
         correlationRangeTotal.x = -1.0f;
         correlationRangeTotal.y = 1.0f;
@@ -475,6 +482,10 @@ void HEBChart::computeDownscaledFieldVariance(HEBChartFieldData* fieldData, int 
 #endif
 }
 
+bool comparatorAbs(float x, float y) {
+    return std::abs(x) < std::abs(y);
+}
+
 void HEBChart::computeCorrelations(
         HEBChartFieldData* fieldData,
         std::vector<float*>& downscaledFields0, std::vector<float*>& downscaledFields1,
@@ -494,16 +505,37 @@ void HEBChart::computeCorrelations(
     std::cout << "Elapsed time correlations: " << elapsedTime.count() << "ms" << std::endl;
 
     //auto startTimeSort = std::chrono::system_clock::now();
+    if (useAbsoluteCorrelationMeasure || correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED
+            || correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV) {
 #ifdef USE_TBB
-    tbb::parallel_sort(miFieldEntries.begin(), miFieldEntries.end());
+        tbb::parallel_sort(miFieldEntries.begin(), miFieldEntries.end());
 //#elif __cpp_lib_parallel_algorithm >= 201603L
     //std::sort(std::execution::par_unseq, miFieldEntries.begin(), miFieldEntries.end());
 #else
-    std::sort(miFieldEntries.begin(), miFieldEntries.end());
+        std::sort(miFieldEntries.begin(), miFieldEntries.end());
 #endif
+    } else {
+#ifdef USE_TBB
+        tbb::parallel_sort(miFieldEntries.begin(), miFieldEntries.end(), [](const MIFieldEntry& x, const MIFieldEntry& y) {
+            return std::abs(x.correlationValue) > std::abs(y.correlationValue);
+        });
+//#elif __cpp_lib_parallel_algorithm >= 201603L
+    //std::sort(std::execution::par_unseq, miFieldEntries.begin(), miFieldEntries.end());
+#else
+        std::sort(miFieldEntries.begin(), miFieldEntries.end(), [](const MIFieldEntry& x, const MIFieldEntry& y) {
+            return std::abs(x.correlationValue) > std::abs(y.correlationValue);
+        });
+#endif
+    }
     //auto endTimeSort = std::chrono::system_clock::now();
     //auto elapsedTimeSort = std::chrono::duration_cast<std::chrono::milliseconds>(endTimeSort - startTimeSort);
     //std::cout << "Elapsed time sort: " << elapsedTimeSort.count() << "ms" << std::endl;
+
+    for (size_t i = 0; i < miFieldEntries.size(); i++) {
+        if (miFieldEntries.at(i).correlationValue < -0.1f) {
+            std::cout << "HERE: " << i << std::endl;
+        }
+    }
 }
 
 
@@ -651,6 +683,9 @@ void HEBChart::computeCorrelationsMean(
                     } else if (cmt == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV) {
                         correlationValue = computeMutualInformationKraskov<double>(
                                 X.data(), Y.data(), k, cs, kraskovEstimatorCache);
+                    }
+                    if (useAbsoluteCorrelationMeasure) {
+                        correlationValue = std::abs(correlationValue);
                     }
                     if (correlationValue < correlationRange.x || correlationValue > correlationRange.y) {
                         continue;
@@ -815,7 +850,11 @@ void HEBChart::computeCorrelationsSamplingCpu(
                             X.data(), Y.data(), k, cs, kraskovEstimatorCache);
                 }
                 if (std::abs(correlationValue) >= std::abs(correlationValueMax)) {
-                    correlationValueMax = correlationValue;
+                    if (useAbsoluteCorrelationMeasure) {
+                        correlationValueMax = std::abs(correlationValue);
+                    } else {
+                        correlationValueMax = correlationValue;
+                    }
                     isValidValue = true;
                 }
             }
@@ -1122,7 +1161,11 @@ void HEBChart::computeCorrelationsSamplingGpu(
                 for (int sampleIdx = 0; sampleIdx < numSamples; sampleIdx++) {
                     float correlationValue = correlationValues[requestIdx];
                     if (std::abs(correlationValue) >= std::abs(correlationValueMax)) {
-                        correlationValueMax = correlationValue;
+                        if (useAbsoluteCorrelationMeasure) {
+                            correlationValueMax = std::abs(correlationValue);
+                        } else {
+                            correlationValueMax = correlationValue;
+                        }
                         isValidValue = true;
                     }
                     requestIdx++;
@@ -1572,6 +1615,10 @@ int HEBChart::getLeafIdxGroup(int leafIdx) const {
         return 0;
     }
     return leafIdx >= int(leafIdxOffset1 - leafIdxOffset) ? 1 : 0;
+}
+
+bool HEBChart::getHasFocusSelectionField() {
+    return clickedLineIdx >= 0;
 }
 
 int HEBChart::getFocusSelectionFieldIndex() {

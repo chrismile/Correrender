@@ -120,6 +120,7 @@ public:
     void setColorMapVariance(DiagramColorMap _colorMap);
     void setIsEnsembleMode(bool _isEnsembleMode);
     void setCorrelationMeasureType(CorrelationMeasureType _correlationMeasureType);
+    void setUseAbsoluteCorrelationMeasure(bool _useAbsoluteCorrelationMeasure);
     void setNumBins(int _numBins);
     void setKraskovNumNeighbors(int _k);
     void setSamplingMethodType(SamplingMethodType _samplingMethodType);
@@ -165,6 +166,7 @@ public:
     [[nodiscard]] std::pair<GridRegion, GridRegion> getFocusSelection();
     [[nodiscard]] GridRegion getGridRegionPointIdx(int idx, uint32_t pointIdx);
     [[nodiscard]] int getLeafIdxGroup(int leafIdx) const;
+    [[nodiscard]] bool getHasFocusSelectionField();
     [[nodiscard]] int getFocusSelectionFieldIndex();
 
     // Range queries.
@@ -211,6 +213,7 @@ private:
 
     // Hierarchy data.
     CorrelationMeasureType correlationMeasureType = CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV;
+    bool useAbsoluteCorrelationMeasure = true; ///< For non-MI measures.
     int numBins = 80; ///< For CorrelationMeasureType::MUTUAL_INFORMATION_BINNED.
     int k = 3; ///< For CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV.
     SamplingMethodType samplingMethodType = SamplingMethodType::MEAN;
@@ -263,6 +266,7 @@ private:
     std::shared_ptr<CorrelationComputePass> correlationComputePass;
 
     // Field data.
+    std::pair<float, float> getMinMaxCorrelationValue();
     std::vector<HEBChartFieldDataPtr> fieldDataArray;
     // Lines (stored separately from field data, as lines should be rendered from lowest to highest value).
     std::vector<glm::vec2> curvePoints;

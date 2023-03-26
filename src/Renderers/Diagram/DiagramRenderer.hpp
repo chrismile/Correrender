@@ -106,6 +106,7 @@ private:
     bool desaturateUnselectedRing = true;
     bool isEnsembleMode = true; //< Ensemble or time mode?
     CorrelationMeasureType correlationMeasureType = CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV;
+    bool useAbsoluteCorrelationMeasure = true;
     int numBins = 80; ///< For CorrelationMeasureType::MUTUAL_INFORMATION_BINNED.
     int k = 3; ///< For CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV.
     int kMax = 20; ///< For CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV.
