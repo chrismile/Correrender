@@ -72,7 +72,7 @@ public:
 
     /// Returns whether ensemble or time correlation mode is used.
     [[nodiscard]] inline bool getIsEnsembleMode() const { return isEnsembleMode; }
-    int getCorrelationMemberCount();
+    [[nodiscard]] int getCorrelationMemberCount() const;
     HostCacheEntry getFieldEntryCpu(
             const std::string& fieldName, int fieldIdx, int timeStepIdx, int ensembleIdx);
     DeviceCacheEntry getFieldEntryDevice(
@@ -131,7 +131,7 @@ public:
         return outputFieldName;
     }
     void setVolumeData(VolumeData* _volumeData, bool isNewData) override;
-    [[nodiscard]] bool getIsRealtime() const override { return useGpu; }
+    [[nodiscard]] bool getIsRealtime() const override;
     FilterDevice getFilterDevice() override;
     [[nodiscard]] bool getHasFixedRange() const override {
         return correlationMeasureType != CorrelationMeasureType::MUTUAL_INFORMATION_BINNED
@@ -160,6 +160,7 @@ protected:
 
 private:
     std::shared_ptr<CorrelationComputePass> correlationComputePass;
+    int cachedMemberCount = 0;
     CorrelationMeasureType correlationMeasureType = CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV;
     bool useGpu = true;
     bool useCuda = false; ///< Currently only for CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV.

@@ -32,11 +32,11 @@
 #include <string>
 #include <memory>
 
+#include <Utils/SciVis/ScalarDataFormat.hpp>
+
 #ifdef SUPPORT_CUDA_INTEROP
 #include <Graphics/Vulkan/Utils/InteropCuda.hpp>
 #endif
-
-#include "ScalarDataFormat.hpp"
 
 namespace sgl { namespace vk {
 class Image;

@@ -65,6 +65,8 @@ ScalarDataFormat DeviceCacheEntryType::getScalarDataFormat() const {
         return ScalarDataFormat::BYTE;
     } else if (format == VK_FORMAT_R16_UNORM || format == VK_FORMAT_R16G16B16A16_UNORM) {
         return ScalarDataFormat::SHORT;
+    } else if (format == VK_FORMAT_R16_SFLOAT || format == VK_FORMAT_R16G16B16A16_SFLOAT) {
+        return ScalarDataFormat::FLOAT16;
     } else {
         sgl::Logfile::get()->throwError("Error in DeviceCacheEntryType::getScalarDataFormat: Invalid format.");
         return ScalarDataFormat::FLOAT;

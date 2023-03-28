@@ -925,7 +925,17 @@ void HEBChart::renderBaseNanoVG() {
         drawSelectionArrows();
     } else if (showSelectedRegionsByColor && isFocusView && !fieldDataArray.empty()) {
         glm::vec2 center(windowWidth / 2.0f, windowHeight / 2.0f);
-        auto* fieldData = fieldDataArray.front().get();
+        HEBChartFieldData* fieldData = nullptr;
+        if (limitedFieldIdx >= 0) {
+            for (auto& fieldDataIt : fieldDataArray) {
+                if (limitedFieldIdx == fieldDataIt->selectedFieldIdx) {
+                    fieldData = fieldDataIt.get();
+                    break;
+                }
+            }
+        } else {
+            fieldData = fieldDataArray.front().get();
+        }
         float rhi = totalRadius + std::max(totalRadius * 0.015f, 4.0f);
         for (int i = 0; i < 2; i++) {
             float angle0 = i == 0 ? fieldData->a00 : fieldData->a10;

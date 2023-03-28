@@ -27,6 +27,7 @@
  */
 
 #include <boost/algorithm/string/predicate.hpp>
+#include <boost/algorithm/string/case_conv.hpp>
 #include <json/json.h>
 
 #include <Utils/AppSettings.hpp>
@@ -190,6 +191,24 @@ void processDataSetNodeChildren(Json::Value& childList, DataSetInformation* data
         // Optional data: The scaling in y direction.
         if (source.isMember("heightscale")) {
             dataSetInformation->heightScale = source["heightscale"].asFloat();
+        }
+
+        // Optional data: Cast scalar data to a different format?
+        if (source.isMember("format_cast")) {
+            dataSetInformation->useFormatCast = true;
+            std::string formatString = boost::to_lower_copy(source["format_cast"].asString());
+            if (formatString == "float") {
+                dataSetInformation->formatTarget = ScalarDataFormat::FLOAT;
+            } else if (formatString == "short" || formatString == "ushort") {
+                dataSetInformation->formatTarget = ScalarDataFormat::SHORT;
+            } else if (formatString == "byte" || formatString == "ubyte") {
+                dataSetInformation->formatTarget = ScalarDataFormat::BYTE;
+            } else if (formatString == "float16" || formatString == "half") {
+                dataSetInformation->formatTarget = ScalarDataFormat::FLOAT16;
+            } else {
+                sgl::Logfile::get()->throwError(
+                        "Error in processDataSetNodeChildren: No match for provided format string.");
+            }
         }
 
         if (source.isMember("time")) {

@@ -916,7 +916,7 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
                                 minIndex = i;
                             }
                         }
-                        DiagramSelectedFieldData newFieldData( int(fieldIdx), text, DiagramColorMap(minIndex));
+                        DiagramSelectedFieldData newFieldData(int(fieldIdx), text, DiagramColorMap(minIndex));
 
                         bool foundInsertionPosition = false;
                         for (size_t i = 0; i < selectedScalarFields.size(); i++) {

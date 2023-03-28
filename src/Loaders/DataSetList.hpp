@@ -34,6 +34,7 @@
 #include <memory>
 
 #include <Math/Geometry/MatrixUtil.hpp>
+#include <Utils/SciVis/ScalarDataFormat.hpp>
 
 enum class DataSetType {
     NONE,
@@ -69,6 +70,8 @@ struct DataSetInformation {
     std::vector<std::string> attributeNames; ///< Names of the associated attributes.
     bool separateFilesPerAttribute = false;
     float heightScale = 1.0f;
+    bool useFormatCast = false;
+    ScalarDataFormat formatTarget = ScalarDataFormat::FLOAT;
 
     // Date can be left 0. It is used for GRIB files storing time in a date-time format.
     // E.g., "data_date": 20161002, "data_time": 600 can be used for 2016-10-02 6:00.

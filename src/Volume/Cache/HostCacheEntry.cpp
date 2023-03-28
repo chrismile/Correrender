@@ -27,9 +27,15 @@
  */
 
 #include <Utils/File/Logfile.hpp>
+
+#include "Loaders/half/half.h"
 #include "HostCacheEntry.hpp"
 
 HostCacheEntryType::~HostCacheEntryType() {
+    if (dataFloat) {
+        delete[] dataFloat;
+        dataFloat = nullptr;
+    }
     if (dataByte) {
         delete[] dataByte;
         dataByte = nullptr;
@@ -38,9 +44,9 @@ HostCacheEntryType::~HostCacheEntryType() {
         delete[] dataShort;
         dataShort = nullptr;
     }
-    if (dataFloat) {
-        delete[] dataFloat;
-        dataFloat = nullptr;
+    if (dataFloat16) {
+        delete[] dataFloat16;
+        dataFloat16 = nullptr;
     }
 }
 
@@ -51,8 +57,24 @@ const void* HostCacheEntryType::getDataNative() {
         return dataByte;
     } else if (scalarDataFormatNative == ScalarDataFormat::SHORT) {
         return dataShort;
+    } else if (scalarDataFormatNative == ScalarDataFormat::FLOAT16) {
+        return dataFloat16;
     } else {
         return nullptr;
+    }
+}
+
+void HostCacheEntryType::switchNativeFormat(ScalarDataFormat newNativeFormat) {
+    if (scalarDataFormatNative != ScalarDataFormat::FLOAT
+            || newNativeFormat != ScalarDataFormat::FLOAT16) {
+        sgl::Logfile::get()->throwError(
+                "Error in HostCacheEntryType::switchNativeFormat: "
+                "Currently, only switching from float to float16 is supported.");
+    }
+    scalarDataFormatNative = newNativeFormat;
+    dataFloat16 = new FLOAT16[numEntries];
+    for (size_t i = 0; i < numEntries; i++) {
+        dataFloat16[i] = FLOAT16::ToFloat16(dataFloat[i]);
     }
 }
 
@@ -68,6 +90,13 @@ const uint16_t* HostCacheEntryType::getDataShort() {
         sgl::Logfile::get()->throwError("Error in HostCacheEntryType::getDataByte: Native format is not short.");
     }
     return dataShort;
+}
+
+const FLOAT16* HostCacheEntryType::getDataFloat16() {
+    if (scalarDataFormatNative != ScalarDataFormat::FLOAT16) {
+        sgl::Logfile::get()->throwError("Error in HostCacheEntryType::getDataFloat16: Native format is not float16.");
+    }
+    return dataFloat16;
 }
 
 const float* HostCacheEntryType::getDataFloat() {
@@ -100,6 +129,23 @@ const float* HostCacheEntryType::getDataFloat() {
         for (size_t i = 0; i < numEntries; i++) {
 #endif
             dataFloat[i] = float(dataShort[i]) / 65535.0f;
+        }
+#ifdef USE_TBB
+        });
+#endif
+    }
+    if (!dataFloat && scalarDataFormatNative == ScalarDataFormat::FLOAT16) {
+        dataFloat = new float[numEntries];
+#ifdef USE_TBB
+        tbb::parallel_for(tbb::blocked_range<size_t>(0, numEntries), [&](auto const& r) {
+            for (auto i = r.begin(); i != r.end(); i++) {
+#else
+#if _OPENMP >= 201107
+        #pragma omp parallel for default(none) shared(numEntries)
+#endif
+        for (size_t i = 0; i < numEntries; i++) {
+#endif
+            dataFloat[i] = FLOAT16::ToFloat32(dataFloat16[i]);
         }
 #ifdef USE_TBB
         });

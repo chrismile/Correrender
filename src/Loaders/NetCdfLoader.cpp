@@ -445,7 +445,11 @@ bool NetCdfLoader::getFieldEntry(
     } else if (numDims == 4 && es > 1) {
         loadFloatArray3D(varid, memberIdx, zs, ys, xs, fieldEntryBuffer);
     }
+
     fieldEntry = new HostCacheEntryType(xs * ys * zs, fieldEntryBuffer);
+    if (dataSetInformation.useFormatCast) {
+        fieldEntry->switchNativeFormat(dataSetInformation.formatTarget);
+    }
 
     return true;
 }

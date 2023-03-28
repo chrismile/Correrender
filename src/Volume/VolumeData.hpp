@@ -131,6 +131,7 @@ public:
     void addField(float* fieldData, FieldType fieldType, const std::string& fieldName, int timeStepIdx, int ensembleIdx);
     void addField(uint8_t* fieldData, FieldType fieldType, const std::string& fieldName, int timeStepIdx, int ensembleIdx);
     void addField(uint16_t* fieldData, FieldType fieldType, const std::string& fieldName, int timeStepIdx, int ensembleIdx);
+    void addField(FLOAT16* fieldData, FieldType fieldType, const std::string& fieldName, int timeStepIdx, int ensembleIdx);
     void addField(
             void* fieldData, ScalarDataFormat dataFormat, FieldType fieldType,
             const std::string& fieldName, int timeStepIdx, int ensembleIdx);
@@ -151,7 +152,7 @@ public:
         size_t sizeInBytes = size_t(xs) * size_t(ys) * size_t(zs) * (fieldType == FieldType::SCALAR ? 1 : 3);
         if (dataFormat == ScalarDataFormat::FLOAT) {
             sizeInBytes *= sizeof(float);
-        } else if (dataFormat == ScalarDataFormat::SHORT) {
+        } else if (dataFormat == ScalarDataFormat::SHORT || dataFormat == ScalarDataFormat::FLOAT16) {
             sizeInBytes *= sizeof(uint16_t);
         }
         return sizeInBytes;

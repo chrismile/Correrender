@@ -31,26 +31,32 @@
 
 #include <memory>
 
-#include "ScalarDataFormat.hpp"
+#include <Utils/SciVis/ScalarDataFormat.hpp>
 
+class FLOAT16;
 class VolumeData;
 
 class HostCacheEntryType {
     friend class VolumeData;
 public:
+    explicit HostCacheEntryType(size_t numEntries, float* dataFloat)
+            : scalarDataFormatNative(ScalarDataFormat::FLOAT), numEntries(numEntries), dataFloat(dataFloat) {}
     explicit HostCacheEntryType(size_t numEntries, uint8_t* dataByte)
             : scalarDataFormatNative(ScalarDataFormat::BYTE), numEntries(numEntries), dataByte(dataByte) {}
     explicit HostCacheEntryType(size_t numEntries, uint16_t* dataShort)
             : scalarDataFormatNative(ScalarDataFormat::SHORT), numEntries(numEntries), dataShort(dataShort) {}
-    explicit HostCacheEntryType(size_t numEntries, float* dataFloat)
-            : scalarDataFormatNative(ScalarDataFormat::FLOAT), numEntries(numEntries), dataFloat(dataFloat) {}
+    explicit HostCacheEntryType(size_t numEntries, FLOAT16* dataFloat16)
+            : scalarDataFormatNative(ScalarDataFormat::FLOAT16), numEntries(numEntries), dataFloat16(dataFloat16) {}
     ~HostCacheEntryType();
 
     [[nodiscard]] ScalarDataFormat getScalarDataFormatNative() const { return scalarDataFormatNative; }
     [[nodiscard]] const void* getDataNative();
+    [[nodiscard]] const float* getDataFloat();
     [[nodiscard]] const uint8_t* getDataByte();
     [[nodiscard]] const uint16_t* getDataShort();
-    [[nodiscard]] const float* getDataFloat();
+    [[nodiscard]] const FLOAT16* getDataFloat16();
+
+    void switchNativeFormat(ScalarDataFormat newNativeFormat);
 
     /*template<class T>
     [[nodiscard]] inline const T* data() {
@@ -70,6 +76,10 @@ public:
     }*/
 
     template<class T>
+    [[nodiscard]] inline const typename std::enable_if<std::is_same<T, float>::value, T>::type* data() {
+        return getDataFloat();
+    }
+    template<class T>
     [[nodiscard]] inline const typename std::enable_if<std::is_same<T, uint8_t>::value, T>::type* data() {
         return getDataByte();
     }
@@ -78,16 +88,17 @@ public:
         return getDataShort();
     }
     template<class T>
-    [[nodiscard]] inline const typename std::enable_if<std::is_same<T, float>::value, T>::type* data() {
-        return getDataFloat();
+    [[nodiscard]] inline const typename std::enable_if<std::is_same<T, FLOAT16>::value, T>::type* data() {
+        return getDataFloat16();
     }
 
 private:
     ScalarDataFormat scalarDataFormatNative;
     size_t numEntries = 0;
+    float* dataFloat = nullptr;
     uint8_t* dataByte = nullptr;
     uint16_t* dataShort = nullptr;
-    float* dataFloat = nullptr;
+    FLOAT16* dataFloat16 = nullptr;
 };
 
 #endif //CORRERENDER_HOSTCACHEENTRY_HPP

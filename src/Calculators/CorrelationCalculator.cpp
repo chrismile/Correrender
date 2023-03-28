@@ -97,7 +97,7 @@ void ICorrelationCalculator::setVolumeData(VolumeData* _volumeData, bool isNewDa
     }
 }
 
-int ICorrelationCalculator::getCorrelationMemberCount() {
+int ICorrelationCalculator::getCorrelationMemberCount() const {
     return isEnsembleMode ? volumeData->getEnsembleMemberCount() : volumeData->getTimeStepCount();
 }
 
@@ -313,7 +313,9 @@ void CorrelationCalculator::setVolumeData(VolumeData* _volumeData, bool isNewDat
         calculatorConstructorUseCount = volumeData->getNewCalculatorUseCount(CalculatorType::CORRELATION);
     }
     correlationComputePass->setVolumeData(volumeData, getCorrelationMemberCount(), isNewData);
-    onCorrelationMemberCountChanged();
+    if (isNewData || cachedMemberCount != getCorrelationMemberCount()) {
+        onCorrelationMemberCountChanged();
+    }
 }
 
 void CorrelationCalculator::onCorrelationMemberCountChanged() {
@@ -322,10 +324,18 @@ void CorrelationCalculator::onCorrelationMemberCountChanged() {
     kMax = std::max(sgl::iceil(7 * cs, 100), 20);
     correlationComputePass->setCorrelationMemberCount(cs);
     correlationComputePass->setKraskovNumNeighbors(k);
+    cachedMemberCount = cs;
 }
 
 void CorrelationCalculator::clearFieldImageViews() {
     correlationComputePass->setFieldImageViews({});
+}
+
+bool CorrelationCalculator::getIsRealtime() const {
+    if (!useGpu) {
+        return false;
+    }
+    return correlationMeasureType == CorrelationMeasureType::PEARSON || getCorrelationMemberCount() < 200;
 }
 
 FilterDevice CorrelationCalculator::getFilterDevice() {

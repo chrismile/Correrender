@@ -53,6 +53,7 @@
 #endif
 
 #include "Loaders/DataSet.hpp"
+#include "Loaders/half/half.h"
 #include "Loaders/VolumeLoader.hpp"
 #include "Loaders/AmiraMeshLoader.hpp"
 #include "Loaders/DatRawFileLoader.hpp"
@@ -308,7 +309,14 @@ static void addFieldGlobal(
         }
         if (fieldType == FieldType::SCALAR) {
             auto* scalarFieldCopy = new T[ssxs * ssys * sszs];
-            memcpy(scalarFieldCopy, fieldData, sizeof(T) * ssxs * ssys * sszs);
+            if constexpr(std::is_same<T, FLOAT16>()) {
+                size_t bufferSize = ssxs * ssys * sszs;
+                for (size_t i = 0; i < bufferSize; i++) {
+                    scalarFieldCopy[i] = fieldData[i];
+                }
+            } else {
+                memcpy(scalarFieldCopy, fieldData, sizeof(T) * ssxs * ssys * sszs);
+            }
 #ifdef USE_TBB
             tbb::parallel_for(tbb::blocked_range<int>(0, sszs), [&](auto const& r) {
                 for (auto z = r.begin(); z != r.end(); z++) {
@@ -332,7 +340,14 @@ static void addFieldGlobal(
             delete[] scalarFieldCopy;
         } else {
             auto* vectorFieldCopy = new T[3 * ssxs * ssys * sszs];
-            memcpy(vectorFieldCopy, fieldData, sizeof(T) * 3 * ssxs * ssys * sszs);
+            if constexpr(std::is_same<T, FLOAT16>()) {
+                size_t bufferSize = 3 * ssxs * ssys * sszs;
+                for (size_t i = 0; i < bufferSize; i++) {
+                    vectorFieldCopy[i] = fieldData[i];
+                }
+            } else {
+                memcpy(vectorFieldCopy, fieldData, sizeof(T) * 3 * ssxs * ssys * sszs);
+            }
 #ifdef USE_TBB
             tbb::parallel_for(tbb::blocked_range<int>(0, sszs), [&](auto const& r) {
                 for (auto z = r.begin(); z != r.end(); z++) {
@@ -431,6 +446,8 @@ static void addFieldGlobal(
         access.sizeInBytes /= 4;
     } else if constexpr(std::is_same<T, uint16_t>()) {
         access.sizeInBytes /= 2;
+    } else if constexpr(std::is_same<T, FLOAT16>()) {
+        access.sizeInBytes /= 2;
     }
 
     size_t numEntries = 0;
@@ -466,6 +483,13 @@ void VolumeData::addField(
 }
 
 void VolumeData::addField(
+        FLOAT16* fieldData, FieldType fieldType, const std::string& fieldName, int timeStepIdx, int ensembleIdx) {
+    addFieldGlobal(
+            fieldData, fieldType, fieldName, timeStepIdx, ensembleIdx,
+            xs, ys, zs, ssxs, ssys, sszs, subsamplingFactor, transpose, transposeAxes, this, hostFieldCache.get());
+}
+
+void VolumeData::addField(
         void* fieldData, ScalarDataFormat dataFormat, FieldType fieldType,
         const std::string& fieldName, int timeStepIdx, int ensembleIdx) {
     if (separateFilesPerAttribute) {
@@ -476,6 +500,8 @@ void VolumeData::addField(
             addField(static_cast<uint8_t*>(fieldData), fieldType, attributeName, timeStepIdx, ensembleIdx);
         } else if (dataFormat == ScalarDataFormat::SHORT) {
             addField(static_cast<uint16_t*>(fieldData), fieldType, attributeName, timeStepIdx, ensembleIdx);
+        } else if (dataFormat == ScalarDataFormat::FLOAT16) {
+            addField(static_cast<FLOAT16*>(fieldData), fieldType, attributeName, timeStepIdx, ensembleIdx);
         }
     } else {
         if (dataFormat == ScalarDataFormat::FLOAT) {
@@ -484,6 +510,8 @@ void VolumeData::addField(
             addField(static_cast<uint8_t*>(fieldData), fieldType, fieldName, timeStepIdx, ensembleIdx);
         } else if (dataFormat == ScalarDataFormat::SHORT) {
             addField(static_cast<uint16_t*>(fieldData), fieldType, fieldName, timeStepIdx, ensembleIdx);
+        } else if (dataFormat == ScalarDataFormat::FLOAT16) {
+            addField(static_cast<FLOAT16*>(fieldData), fieldType, fieldName, timeStepIdx, ensembleIdx);
         }
     }
 }
@@ -619,19 +647,23 @@ bool VolumeData::setInputFiles(
 
     const auto& scalarFieldNames = typeToFieldNamesMap[FieldType::SCALAR];
     multiVarTransferFunctionWindow.setRequestAttributeValuesCallback([this](
-            int varIdx, const void** values, int* nb, size_t& numValues, float& minValue, float& maxValue) {
+            int varIdx, const void** values, ScalarDataFormat* fmt, size_t& numValues, float& minValue, float& maxValue) {
         std::string fieldName = typeToFieldNamesMap[FieldType::SCALAR].at(varIdx);
-        if (values && nb) {
+        if (values && fmt) {
             HostCacheEntry cacheEntry = this->getFieldEntryCpu(FieldType::SCALAR, fieldName);
-            if (cacheEntry->getScalarDataFormatNative() == ScalarDataFormat::BYTE) {
+            if (cacheEntry->getScalarDataFormatNative() == ScalarDataFormat::FLOAT) {
+                *values = cacheEntry->data<float>();
+                *fmt = ScalarDataFormat::FLOAT;
+            } else if (cacheEntry->getScalarDataFormatNative() == ScalarDataFormat::BYTE) {
                 *values = cacheEntry->data<uint8_t>();
-                *nb = 1;
+                *fmt = ScalarDataFormat::BYTE;
             } else if (cacheEntry->getScalarDataFormatNative() == ScalarDataFormat::SHORT) {
                 *values = cacheEntry->data<uint16_t>();
-                *nb = 2;
-            } else if (cacheEntry->getScalarDataFormatNative() == ScalarDataFormat::FLOAT) {
+                *fmt = ScalarDataFormat::SHORT;
+            } else if (cacheEntry->getScalarDataFormatNative() == ScalarDataFormat::FLOAT16) {
+                // TODO: Change once support for float16 has been added to sgl.
                 *values = cacheEntry->data<float>();
-                *nb = 4;
+                *fmt = ScalarDataFormat::FLOAT;
             }
         }
         numValues = this->getSlice3dEntryCount();
@@ -712,7 +744,14 @@ FieldAccess VolumeData::createFieldAccessStruct(
 template<class T>
 static void transposeScalarField(T* fieldEntryBuffer, int ssxs, int ssys, int sszs) {
     auto* scalarFieldCopy = new T[ssxs * ssys * sszs];
-    memcpy(scalarFieldCopy, fieldEntryBuffer, sizeof(T) * ssxs * ssys * sszs);
+    if constexpr(std::is_same<T, FLOAT16>()) {
+        size_t bufferSize = ssxs * ssys * sszs;
+        for (size_t i = 0; i < bufferSize; i++) {
+            scalarFieldCopy[i] = fieldEntryBuffer[i];
+        }
+    } else {
+        memcpy(scalarFieldCopy, fieldEntryBuffer, sizeof(T) * ssxs * ssys * sszs);
+    }
 #ifdef USE_TBB
     tbb::parallel_for(tbb::blocked_range<int>(0, sszs), [&](auto const& r) {
         for (auto z = r.begin(); z != r.end(); z++) {
@@ -739,7 +778,14 @@ static void transposeScalarField(T* fieldEntryBuffer, int ssxs, int ssys, int ss
 template<class T>
 static void transposeVectorField(T* fieldEntryBuffer, int ssxs, int ssys, int sszs) {
     auto* vectorFieldCopy = new T[3 * ssxs * ssys * sszs];
-    memcpy(vectorFieldCopy, fieldEntryBuffer, sizeof(T) * 3 * ssxs * ssys * sszs);
+    if constexpr(std::is_same<T, FLOAT16>()) {
+        size_t bufferSize = 3 * ssxs * ssys * sszs;
+        for (size_t i = 0; i < bufferSize; i++) {
+            vectorFieldCopy[i] = fieldEntryBuffer[i];
+        }
+    } else {
+        memcpy(vectorFieldCopy, fieldEntryBuffer, sizeof(T) * 3 * ssxs * ssys * sszs);
+    }
 #ifdef USE_TBB
     tbb::parallel_for(tbb::blocked_range<int>(0, sszs), [&](auto const& r) {
         for (auto z = r.begin(); z != r.end(); z++) {
@@ -860,6 +906,8 @@ VolumeData::HostCacheEntry VolumeData::getFieldEntryCpu(
                     transposeScalarField(fieldEntry->dataByte, ssxs, ssys, sszs);
                 } else if (fieldEntry->getScalarDataFormatNative() == ScalarDataFormat::SHORT) {
                     transposeScalarField(fieldEntry->dataShort, ssxs, ssys, sszs);
+                } else if (fieldEntry->getScalarDataFormatNative() == ScalarDataFormat::FLOAT16) {
+                    transposeScalarField(fieldEntry->dataFloat16, ssxs, ssys, sszs);
                 }
             } else {
                 if (fieldEntry->getScalarDataFormatNative() == ScalarDataFormat::FLOAT) {
@@ -868,6 +916,8 @@ VolumeData::HostCacheEntry VolumeData::getFieldEntryCpu(
                     transposeVectorField(fieldEntry->dataByte, ssxs, ssys, sszs);
                 } else if (fieldEntry->getScalarDataFormatNative() == ScalarDataFormat::SHORT) {
                     transposeVectorField(fieldEntry->dataShort, ssxs, ssys, sszs);
+                } else if (fieldEntry->getScalarDataFormatNative() == ScalarDataFormat::FLOAT16) {
+                    transposeVectorField(fieldEntry->dataFloat16, ssxs, ssys, sszs);
                 }
             }
         }
@@ -894,7 +944,7 @@ VolumeData::DeviceCacheEntry VolumeData::getFieldEntryDevice(
         scalarDataFormat = bufferCpu->getScalarDataFormatNative();
         if (scalarDataFormat == ScalarDataFormat::BYTE) {
             access.sizeInBytes /= 4;
-        } else if (scalarDataFormat == ScalarDataFormat::SHORT) {
+        } else if (scalarDataFormat == ScalarDataFormat::SHORT || scalarDataFormat == ScalarDataFormat::FLOAT16) {
             access.sizeInBytes /= 2;
         }
     }
@@ -918,6 +968,8 @@ VolumeData::DeviceCacheEntry VolumeData::getFieldEntryDevice(
         imageSettings.format = fieldType == FieldType::SCALAR ? VK_FORMAT_R8_UNORM : VK_FORMAT_R8G8B8A8_UNORM;
     } else if (scalarDataFormat == ScalarDataFormat::SHORT) {
         imageSettings.format = fieldType == FieldType::SCALAR ? VK_FORMAT_R16_UNORM : VK_FORMAT_R16G16B16A16_UNORM;
+    } else if (scalarDataFormat == ScalarDataFormat::FLOAT16) {
+        imageSettings.format = fieldType == FieldType::SCALAR ? VK_FORMAT_R16_SFLOAT : VK_FORMAT_R16G16B16A16_SFLOAT;
     }
     imageSettings.tiling = VK_IMAGE_TILING_OPTIMAL;
     imageSettings.usage =
@@ -1019,6 +1071,30 @@ VolumeData::DeviceCacheEntry VolumeData::getFieldEntryDevice(
 #endif
                 image->uploadData(bufferEntriesCount * 4 * sizeof(uint16_t), bufferPadded);
                 delete[] bufferPadded;
+            } else if (scalarDataFormat == ScalarDataFormat::FLOAT16) {
+                const FLOAT16* bufferIn = bufferCpu->data<FLOAT16>();
+                auto* bufferPadded = new FLOAT16[bufferEntriesCount * 4];
+#ifdef USE_TBB
+                tbb::parallel_for(tbb::blocked_range<size_t>(0, bufferEntriesCount), [&](auto const& r) {
+                    for (auto i = r.begin(); i != r.end(); i++) {
+#else
+#if _OPENMP >= 200805
+                #pragma omp parallel for shared(bufferEntriesCount, bufferPadded, bufferIn) default(none)
+#endif
+                for (size_t i = 0; i < bufferEntriesCount; i++) {
+#endif
+                    size_t iPadded = i * 4;
+                    size_t iIn = i * 3;
+                    bufferPadded[iPadded] = bufferIn[iIn];
+                    bufferPadded[iPadded + 1] = bufferIn[iIn + 1];
+                    bufferPadded[iPadded + 2] = bufferIn[iIn + 2];
+                    bufferPadded[iPadded + 3] = 0.0f;
+                }
+#ifdef USE_TBB
+                });
+#endif
+                image->uploadData(bufferEntriesCount * 4 * sizeof(FLOAT16), bufferPadded);
+                delete[] bufferPadded;
             }
         }
     }
@@ -1053,6 +1129,9 @@ std::pair<float, float> VolumeData::getMinMaxScalarFieldValue(
         minMaxVal = sgl::reduceUnormByteArrayMinMax(scalarValues->data<uint8_t>(), getSlice3dEntryCount());
     } else if (scalarValues->getScalarDataFormatNative() == ScalarDataFormat::SHORT) {
         minMaxVal = sgl::reduceUnormShortArrayMinMax(scalarValues->data<uint16_t>(), getSlice3dEntryCount());
+    } else if (scalarValues->getScalarDataFormatNative() == ScalarDataFormat::FLOAT16) {
+        // TODO: Change once support for float16 has been added to sgl.
+        minMaxVal = sgl::reduceFloatArrayMinMax(scalarValues->data<float>(), getSlice3dEntryCount());
     }
 
     // Is this a divergent scalar field? If yes, the transfer function etc. should be centered at zero.
