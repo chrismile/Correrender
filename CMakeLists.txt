@@ -559,3 +559,7 @@ if ("SUPPORT_CUDA_INTEROP" IN_LIST SGL_INTERFACE_COMPILE_DEFINITIONS AND NOT MSY
     add_custom_target(COMPILE_CUDA_MODULES ALL DEPENDS ${CUDA_FATBIN_FILES})
     add_dependencies(${CMAKE_PROJECT_NAME} COMPILE_CUDA_MODULES)
 endif()
+
+# include directories and linking for limbo
+find_package(Eigen3 REQUIRED)
+target_include_directories(Correrender PRIVATE "third_party/limbo/src/" ${EIGEN3_INCLUDE_DIR})

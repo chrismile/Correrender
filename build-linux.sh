@@ -33,6 +33,14 @@ PROJECTPATH="$SCRIPTPATH"
 pushd $SCRIPTPATH > /dev/null
 
 debug=false
+
+if (($# > 0)); then
+    command_line=$1
+    if [ "$command_line" = "debug" ]; then
+        debug=true
+    fi
+fi
+
 build_dir_debug=".build_debug"
 build_dir_release=".build_release"
 if [ $debug = true ]; then
@@ -123,13 +131,13 @@ if command -v apt &> /dev/null; then
             || ! is_installed_apt "python3-dev" || ! is_installed_apt "python3-numpy" \
             || ! is_installed_apt "libblosc-dev" || ! is_installed_apt "libnetcdf-dev" \
             || ! is_installed_apt "libeccodes-dev" || ! is_installed_apt "libeccodes-tools" \
-            || ! is_installed_apt "libopenjp2-7-dev"; then
+            || ! is_installed_apt "libopenjp2-7-dev" || ! is_installed_apt "libeigen3-dev"; then
         echo "------------------------"
         echo "installing dependencies "
         echo "------------------------"
         sudo apt install -y libglm-dev libsdl2-dev libsdl2-image-dev libpng-dev libboost-filesystem-dev libtinyxml2-dev \
         libarchive-dev libglew-dev opencl-c-headers ocl-icd-opencl-dev libjsoncpp-dev nlohmann-json3-dev python3-dev \
-        python3-numpy libnetcdf-dev libblosc-dev libeccodes-dev libeccodes-tools libopenjp2-7-dev
+        python3-numpy libnetcdf-dev libblosc-dev libeccodes-dev libeccodes-tools libopenjp2-7-dev libeigen3-dev
     fi
 elif command -v pacman &> /dev/null; then
     if ! command -v cmake &> /dev/null || ! command -v git &> /dev/null || ! command -v curl &> /dev/null \
@@ -150,12 +158,13 @@ elif command -v pacman &> /dev/null; then
             || ! is_installed_pacman "ocl-icd" \
             || ! is_installed_pacman "python3" || ! is_installed_pacman "python-numpy" \
             || ! is_installed_pacman "nlohmann-json" || ! is_installed_pacman "jsoncpp" \
-            || ! is_installed_pacman "blosc" || ! is_installed_pacman "netcdf"; then
+            || ! is_installed_pacman "blosc" || ! is_installed_pacman "netcdf" \
+            || ! is_installed_pacman "eigen"; then
         echo "------------------------"
         echo "installing dependencies "
         echo "------------------------"
         sudo pacman -S boost libarchive glm tinyxml2 sdl2 sdl2_image glew vulkan-devel shaderc opencl-headers ocl-icd \
-        python3 python-numpy nlohmann-json jsoncpp blosc netcdf
+        python3 python-numpy nlohmann-json jsoncpp blosc netcdf eigen
     fi
     if command -v yay &> /dev/null && ! is_installed_yay "eccodes"; then
         yay -S eccodes
@@ -180,13 +189,13 @@ elif command -v yum &> /dev/null; then
             || ! is_installed_rpm "python3-devel" || ! is_installed_rpm "python3-numpy" \
             || ! is_installed_rpm "json-devel" || ! is_installed_rpm "jsoncpp-devel" \
             || ! is_installed_rpm "blosc-devel" || ! is_installed_rpm "netcdf-devel" \
-            || ! is_installed_rpm "eccodes-devel"; then
+            || ! is_installed_rpm "eccodes-devel" || ! is_installed_rpm "libeigen3-devel"; then
         echo "------------------------"
         echo "installing dependencies "
         echo "------------------------"
         sudo yum install -y boost-devel libarchive-devel glm-devel tinyxml2-devel SDL2-devel SDL2_image-devel \
         libpng-devel glew-devel vulkan-headers libshaderc-devel opencl-headers ocl-icd python3-devel python3-numpy \
-        json-devel jsoncpp-devel blosc-devel netcdf-devel eccodes-devel
+        json-devel jsoncpp-devel blosc-devel netcdf-devel eccodes-devel libeigen3-devel
     fi
 else
     echo "Warning: Unsupported system package manager detected." >&2
@@ -479,7 +488,8 @@ if $build_with_cuda_support; then
     fi
 fi
 
-if $build_with_skia_support; then
+#if $build_with_skia_support; then
+if false; then
     if $skia_link_dynamically; then
         out_dir="out/Shared"
     else
@@ -529,6 +539,13 @@ if $build_with_vkvg_support; then
         params+=(-Dvkvg_DIR="${PROJECTPATH}/third_party/vkvg")
         popd >/dev/null
     fi
+fi
+
+if [ ! -d "${PROJECTPATH}/third_party/limbo" ]; then
+    echo "------------------------"
+    echo "    downloading limbo   "
+    echo "------------------------"
+    git clone --recursive https://github.com/resibots/limbo.git "${PROJECTPATH}/third_party/limbo" 
 fi
 
 popd >/dev/null # back to project root
@@ -636,11 +653,11 @@ chmod +x "$destination_dir/run.sh"
 # Run the program as the last step.
 echo ""
 echo "All done!"
-pushd $build_dir >/dev/null
-
-if [[ -z "${LD_LIBRARY_PATH+x}" ]]; then
-    export LD_LIBRARY_PATH="${PROJECTPATH}/third_party/sgl/install/lib"
-elif [[ ! "${LD_LIBRARY_PATH}" == *"${PROJECTPATH}/third_party/sgl/install/lib"* ]]; then
-    export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:${PROJECTPATH}/third_party/sgl/install/lib"
-fi
-./Correrender
+#pushd $build_dir >/dev/null
+#
+#if [[ -z "${LD_LIBRARY_PATH+x}" ]]; then
+#    export LD_LIBRARY_PATH="${PROJECTPATH}/third_party/sgl/install/lib"
+#elif [[ ! "${LD_LIBRARY_PATH}" == *"${PROJECTPATH}/third_party/sgl/install/lib"* ]]; then
+#    export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:${PROJECTPATH}/third_party/sgl/install/lib"
+#fi
+#./Correrender
