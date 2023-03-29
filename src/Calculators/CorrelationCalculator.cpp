@@ -64,7 +64,9 @@ void ICorrelationCalculator::setViewManager(ViewManager* _viewManager) {
 
 void ICorrelationCalculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
     Calculator::setVolumeData(_volumeData, isNewData);
-    referencePointSelectionRenderer->setVolumeDataPtr(volumeData, isNewData);
+    if (referencePointSelectionRenderer) {
+        referencePointSelectionRenderer->setVolumeDataPtr(volumeData, isNewData);
+    }
 
     int es = _volumeData->getEnsembleMemberCount();
     int ts = _volumeData->getTimeStepCount();
@@ -89,7 +91,9 @@ void ICorrelationCalculator::setVolumeData(VolumeData* _volumeData, bool isNewDa
         referencePointIndex.x = volumeData->getGridSizeX() / 2;
         referencePointIndex.y = volumeData->getGridSizeY() / 2;
         referencePointIndex.z = volumeData->getGridSizeZ() / 2;
-        referencePointSelectionRenderer->setReferencePosition(referencePointIndex);
+        if (referencePointSelectionRenderer) {
+            referencePointSelectionRenderer->setReferencePosition(referencePointIndex);
+        }
 
         fieldIndex = volumeData->getStandardScalarFieldIdx();
         fieldIndexGui = volumeData->getStandardScalarFieldIdx();

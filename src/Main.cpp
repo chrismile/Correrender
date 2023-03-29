@@ -32,11 +32,13 @@
 #include <Utils/Python/PythonInit.hpp>
 #endif
 
-#include <Utils/File/FileUtils.hpp>
-#include <Utils/File/Logfile.hpp>
+#include <Utils/StringUtils.hpp>
 #include <Utils/AppSettings.hpp>
 #include <Utils/AppLogic.hpp>
+#include <Utils/File/FileUtils.hpp>
+#include <Utils/File/Logfile.hpp>
 #include <Graphics/Window.hpp>
+#include <Graphics/Vulkan/Utils/Instance.hpp>
 #include <Graphics/Vulkan/Utils/Device.hpp>
 #include <Graphics/Vulkan/Utils/Swapchain.hpp>
 #include <Graphics/Vulkan/Shader/ShaderManager.hpp>
@@ -46,11 +48,35 @@
 #include <Graphics/OpenGL/Context/OffscreenContextGlfw.hpp>
 #endif
 
+#include "Renderers/Diagram/SamplingTest.hpp"
 #include "MainApp.hpp"
+
+void vulkanErrorCallbackHeadless() {
+    SDL_CaptureMouse(SDL_FALSE);
+    std::cerr << "Application callback" << std::endl;
+}
 
 int main(int argc, char *argv[]) {
     // Initialize the filesystem utilities.
     sgl::FileUtils::get()->initialize("Correrender", argc, argv);
+
+    // Parse the arguments.
+    bool usePerfMode = false, useSamplingMode = false;
+    std::string dataSetPath;
+    for (int i = 1; i < argc; i++) {
+        std::string command = argv[i];
+        if (command == "--perf") {
+            usePerfMode = true;
+        }
+        if (command == "--sampling") {
+            useSamplingMode = true;
+            if (i + 1 < argc && !sgl::startsWith(argv[i + 1], "-")) {
+                i++;
+                dataSetPath = argv[i];
+            }
+        }
+    }
+    bool isHeadlessMode = useSamplingMode;
 
 #ifdef DATA_PATH
     if (!sgl::FileUtils::get()->directoryExists("Data") && !sgl::FileUtils::get()->directoryExists("../Data")) {
@@ -62,78 +88,82 @@ int main(int argc, char *argv[]) {
     std::string iconPath = sgl::AppSettings::get()->getDataDirectory() + "Fonts/icon_256.png";
     sgl::AppSettings::get()->loadApplicationIconFromFile(iconPath);
 
-    // Parse the arguments.
-    bool usePerfMode = false;
-    for (int i = 1; i < argc; i++) {
-        std::string command = argv[i];
-        if (command == "--perf") {
-            usePerfMode = true;
-        }
-    }
-
     // Load the file containing the app settings
-    std::string settingsFile = sgl::FileUtils::get()->getConfigDirectory() + "settings.txt";
-    sgl::AppSettings::get()->loadSettings(settingsFile.c_str());
-    sgl::AppSettings::get()->getSettings().addKeyValue("window-multisamples", 0);
-    sgl::AppSettings::get()->getSettings().addKeyValue("window-debugContext", true);
-    if (usePerfMode) {
-        sgl::AppSettings::get()->getSettings().addKeyValue("window-vSync", false);
+    if (isHeadlessMode) {
+        sgl::AppSettings::get()->setSaveSettings(false);
+        sgl::AppSettings::get()->getSettings().addKeyValue("window-debugContext", true);
     } else {
-        sgl::AppSettings::get()->getSettings().addKeyValue("window-vSync", true);
-    }
-    sgl::AppSettings::get()->getSettings().addKeyValue("window-resizable", true);
-    sgl::AppSettings::get()->getSettings().addKeyValue("window-savePosition", true);
-    //sgl::AppSettings::get()->setVulkanDebugPrintfEnabled();
+        std::string settingsFile = sgl::FileUtils::get()->getConfigDirectory() + "settings.txt";
+        sgl::AppSettings::get()->loadSettings(settingsFile.c_str());
+        sgl::AppSettings::get()->getSettings().addKeyValue("window-multisamples", 0);
+        sgl::AppSettings::get()->getSettings().addKeyValue("window-debugContext", true);
+        if (usePerfMode) {
+            sgl::AppSettings::get()->getSettings().addKeyValue("window-vSync", false);
+        } else {
+            sgl::AppSettings::get()->getSettings().addKeyValue("window-vSync", true);
+        }
+        sgl::AppSettings::get()->getSettings().addKeyValue("window-resizable", true);
+        sgl::AppSettings::get()->getSettings().addKeyValue("window-savePosition", true);
+        //sgl::AppSettings::get()->setVulkanDebugPrintfEnabled();
 
-    ImVector<ImWchar> fontRanges;
-    ImFontGlyphRangesBuilder builder;
-    builder.AddChar(L'\u03BB'); // lambda
-    builder.BuildRanges(&fontRanges);
-    bool useMultiViewport = false;
-    if (sgl::AppSettings::get()->getSettings().getValueOpt("useDockSpaceMode", useMultiViewport)) {
-        useMultiViewport = !useMultiViewport;
+        ImVector<ImWchar> fontRanges;
+        ImFontGlyphRangesBuilder builder;
+        builder.AddChar(L'\u03BB'); // lambda
+        builder.BuildRanges(&fontRanges);
+        bool useMultiViewport = false;
+        if (sgl::AppSettings::get()->getSettings().getValueOpt("useDockSpaceMode", useMultiViewport)) {
+            useMultiViewport = !useMultiViewport;
+        }
+        sgl::AppSettings::get()->setLoadGUI(fontRanges.Data, true, useMultiViewport);
     }
-    sgl::AppSettings::get()->setLoadGUI(fontRanges.Data, true, useMultiViewport);
 
     sgl::AppSettings::get()->setRenderSystem(sgl::RenderSystem::VULKAN);
 
-#ifdef SUPPORT_OPENGL
-    /*
-     * OpenGL interop is optionally supported for rendering with NanoVG.
-     * For this, we need to enable a few instance and device extensions.
-     * We need to do this before we know whether we were able to successfully create the OpenGL context,
-     * as we need a Vulkan device for matching an OpenGL context if EGL is supported.
-     */
-    sgl::AppSettings::get()->enableVulkanOffscreenOpenGLContextInteropSupport();
-#endif
-
-    sgl::Window* window = sgl::AppSettings::get()->createWindow();
-
+    sgl::Window* window = nullptr;
     std::vector<const char*> optionalDeviceExtensions;
+    if (isHeadlessMode) {
+        sgl::AppSettings::get()->createHeadless();
+    } else {
+#ifdef SUPPORT_OPENGL
+        /*
+         * OpenGL interop is optionally supported for rendering with NanoVG.
+         * For this, we need to enable a few instance and device extensions.
+         * We need to do this before we know whether we were able to successfully create the OpenGL context,
+         * as we need a Vulkan device for matching an OpenGL context if EGL is supported.
+         */
+        sgl::AppSettings::get()->enableVulkanOffscreenOpenGLContextInteropSupport();
+#endif
+
+        window = sgl::AppSettings::get()->createWindow();
+
 #ifdef SUPPORT_CUDA_INTEROP
-    optionalDeviceExtensions = sgl::vk::Device::getCudaInteropDeviceExtensions();
+        optionalDeviceExtensions = sgl::vk::Device::getCudaInteropDeviceExtensions();
 #endif
 #ifdef SUPPORT_OPENGL
-    if (sgl::AppSettings::get()->getInstanceSupportsVulkanOpenGLInterop()) {
-        std::vector<const char*> interopDeviceExtensions =
-                sgl::AppSettings::get()->getVulkanOpenGLInteropDeviceExtensions();
-        for (const char* extensionName : interopDeviceExtensions) {
-            bool foundExtension = false;
-            for (size_t i = 0; i < optionalDeviceExtensions.size(); i++) {
-                if (strcmp(extensionName, optionalDeviceExtensions.at(i)) == 0) {
-                    foundExtension = true;
-                    break;
+        if (sgl::AppSettings::get()->getInstanceSupportsVulkanOpenGLInterop()) {
+            std::vector<const char*> interopDeviceExtensions =
+                    sgl::AppSettings::get()->getVulkanOpenGLInteropDeviceExtensions();
+            for (const char* extensionName : interopDeviceExtensions) {
+                bool foundExtension = false;
+                for (size_t i = 0; i < optionalDeviceExtensions.size(); i++) {
+                    if (strcmp(extensionName, optionalDeviceExtensions.at(i)) == 0) {
+                        foundExtension = true;
+                        break;
+                    }
+                }
+                if (!foundExtension) {
+                    optionalDeviceExtensions.push_back(extensionName);
                 }
             }
-            if (!foundExtension) {
-                optionalDeviceExtensions.push_back(extensionName);
-            }
         }
-    }
 #endif
-    //optionalDeviceExtensions.push_back(VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME);
+        //optionalDeviceExtensions.push_back(VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME);
+    }
 
     sgl::vk::Instance* instance = sgl::AppSettings::get()->getVulkanInstance();
+    if (isHeadlessMode) {
+        sgl::AppSettings::get()->getVulkanInstance()->setDebugCallback(&vulkanErrorCallbackHeadless);
+    }
     sgl::vk::Device* device = new sgl::vk::Device;
     sgl::vk::DeviceFeatures requestedDeviceFeatures{};
     requestedDeviceFeatures.optionalPhysicalDeviceFeatures.sampleRateShading = VK_TRUE; // For MSAA.
@@ -149,34 +179,53 @@ int main(int argc, char *argv[]) {
     requestedDeviceFeatures.optionalVulkan12Features.descriptorBindingVariableDescriptorCount = VK_TRUE;
     requestedDeviceFeatures.optionalVulkan12Features.runtimeDescriptorArray = VK_TRUE;
     requestedDeviceFeatures.optionalVulkan12Features.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
-    device->createDeviceSwapchain(
-            instance, window,
-            {
-                    VK_EXT_SCALAR_BLOCK_LAYOUT_EXTENSION_NAME, VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME
-            },
-            optionalDeviceExtensions, requestedDeviceFeatures);
-
-#ifdef SUPPORT_OPENGL
-    sgl::OffscreenContext* offscreenContext = sgl::createOffscreenContext(device, false);
-    if (offscreenContext && offscreenContext->getIsInitialized()) {
-        //offscreenContext->makeCurrent(); //< This is called by createOffscreenContext to check interop extensions.
-        sgl::AppSettings::get()->setOffscreenContext(offscreenContext);
+    if (isHeadlessMode) {
+        device->createDeviceHeadless(
+                instance, {
+                        VK_EXT_SCALAR_BLOCK_LAYOUT_EXTENSION_NAME, VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME
+                },
+                optionalDeviceExtensions, requestedDeviceFeatures);
+    } else {
+        device->createDeviceSwapchain(
+                instance, window, {
+                        VK_EXT_SCALAR_BLOCK_LAYOUT_EXTENSION_NAME, VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME
+                },
+                optionalDeviceExtensions, requestedDeviceFeatures);
     }
-#endif
 
-    sgl::vk::Swapchain* swapchain = new sgl::vk::Swapchain(device);
-    swapchain->create(window);
+    sgl::OffscreenContext* offscreenContext = nullptr;
+    if (!isHeadlessMode) {
+#ifdef SUPPORT_OPENGL
+        offscreenContext = sgl::createOffscreenContext(device, false);
+        if (offscreenContext && offscreenContext->getIsInitialized()) {
+            //offscreenContext->makeCurrent(); //< This is called by createOffscreenContext to check interop extensions.
+            sgl::AppSettings::get()->setOffscreenContext(offscreenContext);
+        }
+#endif
+        sgl::vk::Swapchain* swapchain = new sgl::vk::Swapchain(device);
+        swapchain->create(window);
+        sgl::AppSettings::get()->setSwapchain(swapchain);
+    }
+
     sgl::AppSettings::get()->setPrimaryDevice(device);
-    sgl::AppSettings::get()->setSwapchain(swapchain);
     sgl::AppSettings::get()->initializeSubsystems();
 
 #ifdef USE_PYTHON
     sgl::pythonInit(argc, argv);
 #endif
 
-    auto app = new MainApp();
-    app->run();
-    delete app;
+    if (!isHeadlessMode) {
+        auto app = new MainApp();
+        app->run();
+        delete app;
+    }
+
+    if (useSamplingMode) {
+        if (dataSetPath.empty()) {
+            dataSetPath = sgl::FileUtils::get()->getUserDirectory() + "datasets/Necker/nc/necker_t5_tk_u.nc";
+        }
+        runSamplingTests(dataSetPath);
+    }
 
     sgl::AppSettings::get()->release();
 

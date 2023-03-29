@@ -34,6 +34,8 @@
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 
+#include <Math/Geometry/AABB3.hpp>
+
 #include "DiagramColorMap.hpp"
 #include "Region.hpp"
 #include "Octree.hpp"
@@ -42,7 +44,17 @@
 #include "DiagramBase.hpp"
 #include "../../Calculators/CorrelationDefines.hpp"
 
+namespace sgl { namespace vk {
+class Fence;
+typedef std::shared_ptr<Fence> FencePtr;
+}}
+
+class HostCacheEntryType;
 typedef std::shared_ptr<HostCacheEntryType> HostCacheEntry;
+class DeviceCacheEntryType;
+typedef std::shared_ptr<DeviceCacheEntryType> DeviceCacheEntry;
+class VolumeData;
+typedef std::shared_ptr<VolumeData> VolumeDataPtr;
 class CorrelationComputePass;
 class HEBChart;
 
@@ -94,6 +106,17 @@ struct HEBChartFieldData {
     bool separateColorVarianceAndCorrelation = true;
 };
 typedef std::shared_ptr<HEBChartFieldData> HEBChartFieldDataPtr;
+
+struct CorrelationRequestData {
+    uint32_t xi, yi, zi, i, xj, yj, zj, j;
+};
+
+struct HEBChartFieldCache {
+    float minFieldVal;
+    float maxFieldVal;
+    std::vector<VolumeData::DeviceCacheEntry> fieldEntries;
+    std::vector<sgl::vk::ImageViewPtr> fieldImageViews;
+};
 
 /**
  * Hierarchical edge bundling chart. For more details see:
@@ -186,6 +209,16 @@ public:
     void setGlobalStdDevRangeQueryCallback(std::function<std::pair<float, float>(int)> callback);
     std::pair<float, float> getGlobalStdDevRange(int fieldIdx);
 
+    // For performance tests.
+    inline void setIsHeadlessMode(bool _isHeadlessMode)  { isHeadlessMode = _isHeadlessMode; }
+
+    struct PerfStatistics {
+        double timeElapsedSeconds{};
+        std::vector<float> maximumValues{};
+    };
+    PerfStatistics computeCorrelationsBlockPairs(const std::vector<std::pair<uint32_t, uint32_t>>& blockPairs);
+    void computeAllCorrelationsBlockPair(uint32_t i, uint32_t j, std::vector<float>& allValues);
+
 protected:
     bool hasData() override {
         return true;
@@ -204,6 +237,7 @@ private:
     VolumeDataPtr volumeData;
     bool isFocusView = false;
     bool dataDirty = true;
+    bool isHeadlessMode = false;
 
     int getCorrelationMemberCount();
     HostCacheEntry getFieldEntryCpu(const std::string& fieldName, int fieldIdx);
@@ -216,8 +250,6 @@ private:
     bool useAbsoluteCorrelationMeasure = true; ///< For non-MI measures.
     int numBins = 80; ///< For CorrelationMeasureType::MUTUAL_INFORMATION_BINNED.
     int k = 3; ///< For CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV.
-    SamplingMethodType samplingMethodType = SamplingMethodType::MEAN;
-    int numSamples = 100;
     int dfx = 32, dfy = 32, dfz = 32; ///< Downscaling factors.
     int xs = 0, ys = 0, zs = 0; //< Grid size.
     int xsd0 = 0, ysd0 = 0, zsd0 = 0; //< Downscaled grid size.
@@ -234,16 +266,6 @@ private:
     void computeDownscaledField(
             HEBChartFieldData* fieldData, int idx, std::vector<float*>& downscaledFields);
     void computeDownscaledFieldVariance(HEBChartFieldData* fieldData, int idx);
-    void computeCorrelations(
-            HEBChartFieldData* fieldData,
-            std::vector<float*>& downscaledFields0, std::vector<float*>& downscaledFields1,
-            std::vector<MIFieldEntry>& miFieldEntries);
-    void computeCorrelationsMean(
-            HEBChartFieldData* fieldData,
-            std::vector<float*>& downscaledFields0, std::vector<float*>& downscaledFields1,
-            std::vector<MIFieldEntry>& miFieldEntries);
-    void computeCorrelationsSamplingCpu(HEBChartFieldData* fieldData, std::vector<MIFieldEntry>& miFieldEntries);
-    void computeCorrelationsSamplingGpu(HEBChartFieldData* fieldData, std::vector<MIFieldEntry>& miFieldEntries);
     OctreeMethod octreeMethod = OctreeMethod::TOP_DOWN_POT;
     int numLinesTotal = 0;
     int MAX_NUM_LINES = 100;
@@ -253,6 +275,30 @@ private:
     float curveOpacity = 0.4f;
     glm::vec2 correlationRange{}, correlationRangeTotal{};
     glm::ivec2 cellDistanceRange{}, cellDistanceRangeTotal{};
+
+    // Correlation sampling.
+    void computeCorrelations(
+            HEBChartFieldData* fieldData,
+            const std::vector<float*>& downscaledFields0, const std::vector<float*>& downscaledFields1,
+            std::vector<MIFieldEntry>& miFieldEntries);
+    void computeCorrelationsMean(
+            HEBChartFieldData* fieldData,
+            const std::vector<float*>& downscaledFields0, const std::vector<float*>& downscaledFields1,
+            std::vector<MIFieldEntry>& miFieldEntries);
+    void computeCorrelationsSamplingCpu(HEBChartFieldData* fieldData, std::vector<MIFieldEntry>& miFieldEntries);
+    // GPU code.
+    void computeCorrelationsSamplingGpu(HEBChartFieldData* fieldData, std::vector<MIFieldEntry>& miFieldEntries);
+    std::shared_ptr<HEBChartFieldCache> getFieldCache(HEBChartFieldData* fieldData);
+    sgl::vk::BufferPtr computeCorrelationsForRequests(
+            std::vector<CorrelationRequestData>& requests,
+            std::shared_ptr<HEBChartFieldCache>& fieldCache, bool isFirstBatch);
+
+    void createBatchCacheData(uint32_t& batchSizeSamplesMax);
+    SamplingMethodType samplingMethodType = SamplingMethodType::MEAN;
+    int numSamples = 100;
+    // Performance/quality measurement code.
+    bool isSubselection = false;
+    std::vector<std::pair<uint32_t, uint32_t>> subselectionBlockPairs;
 
     // GPU computations.
     bool useCorrelationComputationGpu = true;

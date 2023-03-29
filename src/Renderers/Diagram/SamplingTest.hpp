@@ -26,17 +26,9 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef CORRERENDER_SAMPLING_HPP
-#define CORRERENDER_SAMPLING_HPP
+#ifndef CORRERENDER_SAMPLINGTEST_HPP
+#define CORRERENDER_SAMPLINGTEST_HPP
 
-enum class SamplingMethodType {
-    MEAN, RANDOM_UNIFORM, QUASIRANDOM_HALTON, QUASIRANDOM_PLASTIC, BAYESIAN_OPTIMIZATION
-};
+void runSamplingTests(const std::string& dataSetPath);
 
-const char* const SAMPLING_METHOD_TYPE_NAMES[] = {
-        "Mean", "Random Uniform", "Quasirandom Halton", "Quasirandom Plastic", "Bayesian Optimization"
-};
-
-void generateSamples(float* samples, int numSamples, SamplingMethodType samplingMethodType);
-
-#endif //CORRERENDER_SAMPLING_HPP
+#endif //CORRERENDER_SAMPLINGTEST_HPP

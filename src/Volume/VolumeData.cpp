@@ -627,7 +627,7 @@ bool VolumeData::setInputFiles(
         helicityVariableExists = true;
     }
 
-    if (ts > 1 || es > 1) {
+    if ((ts > 1 || es > 1) && viewManager) {
         addCalculator(std::make_shared<CorrelationCalculator>(renderer));
 /*#ifdef SUPPORT_PYTORCH
         addCalculator(std::make_shared<PyTorchCorrelationCalculator>(renderer));
@@ -685,7 +685,9 @@ bool VolumeData::setInputFiles(
 void VolumeData::addCalculator(const CalculatorPtr& calculator) {
     calculator->initialize();
     calculator->setCalculatorId(calculatorId++);
-    calculator->setViewManager(viewManager);
+    if (viewManager) {
+        calculator->setViewManager(viewManager);
+    }
     calculator->setFileDialogInstance(fileDialogInstance);
     calculator->setVolumeData(this, true);
     calculators.push_back(calculator);
