@@ -545,7 +545,6 @@ sgl::vk::BufferPtr HEBChart::computeCorrelationsForRequests(
     fence->wait();
     fence->reset();
 
-
     return correlationOutputStagingBuffer;
 }
 
@@ -622,7 +621,7 @@ void HEBChart::computeCorrelationsSamplingGpu(
     uint32_t cellIdxOffset = 0;
     auto numCellsLeft = uint32_t(numPairsDownsampled);
     std::vector<CorrelationRequestData> requests;
-    requests.reserve(batchSizeCellsMax);
+    requests.reserve(batchSizeSamplesMax);
     for (uint32_t batchIdx = 0; batchIdx < numBatches; batchIdx++) {
         uint32_t batchSizeCells;
         if (numCellsLeft > batchSizeCellsMax) {
@@ -815,11 +814,34 @@ HEBChart::PerfStatistics HEBChart::computeCorrelationsBlockPairs(
     std::vector<MIFieldEntry> miFieldEntries;
     computeCorrelations(fieldDataArray.front().get(), {}, {}, miFieldEntries);
     auto endTime = std::chrono::system_clock::now();
-    auto elapsedTime = std::chrono::duration<double>(endTime - startTime);
-    statistics.timeElapsedSeconds = elapsedTime.count();
+    auto elapsedTime = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
+    statistics.elapsedTimeMicroseconds = double(elapsedTime.count());
 
-    for (auto& entry : miFieldEntries) {
+    std::sort(miFieldEntries.begin(), miFieldEntries.end(), [](const MIFieldEntry& x, const MIFieldEntry& y) {
+        if (x.pointIndex0 != y.pointIndex0) {
+            return x.pointIndex0 < y.pointIndex0;
+        }
+        return x.pointIndex1 < y.pointIndex1;
+    });
+    int iPair = 0, iEntry = 0;
+    while (true) {
+        if (iEntry == int(miFieldEntries.size())) {
+            while (iPair != int(blockPairs.size())) {
+                statistics.maximumValues.push_back(0.0f);
+                iPair++;
+            }
+            break;
+        }
+        MIFieldEntry entry = miFieldEntries.at(iEntry);
+        std::pair<uint32_t, uint32_t> pair = blockPairs.at(iPair);
+        while (entry.pointIndex0 != pair.first || entry.pointIndex1 != pair.second) {
+            statistics.maximumValues.push_back(0.0f);
+            iPair++;
+            pair = blockPairs.at(iPair);
+        }
         statistics.maximumValues.push_back(entry.correlationValue);
+        iEntry++;
+        iPair++;
     }
     isSubselection = false;
     subselectionBlockPairs.clear();
@@ -828,5 +850,118 @@ HEBChart::PerfStatistics HEBChart::computeCorrelationsBlockPairs(
 }
 
 void HEBChart::computeAllCorrelationsBlockPair(uint32_t i, uint32_t j, std::vector<float>& allValues) {
-    ;
+    uint32_t batchSizeSamplesMax;
+    createBatchCacheData(batchSizeSamplesMax);
+
+    auto region0 = getGridRegionPointIdx(0, i);
+    auto region1 = getGridRegionPointIdx(1, j);
+    uint32_t numPoints0 = uint32_t(region0.xsr) * uint32_t(region0.ysr) * uint32_t(region0.zsr);
+    uint32_t numPoints1 = uint32_t(region1.xsr) * uint32_t(region1.ysr) * uint32_t(region1.zsr);
+    uint32_t numSamplesTotal = numPoints0 * numPoints1;
+    uint32_t numBatches = sgl::uiceil(numSamplesTotal, batchSizeSamplesMax);
+    allValues.reserve(numBatches);
+
+    HEBChartFieldData* fieldData = fieldDataArray.front().get();
+    auto fieldCache = getFieldCache(fieldData);
+
+    uint32_t sampleIdxOffset = 0;
+    auto numSamplesLeft = uint32_t(numSamplesTotal);
+    std::vector<CorrelationRequestData> requests;
+    requests.reserve(batchSizeSamplesMax);
+    for (uint32_t batchIdx = 0; batchIdx < numBatches; batchIdx++) {
+        uint32_t batchSizeSamples;
+        if (numSamplesLeft > batchSizeSamplesMax) {
+            batchSizeSamples = batchSizeSamplesMax;
+            numSamplesLeft -= batchSizeSamplesMax;
+        } else if (numSamplesLeft > 0) {
+            batchSizeSamples = numSamplesLeft;
+            numSamplesLeft = 0;
+        } else {
+            break;
+        }
+
+        // Create the batch data to upload to the device.
+        uint32_t loopMax = sampleIdxOffset + batchSizeSamples;
+        requests.clear();
+#ifdef USE_TBB
+        requests = tbb::parallel_reduce(
+            tbb::blocked_range<uint32_t>(sampleIdxOffset, loopMax), std::vector<CorrelationRequestData>(),
+            [&](tbb::blocked_range<int> const& r, std::vector<CorrelationRequestData> requestsThread) -> std::vector<CorrelationRequestData> {
+                for (int m = r.begin(); m != r.end(); m++) {
+#else
+#if _OPENMP >= 201107
+        #pragma omp parallel default(none) shared(requests, sampleIdxOffset, numPoints1, region0, region1, loopMax) \
+        shared(i, j)
+#endif
+        {
+            std::vector<CorrelationRequestData> requestsThread;
+
+#if _OPENMP >= 201107
+            #pragma omp for schedule(dynamic)
+#endif
+            for (uint32_t m = sampleIdxOffset; m < loopMax; m++) {
+#endif
+                uint32_t is = m / uint32_t(numPoints1);
+                uint32_t js = m % uint32_t(numPoints1);
+
+                CorrelationRequestData request;
+                int xi = region0.xoff + int(is) % region0.xsr;
+                int yi = region0.yoff + (int(is) / region0.xsr) % region0.ysr;
+                int zi = region0.zoff + int(is) / (region0.xsr * region0.ysr);
+                int xj = region1.xoff + int(js) % region1.xsr;
+                int yj = region1.yoff + (int(js) / region1.xsr) % region1.ysr;
+                int zj = region1.zoff + int(js) / (region1.xsr * region1.ysr);
+                request.i = i;
+                request.j = j;
+                request.xi = uint32_t(xi);
+                request.yi = uint32_t(yi);
+                request.zi = uint32_t(zi);
+                request.xj = uint32_t(xj);
+                request.yj = uint32_t(yj);
+                request.zj = uint32_t(zj);
+                requestsThread.emplace_back(request);
+            }
+
+#ifdef USE_TBB
+            return requestsThread;
+            },
+            [&](std::vector<CorrelationRequestData> lhs, std::vector<CorrelationRequestData> rhs) -> std::vector<CorrelationRequestData> {
+                std::vector<CorrelationRequestData> listOut = std::move(lhs);
+                listOut.insert(listOut.end(), std::make_move_iterator(rhs.begin()), std::make_move_iterator(rhs.end()));
+                return listOut;
+            });
+#else
+
+#if _OPENMP >= 201107
+            #pragma omp for ordered schedule(static, 1)
+            for (int threadIdx = 0; threadIdx < omp_get_num_threads(); ++threadIdx) {
+                #pragma omp ordered
+#else
+                for (int threadIdx = 0; threadIdx < 1; ++threadIdx) {
+#endif
+                {
+                    requests.insert(requests.end(), requestsThread.begin(), requestsThread.end());
+                }
+            }
+        }
+#endif
+        sampleIdxOffset += batchSizeSamples;
+
+        auto outputBuffer = computeCorrelationsForRequests(requests, fieldCache, batchIdx == 0);
+
+        // Finally, insert the values of this batch.
+        auto* correlationValues = static_cast<float*>(outputBuffer->mapMemory());
+        auto numRequests = int(requests.size());
+        for (int requestIdx = 0; requestIdx < numRequests; requestIdx++) {
+            float correlationValue = correlationValues[requestIdx];
+            if (!std::isnan(correlationValue)) {
+                if (useAbsoluteCorrelationMeasure) {
+                    correlationValue = std::abs(correlationValue);
+                }
+                allValues.push_back(correlationValue);
+            }
+        }
+
+        outputBuffer->unmapMemory();
+    }
 }

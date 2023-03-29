@@ -40,8 +40,9 @@
 struct TestCase {
     SamplingMethodType samplingMethodType = SamplingMethodType::QUASIRANDOM_PLASTIC;
     int numSamples = 100;
-    double elapsedTimeSeconds = 0.0;
+    double elapsedTimeMicroseconds = 0.0;
     double maximumQuantile = 0.0;
+    double rangeLinear = 0.0;
 };
 
 void runTestCase(
@@ -69,9 +70,12 @@ void runTestCase(
                 upper = middle;
             }
         }
-        testCase.maximumQuantile = double(upper) / double(allValuesSorted.size());
+        testCase.maximumQuantile = invN * double(upper) / double(allValuesSorted.size());
+        float minVal = allValuesSorted.front();
+        float maxVal = allValuesSorted.back();
+        testCase.rangeLinear += invN * double((searchValue - minVal) / (maxVal - minVal));
     }
-    testCase.elapsedTimeSeconds = invN * statisticsList.timeElapsedSeconds;
+    testCase.elapsedTimeMicroseconds = invN * statisticsList.elapsedTimeMicroseconds;
 }
 
 void runSamplingTests(const std::string& dataSetPath) {
@@ -98,11 +102,23 @@ void runSamplingTests(const std::string& dataSetPath) {
     const auto& fieldNames = volumeData->getFieldNamesBase(FieldType::SCALAR);
     constexpr int fieldIdx = 0;
     constexpr bool useGpu = true;
+    //constexpr int dfx = 16;
+    //constexpr int dfy = 16;
+    //constexpr int dfz = 20;
     constexpr int dfx = 8;
     constexpr int dfy = 8;
     constexpr int dfz = 8;
-    int numPairsToCheck = 100;
-    const std::vector<int> numSamplesArray = { 1, 10, 100, 1000 };
+    int numPairsToCheck = 1000;
+    int numLogSteps = 3;
+    std::vector<int> numSamplesArray;
+    for (int l = 0; l < numLogSteps; l++) {
+        auto step = int(std::pow(10, l));
+        auto maxVal = int(std::pow(10, l + 1));
+        for (int i = step; i < maxVal; i += step) {
+            numSamplesArray.push_back(i);
+        }
+    }
+    numSamplesArray.push_back(int(std::pow(10, numLogSteps)));
 
     // Create the chart.
     auto* chart = new HEBChart();
@@ -134,18 +150,26 @@ void runSamplingTests(const std::string& dataSetPath) {
         blockPairs.emplace_back(i, j);
     }
 
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::shuffle(blockPairs.begin(), blockPairs.end(), gen);
+    //std::random_device rd;
+    //std::mt19937 generator(rd());
+    std::mt19937 generator(2);
+    std::shuffle(blockPairs.begin(), blockPairs.end(), generator);
     numPairsToCheck = std::min(int(numPairs), numPairsToCheck);
     blockPairs.resize(numPairsToCheck);
+    std::sort(blockPairs.begin(), blockPairs.end(), [](
+            const std::pair<uint32_t, uint32_t>& x, const std::pair<uint32_t, uint32_t>& y) {
+        if (x.first != y.first) {
+            return x.first < y.first;
+        }
+        return x.second < y.second;
+    });
 
     // Compute the ground truth.
     auto startTime = std::chrono::system_clock::now();
     std::vector<std::vector<float>> allValuesSortedArray;
     allValuesSortedArray.resize(numPairsToCheck);
     for (int m = 0; m < numPairsToCheck; m++) {
-        std::cout << "Computing GT " << (double(m) / double(numPairsToCheck)) << "%..." << std::endl;
+        std::cout << "Computing GT " << (double(m) / double(numPairsToCheck) * 100.0) << "%..." << std::endl;
         std::vector<float>& allValues = allValuesSortedArray.at(m);
         auto [i, j] = blockPairs.at(m);
         chart->computeAllCorrelationsBlockPair(i, j, allValues);
@@ -157,7 +181,9 @@ void runSamplingTests(const std::string& dataSetPath) {
 
     // Add the test cases.
     std::vector<TestCase> testCases;
-    for (int samplingMethodTypeIdx = 0; samplingMethodTypeIdx < IM_ARRAYSIZE(SAMPLING_METHOD_TYPE_NAMES); samplingMethodTypeIdx++) {
+    for (int samplingMethodTypeIdx = int(SamplingMethodType::RANDOM_UNIFORM);
+            samplingMethodTypeIdx <= int(SamplingMethodType::QUASIRANDOM_PLASTIC);
+            samplingMethodTypeIdx++) {
         for (int numSamples : numSamplesArray) {
             TestCase testCase;
             testCase.samplingMethodType = SamplingMethodType(samplingMethodTypeIdx);
@@ -167,14 +193,18 @@ void runSamplingTests(const std::string& dataSetPath) {
     }
 
     // Run the tests and write the results to a file.
-    sgl::CsvWriter file(std::string("Sampling ") + CORRELATION_MEASURE_TYPE_NAMES[int(correlationMeasureType)]);
-    file.writeRow({ "Sampling Method", "Samples", "Time", "Quantile" });
+    sgl::CsvWriter file(
+            std::string("Sampling ") + CORRELATION_MEASURE_TYPE_NAMES[int(correlationMeasureType)] + ".csv");
+    file.writeRow({ "Sampling Method", "Samples", "Time", "Quantile", "Linear" });
     for (TestCase& testCase : testCases) {
+        std::cout << "Test case: " << SAMPLING_METHOD_TYPE_NAMES[int(testCase.samplingMethodType)];
+        std::cout << ", samples: " << std::to_string(testCase.numSamples) << std::endl;
         runTestCase(chart, testCase, blockPairs, allValuesSortedArray);
         file.writeCell(SAMPLING_METHOD_TYPE_NAMES[int(testCase.samplingMethodType)]);
         file.writeCell(std::to_string(testCase.numSamples));
-        file.writeCell(std::to_string(testCase.elapsedTimeSeconds));
+        file.writeCell(std::to_string(testCase.elapsedTimeMicroseconds));
         file.writeCell(std::to_string(testCase.maximumQuantile));
+        file.writeCell(std::to_string(testCase.rangeLinear));
         file.newRow();
     }
     file.close();

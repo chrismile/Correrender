@@ -213,7 +213,7 @@ public:
     inline void setIsHeadlessMode(bool _isHeadlessMode)  { isHeadlessMode = _isHeadlessMode; }
 
     struct PerfStatistics {
-        double timeElapsedSeconds{};
+        double elapsedTimeMicroseconds{};
         std::vector<float> maximumValues{};
     };
     PerfStatistics computeCorrelationsBlockPairs(const std::vector<std::pair<uint32_t, uint32_t>>& blockPairs);
@@ -256,13 +256,14 @@ private:
     int xsd1 = 0, ysd1 = 0, zsd1 = 0; //< Downscaled grid size.
     GridRegion r0{}, r1{};
     bool regionsEqual = true;
-    bool use2dField = true;
+    bool use2dField = false;
     std::vector<HEBNode> nodesList;
     std::vector<uint32_t> pointToNodeIndexMap0, pointToNodeIndexMap1;
     uint32_t leafIdxOffset = 0, leafIdxOffset1 = 0;
 
     // B-spline data.
     void updateData();
+    void updateRegion();
     void computeDownscaledField(
             HEBChartFieldData* fieldData, int idx, std::vector<float*>& downscaledFields);
     void computeDownscaledFieldVariance(HEBChartFieldData* fieldData, int idx);
