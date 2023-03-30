@@ -153,6 +153,7 @@ struct Eval{
     // limbo is set to bounded mode, meaning that the values in x are always in 0-1
     Eigen::VectorXd operator()(const Eigen::VectorXd& x) const
     {
+        a.resize(num_members); b.resize(num_members);
         auto start = std::chrono::system_clock::now();
         // converting the continuous indices do discrete ones with probabilistic reparametrization and filling the vectors a and b
         for(int i: i_range(6)){
@@ -196,6 +197,10 @@ struct SpearmanFunctor{
     mutable std::vector<std::pair<float, int>> ordinalRankArraySpearman;
 
     float operator()(float* a, float* b, int num_members) const {
+        referenceRanks.resize(num_members);
+        gridPointRanks.resize(num_members);
+        ordinalRankArrayRef.resize(num_members);
+        ordinalRankArraySpearman.resize(num_members);
         computeRanks(a, referenceRanks.data(), ordinalRankArrayRef, num_members);
         computeRanks(b, gridPointRanks.data(), ordinalRankArraySpearman, num_members);
         return computePearson2<float>(referenceRanks.data(), gridPointRanks.data(), num_members);
@@ -206,14 +211,20 @@ struct KendallFunctor{
     mutable std::vector<float> ordinalRankArray;
     mutable std::vector<float> y;
     float operator()(float* a, float* b, int num_members) const {
+        jointArray.reserve(num_members);
+        ordinalRankArray.reserve(num_members);
+        y.reserve(num_members);
         return computeKendall(a, b, num_members, jointArray, ordinalRankArray, y);
     }
 };
 struct MutualBinnedFunctor{
     const float& minFieldVal, maxFieldVal;
-    const int numBins;
+    const int&   numBins;
     mutable std::vector<double> histogram0, histogram1, histogram2d;
     float operator()(float* a, float* b, int num_members) const {
+        histogram0.reserve(numBins);
+        histogram1.reserve(numBins);
+        histogram2d.reserve(numBins * numBins);
         for (int c = 0; c < num_members; c++) {
             a[c] = (a[c] - minFieldVal) / (maxFieldVal - minFieldVal);
             b[c] = (b[c] - minFieldVal) / (maxFieldVal - minFieldVal);
@@ -222,12 +233,13 @@ struct MutualBinnedFunctor{
     }
 };
 struct MutualFunctor{
-    const int k;
+    const int& k;
     mutable KraskovEstimatorCache<double> kraskovEstimatorCache;
     float operator()(float* a, float* b, int num_members) const {
         return computeMutualInformationKraskov<double>(a, b, k, num_members, kraskovEstimatorCache);
     }
 };
+
 }
 
 #endif

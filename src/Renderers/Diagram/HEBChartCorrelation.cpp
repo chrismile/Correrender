@@ -298,8 +298,6 @@ void HEBChart::computeCorrelationsMean(
 void HEBChart::computeCorrelationsSamplingCpu(
         HEBChartFieldData* fieldData, std::vector<MIFieldEntry>& miFieldEntries) {
     int cs = getCorrelationMemberCount();
-    int numPoints0 = xsd0 * ysd0 * zsd0;
-    int numPoints1 = xsd1 * ysd1 * zsd1;
 
     float minFieldVal = std::numeric_limits<float>::max();
     float maxFieldVal = std::numeric_limits<float>::lowest();
@@ -315,13 +313,6 @@ void HEBChart::computeCorrelationsSamplingCpu(
             minFieldVal = std::min(minFieldVal, minVal);
             maxFieldVal = std::max(maxFieldVal, maxVal);
         }
-    }
-
-    int numPairsDownsampled;
-    if (isSubselection) {
-        numPairsDownsampled = int(subselectionBlockPairs.size());
-    } else {
-        numPairsDownsampled = regionsEqual ? (numPoints0 * numPoints0 - numPoints0) / 2 : numPoints0 * numPoints1;
     }
 
     if(samplingMethodType == SamplingMethodType::BAYESIAN_OPTIMIZATION)
@@ -490,9 +481,12 @@ void HEBChart::correlationSamplingExecuteCpuBayesian(HEBChartFieldData* fieldDat
 
     std::atomic<int> cur_pair{};
     const auto correlationType = correlationMeasureType;
-    const int bayOptIterationCount = 25;
-    auto thread_func = [&](){
-        while(int p = cur_pair++ < numPairsDownsampled){
+    const int bayOptIterationCount = std::max(0, numSamples - BayOpt::Params::init_randomsampling::samples());
+    const int mutualInformationK = k;
+    std::vector<std::thread> threads(std::thread::hardware_concurrency());
+    std::vector<std::vector<MIFieldEntry>> miFieldEntriesThread(threads.size());
+    auto thread_func = [&](int id){
+        for(int p = cur_pair++; p < numPairsDownsampled; p = cur_pair++){
             uint32_t i, j;
             if (isSubselection) {
                 std::tie(i, j) = subselectionBlockPairs.at(p);
@@ -534,22 +528,28 @@ void HEBChart::correlationSamplingExecuteCpuBayesian(HEBChartFieldData* fieldDat
                 optimizer.optimize(BayOpt::Eval<BayOpt::KendallFunctor>{fields, region_min, region_max, cs, xs, ys});
                 break;
             case CorrelationMeasureType::MUTUAL_INFORMATION_BINNED: 
-                optimizer.optimize(BayOpt::Eval<BayOpt::MutualBinnedFunctor>{fields, region_min, region_max, cs, xs, ys, BayOpt::MutualBinnedFunctor{minFieldVal, maxFieldVal}});
+                optimizer.optimize(BayOpt::Eval<BayOpt::MutualBinnedFunctor>{fields, region_min, region_max, cs, xs, ys, BayOpt::MutualBinnedFunctor{minFieldVal, maxFieldVal, numBins}});
                 break;
             case CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV: 
-                optimizer.optimize(BayOpt::Eval<BayOpt::MutualFunctor>{fields, region_min, region_max, cs, xs, ys});
+                optimizer.optimize(BayOpt::Eval<BayOpt::MutualFunctor>{fields, region_min, region_max, cs, xs, ys, {mutualInformationK}});
                 break;
+            default: assert(false && "Unimplemented Correlation measure type");
+            }
+
+            float correlationValueMax = optimizer.best_observation()(0);
+            if (correlationValueMax >= correlationRange.x && correlationValueMax <= correlationRange.y) {
+                miFieldEntriesThread[id].emplace_back(correlationValueMax, i, j);
             }
         }
-
-
     };
-
-    std::vector<std::thread> threads(std::thread::hardware_concurrency());
+    int id{};
     for(auto& t: threads)
-        t = std::thread(thread_func);
+        t = std::thread(thread_func, id++);
     for(auto& t: threads)
         t.join();
+    // merging threads
+    for(const auto& fieldEntry: miFieldEntriesThread)
+        miFieldEntries.insert(miFieldEntries.end(), fieldEntry.begin(), fieldEntry.end());
 }
 
 std::shared_ptr<HEBChartFieldCache> HEBChart::getFieldCache(HEBChartFieldData* fieldData) {
@@ -627,7 +627,8 @@ sgl::vk::BufferPtr HEBChart::computeCorrelationsForRequests(
 void HEBChart::createBatchCacheData(uint32_t& batchSizeSamplesMax) {
     int cs = getCorrelationMemberCount();
     const uint32_t batchSizeSamplesMaxAllCs = 1 << 17; // Up to 131072 samples per batch.
-    batchSizeSamplesMax = batchSizeSamplesMaxAllCs;
+    if(batchSizeSamplesMax == 0)
+        batchSizeSamplesMax = batchSizeSamplesMaxAllCs;
     if (cs > 100) {
         double factorN = double(cs) / 100.0 * std::log2(double(cs) / 100.0 + 1.0);
         batchSizeSamplesMax = std::ceil(double(batchSizeSamplesMax) / factorN);
@@ -649,19 +650,19 @@ void HEBChart::createBatchCacheData(uint32_t& batchSizeSamplesMax) {
         computeRenderer->setCustomCommandBuffer(commandBuffer, false);
 
         requestsBuffer = std::make_shared<sgl::vk::Buffer>(
-                device, sizeof(CorrelationRequestData) * batchSizeSamplesMaxAllCs,
+                device, sizeof(CorrelationRequestData) * batchSizeSamplesMax,
                 VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                 VMA_MEMORY_USAGE_GPU_ONLY);
         requestsStagingBuffer = std::make_shared<sgl::vk::Buffer>(
-                device, sizeof(CorrelationRequestData) * batchSizeSamplesMaxAllCs,
+                device, sizeof(CorrelationRequestData) * batchSizeSamplesMax,
                 VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                 VMA_MEMORY_USAGE_CPU_TO_GPU);
         correlationOutputBuffer = std::make_shared<sgl::vk::Buffer>(
-                device, sizeof(float) * batchSizeSamplesMaxAllCs,
+                device, sizeof(float) * batchSizeSamplesMax,
                 VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                 VMA_MEMORY_USAGE_GPU_ONLY);
         correlationOutputStagingBuffer = std::make_shared<sgl::vk::Buffer>(
-                device, sizeof(float) * batchSizeSamplesMaxAllCs,
+                device, sizeof(float) * batchSizeSamplesMax,
                 VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                 VMA_MEMORY_USAGE_GPU_TO_CPU);
 
@@ -674,6 +675,13 @@ void HEBChart::createBatchCacheData(uint32_t& batchSizeSamplesMax) {
 
 void HEBChart::computeCorrelationsSamplingGpu(
         HEBChartFieldData* fieldData, std::vector<MIFieldEntry>& miFieldEntries) {
+    if(samplingMethodType == SamplingMethodType::BAYESIAN_OPTIMIZATION)
+        correlationSamplingExecuteGpuBayesian(fieldData, miFieldEntries);
+    else
+        correlationSamplingExecuteGpuDefault(fieldData, miFieldEntries);
+}
+
+void HEBChart::correlationSamplingExecuteGpuDefault(HEBChartFieldData* fieldData, std::vector<MIFieldEntry>& miFieldEntries){
     int numPoints0 = xsd0 * ysd0 * zsd0;
     int numPoints1 = xsd1 * ysd1 * zsd1;
 
@@ -684,10 +692,10 @@ void HEBChart::computeCorrelationsSamplingGpu(
         numPairsDownsampled = regionsEqual ? (numPoints0 * numPoints0 - numPoints0) / 2 : numPoints0 * numPoints1;
     }
 
-    auto* samples = new float[6 * numSamples];
-    generateSamples(samples, numSamples, samplingMethodType);
+    std::vector<float> samples(6 * numSamples);
+    generateSamples(samples.data(), numSamples, samplingMethodType);
 
-    uint32_t batchSizeSamplesMax;
+    uint32_t batchSizeSamplesMax{};
     createBatchCacheData(batchSizeSamplesMax);
     uint32_t batchSizeCellsMax = std::max(batchSizeSamplesMax / numSamples, uint32_t(1));
     uint32_t numBatches = sgl::uiceil(uint32_t(numPairsDownsampled), batchSizeCellsMax);
@@ -876,8 +884,188 @@ void HEBChart::computeCorrelationsSamplingGpu(
 #endif
         outputBuffer->unmapMemory();
     }
+}
 
-    delete[] samples;
+void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldData, std::vector<MIFieldEntry>& miFieldEntries){
+    // For bayesian gpu sampling the following steps are performed
+    // 1. For each thread one optimizer per box pair is allocated
+    // 2. Each thread draws batchSize box pairs for execution (thread safe), and executes them
+    // 3. Init: BatchSize * InitSamples samples are generated randomly
+    // 3.1      Evaluate all samples simultaneously and add them tho the optimizer
+    // 4. Draw next sample point for each optimizer -> batchSize samples
+    // 5. Evaluate samples and add one sample to each optimizer
+    // 6. goto 4. until end
+    // 7. Writeback of best sample
+    // main algorithm is implemented in thread_func
+    
+    int numPoints0 = xsd0 * ysd0 * zsd0;
+    int numPoints1 = xsd1 * ysd1 * zsd1;
+    const int bayOptIterationCount = std::max(0, numSamples - BayOpt::Params::init_randomsampling::samples());
+    BayOpt::Params::stop_maxiterations::set_iterations(bayOptIterationCount);
+
+    int numPairsDownsampled;
+    if (isSubselection) {
+        numPairsDownsampled = int(subselectionBlockPairs.size());
+    } else {
+        numPairsDownsampled = regionsEqual ? (numPoints0 * numPoints0 - numPoints0) / 2 : numPoints0 * numPoints1;
+    }
+    constexpr int batchSize = 1000;
+    uint32_t batchSizeNeeded = batchSize * BayOpt::Params::init_randomsampling::samples();
+    createBatchCacheData(batchSizeNeeded);
+    auto fieldCache = getFieldCache(fieldData);
+    std::atomic<int> cur_pair{};
+    bool gpu_first_call{true};
+    std::vector<std::thread> threads(std::thread::hardware_concurrency());
+    std::vector<std::vector<MIFieldEntry>> threadFieldEntries(threads.size());
+    std::mutex gpu_mutex;
+
+    auto generate_requests = [&](const std::vector<float>& sample_positions, int start_pair_index, int end_pair_index, int samples_per_pair){
+        std::vector<CorrelationRequestData> requests;
+        for(int q: BayOpt::i_range(start_pair_index, end_pair_index)){
+            uint32_t i,j;
+            if (isSubselection) {
+                std::tie(i, j) = subselectionBlockPairs.at(q);
+            } else if (regionsEqual) {
+                i = (1 + sgl::uisqrt(1 + 8 * q)) / 2;
+                j = uint32_t(q) - i * (i - 1) / 2;
+            } else {
+                i = q / uint32_t(numPoints1);
+                j = q % uint32_t(numPoints1);
+            }
+            
+            if (regionsEqual && (cellDistanceRange.x > 0 || cellDistanceRange.y < cellDistanceRangeTotal.y)) {
+                glm::vec3 pti(i % uint32_t(xsd0), (i / uint32_t(xsd0)) % uint32_t(ysd0), i / uint32_t(xsd0 * ysd0));
+                glm::vec3 ptj(j % uint32_t(xsd1), (j / uint32_t(xsd1)) % uint32_t(ysd1), j / uint32_t(xsd1 * ysd1));
+                float cellDist = glm::length(pti - ptj);
+                if (cellDist < float(cellDistanceRange.x) || cellDist > float(cellDistanceRange.y)) {
+                    continue;
+                }
+            }
+            if (regionsEqual && showCorrelationForClickedPoint
+                && clickedPointGridIdx != i && clickedPointGridIdx != j) 
+                continue;
+            
+            auto region0 = getGridRegionPointIdx(0, i);
+            auto region1 = getGridRegionPointIdx(1, j);
+
+            CorrelationRequestData request;
+            for(int sampleIdx: BayOpt::i_range(samples_per_pair)){
+                int xi = std::clamp(int(BayOpt::pr(sample_positions[sampleIdx * 6 + 0] * float(region0.xsr) - 0.5f)), 0, region0.xsr - 1) + region0.xoff;
+                int yi = std::clamp(int(BayOpt::pr(sample_positions[sampleIdx * 6 + 1] * float(region0.ysr) - 0.5f)), 0, region0.ysr - 1) + region0.yoff;
+                int zi = std::clamp(int(BayOpt::pr(sample_positions[sampleIdx * 6 + 2] * float(region0.zsr) - 0.5f)), 0, region0.zsr - 1) + region0.zoff;
+                int xj = std::clamp(int(BayOpt::pr(sample_positions[sampleIdx * 6 + 3] * float(region1.xsr) - 0.5f)), 0, region1.xsr - 1) + region1.xoff;
+                int yj = std::clamp(int(BayOpt::pr(sample_positions[sampleIdx * 6 + 4] * float(region1.ysr) - 0.5f)), 0, region1.ysr - 1) + region1.yoff;
+                int zj = std::clamp(int(BayOpt::pr(sample_positions[sampleIdx * 6 + 5] * float(region1.zsr) - 0.5f)), 0, region1.zsr - 1) + region1.zoff;
+                request.i = i;
+                request.j = j;
+                request.xi = uint32_t(xi);
+                request.yi = uint32_t(yi);
+                request.zi = uint32_t(zi);
+                request.xj = uint32_t(xj);
+                request.yj = uint32_t(yj);
+                request.zj = uint32_t(zj);
+                requests.emplace_back(request);
+            }
+        }
+        return requests;
+    };
+    auto thread_func = [&](int thread_id){
+        using model_t = limbo::model::GP<BayOpt::Params>;
+        limbo::opt::NLOptNoGrad<BayOpt::Params, nlopt::GN_DIRECT_L_RAND> acqui_optimizer;
+        for(int p = cur_pair.fetch_add(batchSize); p < numPairsDownsampled; p = cur_pair.fetch_add(batchSize)){
+            const int true_batch_size = std::min<int>(numPairsDownsampled - p, batchSize);
+            // 1. optimizer allocation -----------------------------------------------------------------------
+            std::vector<model_t> optimizers(true_batch_size);
+            // 2. drawing a batch size already done in the for loop ------------------------------------------
+            // 3. Init ---------------------------------------------------------------------------------------
+            std::vector<float> sample_positions(true_batch_size * 6);
+            generateSamples(sample_positions.data(), batchSize, SamplingMethodType::QUASIRANDOM_HALTON);
+            // generate requests
+            auto requests = generate_requests(sample_positions, p, p + true_batch_size, BayOpt::Params::init_randomsampling::samples());
+            // evaluate requests and download scores (thread safe)
+            {
+                std::scoped_lock lock(gpu_mutex);
+                auto outputBuffer = computeCorrelationsForRequests(requests, fieldCache, gpu_first_call);
+                gpu_first_call = false;
+                auto* correlationValues = static_cast<float*>(outputBuffer->mapMemory());
+                Eigen::VectorXd p(6);
+                Eigen::VectorXd v(1);
+                assert(p.size() == 6 && v.size() == 1);
+                for(int i: BayOpt::i_range(true_batch_size)){
+                    for(int s: BayOpt::i_range(BayOpt::Params::init_randomsampling::samples())){
+                        int lin_index = i * BayOpt::Params::init_randomsampling::samples() + s;
+                        v(0) = correlationValues[lin_index];
+                        if(std::isnan(v(0)) || std::isinf(v(0))) v(0) = -1;
+                        std::copy(sample_positions.begin() + 6 * lin_index, sample_positions.begin() + 7 * lin_index, p.data());
+                        optimizers[i].add_sample(p, v);
+                    }
+                }
+                outputBuffer->unmapMemory();
+            }
+
+            for(int i: BayOpt::i_range(bayOptIterationCount)){
+                // 4. Drawing new samples from the model -------------------------------------------
+                for(int o: BayOpt::i_range(true_batch_size)){
+                    limbo::acqui::UCB<BayOpt::Params, model_t> acqui_fun(optimizers[o], i);
+                    
+                    auto acqui_optimization = [&](const Eigen::VectorXd& x, bool g) {return acqui_fun(x, limbo::FirstElem{}, g);};
+                    auto starting_point = limbo::tools::random_vector_bounded(6);
+                    auto new_sample = acqui_optimizer(acqui_optimization, starting_point, true);
+
+                    std::copy(new_sample.data(), new_sample.data() + 6, sample_positions.begin());
+                }
+
+                // 5. evaluating the samples and adding them to the model parameters
+                requests = generate_requests(sample_positions, p, p + true_batch_size, 1);
+                {
+                    std::scoped_lock lock(gpu_mutex);
+                    auto outputBuffer = computeCorrelationsForRequests(requests, fieldCache, gpu_first_call);
+                    gpu_first_call = false;
+                    auto* correlationValues = static_cast<float*>(outputBuffer->mapMemory());
+                    Eigen::VectorXd p(6);
+                    Eigen::VectorXd v(1);
+                    assert(p.size() == 6 && v.size() == 1);
+                    for(int o: BayOpt::i_range(true_batch_size)){
+                        v(0) = correlationValues[o];
+                        if(std::isnan(v(0)) || std::isinf(v(0))) v(0) = -1;
+                        std::copy(sample_positions.begin() + 6 * o, sample_positions.begin() + 7 * o, p.data());
+                        optimizers[o].add_sample(p, v);
+                    }
+                    outputBuffer->unmapMemory();
+                }
+                // 6. loop to 4.
+            }
+            // 7. Writing back the best results -------------------------------------------
+            for(int o: BayOpt::i_range(true_batch_size)){
+                double max_val{std::numeric_limits<float>::lowest()};
+                for(auto& v: optimizers[o].observations_matrix().reshaped())
+                    max_val = std::max(max_val, v);
+                
+                uint32_t i, j, q = p + o;
+                if (isSubselection) {
+                    std::tie(i, j) = subselectionBlockPairs.at(q);
+                } else if (regionsEqual) {
+                    i = (1 + sgl::uisqrt(1 + 8 * q)) / 2;
+                    j = uint32_t(q) - i * (i - 1) / 2;
+                } else {
+                    i = q / uint32_t(numPoints1);
+                    j = q % uint32_t(numPoints1);
+                }
+                threadFieldEntries[thread_id].emplace_back(float(max_val), i, j);
+            }
+        }
+
+    };
+
+    int thread_id{};
+    for(auto& t: threads)
+        t = std::thread(thread_func, thread_id++);
+    for(auto& t: threads)
+        t.join();
+
+    // merging the outputs
+    for(const auto& fieldEntry: threadFieldEntries)
+        miFieldEntries.insert(miFieldEntries.end(), fieldEntry.begin(), fieldEntry.end());
 }
 
 HEBChart::PerfStatistics HEBChart::computeCorrelationsBlockPairs(
