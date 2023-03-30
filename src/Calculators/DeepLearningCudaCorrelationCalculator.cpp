@@ -486,7 +486,7 @@ void DeepLearningCudaCorrelationCalculator::calculateDevice(
     renderer->syncWithCpu();
     auto endInference = std::chrono::system_clock::now();
     auto elapsedInference = std::chrono::duration_cast<std::chrono::milliseconds>(endInference - startInference);
-    std::cout << "Elapsed time inference: " << elapsedInference.count() << "ms" << std::endl;
+    //std::cout << "Elapsed time inference: " << elapsedInference.count() << "ms" << std::endl;
 #endif
 }
 

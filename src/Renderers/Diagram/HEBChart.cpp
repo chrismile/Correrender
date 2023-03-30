@@ -100,12 +100,7 @@ void HEBChart::setRegions(const std::pair<GridRegion, GridRegion>& _rs) {
     r0 = _rs.first;
     r1 = _rs.second;
     regionsEqual = r0 == r1;
-    xsd0 = sgl::iceil(r0.xsr, dfx);
-    ysd0 = sgl::iceil(r0.ysr, dfy);
-    zsd0 = sgl::iceil(r0.zsr, dfz);
-    xsd1 = sgl::iceil(r1.xsr, dfx);
-    ysd1 = sgl::iceil(r1.ysr, dfy);
-    zsd1 = sgl::iceil(r1.zsr, dfz);
+    updateRegion();
 }
 
 void HEBChart::resetSelectedPrimitives() {
@@ -528,6 +523,22 @@ void HEBChart::updateRegion() {
     xsd1 = sgl::iceil(r1.xsr, dfx);
     ysd1 = sgl::iceil(r1.ysr, dfy);
     zsd1 = sgl::iceil(r1.zsr, dfz);
+    if (xsd0 == 1 && ysd0 == 1 && zsd0 == 1) {
+        dfx = 1;
+        xsd0 = r0.xsr;
+        dfy = 1;
+        ysd0 = r0.ysr;
+        dfz = 1;
+        zsd0 = r0.zsr;
+    }
+    if (xsd1 == 1 &&  ysd1 == 1 && zsd1 == 1) {
+        dfx = 1;
+        xsd1 = r1.xsr;
+        dfy = 1;
+        ysd1 = r1.ysr;
+        dfz = 1;
+        zsd1 = r1.zsr;
+    }
 }
 
 void HEBChart::updateData() {
