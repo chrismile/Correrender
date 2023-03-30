@@ -207,6 +207,14 @@ public:
     std::pair<float, float> getMinMaxScalarFieldValue(
             const std::string& fieldName, int timeStepIdx = -1, int ensembleIdx = -1);
 
+    /*
+     * Registers auxiliary CPU or device memory used by calculators in the field cache.
+     */
+    AuxiliaryMemoryToken pushAuxiliaryMemoryCpu(size_t sizeInBytes);
+    void popAuxiliaryMemoryCpu(AuxiliaryMemoryToken token);
+    AuxiliaryMemoryToken pushAuxiliaryMemoryDevice(size_t sizeInBytes);
+    void popAuxiliaryMemoryDevice(AuxiliaryMemoryToken token);
+
     /// Keep track of transfer function use in renderers to display overlays in renderer.
     void acquireTf(Renderer* renderer, int varIdx);
     void releaseTf(Renderer* renderer, int varIdx);

@@ -39,7 +39,8 @@
  */
 void generateSamplesRandomUniform(float* samples, int numSamples) {
     constexpr int d = 6;
-    std::mt19937 generator(2);
+    std::random_device rd;
+    std::mt19937 generator(rd());
     std::uniform_real_distribution<float> dis(0, 1);
     for (int i = 0; i < d * numSamples; i++) {
         samples[i] = dis(generator);

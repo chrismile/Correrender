@@ -207,6 +207,7 @@ void HEBChart::setDownscalingFactors(int _dfx, int _dfy, int _dfz) {
     dfx = _dfx;
     dfy = _dfy;
     dfz = _dfz;
+    updateRegion();
     dataDirty = true;
 }
 
@@ -520,15 +521,18 @@ void smoothControlPoints(std::vector<glm::vec2>& controlPoints, float beta) {
     }
 }
 
-void HEBChart::updateData() {
-    // Values downscaled by factor 32.
-    int cs = getCorrelationMemberCount();
+void HEBChart::updateRegion() {
     xsd0 = sgl::iceil(r0.xsr, dfx);
     ysd0 = sgl::iceil(r0.ysr, dfy);
     zsd0 = sgl::iceil(r0.zsr, dfz);
     xsd1 = sgl::iceil(r1.xsr, dfx);
     ysd1 = sgl::iceil(r1.ysr, dfy);
     zsd1 = sgl::iceil(r1.zsr, dfz);
+}
+
+void HEBChart::updateData() {
+    int cs = getCorrelationMemberCount();
+    updateRegion();
     int numPoints = xsd0 * ysd0 * zsd0 + (regionsEqual ? 0 : xsd1 * ysd1 * zsd1);
 
     if (selectedLineIdx >= 0 || selectedPointIndices[0] >= 0 || selectedPointIndices[1] >= 0) {

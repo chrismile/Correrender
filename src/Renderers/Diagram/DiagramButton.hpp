@@ -43,10 +43,11 @@ typedef struct _vkvg_context_t* VkvgContext;
 #endif
 
 enum class ButtonType {
-    CLOSE, BACK, BACK_TWO, BACK_THREE
+    CLOSE, BACK, BACK_TWO, BACK_THREE, BACK_FOUR
 };
 inline bool isAnyBackButton(ButtonType bt) {
-    return bt == ButtonType::BACK || bt == ButtonType::BACK_TWO || bt == ButtonType::BACK_THREE;
+    return bt == ButtonType::BACK || bt == ButtonType::BACK_TWO
+            || bt == ButtonType::BACK_THREE || bt == ButtonType::BACK_FOUR;
 }
 
 enum class ButtonState {

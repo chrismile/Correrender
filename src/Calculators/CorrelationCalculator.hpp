@@ -221,6 +221,7 @@ private:
     const uint32_t batchCorrelationMemberCountThresholdKraskov = 10;
     const int computeBlockSize1D = 256;
     const int computeBlockSizeX = 8, computeBlockSizeY = 8, computeBlockSizeZ = 4;
+    const int computeBlockSize2dX = 8, computeBlockSize2dY = 8;
     struct UniformData {
         uint32_t xs, ys, zs, cs;
     };

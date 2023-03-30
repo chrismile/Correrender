@@ -75,6 +75,7 @@ struct TinyCudaNNCacheWrapper {
     tcnn::GPUMatrix<precision_t> symmetrizedQueryInput;
     tcnn::GPUMatrix<precision_t> referenceDecoded;
     tcnn::GPUMatrix<precision_t> queryDecoded;
+    AuxiliaryMemoryToken auxMemoryToken{};
 };
 
 const uint32_t TINY_CUDA_NN_PARAMS_FORMAT_FLOAT = 0;
@@ -89,7 +90,11 @@ TinyCudaNNCorrelationCalculator::TinyCudaNNCorrelationCalculator(sgl::vk::Render
     cacheWrapper = std::make_shared<TinyCudaNNCacheWrapper>();
 }
 
-TinyCudaNNCorrelationCalculator::~TinyCudaNNCorrelationCalculator() = default;
+TinyCudaNNCorrelationCalculator::~TinyCudaNNCorrelationCalculator() {
+    if (cacheWrapper->auxMemoryToken) {
+        volumeData->popAuxiliaryMemoryDevice(cacheWrapper->auxMemoryToken);
+    }
+}
 
 void TinyCudaNNCorrelationCalculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
     DeepLearningCudaCorrelationCalculator::setVolumeData(_volumeData, isNewData);
@@ -386,6 +391,9 @@ void TinyCudaNNCorrelationCalculator::recreateCache(int batchSize) {
     cacheWrapper->symmetrizedQueryInput = tcnn::GPUMatrix<precision_t>();
     cacheWrapper->referenceDecoded = tcnn::GPUMatrix<precision_t>();
     cacheWrapper->queryDecoded = tcnn::GPUMatrix<precision_t>();
+    if (cacheWrapper->auxMemoryToken) {
+        volumeData->popAuxiliaryMemoryDevice(cacheWrapper->auxMemoryToken);
+    }
 
     // mlp_fused_forward needs multiple of 16 for number of input layers.
     uint32_t numInputLayers = 16;
@@ -412,6 +420,23 @@ void TinyCudaNNCorrelationCalculator::recreateCache(int batchSize) {
     cacheWrapper->symmetrizedQueryInput = tcnn::GPUMatrix<precision_t>(numLayersInDecoder, uint32_t(cs) * batchSize);
     cacheWrapper->referenceDecoded = tcnn::GPUMatrix<precision_t>(numLayersOutDecoder, uint32_t(cs) * batchSize);
     cacheWrapper->queryDecoded = tcnn::GPUMatrix<precision_t>(numLayersOutDecoder, uint32_t(cs) * batchSize);
+
+    size_t auxBuffersSizeInBytes = 0;
+#if TCNN_HALF_PRECISION
+    if (moduleWrapper->networkEncoderHalf) {
+        auxBuffersSizeInBytes += size_t(cacheWrapper->referenceInputHalf.n_bytes());
+        auxBuffersSizeInBytes += size_t(cacheWrapper->queryInputHalf.n_bytes());
+    }
+#endif
+    auxBuffersSizeInBytes += size_t(cacheWrapper->referenceInput.n_bytes());
+    auxBuffersSizeInBytes += size_t(cacheWrapper->queryInput.n_bytes());
+    auxBuffersSizeInBytes += size_t(cacheWrapper->referenceEncoded.n_bytes());
+    auxBuffersSizeInBytes += size_t(cacheWrapper->queryEncoded.n_bytes());
+    auxBuffersSizeInBytes += size_t(cacheWrapper->symmetrizedReferenceInput.n_bytes());
+    auxBuffersSizeInBytes += size_t(cacheWrapper->symmetrizedQueryInput.n_bytes());
+    auxBuffersSizeInBytes += size_t(cacheWrapper->referenceDecoded.n_bytes());
+    auxBuffersSizeInBytes += size_t(cacheWrapper->queryDecoded.n_bytes());
+    cacheWrapper->auxMemoryToken = volumeData->pushAuxiliaryMemoryDevice(auxBuffersSizeInBytes);
 }
 
 CUdeviceptr TinyCudaNNCorrelationCalculator::getReferenceInputPointer()  {

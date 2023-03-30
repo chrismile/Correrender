@@ -34,6 +34,7 @@
 
 #include <Utils/File/Logfile.hpp>
 
+#include "AuxiliaryMemoryToken.hpp"
 #include "LRUCache.hpp"
 #include "HostCacheEntry.hpp"
 #include "DeviceCacheEntry.hpp"
@@ -114,6 +115,23 @@ public:
         );
     }
 
+    // Calculators may need auxiliary memory during their lifetime, which counts to the maximum limit.
+    AuxiliaryMemoryToken pushAuxiliaryMemory(size_t sizeInBytes) {
+        AuxiliaryMemoryToken token = tokenCounter++;
+        auxiliaryMemorySizeMap.insert(std::make_pair(token, sizeInBytes));
+        auxiliaryMemorySizeTotal += sizeInBytes;
+        return token;
+    }
+    void popAuxiliaryMemory(AuxiliaryMemoryToken token) {
+        auto it = auxiliaryMemorySizeMap.find(token);
+        if (it != auxiliaryMemorySizeMap.end()) {
+            auxiliaryMemorySizeTotal -= it->second;
+            auxiliaryMemorySizeMap.erase(it);
+        } else {
+            sgl::Logfile::get()->throwError("Error in FieldCache::popAuxiliaryMemory: ");
+        }
+    }
+
 protected:
     size_t cacheSize = 0, cacheSizeMax = 0;
     // What percentage of the available host/device memory should be used for caching?
@@ -137,6 +155,11 @@ protected:
 private:
     LRUCache<FieldAccess, CacheEntry> cache;
     std::list<std::pair<FieldAccess, typename CacheEntry::weak_type>> evictionWaitList;
+
+    // Auxiliary memory.
+    AuxiliaryMemoryToken tokenCounter = 1;
+    std::unordered_map<AuxiliaryMemoryToken, size_t> auxiliaryMemorySizeMap;
+    size_t auxiliaryMemorySizeTotal = 0;
 };
 
 // Host (i.e., CPU) memory cache.

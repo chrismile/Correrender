@@ -1147,6 +1147,22 @@ std::pair<float, float> VolumeData::getMinMaxScalarFieldValue(
     return minMaxVal;
 }
 
+AuxiliaryMemoryToken VolumeData::pushAuxiliaryMemoryCpu(size_t sizeInBytes) {
+    return hostFieldCache->pushAuxiliaryMemory(sizeInBytes);
+}
+
+void VolumeData::popAuxiliaryMemoryCpu(AuxiliaryMemoryToken token) {
+    hostFieldCache->popAuxiliaryMemory(token);
+}
+
+AuxiliaryMemoryToken VolumeData::pushAuxiliaryMemoryDevice(size_t sizeInBytes) {
+    return deviceFieldCache->pushAuxiliaryMemory(sizeInBytes);
+}
+
+void VolumeData::popAuxiliaryMemoryDevice(AuxiliaryMemoryToken token) {
+    deviceFieldCache->popAuxiliaryMemory(token);
+}
+
 void VolumeData::update(float dtFrame) {
     for (CalculatorPtr& calculator : calculators) {
         calculator->update(dtFrame);
@@ -1353,7 +1369,10 @@ void VolumeData::renderGuiOverlay(uint32_t viewIdx) {
 }
 
 void VolumeData::acquireTf(Renderer* renderer, int varIdx) {
-    multiVarTransferFunctionWindow.loadAttributeDataIfEmpty(varIdx);
+    // We don't need a reload if the range is fixed.
+    if (!multiVarTransferFunctionWindow.getIsSelectedRangeFixed(varIdx)) {
+        multiVarTransferFunctionWindow.loadAttributeDataIfEmpty(varIdx);
+    }
     transferFunctionToRendererMap.insert(std::make_pair(varIdx, renderer));
 }
 
@@ -1786,7 +1805,7 @@ bool VolumeData::pickPointWorldAtZ(
     float tHit;
     if (_rayZPlaneIntersection(
             rayOrigin, rayDirection,
-            float(z) / float(zs - 1) * (boxRendering.max.z - boxRendering.min.z) + boxRendering.min.z,
+            float(z) / float(zs > 1 ? zs - 1 : 1) * (boxRendering.max.z - boxRendering.min.z) + boxRendering.min.z,
             glm::vec2(boxRendering.min.x, boxRendering.min.y),
             glm::vec2(boxRendering.max.x, boxRendering.max.y),
             tHit)) {

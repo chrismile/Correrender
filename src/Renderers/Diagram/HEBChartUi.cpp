@@ -203,8 +203,10 @@ void HEBChart::setIsFocusView(int focusViewLevel) {
             buttons.emplace_back(ButtonType::BACK);
         } else if (i == focusViewLevel - 2) {
             buttons.emplace_back(ButtonType::BACK_TWO);
-        } else {
+        } else if (i == focusViewLevel - 3) {
             buttons.emplace_back(ButtonType::BACK_THREE);
+        } else {
+            buttons.emplace_back(ButtonType::BACK_FOUR);
         }
     }
     buttons.emplace_back(ButtonType::CLOSE);

@@ -369,9 +369,9 @@ bool NetCdfLoader::setInputFiles(
     float dzCoords = 1.0f;
     if (!isLatLonData) {
         // Assume regular grid.
-        dzCoords = (zCoords[zs - 1] - zCoords[0]) / float(zs - 1);
-        dyCoords = (yCoords[ys - 1] - yCoords[0]) / float(ys - 1);
-        dxCoords = (xCoords[xs - 1] - xCoords[0]) / float(xs - 1);
+        dzCoords = zs > 1 ? (zCoords[zs - 1] - zCoords[0]) / float(zs - 1) : 1.0f;
+        dyCoords = ys > 1 ? (yCoords[ys - 1] - yCoords[0]) / float(ys - 1) : 1.0f;
+        dxCoords = xs > 1 ? (xCoords[xs - 1] - xCoords[0]) / float(xs - 1) : 1.0f;
     }
     float maxDeltaCoords = std::max(dxCoords, std::max(dyCoords, dzCoords));
 

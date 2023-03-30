@@ -58,6 +58,7 @@ struct QuickMLPCacheWrapper {
     qmlp::Tensor symmetrizedQueryInput;
     qmlp::Tensor referenceDecoded;
     qmlp::Tensor queryDecoded;
+    AuxiliaryMemoryToken auxMemoryToken{};
 };
 
 const uint32_t QUICK_MLP_PARAMS_FORMAT_FLOAT = 0;
@@ -73,7 +74,11 @@ QuickMLPCorrelationCalculator::QuickMLPCorrelationCalculator(sgl::vk::Renderer* 
     cacheWrapper = std::make_shared<QuickMLPCacheWrapper>();
 }
 
-QuickMLPCorrelationCalculator::~QuickMLPCorrelationCalculator() = default;
+QuickMLPCorrelationCalculator::~QuickMLPCorrelationCalculator() {
+    if (cacheWrapper->auxMemoryToken) {
+        volumeData->popAuxiliaryMemoryDevice(cacheWrapper->auxMemoryToken);
+    }
+}
 
 void QuickMLPCorrelationCalculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
     DeepLearningCudaCorrelationCalculator::setVolumeData(_volumeData, isNewData);
@@ -259,6 +264,10 @@ void QuickMLPCorrelationCalculator::recreateCache(int batchSize) {
     // Network needs multiple of 16 for number of input layers.
     //int numInputLayers = 16;
 
+    if (cacheWrapper->auxMemoryToken) {
+        volumeData->popAuxiliaryMemoryDevice(cacheWrapper->auxMemoryToken);
+    }
+
     cacheWrapper->referenceInput = qmlp::Tensor(
             moduleWrapper->networkEncoder->precisionIn(), {cs, int(numLayersInEncoder) });
     cacheWrapper->referenceEncoded = qmlp::Tensor(
@@ -277,6 +286,18 @@ void QuickMLPCorrelationCalculator::recreateCache(int batchSize) {
             moduleWrapper->networkDecoder->precisionOut(), {cs * int(batchSize), int(numLayersOutDecoder) });
     cacheWrapper->queryDecoded = qmlp::Tensor(
             moduleWrapper->networkDecoder->precisionOut(), {cs * int(batchSize), int(numLayersOutDecoder) });
+
+    size_t auxBuffersSizeInBytes = 0;
+    auxBuffersSizeInBytes += size_t(cacheWrapper->referenceInput.numBytes());
+    auxBuffersSizeInBytes += size_t(cacheWrapper->referenceEncoded.numBytes());
+    auxBuffersSizeInBytes += size_t(cacheWrapper->queryInput.numBytes());
+    auxBuffersSizeInBytes += size_t(cacheWrapper->queryEncoded.numBytes());
+    auxBuffersSizeInBytes += size_t(cacheWrapper->queryEncodedPermuted.numBytes());
+    auxBuffersSizeInBytes += size_t(cacheWrapper->symmetrizedReferenceInput.numBytes());
+    auxBuffersSizeInBytes += size_t(cacheWrapper->symmetrizedQueryInput.numBytes());
+    auxBuffersSizeInBytes += size_t(cacheWrapper->referenceDecoded.numBytes());
+    auxBuffersSizeInBytes += size_t(cacheWrapper->queryDecoded.numBytes());
+    cacheWrapper->auxMemoryToken = volumeData->pushAuxiliaryMemoryDevice(auxBuffersSizeInBytes);
 }
 
 CUdeviceptr QuickMLPCorrelationCalculator::getReferenceInputPointer() {
