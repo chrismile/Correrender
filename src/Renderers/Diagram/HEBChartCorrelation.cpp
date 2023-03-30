@@ -48,6 +48,8 @@
 
 // declaring static iterations variable
 BO_DECLARE_DYN_PARAM(int, BayOpt::Params::stop_maxiterations, iterations);
+BO_DECLARE_DYN_PARAM(int, BayOpt::Params::init_randomsampling, samples);
+BO_DECLARE_DYN_PARAM(int, BayOpt::Params::opt_nloptnograd, iterations);
 
 HEBChart::~HEBChart() {
     if (computeRenderer) {
@@ -481,7 +483,7 @@ void HEBChart::correlationSamplingExecuteCpuBayesian(HEBChartFieldData* fieldDat
 
     std::atomic<int> cur_pair{};
     const auto correlationType = correlationMeasureType;
-    const int bayOptIterationCount = std::max(0, numSamples - BayOpt::Params::init_randomsampling::samples());
+    const int bayOptIterationCount = std::max(0, numSamples - numInitSamples);
     const int mutualInformationK = k;
     std::vector<std::thread> threads(std::thread::hardware_concurrency());
     std::vector<std::vector<MIFieldEntry>> miFieldEntriesThread(threads.size());
@@ -517,6 +519,8 @@ void HEBChart::correlationSamplingExecuteCpuBayesian(HEBChartFieldData* fieldDat
 
             limbo::bayes_opt::BOptimizer<BayOpt::Params> optimizer;
             BayOpt::Params::stop_maxiterations::set_iterations(bayOptIterationCount);
+            BayOpt::Params::init_randomsampling::set_samples(numInitSamples);
+            BayOpt::Params::opt_nloptnograd::set_iterations(numBOIterations);
             switch(correlationType){
             case CorrelationMeasureType::PEARSON:
                 optimizer.optimize(BayOpt::Eval<BayOpt::PearsonFunctor>{fields, region_min, region_max, cs, xs, ys});
@@ -905,8 +909,10 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
     
     int numPoints0 = xsd0 * ysd0 * zsd0;
     int numPoints1 = xsd1 * ysd1 * zsd1;
-    const int bayOptIterationCount = std::max(0, numSamples - BayOpt::Params::init_randomsampling::samples());
+    const int bayOptIterationCount = std::max(0, numSamples - numInitSamples);
     BayOpt::Params::stop_maxiterations::set_iterations(bayOptIterationCount);
+    BayOpt::Params::init_randomsampling::set_samples(numInitSamples);
+    BayOpt::Params::opt_nloptnograd::set_iterations(numBOIterations);
 
     int numPairsDownsampled;
     if (isSubselection) {
@@ -915,7 +921,7 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
         numPairsDownsampled = regionsEqual ? (numPoints0 * numPoints0 - numPoints0) / 2 : numPoints0 * numPoints1;
     }
     constexpr int batchSize = 100;
-    uint32_t batchSizeNeeded = batchSize * BayOpt::Params::init_randomsampling::samples();
+    uint32_t batchSizeNeeded = batchSize * numInitSamples;
     createBatchCacheData(batchSizeNeeded);
     auto fieldCache = getFieldCache(fieldData);
     std::atomic<int> cur_pair{};
@@ -1012,7 +1018,7 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
             std::cout << "Thread " << thread_id << ": Initialization took " << std::chrono::duration<double>(end_time-start_time).count() << " s" << std::endl;
 
             start_time = end_time;
-            double eval_time{};
+            double refinement_time{}, eval_time{};
             for(int i: BayOpt::i_range(bayOptIterationCount)){
                 // 4. Drawing new samples from the model -------------------------------------------
                 for(int o: BayOpt::i_range(true_batch_size)){
@@ -1020,7 +1026,10 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
                     
                     auto acqui_optimization = [&](const Eigen::VectorXd& x, bool g) {return acqui_fun(x, limbo::FirstElem{}, g);};
                     auto starting_point = limbo::tools::random_vector_bounded(6);
+                    auto refinement_start = std::chrono::system_clock::now();
                     auto new_sample = acqui_optimizer(acqui_optimization, starting_point, true);
+                    auto refinement_end = std::chrono::system_clock::now();
+                    refinement_time += std::chrono::duration<double>(refinement_end - refinement_start).count();
 
                     std::copy(new_sample.data(), new_sample.data() + 6, sample_positions.begin() + o * 6);
                 }
@@ -1049,7 +1058,7 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
                 // 6. loop to 4.
             }
             end_time = std::chrono::system_clock::now();
-            std::cout << "Thread " << thread_id << ": " << bayOptIterationCount << " Iterations took " << std::chrono::duration<double>(end_time-start_time).count() << " s (Evaluation took " << eval_time << " s)" << std::endl;
+            std::cout << "Thread " << thread_id << ": " << bayOptIterationCount << " Iterations took " << std::chrono::duration<double>(end_time-start_time).count() << " s (Refinement took " << refinement_time << "s, Evaluation took " << eval_time << " s)" << std::endl;
             start_time = end_time;
             // 7. Writing back the best results -------------------------------------------
             for(int o: BayOpt::i_range(true_batch_size)){

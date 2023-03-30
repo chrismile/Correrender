@@ -112,6 +112,8 @@ private:
     int kMax = 20; ///< For CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV.
     SamplingMethodType samplingMethodType = SamplingMethodType::MEAN;
     int numSamples = 100;
+    int numInitSamples = 20;
+    int numBOIterations = 250;
     float beta = 0.75f;
     int minDownscalingFactor = 16, maxDownscalingFactor = 64;
     int minDownscalingFactorFocus = 1, maxDownscalingFactorFocus = 16;

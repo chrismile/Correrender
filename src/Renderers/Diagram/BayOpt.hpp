@@ -87,6 +87,7 @@ struct Params {
 // depending on which internal optimizer we use, we need to import different parameters
 #ifdef USE_NLOPT
     struct opt_nloptnograd : public defaults::opt_nloptnograd {
+        BO_DYN_PARAM(int, iterations);
     };
 #elif defined(USE_LIBCMAES)
     struct opt_cmaes : public defaults::opt_cmaes {
@@ -111,7 +112,7 @@ struct Params {
 
     // we use 10 random samples to initialize the algorithm
     struct init_randomsampling {
-        BO_PARAM(int, samples, 20);
+        BO_DYN_PARAM(int, samples);
     };
 
     // we stop after 40 iterations

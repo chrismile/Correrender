@@ -203,6 +203,16 @@ void HEBChart::setNumSamples(int _numSamples) {
     dataDirty = true;
 }
 
+void HEBChart::setNumInitSamples(int _numInitSamples){
+    numInitSamples = _numInitSamples;
+    dataDirty = true;
+}
+
+void HEBChart::setNumBOIterations(int _numBOIterations){
+    numBOIterations = _numBOIterations;
+    dataDirty = true;
+}
+
 void HEBChart::setDownscalingFactors(int _dfx, int _dfy, int _dfz) {
     dfx = _dfx;
     dfy = _dfy;

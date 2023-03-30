@@ -889,6 +889,24 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         reRenderTriggeredByDiagram = true;
     }
 
+    if (samplingMethodType == SamplingMethodType::BAYESIAN_OPTIMIZATION && propertyEditor.addSliderIntEdit(
+            "#numInitSamples", &numInitSamples, 1, 100) == ImGui::EditMode::INPUT_FINISHED) {
+        for (auto& diagram : diagrams) {
+            diagram->setNumInitSamples(numInitSamples);
+        }
+        reRender = true;
+        reRenderTriggeredByDiagram = true;
+    }
+
+    if (samplingMethodType == SamplingMethodType::BAYESIAN_OPTIMIZATION && propertyEditor.addSliderIntEdit(
+            "#numBOIterations", &numBOIterations, 1, 1000) == ImGui::EditMode::INPUT_FINISHED) {
+        for (auto& diagram : diagrams) {
+            diagram->setNumBOIterations(numBOIterations);
+        }
+        reRender = true;
+        reRenderTriggeredByDiagram = true;
+    }
+
     if (volumeData) {
         if (propertyEditor.addBeginCombo(
                 "Scalar Fields", scalarFieldComboValue, ImGuiComboFlags_NoArrowButton)) {

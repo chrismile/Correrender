@@ -148,6 +148,8 @@ public:
     void setKraskovNumNeighbors(int _k);
     void setSamplingMethodType(SamplingMethodType _samplingMethodType);
     void setNumSamples(int _numSamples);
+    void setNumInitSamples(int _numInitSamples);
+    void setNumBOIterations(int _numBOIterations);
     void setBeta(float _beta);
     void setDownscalingFactors(int _dfx, int _dfy, int _dfz);
     void setLineCountFactor(int _factor);
@@ -301,6 +303,8 @@ private:
     void createBatchCacheData(uint32_t& batchSizeSamplesMax);
     SamplingMethodType samplingMethodType = SamplingMethodType::MEAN;
     int numSamples = 100;
+    int numInitSamples = 20;
+    int numBOIterations = 250;
     // Performance/quality measurement code.
     bool isSubselection = false;
     std::vector<std::pair<uint32_t, uint32_t>> subselectionBlockPairs;
