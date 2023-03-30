@@ -294,7 +294,9 @@ void ICorrelationCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEditor) 
         dirty = true;
     }
 
-    propertyEditor.addCheckbox("Fix Picking Z", &fixPickingZPlane);
+    if (!volumeData || volumeData->getGridSizeZ() > 1) {
+        propertyEditor.addCheckbox("Fix Picking Z", &fixPickingZPlane);
+    }
 }
 
 
@@ -1021,6 +1023,10 @@ void CorrelationComputePass::loadShader() {
         preprocessorDefines.insert(std::make_pair("BLOCK_SIZE_X", std::to_string(computeBlockSize1D)));
         preprocessorDefines.insert(std::make_pair("BLOCK_SIZE_Y", std::to_string(1)));
         preprocessorDefines.insert(std::make_pair("BLOCK_SIZE_Z", std::to_string(1)));
+    } else if (volumeData->getGridSizeZ() < 4) {
+        preprocessorDefines.insert(std::make_pair("BLOCK_SIZE_X", std::to_string(computeBlockSize2dX)));
+        preprocessorDefines.insert(std::make_pair("BLOCK_SIZE_Y", std::to_string(computeBlockSize2dY)));
+        preprocessorDefines.insert(std::make_pair("BLOCK_SIZE_Z", "1"));
     } else {
         preprocessorDefines.insert(std::make_pair("BLOCK_SIZE_X", std::to_string(computeBlockSizeX)));
         preprocessorDefines.insert(std::make_pair("BLOCK_SIZE_Y", std::to_string(computeBlockSizeY)));
@@ -1135,16 +1141,19 @@ void CorrelationComputePass::_render() {
         }
     }
 
+    int blockSizeX = volumeData->getGridSizeZ() < 4 ? computeBlockSize2dX : computeBlockSizeX;
+    int blockSizeY = volumeData->getGridSizeZ() < 4 ? computeBlockSize2dY : computeBlockSizeY;
+    int blockSizeZ = volumeData->getGridSizeZ() < 4 ? 1 : computeBlockSizeZ;
     if (needsBatchedRendering) {
-        auto blockSizeX = uint32_t(computeBlockSizeX);
+        auto blockSizeXUint = uint32_t(blockSizeX);
         //auto blockSizeY = uint32_t(computeBlockSizeY);
         //auto blockSizeZ = uint32_t(computeBlockSizeZ);
         /*auto batchSizeX =
-                sgl::uiceil(uint32_t(volumeData->getGridSizeX()), batchCount * blockSizeX) * blockSizeX;
+                sgl::uiceil(uint32_t(volumeData->getGridSizeX()), batchCount * blockSizeXUint) * blockSizeXUint;
         auto batchSizeY = uint32_t(volumeData->getGridSizeY());
         auto batchSizeZ = uint32_t(volumeData->getGridSizeZ());
         batchCount = sgl::uiceil(uint32_t(volumeData->getGridSizeX()), batchSizeX);*/
-        auto batchSizeX = 2 * blockSizeX;
+        auto batchSizeX = 2 * blockSizeXUint;
         auto batchSizeY = uint32_t(volumeData->getGridSizeY());
         auto batchSizeZ = uint32_t(volumeData->getGridSizeZ());
         batchCount = sgl::uiceil(uint32_t(volumeData->getGridSizeX()), batchSizeX);
@@ -1159,9 +1168,9 @@ void CorrelationComputePass::_render() {
             }
             renderer->dispatch(
                     computeData,
-                    sgl::uiceil(batchSizeX, uint32_t(computeBlockSizeX)),
-                    sgl::uiceil(batchSizeY, uint32_t(computeBlockSizeY)),
-                    sgl::uiceil(batchSizeZ, uint32_t(computeBlockSizeZ)));
+                    sgl::uiceil(batchSizeX, uint32_t(blockSizeX)),
+                    sgl::uiceil(batchSizeY, uint32_t(blockSizeY)),
+                    sgl::uiceil(batchSizeZ, uint32_t(blockSizeZ)));
             renderer->syncWithCpu();
         }
     } else {
@@ -1174,9 +1183,9 @@ void CorrelationComputePass::_render() {
         } else {
             renderer->dispatch(
                     computeData,
-                    sgl::iceil(volumeData->getGridSizeX(), computeBlockSizeX),
-                    sgl::iceil(volumeData->getGridSizeY(), computeBlockSizeY),
-                    sgl::iceil(volumeData->getGridSizeZ(), computeBlockSizeZ));
+                    sgl::iceil(volumeData->getGridSizeX(), blockSizeX),
+                    sgl::iceil(volumeData->getGridSizeY(), blockSizeY),
+                    sgl::iceil(volumeData->getGridSizeZ(), blockSizeZ));
         }
     }
 }

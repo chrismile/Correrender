@@ -127,6 +127,19 @@ void DiagramButton::render(
     glm::vec2 p3b6(x + 0.82f * buttonSize, y + 0.25f * buttonSize);
     glm::vec2 p3b7(x + 0.55f * buttonSize, y + 0.50f * buttonSize);
     glm::vec2 p3b8(x + 0.82f * buttonSize, y + 0.75f * buttonSize);
+    // Points back 4 button.
+    glm::vec2 p4b0(x + 0.37f * buttonSize, y + 0.25f * buttonSize);
+    glm::vec2 p4b1(x + 0.16f * buttonSize, y + 0.50f * buttonSize);
+    glm::vec2 p4b2(x + 0.37f * buttonSize, y + 0.75f * buttonSize);
+    glm::vec2 p4b3(x + 0.525f * buttonSize, y + 0.25f * buttonSize);
+    glm::vec2 p4b4(x + 0.31f * buttonSize, y + 0.50f * buttonSize);
+    glm::vec2 p4b5(x + 0.525f * buttonSize, y + 0.75f * buttonSize);
+    glm::vec2 p4b6(x + 0.68f * buttonSize, y + 0.25f * buttonSize);
+    glm::vec2 p4b7(x + 0.47f * buttonSize, y + 0.50f * buttonSize);
+    glm::vec2 p4b8(x + 0.68f * buttonSize, y + 0.75f * buttonSize);
+    glm::vec2 p4b9(x + 0.835f * buttonSize, y + 0.25f * buttonSize);
+    glm::vec2 p4b10(x + 0.625f * buttonSize, y + 0.50f * buttonSize);
+    glm::vec2 p4b11(x + 0.835f * buttonSize, y + 0.75f * buttonSize);
 
     if (vg) {
         nvgBeginPath(vg);
@@ -172,6 +185,21 @@ void DiagramButton::render(
             nvgLineTo(vg, p3b7.x, p3b7.y);
             nvgLineTo(vg, p3b8.x, p3b8.y);
             nvgStroke(vg);
+        } else if (buttonType == ButtonType::BACK_FOUR) {
+            nvgBeginPath(vg);
+            nvgMoveTo(vg, p4b0.x, p4b0.y);
+            nvgLineTo(vg, p4b1.x, p4b1.y);
+            nvgLineTo(vg, p4b2.x, p4b2.y);
+            nvgMoveTo(vg, p4b3.x, p4b3.y);
+            nvgLineTo(vg, p4b4.x, p4b4.y);
+            nvgLineTo(vg, p4b5.x, p4b5.y);
+            nvgMoveTo(vg, p4b6.x, p4b6.y);
+            nvgLineTo(vg, p4b7.x, p4b7.y);
+            nvgLineTo(vg, p4b8.x, p4b8.y);
+            nvgMoveTo(vg, p4b9.x, p4b9.y);
+            nvgLineTo(vg, p4b10.x, p4b10.y);
+            nvgLineTo(vg, p4b11.x, p4b11.y);
+            nvgStroke(vg);
         }
         nvgLineCap(vg, NVG_BUTT);
     }
@@ -212,6 +240,19 @@ void DiagramButton::render(
             path.moveTo(p3b6.x * s, p3b6.y * s);
             path.lineTo(p3b7.x * s, p3b7.y * s);
             path.lineTo(p3b8.x * s, p3b8.y * s);
+        } else if (buttonType == ButtonType::BACK_FOUR) {
+            path.moveTo(p4b0.x * s, p4b0.y * s);
+            path.lineTo(p4b1.x * s, p4b1.y * s);
+            path.lineTo(p4b2.x * s, p4b2.y * s);
+            path.moveTo(p4b3.x * s, p4b3.y * s);
+            path.lineTo(p4b4.x * s, p4b4.y * s);
+            path.lineTo(p4b5.x * s, p4b5.y * s);
+            path.moveTo(p4b6.x * s, p4b6.y * s);
+            path.lineTo(p4b7.x * s, p4b7.y * s);
+            path.lineTo(p4b8.x * s, p4b8.y * s);
+            path.moveTo(p4b9.x * s, p4b9.y * s);
+            path.lineTo(p4b10.x * s, p4b10.y * s);
+            path.lineTo(p4b11.x * s, p4b11.y * s);
         }
         canvas->drawPath(path, strokePaint);
         strokePaint.setStrokeCap(SkPaint::kButt_Cap);
@@ -256,6 +297,20 @@ void DiagramButton::render(
             vkvg_move_to(context, p3b6.x * s, p3b6.y * s);
             vkvg_line_to(context, p3b7.x * s, p3b7.y * s);
             vkvg_line_to(context, p3b8.x * s, p3b8.y * s);
+            vkvg_stroke(context);
+        } else if (buttonType == ButtonType::BACK_FOUR) {
+            vkvg_move_to(context, p4b0.x * s, p4b0.y * s);
+            vkvg_line_to(context, p4b1.x * s, p4b1.y * s);
+            vkvg_line_to(context, p4b2.x * s, p4b2.y * s);
+            vkvg_move_to(context, p4b3.x * s, p4b3.y * s);
+            vkvg_line_to(context, p4b4.x * s, p4b4.y * s);
+            vkvg_line_to(context, p4b5.x * s, p4b5.y * s);
+            vkvg_move_to(context, p4b6.x * s, p4b6.y * s);
+            vkvg_line_to(context, p4b7.x * s, p4b7.y * s);
+            vkvg_line_to(context, p4b8.x * s, p4b8.y * s);
+            vkvg_move_to(context, p4b9.x * s, p4b9.y * s);
+            vkvg_line_to(context, p4b10.x * s, p4b10.y * s);
+            vkvg_line_to(context, p4b11.x * s, p4b11.y * s);
             vkvg_stroke(context);
         }
         vkvg_set_line_cap(context, VKVG_LINE_CAP_BUTT);

@@ -506,6 +506,7 @@ sgl::vk::BufferPtr HEBChart::computeCorrelationsForRequests(
         std::shared_ptr<HEBChartFieldCache>& fieldCache, bool isFirstBatch) {
     int cs = getCorrelationMemberCount();
 
+    computeRenderer->setCustomCommandBuffer(commandBuffer, false);
     computeRenderer->beginCommandBuffer();
     if (isFirstBatch) {
         correlationComputePass->setCorrelationMeasureType(correlationMeasureType);
@@ -542,6 +543,7 @@ sgl::vk::BufferPtr HEBChart::computeCorrelationsForRequests(
     correlationOutputBuffer->copyDataTo(correlationOutputStagingBuffer, computeRenderer->getVkCommandBuffer());
     computeRenderer->endCommandBuffer();
     computeRenderer->submitToQueue({}, {}, fence, VK_PIPELINE_STAGE_TRANSFER_BIT);
+    computeRenderer->resetCustomCommandBuffer();
     fence->wait();
     fence->reset();
 
@@ -570,7 +572,6 @@ void HEBChart::createBatchCacheData(uint32_t& batchSizeSamplesMax) {
         commandPoolType.queueFamilyIndex = device->getComputeQueueIndex();
         commandPoolType.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
         commandBuffer = device->allocateCommandBuffer(commandPoolType, &commandPool);
-        computeRenderer->setCustomCommandBuffer(commandBuffer, false);
 
         requestsBuffer = std::make_shared<sgl::vk::Buffer>(
                 device, sizeof(CorrelationRequestData) * batchSizeSamplesMaxAllCs,

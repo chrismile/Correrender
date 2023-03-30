@@ -31,6 +31,8 @@
 
 #include <Graphics/Vulkan/Utils/InteropCuda.hpp>
 #include <Graphics/Vulkan/Render/CommandBuffer.hpp>
+
+#include "Volume/Cache/AuxiliaryMemoryToken.hpp"
 #include "CorrelationCalculator.hpp"
 #include "SymmetrizerType.hpp"
 

@@ -146,6 +146,28 @@ void SliceRenderer::createGeometryData(
     sgl::Plane plane(planeNormal, planeDist);
     std::vector<glm::vec3> polygonPoints;
 
+    // Special case: The volume is already a slice.
+    if (volumeData->getGridSizeZ() == 1) {
+        vertexPositions.emplace_back(aabb.min.x, aabb.min.y, aabb.max.z);
+        vertexPositions.emplace_back(aabb.max.x, aabb.min.y, aabb.max.z);
+        vertexPositions.emplace_back(aabb.max.x, aabb.max.y, aabb.max.z);
+        vertexPositions.emplace_back(aabb.min.x, aabb.max.y, aabb.max.z);
+
+        triangleIndices.reserve(6);
+        for (uint32_t i = 2; i < 4; i++) {
+            triangleIndices.push_back(0);
+            triangleIndices.push_back(i - 1);
+            triangleIndices.push_back(i);
+        }
+
+        vertexNormals.reserve(4);
+        for (uint32_t i = 0; i < 4; i++) {
+            vertexNormals.emplace_back(0.0f, 0.0f, 1.0f);
+        }
+
+        return;
+    }
+
     /*
      * Idea for sorting points from: https://asawicki.info/news_1428_finding_polygon_of_plane-aabb_intersection
      */
@@ -245,15 +267,19 @@ void SliceRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
             reRender = true;
         }
     }
-    if (propertyEditor.addSliderFloat3("Normal", &planeNormalUi.x, -1.0f, 1.0f)) {
-        planeNormal = glm::normalize(planeNormalUi);
-        dirty = true;
-        reRender = true;
+
+    if (!volumeData || volumeData->getGridSizeZ() > 1) {
+        if (propertyEditor.addSliderFloat3("Normal", &planeNormalUi.x, -1.0f, 1.0f)) {
+            planeNormal = glm::normalize(planeNormalUi);
+            dirty = true;
+            reRender = true;
+        }
+        if (propertyEditor.addDragFloat("Distance", &planeDist, 0.001f)) {
+            dirty = true;
+            reRender = true;
+        }
     }
-    if (propertyEditor.addDragFloat("Distance", &planeDist, 0.001f)) {
-        dirty = true;
-        reRender = true;
-    }
+
     if (propertyEditor.addSliderFloat("Lighting Factor", &lightingFactor, 0.0f, 1.0f)) {
         for (auto& sliceRasterPass : sliceRasterPasses) {
             sliceRasterPass->setLightingFactor(lightingFactor);

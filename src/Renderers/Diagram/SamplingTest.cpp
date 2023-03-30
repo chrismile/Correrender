@@ -46,36 +46,39 @@ struct TestCase {
 };
 
 void runTestCase(
-        HEBChart* chart, TestCase& testCase,
+        HEBChart* chart, TestCase& testCase, int numRuns,
         const std::vector<std::pair<uint32_t, uint32_t>>& blockPairs,
         const std::vector<std::vector<float>>& allValuesSortedArray) {
     chart->setSamplingMethodType(testCase.samplingMethodType);
     chart->setNumSamples(testCase.numSamples);
-    auto statisticsList = chart->computeCorrelationsBlockPairs(blockPairs);
 
-    // Binary search.
-    auto invN = 1.0 / double(blockPairs.size());
-    for (size_t i = 0; i < blockPairs.size(); i++) {
-        float searchValue = statisticsList.maximumValues.at(i);
-        const auto& allValuesSorted = allValuesSortedArray.at(i);
-        size_t lower = 0;
-        size_t upper = allValuesSorted.size();
-        size_t middle;
-        while (lower < upper) {
-            middle = (lower + upper) / 2;
-            float middleValue = allValuesSorted[middle];
-            if (middleValue < searchValue) {
-                lower = middle + 1;
-            } else {
-                upper = middle;
+    auto invN = 1.0 / double(blockPairs.size() * size_t(numRuns));
+    for (int runIdx = 0; runIdx < numRuns; runIdx++) {
+        auto statisticsList = chart->computeCorrelationsBlockPairs(blockPairs);
+
+        // Binary search.
+        for (size_t i = 0; i < blockPairs.size(); i++) {
+            float searchValue = statisticsList.maximumValues.at(i);
+            const auto& allValuesSorted = allValuesSortedArray.at(i);
+            size_t lower = 0;
+            size_t upper = allValuesSorted.size();
+            size_t middle;
+            while (lower < upper) {
+                middle = (lower + upper) / 2;
+                float middleValue = allValuesSorted[middle];
+                if (middleValue < searchValue) {
+                    lower = middle + 1;
+                } else {
+                    upper = middle;
+                }
             }
+            testCase.maximumQuantile += invN * double(upper) / double(allValuesSorted.size());
+            float minVal = allValuesSorted.front();
+            float maxVal = allValuesSorted.back();
+            testCase.rangeLinear += invN * double((searchValue - minVal) / (maxVal - minVal));
         }
-        testCase.maximumQuantile = invN * double(upper) / double(allValuesSorted.size());
-        float minVal = allValuesSorted.front();
-        float maxVal = allValuesSorted.back();
-        testCase.rangeLinear += invN * double((searchValue - minVal) / (maxVal - minVal));
+        testCase.elapsedTimeMicroseconds += invN * statisticsList.elapsedTimeMicroseconds;
     }
-    testCase.elapsedTimeMicroseconds = invN * statisticsList.elapsedTimeMicroseconds;
 }
 
 void runSamplingTests(const std::string& dataSetPath) {
@@ -105,16 +108,20 @@ void runSamplingTests(const std::string& dataSetPath) {
     //constexpr int dfx = 16;
     //constexpr int dfy = 16;
     //constexpr int dfz = 20;
-    constexpr int dfx = 8;
-    constexpr int dfy = 8;
-    constexpr int dfz = 8;
+    constexpr int dfx = 10;
+    constexpr int dfy = 10;
+    constexpr int dfz = 10;
+    constexpr int numRuns = 100;
     int numPairsToCheck = 1000;
-    int numLogSteps = 3;
+    int numLogSteps = 4;
     std::vector<int> numSamplesArray;
     for (int l = 0; l < numLogSteps; l++) {
         auto step = int(std::pow(10, l));
         auto maxVal = int(std::pow(10, l + 1));
         for (int i = step; i < maxVal; i += step) {
+            //if (i < 5) {
+            //    continue;
+            //}
             numSamplesArray.push_back(i);
         }
     }
@@ -199,7 +206,7 @@ void runSamplingTests(const std::string& dataSetPath) {
     for (TestCase& testCase : testCases) {
         std::cout << "Test case: " << SAMPLING_METHOD_TYPE_NAMES[int(testCase.samplingMethodType)];
         std::cout << ", samples: " << std::to_string(testCase.numSamples) << std::endl;
-        runTestCase(chart, testCase, blockPairs, allValuesSortedArray);
+        runTestCase(chart, testCase, numRuns, blockPairs, allValuesSortedArray);
         file.writeCell(SAMPLING_METHOD_TYPE_NAMES[int(testCase.samplingMethodType)]);
         file.writeCell(std::to_string(testCase.numSamples));
         file.writeCell(std::to_string(testCase.elapsedTimeMicroseconds));
