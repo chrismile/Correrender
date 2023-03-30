@@ -655,11 +655,11 @@ chmod +x "$destination_dir/run.sh"
 # Run the program as the last step.
 echo ""
 echo "All done!"
-#pushd $build_dir >/dev/null
-#
-#if [[ -z "${LD_LIBRARY_PATH+x}" ]]; then
-#    export LD_LIBRARY_PATH="${PROJECTPATH}/third_party/sgl/install/lib"
-#elif [[ ! "${LD_LIBRARY_PATH}" == *"${PROJECTPATH}/third_party/sgl/install/lib"* ]]; then
-#    export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:${PROJECTPATH}/third_party/sgl/install/lib"
-#fi
+pushd $build_dir >/dev/null
+
+if [[ -z "${LD_LIBRARY_PATH+x}" ]]; then
+    export LD_LIBRARY_PATH="${PROJECTPATH}/third_party/sgl/install/lib"
+elif [[ ! "${LD_LIBRARY_PATH}" == *"${PROJECTPATH}/third_party/sgl/install/lib"* ]]; then
+    export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:${PROJECTPATH}/third_party/sgl/install/lib"
+fi
 #./Correrender

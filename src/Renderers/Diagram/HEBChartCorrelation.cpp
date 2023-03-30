@@ -31,13 +31,12 @@
 #ifdef _OPENMP
 #include <omp.h>
 #endif
+#include <thread>
 
 #include <Math/Math.hpp>
 #include <Graphics/Vulkan/Utils/SyncObjects.hpp>
 #include <Graphics/Vulkan/Render/Renderer.hpp>
 #include <Graphics/Vulkan/Render/ComputePipeline.hpp>
-#define USE_NLOPT
-#include <limbo/bayes_opt/boptimizer.hpp>
 
 #include "Loaders/DataSet.hpp"
 #include "Volume/VolumeData.hpp"
@@ -45,6 +44,10 @@
 #include "Calculators/CorrelationCalculator.hpp"
 #include "Calculators/MutualInformation.hpp"
 #include "HEBChart.hpp"
+#include "BayOpt.hpp"
+
+// declaring static iterations variable
+BO_DECLARE_DYN_PARAM(int, BayOpt::Params::stop_maxiterations, iterations);
 
 HEBChart::~HEBChart() {
     if (computeRenderer) {
@@ -116,12 +119,12 @@ void HEBChart::computeCorrelations(
         std::vector<float> Y(cs); \
         \
         std::vector<std::pair<float, int>> ordinalRankArraySpearman; \
-        float* referenceRanks = nullptr; \
-        float* gridPointRanks = nullptr; \
+        std::vector<float> referenceRanks; \
+        std::vector<float> gridPointRanks; \
         if (cmt == CorrelationMeasureType::SPEARMAN) { \
             ordinalRankArraySpearman.reserve(cs); \
-            referenceRanks = new float[cs]; \
-            gridPointRanks = new float[cs]; \
+            referenceRanks.reserve(cs); \
+            gridPointRanks.reserve(cs); \
         } \
         \
         std::vector<std::pair<float, float>> jointArray; \
@@ -135,13 +138,13 @@ void HEBChart::computeCorrelations(
             y.reserve(cs); \
         } \
         \
-        double* histogram0 = nullptr; \
-        double* histogram1 = nullptr; \
-        double* histogram2d = nullptr; \
+        std::vector<double> histogram0;  \
+        std::vector<double> histogram1;  \
+        std::vector<double> histogram2d; \
         if (cmt == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) { \
-            histogram0 = new double[numBins]; \
-            histogram1 = new double[numBins]; \
-            histogram2d = new double[numBins * numBins]; \
+            histogram0.reserve(numBins); \
+            histogram1.reserve(numBins); \
+            histogram2d.reserve(numBins * numBins); \
         } \
         \
         KraskovEstimatorCache<double> kraskovEstimatorCache;
@@ -191,7 +194,7 @@ void HEBChart::computeCorrelationsMean(
                 continue;
             }
             if (correlationMeasureType == CorrelationMeasureType::SPEARMAN) {
-                computeRanks(X.data(), referenceRanks, ordinalRankArrayRef, cs);
+                computeRanks(X.data(), referenceRanks.data(), ordinalRankArrayRef, cs);
             }
             if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
                 minFieldValRef = std::numeric_limits<float>::max();
@@ -244,14 +247,14 @@ void HEBChart::computeCorrelationsMean(
                     if (cmt == CorrelationMeasureType::PEARSON) {
                         correlationValue = computePearson2<float>(X.data(), Y.data(), cs);
                     } else if (cmt == CorrelationMeasureType::SPEARMAN) {
-                        computeRanks(Y.data(), gridPointRanks, ordinalRankArraySpearman, cs);
-                        correlationValue = computePearson2<float>(referenceRanks, gridPointRanks, cs);
+                        computeRanks(Y.data(), gridPointRanks.data(), ordinalRankArraySpearman, cs);
+                        correlationValue = computePearson2<float>(referenceRanks.data(), gridPointRanks.data(), cs);
                     } else if (cmt == CorrelationMeasureType::KENDALL) {
                         correlationValue = computeKendall(
                                 X.data(), Y.data(), cs, jointArray, ordinalRankArray, y);
                     } else if (cmt == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
                         correlationValue = computeMutualInformationBinned<double>(
-                                X.data(), Y.data(), numBins, cs, histogram0, histogram1, histogram2d);
+                                X.data(), Y.data(), numBins, cs, histogram0.data(), histogram1.data(), histogram2d.data());
                     } else if (cmt == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV) {
                         correlationValue = computeMutualInformationKraskov<double>(
                                 X.data(), Y.data(), k, cs, kraskovEstimatorCache);
@@ -267,15 +270,6 @@ void HEBChart::computeCorrelationsMean(
             }
         }
 
-        if (cmt == CorrelationMeasureType::SPEARMAN) {
-            delete[] referenceRanks;
-            delete[] gridPointRanks;
-        }
-        if (cmt == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
-            delete[] histogram0;
-            delete[] histogram1;
-            delete[] histogram2d;
-        }
 #ifdef USE_TBB
                 return miFieldEntriesThread;
             },
@@ -330,8 +324,24 @@ void HEBChart::computeCorrelationsSamplingCpu(
         numPairsDownsampled = regionsEqual ? (numPoints0 * numPoints0 - numPoints0) / 2 : numPoints0 * numPoints1;
     }
 
-    auto* samples = new float[6 * numSamples];
-    generateSamples(samples, numSamples, samplingMethodType);
+    if(samplingMethodType == SamplingMethodType::BAYESIAN_OPTIMIZATION)
+        correlationSamplingExecuteCpuBayesian(fieldData, miFieldEntries, fields, minFieldVal, maxFieldVal);
+    else
+        correlationSamplingExecuteCpuDefault(fieldData, miFieldEntries, fields, minFieldVal, maxFieldVal);
+}
+
+void HEBChart::correlationSamplingExecuteCpuDefault(HEBChartFieldData* fieldData, std::vector<MIFieldEntry>& miFieldEntries, const std::vector<const float*>& fields, float minFieldVal, float maxFieldVal){
+
+    const int cs = getCorrelationMemberCount();
+    const int numPoints0 = xsd0 * ysd0 * zsd0;
+    const int numPoints1 = xsd1 * ysd1 * zsd1;
+     int numPairsDownsampled;
+    if (isSubselection) 
+        numPairsDownsampled = int(subselectionBlockPairs.size());
+    else
+        numPairsDownsampled = regionsEqual ? (numPoints0 * numPoints0 - numPoints0) / 2 : numPoints0 * numPoints1;
+    std::vector<float> samples(6 * numSamples);
+    generateSamples(samples.data(), numSamples, samplingMethodType);
 
 #ifdef USE_TBB
     miFieldEntries = tbb::parallel_reduce(
@@ -411,9 +421,9 @@ void HEBChart::computeCorrelationsSamplingCpu(
                 if (cmt == CorrelationMeasureType::PEARSON) {
                     correlationValue = computePearson2<float>(X.data(), Y.data(), cs);
                 } else if (cmt == CorrelationMeasureType::SPEARMAN) {
-                    computeRanks(Y.data(), referenceRanks, ordinalRankArrayRef, cs);
-                    computeRanks(Y.data(), gridPointRanks, ordinalRankArraySpearman, cs);
-                    correlationValue = computePearson2<float>(referenceRanks, gridPointRanks, cs);
+                    computeRanks(Y.data(), referenceRanks.data(), ordinalRankArrayRef, cs);
+                    computeRanks(Y.data(), gridPointRanks.data(), ordinalRankArraySpearman, cs);
+                    correlationValue = computePearson2<float>(referenceRanks.data(), gridPointRanks.data(), cs);
                 } else if (cmt == CorrelationMeasureType::KENDALL) {
                     correlationValue = computeKendall(
                             X.data(), Y.data(), cs, jointArray, ordinalRankArray, y);
@@ -423,7 +433,7 @@ void HEBChart::computeCorrelationsSamplingCpu(
                         Y[c] = (Y[c] - minFieldVal) / (maxFieldVal - minFieldVal);
                     }
                     correlationValue = computeMutualInformationBinned<double>(
-                            X.data(), Y.data(), numBins, cs, histogram0, histogram1, histogram2d);
+                            X.data(), Y.data(), numBins, cs, histogram0.data(), histogram1.data(), histogram2d.data());
                 } else if (cmt == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV) {
                     correlationValue = computeMutualInformationKraskov<double>(
                             X.data(), Y.data(), k, cs, kraskovEstimatorCache);
@@ -441,16 +451,6 @@ void HEBChart::computeCorrelationsSamplingCpu(
             if (isValidValue && correlationValueMax >= correlationRange.x && correlationValueMax <= correlationRange.y) {
                 miFieldEntriesThread.emplace_back(correlationValueMax, i, j);
             }
-        }
-
-        if (cmt == CorrelationMeasureType::SPEARMAN) {
-            delete[] referenceRanks;
-            delete[] gridPointRanks;
-        }
-        if (cmt == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
-            delete[] histogram0;
-            delete[] histogram1;
-            delete[] histogram2d;
         }
 #ifdef USE_TBB
         return miFieldEntriesThread;
@@ -475,8 +475,81 @@ void HEBChart::computeCorrelationsSamplingCpu(
         }
     }
 #endif
+}
+void HEBChart::correlationSamplingExecuteCpuBayesian(HEBChartFieldData* fieldData, std::vector<MIFieldEntry>& miFieldEntries, const std::vector<const float*>& fields, float minFieldVal, float maxFieldVal){
+    const int cs = getCorrelationMemberCount();
+    const int numPoints0 = xsd0 * ysd0 * zsd0;
+    const int numPoints1 = xsd1 * ysd1 * zsd1;
+     int numPairsDownsampled;
+    if (isSubselection) 
+        numPairsDownsampled = int(subselectionBlockPairs.size());
+    else
+        numPairsDownsampled = regionsEqual ? (numPoints0 * numPoints0 - numPoints0) / 2 : numPoints0 * numPoints1;
 
-    delete[] samples;
+    miFieldEntries.reserve(numPairsDownsampled);
+
+    std::atomic<int> cur_pair{};
+    const auto correlationType = correlationMeasureType;
+    const int bayOptIterationCount = 25;
+    auto thread_func = [&](){
+        while(int p = cur_pair++ < numPairsDownsampled){
+            uint32_t i, j;
+            if (isSubselection) {
+                std::tie(i, j) = subselectionBlockPairs.at(p);
+            } else if (regionsEqual) {
+                i = (1 + sgl::uisqrt(1 + 8 * uint32_t(p))) / 2;
+                j = uint32_t(p) - i * (i - 1) / 2;
+            } else {
+                i = uint32_t(p / numPoints1);
+                j = uint32_t(p % numPoints1);
+            }
+            if (regionsEqual && (cellDistanceRange.x > 0 || cellDistanceRange.y < cellDistanceRangeTotal.y)) {
+                glm::vec3 pti(i % uint32_t(xsd0), (i / uint32_t(xsd0)) % uint32_t(ysd0), i / uint32_t(xsd0 * ysd0));
+                glm::vec3 ptj(j % uint32_t(xsd1), (j / uint32_t(xsd1)) % uint32_t(ysd1), j / uint32_t(xsd1 * ysd1));
+                float cellDist = glm::length(pti - ptj);
+                if (cellDist < float(cellDistanceRange.x) || cellDist > float(cellDistanceRange.y)) {
+                    continue;
+                }
+            }
+            if (regionsEqual && showCorrelationForClickedPoint
+                    && clickedPointGridIdx != uint32_t(i) && clickedPointGridIdx != uint32_t(j)) {
+                continue;
+            }
+
+            auto region0 = getGridRegionPointIdx(0, i);
+            auto region1 = getGridRegionPointIdx(1, j);
+            const std::array<int, 6> region_min{region0.xmin, region0.ymin, region0.zmin, region1.xmin, region1.ymin, region1.zmin};
+            const std::array<int, 6> region_max{region0.xmax, region0.ymax, region0.zmax, region1.xmax, region1.ymax, region1.zmax};
+
+            limbo::bayes_opt::BOptimizer<BayOpt::Params> optimizer;
+            BayOpt::Params::stop_maxiterations::set_iterations(bayOptIterationCount);
+            switch(correlationType){
+            case CorrelationMeasureType::PEARSON:
+                optimizer.optimize(BayOpt::Eval<BayOpt::PearsonFunctor>{fields, region_min, region_max, cs, xs, ys});
+                break;
+            case CorrelationMeasureType::SPEARMAN:
+                optimizer.optimize(BayOpt::Eval<BayOpt::SpearmanFunctor>{fields, region_min, region_max, cs, xs, ys});
+                break;
+            case CorrelationMeasureType::KENDALL: 
+                optimizer.optimize(BayOpt::Eval<BayOpt::KendallFunctor>{fields, region_min, region_max, cs, xs, ys});
+                break;
+            case CorrelationMeasureType::MUTUAL_INFORMATION_BINNED: 
+                optimizer.optimize(BayOpt::Eval<BayOpt::MutualBinnedFunctor>{fields, region_min, region_max, cs, xs, ys, BayOpt::MutualBinnedFunctor{minFieldVal, maxFieldVal}});
+                break;
+            case CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV: 
+                optimizer.optimize(BayOpt::Eval<BayOpt::MutualFunctor>{fields, region_min, region_max, cs, xs, ys});
+                break;
+            }
+        }
+
+
+    };
+
+    std::vector<std::thread> threads(std::thread::hardware_concurrency());
+    for(auto& t: threads)
+        t = std::thread(thread_func);
+    for(auto& t: threads)
+        t.join();
 }
 
 std::shared_ptr<HEBChartFieldCache> HEBChart::getFieldCache(HEBChartFieldData* fieldData) {

@@ -286,6 +286,8 @@ private:
             const std::vector<float*>& downscaledFields0, const std::vector<float*>& downscaledFields1,
             std::vector<MIFieldEntry>& miFieldEntries);
     void computeCorrelationsSamplingCpu(HEBChartFieldData* fieldData, std::vector<MIFieldEntry>& miFieldEntries);
+    void correlationSamplingExecuteCpuDefault(HEBChartFieldData* fieldData, std::vector<MIFieldEntry>& miFieldEntries, const std::vector<const float*>& fields, float minFieldVal, float maxFieldVal);
+    void correlationSamplingExecuteCpuBayesian(HEBChartFieldData* fieldData, std::vector<MIFieldEntry>& miFieldEntries, const std::vector<const float*>& fields, float minFieldVal, float maxFieldVal);
     // GPU code.
     void computeCorrelationsSamplingGpu(HEBChartFieldData* fieldData, std::vector<MIFieldEntry>& miFieldEntries);
     std::shared_ptr<HEBChartFieldCache> getFieldCache(HEBChartFieldData* fieldData);
