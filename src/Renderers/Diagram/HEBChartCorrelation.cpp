@@ -1038,8 +1038,8 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
             // 7. Writing back the best results -------------------------------------------
             for(int o: BayOpt::i_range(true_batch_size)){
                 double max_val{std::numeric_limits<float>::lowest()};
-                for(auto& v: optimizers[o].observations_matrix().reshaped())
-                    max_val = std::max(max_val, v);
+                for(int v: BayOpt::i_range(optimizers[o].observations_matrix().size()))
+                    max_val = std::max(max_val, optimizers[o].observations_matrix().data()[v]);
                 
                 uint32_t i, j, q = p + o;
                 if (isSubselection) {
