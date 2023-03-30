@@ -86,6 +86,8 @@ private:
     void resetSelections(int idx = 0);
     std::pair<float, float> computeGlobalStdDevRange(int fieldIdx);
     VolumeDataPtr volumeData;
+    void onCorrelationMemberCountChanged();
+    int cachedMemberCount = 0;
     uint32_t contextDiagramViewIdx = 0, focusDiagramViewIdx = 0;
     bool reRenderTriggeredByDiagram = false;
     std::shared_ptr<HEBChart> parentDiagram; //< Parent diagram.

@@ -208,25 +208,28 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
         }
     }
 
-    int cs = getCorrelationMemberCount();
-    int kNew = std::max(sgl::iceil(3 * cs, 100), 1);
-    int kMaxNew = std::max(sgl::iceil(7 * cs, 100), 20);
-    if (kNew != k) {
-        for (auto& diagram : diagrams) {
-            diagram->setKraskovNumNeighbors(kNew);
-        }
-        if (parentDiagram) {
-            correlationRangeTotal = correlationRange = parentDiagram->getCorrelationRangeTotal();
-        }
+    if (isNewData || cachedMemberCount != getCorrelationMemberCount()) {
+        onCorrelationMemberCountChanged();
     }
-    k = kNew;
-    kMax = kMaxNew;
 
     updateScalarFieldComboValue();
     for (int selectedFieldIdx = 0; selectedFieldIdx < int(selectedScalarFields.size()); selectedFieldIdx++) {
         auto& selectedScalarField = selectedScalarFields.at(selectedFieldIdx);
         selectedScalarField.second = fieldNames.at(selectedScalarField.first);
     }
+}
+
+void DiagramRenderer::onCorrelationMemberCountChanged() {
+    int cs = getCorrelationMemberCount();
+    k = std::max(sgl::iceil(3 * cs, 100), 1);
+    kMax = std::max(sgl::iceil(7 * cs, 100), 20);
+    for (auto& diagram : diagrams) {
+        diagram->setKraskovNumNeighbors(k);
+    }
+    if (parentDiagram) {
+        correlationRangeTotal = correlationRange = parentDiagram->getCorrelationRangeTotal();
+    }
+    cachedMemberCount = cs;
 }
 
 void DiagramRenderer::onFieldRemoved(FieldType fieldType, int fieldIdx) {
@@ -812,7 +815,7 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         for (auto& diagram : diagrams) {
             diagram->setCorrelationMeasureType(correlationMeasureType);
         }
-        correlationRangeTotal = correlationRange = parentDiagram->getCorrelationRangeTotal();
+        onCorrelationMemberCountChanged();
         for (auto& diagram : diagrams) {
             diagram->setCorrelationRange(correlationRangeTotal);
         }
