@@ -628,13 +628,18 @@ sgl::vk::BufferPtr HEBChart::computeCorrelationsForRequests(
 void HEBChart::createBatchCacheData(uint32_t& batchSizeSamplesMax) {
     int cs = getCorrelationMemberCount();
     const uint32_t batchSizeSamplesMaxAllCs = 1 << 17; // Up to 131072 samples per batch.
-    if(batchSizeSamplesMax == 0)
+    //if(batchSizeSamplesMax == 0)
         batchSizeSamplesMax = batchSizeSamplesMaxAllCs;
     if (cs > 100) {
         double factorN = double(cs) / 100.0 * std::log2(double(cs) / 100.0 + 1.0);
         batchSizeSamplesMax = std::ceil(double(batchSizeSamplesMax) / factorN);
         batchSizeSamplesMax = uint32_t(sgl::nextPowerOfTwo(int(batchSizeSamplesMax)));
     }
+
+    //if(requestsBuffer && requestsBuffer->getSizeInBytes() / sizeof(CorrelationRequestData) != batchSizeSamplesMax){
+    //    delete computeRenderer;
+    //    requestsBuffer = {};
+    //}
 
     sgl::vk::Device* device = sgl::AppSettings::get()->getPrimaryDevice();
     if (!requestsBuffer) {
@@ -909,7 +914,7 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
     } else {
         numPairsDownsampled = regionsEqual ? (numPoints0 * numPoints0 - numPoints0) / 2 : numPoints0 * numPoints1;
     }
-    constexpr int batchSize = 1000;
+    constexpr int batchSize = 100;
     uint32_t batchSizeNeeded = batchSize * BayOpt::Params::init_randomsampling::samples();
     createBatchCacheData(batchSizeNeeded);
     auto fieldCache = getFieldCache(fieldData);
@@ -974,6 +979,7 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
         limbo::opt::NLOptNoGrad<BayOpt::Params, nlopt::GN_DIRECT_L_RAND> acqui_optimizer;
         for(int p = cur_pair.fetch_add(batchSize); p < numPairsDownsampled; p = cur_pair.fetch_add(batchSize)){
             const int true_batch_size = std::min<int>(numPairsDownsampled - p, batchSize);
+            auto start_time = std::chrono::system_clock::now();
             // 1. optimizer allocation -----------------------------------------------------------------------
             std::vector<model_t> optimizers(true_batch_size);
             // 2. drawing a batch size already done in the for loop ------------------------------------------
@@ -996,13 +1002,17 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
                         int lin_index = i * BayOpt::Params::init_randomsampling::samples() + s;
                         v(0) = correlationValues[lin_index];
                         if(std::isnan(v(0)) || std::isinf(v(0))) v(0) = -1;
-                        std::copy(sample_positions.begin() + 6 * lin_index, sample_positions.begin() + 7 * lin_index, p.data());
+                        std::copy(sample_positions.begin() + 6 * lin_index, sample_positions.begin() + 6 * lin_index + 6, p.data());
                         optimizers[i].add_sample(p, v);
                     }
                 }
                 outputBuffer->unmapMemory();
             }
+            auto end_time = std::chrono::system_clock::now();
+            std::cout << "Thread " << thread_id << ": Initialization took " << std::chrono::duration<double>(end_time-start_time).count() << " s" << std::endl;
 
+            start_time = end_time;
+            double eval_time{};
             for(int i: BayOpt::i_range(bayOptIterationCount)){
                 // 4. Drawing new samples from the model -------------------------------------------
                 for(int o: BayOpt::i_range(true_batch_size)){
@@ -1012,12 +1022,13 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
                     auto starting_point = limbo::tools::random_vector_bounded(6);
                     auto new_sample = acqui_optimizer(acqui_optimization, starting_point, true);
 
-                    std::copy(new_sample.data(), new_sample.data() + 6, sample_positions.begin());
+                    std::copy(new_sample.data(), new_sample.data() + 6, sample_positions.begin() + o * 6);
                 }
 
                 // 5. evaluating the samples and adding them to the model parameters
                 requests = generate_requests(sample_positions, p, p + true_batch_size, 1);
                 {
+                    auto eval_start = std::chrono::system_clock::now();
                     std::scoped_lock lock(gpu_mutex);
                     auto outputBuffer = computeCorrelationsForRequests(requests, fieldCache, gpu_first_call);
                     gpu_first_call = false;
@@ -1028,13 +1039,18 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
                     for(int o: BayOpt::i_range(true_batch_size)){
                         v(0) = correlationValues[o];
                         if(std::isnan(v(0)) || std::isinf(v(0))) v(0) = -1;
-                        std::copy(sample_positions.begin() + 6 * o, sample_positions.begin() + 7 * o, p.data());
+                        std::copy(sample_positions.begin() + 6 * o, sample_positions.begin() + 6 * o + 6, p.data());
                         optimizers[o].add_sample(p, v);
                     }
                     outputBuffer->unmapMemory();
+                    auto eval_end = std::chrono::system_clock::now();
+                    eval_time += std::chrono::duration<double>(eval_end - eval_start).count();
                 }
                 // 6. loop to 4.
             }
+            end_time = std::chrono::system_clock::now();
+            std::cout << "Thread " << thread_id << ": " << bayOptIterationCount << " Iterations took " << std::chrono::duration<double>(end_time-start_time).count() << " s (Evaluation took " << eval_time << " s)" << std::endl;
+            start_time = end_time;
             // 7. Writing back the best results -------------------------------------------
             for(int o: BayOpt::i_range(true_batch_size)){
                 double max_val{std::numeric_limits<float>::lowest()};
@@ -1053,6 +1069,8 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
                 }
                 threadFieldEntries[thread_id].emplace_back(float(max_val), i, j);
             }
+            end_time = std::chrono::system_clock::now();
+            //std::cout << "Thread " << thread_id << ": Writeback took " << std::chrono::duration<double>(end_time-start_time).count() << " s" << std::endl;
         }
 
     };
