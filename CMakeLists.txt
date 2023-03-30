@@ -105,6 +105,7 @@ else()
     find_package(SDL2 REQUIRED)
 endif()
 
+set(CMAKE_PREFIX_PATH ${CMAKE_PREFIX_PATH};third_party/sgl/install/lib/cmake/sgl)
 find_package(sgl REQUIRED)
 find_package(Boost COMPONENTS system filesystem REQUIRED)
 if(VCPKG_TOOLCHAIN)
