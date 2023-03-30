@@ -979,7 +979,7 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
             // 2. drawing a batch size already done in the for loop ------------------------------------------
             // 3. Init ---------------------------------------------------------------------------------------
             std::vector<float> sample_positions(true_batch_size * 6);
-            generateSamples(sample_positions.data(), batchSize, SamplingMethodType::QUASIRANDOM_HALTON);
+            generateSamples(sample_positions.data(), true_batch_size, SamplingMethodType::QUASIRANDOM_HALTON);
             // generate requests
             auto requests = generate_requests(sample_positions, p, p + true_batch_size, BayOpt::Params::init_randomsampling::samples());
             // evaluate requests and download scores (thread safe)
