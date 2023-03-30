@@ -1174,9 +1174,12 @@ void VolumeData::update(float dtFrame) {
 
 void VolumeData::resetDirty() {
     if (dirty) {
+        const auto& scalarFieldNamesBase = typeToFieldNamesMapBase[FieldType::SCALAR];
         const auto& scalarFieldNames = typeToFieldNamesMap[FieldType::SCALAR];
+        // 2023-03-30: Make sure no data is reset for base fields to avoid recomputing on every calculator change.
+        int startIdx = isFirstDirty ? int(0) : int(scalarFieldNamesBase.size());
         int numScalarFields = int(scalarFieldNames.size());
-        for (int varIdx = 0; varIdx < numScalarFields; varIdx++) {
+        for (int varIdx = startIdx; varIdx < numScalarFields; varIdx++) {
             multiVarTransferFunctionWindow.setAttributeDataDirty(varIdx);
         }
         for (auto& calculator : calculators) {
@@ -1184,6 +1187,7 @@ void VolumeData::resetDirty() {
         }
     }
     dirty = false;
+    isFirstDirty = false;
 }
 
 void VolumeData::setRenderDataBindings(const sgl::vk::RenderDataPtr& renderData) {
@@ -1369,7 +1373,7 @@ void VolumeData::renderGuiOverlay(uint32_t viewIdx) {
 }
 
 void VolumeData::acquireTf(Renderer* renderer, int varIdx) {
-    // We don't need a reload if the range is fixed.
+    // 2023-03-30: We don't need a reload if the range is fixed (avoid recomputing on every calculator change).
     if (!multiVarTransferFunctionWindow.getIsSelectedRangeFixed(varIdx)) {
         multiVarTransferFunctionWindow.loadAttributeDataIfEmpty(varIdx);
     }

@@ -293,6 +293,7 @@ protected:
     sgl::vk::ImageSamplerPtr imageSampler{};
 
     bool dirty = true; ///< Should be set to true if the representation changed.
+    bool isFirstDirty = true;
     bool reRender = false;
     ImGuiFileDialog* fileDialogInstance = nullptr;
     sgl::MultiVarTransferFunctionWindow multiVarTransferFunctionWindow;

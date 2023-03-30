@@ -26,6 +26,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <iostream>
 #include <unordered_set>
 #include <queue>
 #include <cmath>
@@ -257,10 +258,12 @@ void buildHebTree(
     auto treeHeight0Y = uint32_t(std::ceil(std::log2(ysd0)));
     auto treeHeight0Z = uint32_t(std::ceil(std::log2(zsd0)));
     auto treeHeight0 = std::max(treeHeight0X, std::max(treeHeight0Y, treeHeight0Z));
+    treeHeight0 = std::max(treeHeight0, uint32_t(1));
     auto treeHeight1X = uint32_t(std::ceil(std::log2(xsd1)));
     auto treeHeight1Y = uint32_t(std::ceil(std::log2(ysd1)));
     auto treeHeight1Z = uint32_t(std::ceil(std::log2(zsd1)));
     auto treeHeight1 = std::max(treeHeight1X, std::max(treeHeight1Y, treeHeight1Z));
+    treeHeight1 = std::max(treeHeight1, uint32_t(1));
     auto treeHeight = std::max(treeHeight0, treeHeight1) + (regionsEqual ? 0 : 1);
     nodesList.emplace_back();
     nodesList[0].normalizedPosition = glm::vec3(0.0f);
