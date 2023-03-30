@@ -36,6 +36,7 @@
 #include <Graphics/Vulkan/Utils/SyncObjects.hpp>
 #include <Graphics/Vulkan/Render/Renderer.hpp>
 #include <Graphics/Vulkan/Render/ComputePipeline.hpp>
+#define USE_NLOPT
 #include <limbo/bayes_opt/boptimizer.hpp>
 
 #include "Loaders/DataSet.hpp"

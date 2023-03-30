@@ -131,13 +131,14 @@ if command -v apt &> /dev/null; then
             || ! is_installed_apt "python3-dev" || ! is_installed_apt "python3-numpy" \
             || ! is_installed_apt "libblosc-dev" || ! is_installed_apt "libnetcdf-dev" \
             || ! is_installed_apt "libeccodes-dev" || ! is_installed_apt "libeccodes-tools" \
-            || ! is_installed_apt "libopenjp2-7-dev" || ! is_installed_apt "libeigen3-dev"; then
+            || ! is_installed_apt "libopenjp2-7-dev" || ! is_installed_apt "libeigen3-dev" \
+            || ! is_installed_apt "libnlopt-cxx-dev"; then
         echo "------------------------"
         echo "installing dependencies "
         echo "------------------------"
         sudo apt install -y libglm-dev libsdl2-dev libsdl2-image-dev libpng-dev libboost-filesystem-dev libtinyxml2-dev \
         libarchive-dev libglew-dev opencl-c-headers ocl-icd-opencl-dev libjsoncpp-dev nlohmann-json3-dev python3-dev \
-        python3-numpy libnetcdf-dev libblosc-dev libeccodes-dev libeccodes-tools libopenjp2-7-dev libeigen3-dev
+        python3-numpy libnetcdf-dev libblosc-dev libeccodes-dev libeccodes-tools libopenjp2-7-dev libeigen3-dev libnlopt-cxx-dev
     fi
 elif command -v pacman &> /dev/null; then
     if ! command -v cmake &> /dev/null || ! command -v git &> /dev/null || ! command -v curl &> /dev/null \
@@ -159,12 +160,12 @@ elif command -v pacman &> /dev/null; then
             || ! is_installed_pacman "python3" || ! is_installed_pacman "python-numpy" \
             || ! is_installed_pacman "nlohmann-json" || ! is_installed_pacman "jsoncpp" \
             || ! is_installed_pacman "blosc" || ! is_installed_pacman "netcdf" \
-            || ! is_installed_pacman "eigen"; then
+            || ! is_installed_pacman "eigen" || ! is_installed_pacman "nlopt"; then
         echo "------------------------"
         echo "installing dependencies "
         echo "------------------------"
         sudo pacman -S boost libarchive glm tinyxml2 sdl2 sdl2_image glew vulkan-devel shaderc opencl-headers ocl-icd \
-        python3 python-numpy nlohmann-json jsoncpp blosc netcdf eigen
+        python3 python-numpy nlohmann-json jsoncpp blosc netcdf eigen nlopt
     fi
     if command -v yay &> /dev/null && ! is_installed_yay "eccodes"; then
         yay -S eccodes
@@ -189,13 +190,14 @@ elif command -v yum &> /dev/null; then
             || ! is_installed_rpm "python3-devel" || ! is_installed_rpm "python3-numpy" \
             || ! is_installed_rpm "json-devel" || ! is_installed_rpm "jsoncpp-devel" \
             || ! is_installed_rpm "blosc-devel" || ! is_installed_rpm "netcdf-devel" \
-            || ! is_installed_rpm "eccodes-devel" || ! is_installed_rpm "libeigen3-devel"; then
+            || ! is_installed_rpm "eccodes-devel" || ! is_installed_rpm "libeigen3-devel" \
+            || ! is_installed_rpm "NLopt" ; then
         echo "------------------------"
         echo "installing dependencies "
         echo "------------------------"
         sudo yum install -y boost-devel libarchive-devel glm-devel tinyxml2-devel SDL2-devel SDL2_image-devel \
         libpng-devel glew-devel vulkan-headers libshaderc-devel opencl-headers ocl-icd python3-devel python3-numpy \
-        json-devel jsoncpp-devel blosc-devel netcdf-devel eccodes-devel libeigen3-devel
+        json-devel jsoncpp-devel blosc-devel netcdf-devel eccodes-devel libeigen3-devel NLopt
     fi
 else
     echo "Warning: Unsupported system package manager detected." >&2
