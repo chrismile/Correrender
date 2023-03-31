@@ -982,7 +982,8 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
     };
     auto thread_func = [&](int thread_id){
         using model_t = limbo::model::GP<BayOpt::Params>;
-        limbo::opt::NLOptNoGrad<BayOpt::Params, nlopt::GN_DIRECT_L_RAND> acqui_optimizer;
+        BayOpt::AlgorithmNoGradVariants<BayOpt::Params> acqui_optimizer = BayOpt::getOptimizerAsVariant<BayOpt::Params>(algorithm);
+        //limbo::opt::NLOptNoGrad<BayOpt::Params, nlopt::GN_DIRECT_L_RAND> acqui_optimizer;       // default GN_DIRECT_L_RAND
         for(int p = cur_pair.fetch_add(batchSize); p < numPairsDownsampled; p = cur_pair.fetch_add(batchSize)){
             const int true_batch_size = std::min<int>(numPairsDownsampled - p, batchSize);
             auto start_time = std::chrono::system_clock::now();
@@ -1027,7 +1028,7 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
                     auto acqui_optimization = [&](const Eigen::VectorXd& x, bool g) {return acqui_fun(x, limbo::FirstElem{}, g);};
                     auto starting_point = limbo::tools::random_vector_bounded(6);
                     auto refinement_start = std::chrono::system_clock::now();
-                    auto new_sample = acqui_optimizer(acqui_optimization, starting_point, true);
+                    auto new_sample = std::visit([&acqui_optimization, &starting_point](auto&& optimizer){return optimizer(acqui_optimization, starting_point, true);}, acqui_optimizer); //acqui_optimizer(acqui_optimization, starting_point, true);
                     auto refinement_end = std::chrono::system_clock::now();
                     refinement_time += std::chrono::duration<double>(refinement_end - refinement_start).count();
 

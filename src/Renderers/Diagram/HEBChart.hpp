@@ -35,6 +35,7 @@
 #include <glm/vec3.hpp>
 
 #include <Math/Geometry/AABB3.hpp>
+#include <nlopt.hpp>
 
 #include "DiagramColorMap.hpp"
 #include "Region.hpp"
@@ -150,6 +151,7 @@ public:
     void setNumSamples(int _numSamples);
     void setNumInitSamples(int _numInitSamples);
     void setNumBOIterations(int _numBOIterations);
+    void setNloptAlgorithm(nlopt::algorithm _algorithm);
     void setBeta(float _beta);
     void setDownscalingFactors(int _dfx, int _dfy, int _dfz);
     void setLineCountFactor(int _factor);
@@ -305,6 +307,7 @@ private:
     int numSamples = 100;
     int numInitSamples = 20;
     int numBOIterations = 250;
+    nlopt::algorithm algorithm = nlopt::GN_DIRECT_L_RAND;
     // Performance/quality measurement code.
     bool isSubselection = false;
     std::vector<std::pair<uint32_t, uint32_t>> subselectionBlockPairs;

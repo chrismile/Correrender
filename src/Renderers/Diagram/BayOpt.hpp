@@ -34,6 +34,8 @@
 
 constexpr bool EVAL_TIMINGS = false;
 
+#include <variant>
+
 #define USE_NLOPT
 #include <limbo/bayes_opt/boptimizer.hpp>
 #include "Calculators/MutualInformation.hpp"
@@ -241,6 +243,45 @@ struct MutualFunctor{
     }
 };
 
+template<typename Params, nlopt::algorithm Algo> using o = limbo::opt::NLOptNoGrad<Params, Algo>;
+template<typename Params>
+using AlgorithmNoGradVariants = std::variant<o<Params, nlopt::LN_COBYLA> ,  o<Params, nlopt::LN_BOBYQA> ,
+    o<Params, nlopt::LN_NEWUOA              >, o<Params, nlopt::LN_NEWUOA_BOUND     >,
+    o<Params, nlopt::LN_PRAXIS              >, o<Params, nlopt::LN_NELDERMEAD       >,
+    o<Params, nlopt::LN_SBPLX               >, o<Params, nlopt::GN_DIRECT           >,
+    o<Params, nlopt::GN_DIRECT_L            >, o<Params, nlopt::GN_DIRECT_L_RAND    >,
+    o<Params, nlopt::GN_DIRECT_NOSCAL       >, o<Params, nlopt::GN_DIRECT_L_NOSCAL  >,
+    o<Params, nlopt::GN_DIRECT_L_RAND_NOSCAL>, o<Params, nlopt::GN_ORIG_DIRECT      >,
+    o<Params, nlopt::GN_ORIG_DIRECT_L       >, o<Params, nlopt::GN_CRS2_LM          >,
+    o<Params, nlopt::LN_AUGLAG              >, o<Params, nlopt::LN_AUGLAG_EQ        >,
+    o<Params, nlopt::GN_ISRES               >, o<Params, nlopt::GN_ESCH             >>;
+template<typename Params>
+inline AlgorithmNoGradVariants<Params> getOptimizerAsVariant(nlopt::algorithm a){
+    switch(a){
+    case nlopt::LN_COBYLA: return {limbo::opt::NLOptNoGrad<Params, nlopt::LN_COBYLA>{}};
+    case nlopt::LN_BOBYQA: return {limbo::opt::NLOptNoGrad<Params, nlopt::LN_BOBYQA>{}};
+    case nlopt::LN_NEWUOA: return {limbo::opt::NLOptNoGrad<Params, nlopt::LN_NEWUOA>{}};
+    case nlopt::LN_SBPLX: return {limbo::opt::NLOptNoGrad<Params, nlopt::LN_SBPLX>{}};
+    case nlopt::LN_NEWUOA_BOUND: return {limbo::opt::NLOptNoGrad<Params, nlopt::LN_NEWUOA_BOUND>{}};
+    case nlopt::LN_PRAXIS: return {limbo::opt::NLOptNoGrad<Params, nlopt::LN_PRAXIS>{}};
+    case nlopt::LN_NELDERMEAD: return {limbo::opt::NLOptNoGrad<Params, nlopt::LN_NELDERMEAD>{}};
+    case nlopt::GN_DIRECT: return {limbo::opt::NLOptNoGrad<Params, nlopt::GN_DIRECT>{}};
+    case nlopt::GN_DIRECT_L: return {limbo::opt::NLOptNoGrad<Params, nlopt::GN_DIRECT_L>{}};
+    case nlopt::GN_DIRECT_L_RAND: return {limbo::opt::NLOptNoGrad<Params, nlopt::GN_DIRECT_L_RAND>{}};
+    case nlopt::GN_DIRECT_NOSCAL: return {limbo::opt::NLOptNoGrad<Params, nlopt::GN_DIRECT_NOSCAL>{}};
+    case nlopt::GN_DIRECT_L_NOSCAL: return {limbo::opt::NLOptNoGrad<Params, nlopt::GN_DIRECT_L_NOSCAL>{}};
+    case nlopt::GN_DIRECT_L_RAND_NOSCAL: return {limbo::opt::NLOptNoGrad<Params, nlopt::GN_DIRECT_L_RAND_NOSCAL>{}};
+    case nlopt::GN_ORIG_DIRECT: return {limbo::opt::NLOptNoGrad<Params, nlopt::GN_ORIG_DIRECT>{}};
+    case nlopt::GN_ORIG_DIRECT_L: return {limbo::opt::NLOptNoGrad<Params, nlopt::GN_ORIG_DIRECT_L>{}};
+    case nlopt::GN_CRS2_LM: return {limbo::opt::NLOptNoGrad<Params, nlopt::GN_CRS2_LM>{}};
+    case nlopt::LN_AUGLAG: return {limbo::opt::NLOptNoGrad<Params, nlopt::LN_AUGLAG>{}};
+    case nlopt::LN_AUGLAG_EQ: return {limbo::opt::NLOptNoGrad<Params, nlopt::LN_AUGLAG_EQ>{}};
+    case nlopt::GN_ISRES: return {limbo::opt::NLOptNoGrad<Params, nlopt::GN_ISRES>{}};
+    case nlopt::GN_ESCH: return {limbo::opt::NLOptNoGrad<Params, nlopt::GN_ESCH>{}};
+    default: exit(-1); return {};
+    };
+    return {};
 }
+};
 
 #endif

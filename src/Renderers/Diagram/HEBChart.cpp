@@ -208,6 +208,11 @@ void HEBChart::setNumBOIterations(int _numBOIterations){
     dataDirty = true;
 }
 
+void HEBChart::setNloptAlgorithm(nlopt::algorithm _algorithm){
+    algorithm = _algorithm;
+    dataDirty = true;
+}
+
 void HEBChart::setDownscalingFactors(int _dfx, int _dfy, int _dfz) {
     dfx = _dfx;
     dfy = _dfy;
