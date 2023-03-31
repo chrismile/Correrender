@@ -32,11 +32,13 @@
 #include <omp.h>
 #endif
 #include <thread>
+#include <iomanip>
 
 #include <Math/Math.hpp>
 #include <Graphics/Vulkan/Utils/SyncObjects.hpp>
 #include <Graphics/Vulkan/Render/Renderer.hpp>
 #include <Graphics/Vulkan/Render/ComputePipeline.hpp>
+#include <Utils/Semaphore.hpp>
 
 #include "Loaders/DataSet.hpp"
 #include "Volume/VolumeData.hpp"
@@ -917,6 +919,8 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
     // 6. goto 4. until end
     // 7. Writeback of best sample
     // main algorithm is implemented in thread_func
+
+    using model_t = limbo::model::GP<BayOpt::Params>;
     
     int numPoints0 = xsd0 * ysd0 * zsd0;
     int numPoints1 = xsd1 * ysd1 * zsd1;
@@ -931,15 +935,27 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
     } else {
         numPairsDownsampled = regionsEqual ? (numPoints0 * numPoints0 - numPoints0) / 2 : numPoints0 * numPoints1;
     }
-    int batchSize = std::clamp(sgl::iceil(numPairsDownsampled, int(std::thread::hardware_concurrency())), 25, 100);
-    uint32_t batchSizeNeeded = batchSize * numInitSamples;
-    createBatchCacheData(batchSizeNeeded);
+
+    uint32_t gpu_max_sample_count{};
+    createBatchCacheData(gpu_max_sample_count);
+    uint32_t max_pairs_count = std::max(gpu_max_sample_count / numInitSamples, uint32_t(1));
+    uint32_t numBatches = sgl::uiceil(uint32_t(numPairsDownsampled), max_pairs_count);
+
+    std::vector<float> samples(6 * numInitSamples * max_pairs_count);
+
     auto fieldCache = getFieldCache(fieldData);
-    std::atomic<int> cur_pair{};
     bool gpu_first_call{true};
     std::vector<std::thread> threads(std::thread::hardware_concurrency());
-    std::vector<std::vector<MIFieldEntry>> threadFieldEntries(threads.size());
-    std::mutex gpu_mutex;
+    std::vector<CorrelationRequestData> correlation_requests;
+    std::vector<Semaphore> main_signal_workers(threads.size()), workers_signal_main(threads.size());
+    std::atomic<bool> done{};
+    std::vector<model_t> optimizers(max_pairs_count);
+
+    int cur_pair_offset{};
+    int cur_pair_count{};
+    int pairs_per_thread{};
+    int iteration{};
+    float* correlationValues{};
 
     auto generate_requests = [&](const std::vector<float>& sample_positions, int start_pair_index, int end_pair_index, int samples_per_pair){
         std::vector<CorrelationRequestData> requests;
@@ -992,119 +1008,155 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
         return requests;
     };
     auto thread_func = [&](int thread_id){
-        using model_t = limbo::model::GP<BayOpt::Params>;
         BayOpt::AlgorithmNoGradVariants<BayOpt::Params> acqui_optimizer = BayOpt::getOptimizerAsVariant<BayOpt::Params>(algorithm);
-        //limbo::opt::NLOptNoGrad<BayOpt::Params, nlopt::GN_DIRECT_L_RAND> acqui_optimizer;       // default GN_DIRECT_L_RAND
-        for(int p = cur_pair.fetch_add(batchSize); p < numPairsDownsampled; p = cur_pair.fetch_add(batchSize)){
-            const int true_batch_size = std::min<int>(numPairsDownsampled - p, batchSize);
-            auto start_time = std::chrono::system_clock::now();
-            // 1. optimizer allocation -----------------------------------------------------------------------
-            std::vector<model_t> optimizers(true_batch_size);
-            // 2. drawing a batch size already done in the for loop ------------------------------------------
-            // 3. Init ---------------------------------------------------------------------------------------
-            std::vector<float> sample_positions(true_batch_size * 6);
-            generateSamples(sample_positions.data(), true_batch_size, SamplingMethodType::QUASIRANDOM_PLASTIC);
-            // generate requests
-            auto requests = generate_requests(sample_positions, p, p + true_batch_size, BayOpt::Params::init_randomsampling::samples());
-            // evaluate requests and download scores (thread safe)
-            {
-                std::scoped_lock lock(gpu_mutex);
-                auto outputBuffer = computeCorrelationsForRequests(requests, fieldCache, gpu_first_call);
-                gpu_first_call = false;
-                auto* correlationValues = static_cast<float*>(outputBuffer->mapMemory());
-                Eigen::VectorXd p(6);
-                Eigen::VectorXd v(1);
-                assert(p.size() == 6 && v.size() == 1);
-                for(int i: BayOpt::i_range(true_batch_size)){
-                    for(int s: BayOpt::i_range(BayOpt::Params::init_randomsampling::samples())){
-                        int lin_index = i * BayOpt::Params::init_randomsampling::samples() + s;
-                        v(0) = std::abs(correlationValues[lin_index]);
-                        if(std::isnan(v(0)) || std::isinf(v(0))) v(0) = 0;
-                        std::copy(sample_positions.begin() + 6 * lin_index, sample_positions.begin() + 6 * lin_index + 6, p.data());
-                        optimizers[i].add_sample(p, v);
-                    }
-                }
-                outputBuffer->unmapMemory();
+        
+        // adding the initial samples to the models
+        main_signal_workers[thread_id].acquire();
+        assert(correlationValues);
+        
+        int global_pair_base_index = cur_pair_offset + thread_id * pairs_per_thread;
+        int cur_thread_pair_count = std::max(std::min(pairs_per_thread, cur_pair_count - thread_id * pairs_per_thread), 0);
+        Eigen::VectorXd p(6);
+        Eigen::VectorXd v(1);
+        for(int i: BayOpt::i_range(cur_thread_pair_count)){
+            i += thread_id * pairs_per_thread;
+            for(int s: BayOpt::i_range(BayOpt::Params::init_randomsampling::samples())){
+                int lin_index = i * BayOpt::Params::init_randomsampling::samples() + s;
+                v(0) = std::abs(correlationValues[lin_index]);
+                if(std::isnan(v(0)) || std::isinf(v(0))) v(0) = 0;
+                std::copy(samples.begin() + 6 * lin_index, samples.begin() + 6 * lin_index + 6, p.data());
+                optimizers[i].add_sample(p, v);
             }
-            auto end_time = std::chrono::system_clock::now();
-            std::cout << "Thread " << thread_id << ": Initialization took " << std::chrono::duration<double>(end_time-start_time).count() << " s" << std::endl;
+        }
+        workers_signal_main[thread_id].release();
 
-            start_time = end_time;
-            double refinement_time{}, eval_time{};
-            for(int i: BayOpt::i_range(bayOptIterationCount)){
-                // 4. Drawing new samples from the model -------------------------------------------
-                for(int o: BayOpt::i_range(true_batch_size)){
-                    limbo::acqui::UCB<BayOpt::Params, model_t> acqui_fun(optimizers[o], i);
-                    
-                    auto acqui_optimization = [&](const Eigen::VectorXd& x, bool g) {return acqui_fun(x, limbo::FirstElem{}, g);};
-                    auto starting_point = limbo::tools::random_vector_bounded(6);
-                    auto refinement_start = std::chrono::system_clock::now();
-                    auto new_sample = std::visit([&acqui_optimization, &starting_point](auto&& optimizer){return optimizer(acqui_optimization, starting_point, true);}, acqui_optimizer); //acqui_optimizer(acqui_optimization, starting_point, true);
-                    auto refinement_end = std::chrono::system_clock::now();
-                    refinement_time += std::chrono::duration<double>(refinement_end - refinement_start).count();
+        while(true){
+            main_signal_workers[thread_id].acquire();      // waiting for main  threadto signal next round of evaluation
+            if(done) break;
 
-                    std::copy(new_sample.data(), new_sample.data() + 6, sample_positions.begin() + o * 6);
-                }
-
-                // 5. evaluating the samples and adding them to the model parameters
-                requests = generate_requests(sample_positions, p, p + true_batch_size, 1);
-                {
-                    auto eval_start = std::chrono::system_clock::now();
-                    std::scoped_lock lock(gpu_mutex);
-                    auto outputBuffer = computeCorrelationsForRequests(requests, fieldCache, gpu_first_call);
-                    gpu_first_call = false;
-                    auto* correlationValues = static_cast<float*>(outputBuffer->mapMemory());
-                    Eigen::VectorXd p(6);
-                    Eigen::VectorXd v(1);
-                    assert(p.size() == 6 && v.size() == 1);
-                    for(int o: BayOpt::i_range(true_batch_size)){
-                        v(0) = std::abs(correlationValues[o]);
-                        if(std::isnan(v(0)) || std::isinf(v(0))) v(0) = -1;
-                        std::copy(sample_positions.begin() + 6 * o, sample_positions.begin() + 6 * o + 6, p.data());
-                        optimizers[o].add_sample(p, v);
-                    }
-                    outputBuffer->unmapMemory();
-                    auto eval_end = std::chrono::system_clock::now();
-                    eval_time += std::chrono::duration<double>(eval_end - eval_start).count();
-                }
-                // 6. loop to 4.
-            }
-            end_time = std::chrono::system_clock::now();
-            std::cout << "Thread " << thread_id << ": " << bayOptIterationCount << " Iterations took " << std::chrono::duration<double>(end_time-start_time).count() << " s (Refinement took " << refinement_time << "s, Evaluation took " << eval_time << " s)" << std::endl;
-            start_time = end_time;
-            // 7. Writing back the best results -------------------------------------------
-            for(int o: BayOpt::i_range(true_batch_size)){
-                double max_val{std::numeric_limits<float>::lowest()};
-                for(int v: BayOpt::i_range(optimizers[o].observations_matrix().size()))
-                    max_val = std::max(max_val, optimizers[o].observations_matrix().data()[v]);
+            global_pair_base_index = cur_pair_offset + thread_id * pairs_per_thread;
+            cur_thread_pair_count = std::max(std::min(pairs_per_thread, cur_pair_count - thread_id * pairs_per_thread), 0);
+            std::vector<float> sample_positions(cur_thread_pair_count * 6);
+            //std::cout << "Worker " << thread_id << " running with " << cur_thread_pair_count << " pairs to evaluate" << std::endl;
+            // 4. Drawing new samples from the model -------------------------------------------
+            for(int o: BayOpt::i_range(cur_thread_pair_count)){
+                limbo::acqui::UCB<BayOpt::Params, model_t> acqui_fun(optimizers[o], iteration);
                 
-                uint32_t i, j, q = p + o;
-                if (isSubselection) {
-                    std::tie(i, j) = subselectionBlockPairs.at(q);
-                } else if (regionsEqual) {
-                    i = (1 + sgl::uisqrt(1 + 8 * q)) / 2;
-                    j = uint32_t(q) - i * (i - 1) / 2;
-                } else {
-                    i = q / uint32_t(numPoints1);
-                    j = q % uint32_t(numPoints1);
-                }
-                threadFieldEntries[thread_id].emplace_back(float(max_val), i, j);
+                auto acqui_optimization = [&](const Eigen::VectorXd& x, bool g) {return acqui_fun(x, limbo::FirstElem{}, g);};
+                auto starting_point = limbo::tools::random_vector_bounded(6);
+                auto refinement_start = std::chrono::system_clock::now();
+                auto new_sample = std::visit([&acqui_optimization, &starting_point](auto&& optimizer){return optimizer(acqui_optimization, starting_point, true);}, acqui_optimizer); //acqui_optimizer(acqui_optimization, starting_point, true);
+                auto refinement_end = std::chrono::system_clock::now();
+
+                std::copy(new_sample.data(), new_sample.data() + 6, sample_positions.begin() + o * 6);
             }
-            end_time = std::chrono::system_clock::now();
-            //std::cout << "Thread " << thread_id << ": Writeback took " << std::chrono::duration<double>(end_time-start_time).count() << " s" << std::endl;
+            if(cur_thread_pair_count){
+                auto corr_requ = generate_requests(sample_positions, global_pair_base_index, global_pair_base_index + cur_thread_pair_count, 1);
+                std::copy(corr_requ.begin(), corr_requ.end(), correlation_requests.begin() + thread_id * pairs_per_thread);
+            }
+            workers_signal_main[thread_id].release();  // signal the main thread
+            // main thread runs the sample eval
+            main_signal_workers[thread_id].acquire();
+            // update optimizers
+            for(int i: BayOpt::i_range(cur_thread_pair_count)){
+                i += thread_id * pairs_per_thread;
+                int lin_index = i;
+                v(0) = std::abs(correlationValues[lin_index]);
+                if(std::isnan(v(0)) || std::isinf(v(0))) v(0) = 0;
+                std::copy(samples.begin() + 6 * lin_index, samples.begin() + 6 * lin_index + 6, p.data());
+                optimizers[i].add_sample(p, v);
+            }
+            // signal main
+            workers_signal_main[thread_id].release();
         }
 
     };
+    auto release_all_workers = [&](){for(auto& s: main_signal_workers) s.release();};
+    auto acquire_all_workers = [&](){for(auto& s: workers_signal_main) s.acquire();};
 
     int thread_id{};
     for(auto& t: threads)
         t = std::thread(thread_func, thread_id++);
+
+    double init_time{}, iteration_time{}, refinement_time{}, sample_evaluation_time{};
+    for(int base_pair_index: BayOpt::i_range<int>(0, numPairsDownsampled, max_pairs_count)){
+        cur_pair_offset = base_pair_index;
+        cur_pair_count = std::min<int>(numPairsDownsampled - base_pair_index, max_pairs_count);
+        pairs_per_thread = (cur_pair_count + threads.size() - 1) / threads.size();
+        optimizers.clear();
+        optimizers.resize(cur_pair_count);
+        //std::cout << "Base pair: " << base_pair_index << " with max pair index: " << numPairsDownsampled << " , and " << bayOptIterationCount << " refinement iterations" << std::endl;
+        // create, evaluate and add to meodels the initial samples -----------------------------------------------------------------------
+        auto start = std::chrono::system_clock::now();
+        generateSamples(samples.data(), numInitSamples * max_pairs_count, SamplingMethodType::QUASIRANDOM_PLASTIC);
+        correlation_requests = generate_requests(samples, base_pair_index, base_pair_index + cur_pair_count, numInitSamples);
+        auto outputBuffer = computeCorrelationsForRequests(correlation_requests, fieldCache, base_pair_index == 0);
+        correlationValues = static_cast<float*>(outputBuffer->mapMemory());
+        // execute the evaluation on the worker threads and wait for completion
+        release_all_workers();
+        acquire_all_workers();
+        assert(main_signal_workers.peekCount() == 0);
+        assert(workers_signal_main.peekCount() == 0);
+        outputBuffer->unmapMemory();
+
+        auto end = std::chrono::system_clock::now();
+        init_time += std::chrono::duration<double>(end - start).count();
+        start = end;
+        auto iteration_start = start;
+
+        // iteratively generating new good samples. Generation of sample positoins is done multi threaded -------------------
+        correlation_requests.clear();
+        correlation_requests.resize(cur_pair_count);
+        for(int i: BayOpt::i_range(bayOptIterationCount)){
+            iteration = i;
+            // signal the threads to create new samples
+            release_all_workers();
+
+            // waiting for all threads to finish
+            acquire_all_workers();
+            end = std::chrono::system_clock::now();
+            refinement_time += std::chrono::duration<double>(end - start).count();
+            start = end;
+
+            // evaluating the requests and updating the models
+            outputBuffer = computeCorrelationsForRequests(correlation_requests, fieldCache, false);
+            correlationValues = static_cast<float*>(outputBuffer->mapMemory());
+            release_all_workers();
+            acquire_all_workers();
+            outputBuffer->unmapMemory();
+            end = std::chrono::system_clock::now();
+            sample_evaluation_time += std::chrono::duration<double>(end - start).count();
+        }
+        end = std::chrono::system_clock::now();
+        iteration_time += std::chrono::duration<double>(end - iteration_start).count();
+
+        // 7. Writing back the best results -------------------------------------------
+        for(int o: BayOpt::i_range(cur_pair_count)){
+            double max_val{std::numeric_limits<float>::lowest()};
+            for(int v: BayOpt::i_range(optimizers[o].observations_matrix().size()))
+                max_val = std::max(max_val, optimizers[o].observations_matrix().data()[v]);
+            
+            uint32_t i, j, q = base_pair_index + o;
+            if (isSubselection) {
+                std::tie(i, j) = subselectionBlockPairs.at(q);
+            } else if (regionsEqual) {
+                i = (1 + sgl::uisqrt(1 + 8 * q)) / 2;
+                j = uint32_t(q) - i * (i - 1) / 2;
+            } else {
+                i = q / uint32_t(numPoints1);
+                j = q % uint32_t(numPoints1);
+            }
+            miFieldEntries.emplace_back(float(max_val), i, j);
+        }
+    }
+    std::cout << "BayOpt details: init_time[" << std::setw(10) << init_time << "s] iteration_tim[" << std::setw(10) << iteration_time << "(refinement:" << std::setw(10) << refinement_time << "s, sample_eval:" << std::setw(10) << sample_evaluation_time << "s)]" << std::endl;
+    
+    // signaling the threads job is done
+    done = true;
+    release_all_workers();
+
     for(auto& t: threads)
         t.join();
-
-    // merging the outputs
-    for(const auto& fieldEntry: threadFieldEntries)
-        miFieldEntries.insert(miFieldEntries.end(), fieldEntry.begin(), fieldEntry.end());
 }
 
 HEBChart::PerfStatistics HEBChart::computeCorrelationsBlockPairs(
