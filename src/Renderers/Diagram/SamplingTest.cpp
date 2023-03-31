@@ -68,27 +68,36 @@ void runTestCase(
     for (int runIdx = 0; runIdx < numRuns; runIdx++) {
         auto statisticsList = chart->computeCorrelationsBlockPairs(blockPairs, downscaledFields, downscaledFields);
 
-        // Binary search.
-        for (size_t i = 0; i < blockPairs.size(); i++) {
-            float searchValue = statisticsList.maximumValues.at(i);
-            const auto& allValuesSorted = allValuesSortedArray.at(i);
-            size_t lower = 0;
-            size_t upper = allValuesSorted.size();
-            size_t middle;
-            while (lower < upper) {
-                middle = (lower + upper) / 2;
-                float middleValue = allValuesSorted[middle];
-                if (middleValue < searchValue) {
-                    lower = middle + 1;
-                } else {
-                    upper = middle;
+        if (!allValuesSortedArray.empty()) {
+            // Binary search.
+            for (size_t i = 0; i < blockPairs.size(); i++) {
+                float searchValue = statisticsList.maximumValues.at(i);
+                const auto& allValuesSorted = allValuesSortedArray.at(i);
+                size_t lower = 0;
+                size_t upper = allValuesSorted.size();
+                size_t middle;
+                while (lower < upper) {
+                    middle = (lower + upper) / 2;
+                    float middleValue = allValuesSorted[middle];
+                    if (middleValue < searchValue) {
+                        lower = middle + 1;
+                    } else {
+                        upper = middle;
+                    }
                 }
+                testCase.errorQuantile += invN * (1.0 - double(upper) / double(allValuesSorted.size()));
+                float minVal = allValuesSorted.front();
+                float maxVal = allValuesSorted.back();
+                testCase.errorLinear += invN * (1.0 - double((searchValue - minVal) / (maxVal - minVal)));
+                testCase.errorAbsolute += invN * double(maxVal - searchValue);
             }
-            testCase.errorQuantile += invN * (1.0 - double(upper) / double(allValuesSorted.size()));
-            float minVal = allValuesSorted.front();
-            float maxVal = allValuesSorted.back();
-            testCase.errorLinear += invN * (1.0 - double((searchValue - minVal) / (maxVal - minVal)));
-            testCase.errorAbsolute += invN * double(maxVal - searchValue);
+        } else {
+            for (size_t i = 0; i < blockPairs.size(); i++) {
+                float searchValue = statisticsList.maximumValues.at(i);
+                testCase.errorQuantile += invN * searchValue;
+                testCase.errorLinear += invN * searchValue;
+                testCase.errorAbsolute += invN * searchValue;
+            }
         }
         testCase.elapsedTimeMicroseconds += invN * statisticsList.elapsedTimeMicroseconds;
     }
@@ -121,12 +130,12 @@ void runSamplingTests(const std::string& dataSetPath) {
     //constexpr int dfx = 16;
     //constexpr int dfy = 16;
     //constexpr int dfz = 20;
-    constexpr int dfx = 8;
-    constexpr int dfy = 8;
-    constexpr int dfz = 8;
-    constexpr int numRuns = 5;
-    int numPairsToCheck = 1000;
-    int numLogSteps = 2;
+    constexpr int dfx = 32;
+    constexpr int dfy = 32;
+    constexpr int dfz = 20;
+    constexpr int numRuns = 20;
+    int numPairsToCheck = 4000;
+    int numLogSteps = 3;
     std::vector<int> numSamplesArray;
     for (int l = 0; l < numLogSteps; l++) {
         auto step = int(std::pow(10, l));
@@ -163,7 +172,8 @@ void runSamplingTests(const std::string& dataSetPath) {
     int ysd = sgl::iceil(ys, dfy);
     int zsd = sgl::iceil(zs, dfz);
     bool computeMean = true;
-    bool runTestsOptimizers = true;
+    bool runTestsOptimizers = false;
+    bool computeGroundTruth = false;
 
     // Numerate all block pairs.
     std::vector<std::pair<uint32_t, uint32_t>> blockPairs;
@@ -190,19 +200,23 @@ void runSamplingTests(const std::string& dataSetPath) {
     });
 
     // Compute the ground truth.
-    auto startTime = std::chrono::system_clock::now();
     std::vector<std::vector<float>> allValuesSortedArray;
-    allValuesSortedArray.resize(numPairsToCheck);
-    for (int m = 0; m < numPairsToCheck; m++) {
-        std::cout << "Computing GT " << (double(m) / double(numPairsToCheck) * 100.0) << "%..." << std::endl;
-        std::vector<float>& allValues = allValuesSortedArray.at(m);
-        auto [i, j] = blockPairs.at(m);
-        chart->computeAllCorrelationsBlockPair(i, j, allValues);
-        std::sort(allValues.begin(), allValues.end());
+    double timeGt = 0.0;
+    if (computeGroundTruth) {
+        auto startTime = std::chrono::system_clock::now();
+        allValuesSortedArray.resize(numPairsToCheck);
+        for (int m = 0; m < numPairsToCheck; m++) {
+            std::cout << "Computing GT " << (double(m) / double(numPairsToCheck) * 100.0) << "%..." << std::endl;
+            std::vector<float>& allValues = allValuesSortedArray.at(m);
+            auto [i, j] = blockPairs.at(m);
+            chart->computeAllCorrelationsBlockPair(i, j, allValues);
+            std::sort(allValues.begin(), allValues.end());
+        }
+        auto endTime = std::chrono::system_clock::now();
+        auto elapsedTime = std::chrono::duration<double>(endTime - startTime);
+        timeGt = elapsedTime.count();
+        std::cout << "Time for GT: " << timeGt << "s" << std::endl;
     }
-    auto endTime = std::chrono::system_clock::now();
-    auto elapsedTime = std::chrono::duration<double>(endTime - startTime);
-    std::cout << "Time for GT: " << elapsedTime.count() << "s" << std::endl;
 
     // Compute the downscaled field.
     std::vector<float*> downscaledFields;
@@ -218,7 +232,6 @@ void runSamplingTests(const std::string& dataSetPath) {
     for (int samplingMethodTypeIdx = int(firstSamplingMethodType);
             samplingMethodTypeIdx <= int(SamplingMethodType::QUASIRANDOM_PLASTIC);
             samplingMethodTypeIdx++) {
-        // Seems to hang the program. One thread worker doesn't terminate.
         for (int numSamples : numSamplesArray) {
             TestCase testCase;
             testCase.samplingMethodType = SamplingMethodType(samplingMethodTypeIdx);
@@ -295,7 +308,9 @@ void runSamplingTests(const std::string& dataSetPath) {
     }
     file.close();
 
-    std::cout << "Time for GT: " << elapsedTime.count() << "s" << std::endl;
+    if (computeGroundTruth) {
+        std::cout << "Time for GT: " << timeGt << "s" << std::endl;
+    }
 
     delete chart;
     delete renderer;
