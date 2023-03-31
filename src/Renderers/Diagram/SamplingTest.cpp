@@ -108,12 +108,12 @@ void runSamplingTests(const std::string& dataSetPath) {
     //constexpr int dfx = 16;
     //constexpr int dfy = 16;
     //constexpr int dfz = 20;
-    constexpr int dfx = 10;
-    constexpr int dfy = 10;
-    constexpr int dfz = 10;
-    constexpr int numRuns = 100;
+    constexpr int dfx = 8;
+    constexpr int dfy = 8;
+    constexpr int dfz = 8;
+    constexpr int numRuns = 10;
     int numPairsToCheck = 1000;
-    int numLogSteps = 4;
+    int numLogSteps = 3;
     std::vector<int> numSamplesArray;
     for (int l = 0; l < numLogSteps; l++) {
         auto step = int(std::pow(10, l));
@@ -197,6 +197,14 @@ void runSamplingTests(const std::string& dataSetPath) {
             testCase.numSamples = numSamples;
             testCases.push_back(testCase);
         }
+    }
+
+    // Add Bayesian Optimization test cases.
+    for (int numSamples : numSamplesArray) {
+        TestCase testCase;
+        testCase.samplingMethodType = SamplingMethodType::BAYESIAN_OPTIMIZATION;
+        testCase.numSamples = numSamples;
+        testCases.push_back(testCase);
     }
 
     // Run the tests and write the results to a file.
