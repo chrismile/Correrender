@@ -32,26 +32,48 @@
 #include <mutex>
 #include <memory>
 #include <condition_variable>
+#include <atomic>
 
-class Semaphore{
+class Semaphore {
+private:
     std::mutex _mutex;
     std::condition_variable _cv;
     unsigned long _count = 0;
+    unsigned long _maxCount = 0;
+
 public:
-    void release(int n = 1){
-        std::lock_guard<decltype(_mutex)> lock(_mutex);
-        _count += n;
-        for(int i = 0; i < n; ++i)
-            _cv.notify_one();
+    Semaphore(unsigned long count = 0) : _count(count) {}
+
+    void release(unsigned long n = 1) {
+        {
+            std::lock_guard<decltype(_mutex)> lock(_mutex);
+            _count += n;
+            _maxCount = std::max(_maxCount, _count);
+        }
+        _cv.notify_all();
     }
-    void acquire(){
-        std::unique_lock<decltype(_mutex)> lock(_mutex);
-        while(!_count)
+
+    void acquire(unsigned long n = 1) {
+        while (true) {
+            std::unique_lock<decltype(_mutex)> lock(_mutex);
+            if (_count >= n) {
+                _count -= n;
+                break;
+            }
             _cv.wait(lock);
-        --_count;
+        }
     }
-    unsigned long peekCount(){return _count;};
+
+    unsigned long peekCount() {
+        std::lock_guard<decltype(_mutex)> lock(_mutex);
+        return _count;
+    }
+
+    unsigned long getMaxCount() {
+        std::lock_guard<decltype(_mutex)> lock(_mutex);
+        return _maxCount;
+    }
 };
-using unique_semaphore = std::unique_ptr<semaphore>;
+using unique_semaphore = std::unique_ptr<Semaphore>;
 
 #endif;

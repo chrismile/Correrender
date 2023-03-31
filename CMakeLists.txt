@@ -5,6 +5,12 @@ project(Correrender)
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/CMake)
 #MESSAGE(STATUS "CMAKE_MODULE_PATH: " ${CMAKE_MODULE_PATH})
 
+# not possible as sgl is built without...
+#IF (UNIX AND CMAKE_BUILD_TYPE MATCHES Debug)
+#    message("-- Enabling gcc stl debug checks for debug builds")
+#    #add_compile_options(-D_GLIBCXX_DEBUG)
+#ENDIF()
+
 set(CMAKE_CXX_STANDARD 17)
 
 file(GLOB_RECURSE SOURCES src/*.cpp src/*.c src/*.hpp src/*.h Data/Shaders/*.glsl)
