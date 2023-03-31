@@ -102,7 +102,7 @@ void runSamplingTests(const std::string& dataSetPath) {
     VolumeDataPtr volumeData(new VolumeData(renderer));
     DataSetInformation dataSetInformation;
     dataSetInformation.filenames = { dataSetPath };
-    volumeData->setInputFiles({ "/home/neuhauser/datasets/Necker/nc/necker_t5_e100_tk.nc" }, dataSetInformation, nullptr);
+    volumeData->setInputFiles({ dataSetPath }, dataSetInformation, nullptr);
     int xs = volumeData->getGridSizeX();
     int ys = volumeData->getGridSizeY();
     int zs = volumeData->getGridSizeZ();
