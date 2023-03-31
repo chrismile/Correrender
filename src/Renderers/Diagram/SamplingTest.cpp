@@ -130,12 +130,12 @@ void runSamplingTests(const std::string& dataSetPath) {
     //constexpr int dfx = 16;
     //constexpr int dfy = 16;
     //constexpr int dfz = 20;
-    constexpr int dfx = 32;
-    constexpr int dfy = 32;
-    constexpr int dfz = 20;
-    constexpr int numRuns = 20;
-    int numPairsToCheck = 4000;
-    int numLogSteps = 3;
+    constexpr int dfx = 10;
+    constexpr int dfy = 10;
+    constexpr int dfz = 10;
+    constexpr int numRuns = 100;
+    int numPairsToCheck = 100;
+    int numLogSteps = 2;
     std::vector<int> numSamplesArray;
     for (int l = 0; l < numLogSteps; l++) {
         auto step = int(std::pow(10, l));
@@ -151,6 +151,9 @@ void runSamplingTests(const std::string& dataSetPath) {
     //if (numLogSteps == 2) {
     //    numSamplesArray.push_back(200);
     //}
+    bool computeMean = true;
+    bool runTestsOptimizers = false;
+    bool computeGroundTruth = true;
 
     // Create the chart.
     auto* chart = new HEBChart();
@@ -171,9 +174,6 @@ void runSamplingTests(const std::string& dataSetPath) {
     int xsd = sgl::iceil(xs, dfx);
     int ysd = sgl::iceil(ys, dfy);
     int zsd = sgl::iceil(zs, dfz);
-    bool computeMean = true;
-    bool runTestsOptimizers = false;
-    bool computeGroundTruth = false;
 
     // Numerate all block pairs.
     std::vector<std::pair<uint32_t, uint32_t>> blockPairs;

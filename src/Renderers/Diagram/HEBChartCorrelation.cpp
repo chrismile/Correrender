@@ -1088,7 +1088,7 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
         //std::cout << "Base pair: " << base_pair_index << " with max pair index: " << numPairsDownsampled << " , and " << bayOptIterationCount << " refinement iterations" << std::endl;
         // create, evaluate and add to meodels the initial samples -----------------------------------------------------------------------
         auto start = std::chrono::system_clock::now();
-        generateSamples(samples.data(), numInitSamples * max_pairs_count, SamplingMethodType::QUASIRANDOM_PLASTIC);
+        generateSamples(samples.data(), numInitSamples * max_pairs_count, SamplingMethodType::RANDOM_UNIFORM);
         correlation_requests = generate_requests(samples, base_pair_index, base_pair_index + cur_pair_count, numInitSamples);
         auto outputBuffer = computeCorrelationsForRequests(correlation_requests, fieldCache, base_pair_index == 0);
         correlationValues = static_cast<float*>(outputBuffer->mapMemory());
