@@ -1009,13 +1009,24 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
     };
     auto thread_func = [&](int thread_id){
         BayOpt::AlgorithmNoGradVariants<BayOpt::Params> acqui_optimizer = BayOpt::getOptimizerAsVariant<BayOpt::Params>(algorithm);
-        
+        main_signal_workers[thread_id].acquire();
+        int global_pair_base_index = cur_pair_offset + thread_id * pairs_per_thread;
+        int cur_thread_pair_count = std::max(std::min(pairs_per_thread, cur_pair_count - thread_id * pairs_per_thread), 0);
+        // creating initial sample positions
+        if(cur_thread_pair_count){
+            std::vector<float> thread_samples(numInitSamples * cur_thread_pair_count * 6);
+            generateSamples(thread_samples.data(), numInitSamples * cur_thread_pair_count, SamplingMethodType::QUASIRANDOM_PLASTIC);
+            auto corr_requ = generate_requests(thread_samples, global_pair_base_index, global_pair_base_index + cur_thread_pair_count, numInitSamples);
+            int request_offset = thread_id * pairs_per_thread * numInitSamples;
+            assert(request_offset + corr_requ.size() <= correlation_requests.size());
+            std::copy(corr_requ.begin(), corr_requ.end(), correlation_requests.begin() + request_offset);
+        }
+        workers_signal_main[thread_id].release();
+
         // adding the initial samples to the models
         main_signal_workers[thread_id].acquire();
         assert(correlationValues);
         
-        int global_pair_base_index = cur_pair_offset + thread_id * pairs_per_thread;
-        int cur_thread_pair_count = std::max(std::min(pairs_per_thread, cur_pair_count - thread_id * pairs_per_thread), 0);
         Eigen::VectorXd p(6);
         Eigen::VectorXd v(1);
         for(int i: BayOpt::i_range(cur_thread_pair_count)){
@@ -1088,15 +1099,14 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
         //std::cout << "Base pair: " << base_pair_index << " with max pair index: " << numPairsDownsampled << " , and " << bayOptIterationCount << " refinement iterations" << std::endl;
         // create, evaluate and add to meodels the initial samples -----------------------------------------------------------------------
         auto start = std::chrono::system_clock::now();
-        generateSamples(samples.data(), numInitSamples * max_pairs_count, SamplingMethodType::QUASIRANDOM_PLASTIC);
-        correlation_requests = generate_requests(samples, base_pair_index, base_pair_index + cur_pair_count, numInitSamples);
+        correlation_requests.resize(cur_pair_count * numInitSamples);
+        release_all_workers();
+        acquire_all_workers();
         auto outputBuffer = computeCorrelationsForRequests(correlation_requests, fieldCache, base_pair_index == 0);
         correlationValues = static_cast<float*>(outputBuffer->mapMemory());
         // execute the evaluation on the worker threads and wait for completion
         release_all_workers();
         acquire_all_workers();
-        assert(main_signal_workers.peekCount() == 0);
-        assert(workers_signal_main.peekCount() == 0);
         outputBuffer->unmapMemory();
 
         auto end = std::chrono::system_clock::now();
