@@ -35,14 +35,17 @@
 
 #include "Volume/VolumeData.hpp"
 #include "Renderers/Diagram/HEBChart.hpp"
+#include "NLOptDefines.hpp"
 #include "SamplingTest.hpp"
 
 struct TestCase {
+    std::string testCaseName;
     SamplingMethodType samplingMethodType = SamplingMethodType::QUASIRANDOM_PLASTIC;
     int numSamples = 100;
     double elapsedTimeMicroseconds = 0.0;
-    double maximumQuantile = 0.0;
-    double rangeLinear = 0.0;
+    double errorQuantile = 0.0;
+    double errorLinear = 0.0;
+    double errorAbsolute = 0.0;
 
     // Bayesian Optimization.
     int numInitSamples = 20;
@@ -81,10 +84,11 @@ void runTestCase(
                     upper = middle;
                 }
             }
-            testCase.maximumQuantile += invN * double(upper) / double(allValuesSorted.size());
+            testCase.errorQuantile += invN * (1.0 - double(upper) / double(allValuesSorted.size()));
             float minVal = allValuesSorted.front();
             float maxVal = allValuesSorted.back();
-            testCase.rangeLinear += invN * double((searchValue - minVal) / (maxVal - minVal));
+            testCase.errorLinear += invN * (1.0 - double((searchValue - minVal) / (maxVal - minVal)));
+            testCase.errorAbsolute += invN * double(maxVal - searchValue);
         }
         testCase.elapsedTimeMicroseconds += invN * statisticsList.elapsedTimeMicroseconds;
     }
@@ -122,7 +126,7 @@ void runSamplingTests(const std::string& dataSetPath) {
     constexpr int dfz = 8;
     constexpr int numRuns = 5;
     int numPairsToCheck = 1000;
-    int numLogSteps = 3;
+    int numLogSteps = 2;
     std::vector<int> numSamplesArray;
     for (int l = 0; l < numLogSteps; l++) {
         auto step = int(std::pow(10, l));
@@ -159,6 +163,7 @@ void runSamplingTests(const std::string& dataSetPath) {
     int ysd = sgl::iceil(ys, dfy);
     int zsd = sgl::iceil(zs, dfz);
     bool computeMean = true;
+    bool runTestsOptimizers = true;
 
     // Numerate all block pairs.
     std::vector<std::pair<uint32_t, uint32_t>> blockPairs;
@@ -213,27 +218,50 @@ void runSamplingTests(const std::string& dataSetPath) {
     for (int samplingMethodTypeIdx = int(firstSamplingMethodType);
             samplingMethodTypeIdx <= int(SamplingMethodType::QUASIRANDOM_PLASTIC);
             samplingMethodTypeIdx++) {
+        // Seems to hang the program. One thread worker doesn't terminate.
         for (int numSamples : numSamplesArray) {
             TestCase testCase;
             testCase.samplingMethodType = SamplingMethodType(samplingMethodTypeIdx);
             testCase.numSamples = numSamples;
+            testCase.testCaseName = SAMPLING_METHOD_TYPE_NAMES[int(testCase.samplingMethodType)];
             testCases.push_back(testCase);
         }
     }
 
     // Add Bayesian Optimization test cases.
-    for (int numSamples : numSamplesArray) {
-        TestCase testCase;
-        testCase.samplingMethodType = SamplingMethodType::BAYESIAN_OPTIMIZATION;
-        testCase.numSamples = numSamples;
-        testCase.numInitSamples = std::min(numSamples, 20);
-        testCases.push_back(testCase);
+    if (runTestsOptimizers) {
+        for (size_t algoIdx = 0; algoIdx < IM_ARRAYSIZE(NLoptAlgorithmsNoGrad); algoIdx++) {
+            auto algorithm = NLoptAlgorithmsNoGrad[algoIdx];
+            // Seems to hang the program. One thread worker doesn't terminate.
+            if (algorithm == nlopt::LN_NEWUOA_BOUND) {
+                continue;
+            }
+            for (int numSamples : numSamplesArray) {
+                TestCase testCase;
+                testCase.samplingMethodType = SamplingMethodType::BAYESIAN_OPTIMIZATION;
+                testCase.algorithm = algorithm;
+                testCase.numSamples = numSamples;
+                testCase.numInitSamples = std::clamp(sgl::iceil(numSamples, 2), 1, 20);
+                testCase.testCaseName = SAMPLING_METHOD_TYPE_NAMES[int(testCase.samplingMethodType)];
+                testCase.testCaseName += std::string(" (") + NLOPT_ALGORITHM_NAMES_NOGRAD[algoIdx] + ")";
+                testCases.push_back(testCase);
+            }
+        }
+    } else {
+        for (int numSamples : numSamplesArray) {
+            TestCase testCase;
+            testCase.samplingMethodType = SamplingMethodType::BAYESIAN_OPTIMIZATION;
+            testCase.numSamples = numSamples;
+            testCase.numInitSamples = std::clamp(sgl::iceil(numSamples, 2), 1, 20);
+            testCase.testCaseName = SAMPLING_METHOD_TYPE_NAMES[int(testCase.samplingMethodType)];
+            testCases.push_back(testCase);
+        }
     }
 
     // Run the tests and write the results to a file.
     sgl::CsvWriter file(
             std::string("Sampling ") + CORRELATION_MEASURE_TYPE_NAMES[int(correlationMeasureType)] + ".csv");
-    file.writeRow({ "Sampling Method", "Samples", "Time", "Quantile", "Linear", "Init Samples" });
+    file.writeRow({ "Sampling Method", "Samples", "Time", "Quantile", "Linear", "Absolute", "Init Samples" });
     size_t firstMeanIdx = 0;
     for (size_t testCaseIdx = 0; testCaseIdx < testCases.size(); testCaseIdx++) {
         TestCase& testCaseAtIdx = testCases.at(testCaseIdx);
@@ -246,20 +274,28 @@ void runSamplingTests(const std::string& dataSetPath) {
         if (testCase.samplingMethodType == SamplingMethodType::BAYESIAN_OPTIMIZATION && testCase.numSamples > 100) {
             continue;
         }
-        std::cout << "Test case: " << SAMPLING_METHOD_TYPE_NAMES[int(testCase.samplingMethodType)];
+        std::cout << "Test case: " << testCase.testCaseName;
         std::cout << ", samples: " << std::to_string(testCaseAtIdx.numSamples) << std::endl;
         if (testCaseIdx == testCaseIdxReal) {
             runTestCase(chart, testCase, numRuns, blockPairs, allValuesSortedArray, downscaledFields);
         }
-        file.writeCell(SAMPLING_METHOD_TYPE_NAMES[int(testCase.samplingMethodType)]);
+        file.writeCell(testCase.testCaseName);
         file.writeCell(std::to_string(testCaseAtIdx.numSamples));
         file.writeCell(std::to_string(testCase.elapsedTimeMicroseconds));
-        file.writeCell(std::to_string(testCase.maximumQuantile));
-        file.writeCell(std::to_string(testCase.rangeLinear));
+        file.writeCell(std::to_string(testCase.errorQuantile));
+        file.writeCell(std::to_string(testCase.errorLinear));
+        file.writeCell(std::to_string(testCase.errorAbsolute));
         file.writeCell(std::to_string(testCase.numInitSamples));
+        //if (testCase.samplingMethodType == SamplingMethodType::BAYESIAN_OPTIMIZATION) {
+        //    file.writeCell(NLOPT_ALGORITHM_NAMES_NOGRAD[int(testCase.algorithm)]);
+        //} else {
+        //    file.writeCell("-");
+        //}
         file.newRow();
     }
     file.close();
+
+    std::cout << "Time for GT: " << elapsedTime.count() << "s" << std::endl;
 
     delete chart;
     delete renderer;
