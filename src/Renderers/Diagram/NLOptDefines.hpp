@@ -46,7 +46,7 @@ const nlopt::algorithm NLoptAlgorithmsNoGrad[]{
 
 const char* const NLOPT_ALGORITHM_NAMES_NOGRAD[] = {
     "LN_COBYLA" ,  "LN_BOBYQA" ,
-    "LN_NEWUOA" ,  "LN_NEWUOA_BOUND" ,
+    "LN_NEWUOA" ,  "LN_NEWUOA_BOUND" , // Seems to hang the program. One thread worker doesn't terminate.
     "LN_PRAXIS" ,  "LN_NELDERMEAD" ,
     "LN_SBPLX" , "GN_DIRECT" ,
     "GN_DIRECT_L" , "GN_DIRECT_L_RAND" ,
