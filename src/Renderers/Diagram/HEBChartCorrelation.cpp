@@ -37,6 +37,7 @@
 #include <Graphics/Vulkan/Utils/SyncObjects.hpp>
 #include <Graphics/Vulkan/Render/Renderer.hpp>
 #include <Graphics/Vulkan/Render/ComputePipeline.hpp>
+#include <Utils/Semaphore.hpp>
 
 #include "Loaders/DataSet.hpp"
 #include "Volume/VolumeData.hpp"
@@ -931,15 +932,27 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
     } else {
         numPairsDownsampled = regionsEqual ? (numPoints0 * numPoints0 - numPoints0) / 2 : numPoints0 * numPoints1;
     }
-    int batchSize = std::clamp(sgl::iceil(numPairsDownsampled, int(std::thread::hardware_concurrency())), 25, 100);
-    uint32_t batchSizeNeeded = batchSize * numInitSamples;
-    createBatchCacheData(batchSizeNeeded);
+
+    uint32_t batchSizeSamplesMax{};
+    createBatchCacheData(batchSizeSamplesMax);
+    uint32_t batchSizeCellsMax = std::max(batchSizeSamplesMax / numInitSamples, uint32_t(1));
+    uint32_t numBatches = sgl::uiceil(uint32_t(numPairsDownsampled), batchSizeCellsMax);
+
+    std::vector<float> samples(6 * numInitSamples * batchSizeCellsMax);
+    generateSamples(samples.data(), numInitSamples * batchSizeCellsMax, samplingMethodType);
+
     auto fieldCache = getFieldCache(fieldData);
     std::atomic<int> cur_pair{};
     bool gpu_first_call{true};
     std::vector<std::thread> threads(std::thread::hardware_concurrency());
+    std::vector<std::atomic<bool>> thread_requests_done(threads.size());    // signal flag for each thread which indicates if a thread has recorded all its requests. Ist set by the thread and unset by the cpu when the requests have been merged
+    std::vector<CorrelationRequestData> thread_requests(thread.size());
+    std::vector<std::pair<int, int>> thread_start_end_indices(threadsd.size());
     std::vector<std::vector<MIFieldEntry>> threadFieldEntries(threads.size());
     std::mutex gpu_mutex;
+    Semaphore main_signal_workers, workers_signal_main;
+    std::atomic<bool> done{};
+    std::vector<model_t> optimizers(batchSize);
 
     auto generate_requests = [&](const std::vector<float>& sample_positions, int start_pair_index, int end_pair_index, int samples_per_pair){
         std::vector<CorrelationRequestData> requests;
@@ -959,7 +972,7 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
                 glm::vec3 pti(i % uint32_t(xsd0), (i / uint32_t(xsd0)) % uint32_t(ysd0), i / uint32_t(xsd0 * ysd0));
                 glm::vec3 ptj(j % uint32_t(xsd1), (j / uint32_t(xsd1)) % uint32_t(ysd1), j / uint32_t(xsd1 * ysd1));
                 float cellDist = glm::length(pti - ptj);
-                if (cellDist < float(cellDistanceRange.x) || cellDist > float(cellDistanceRange.y)) {
+                if (cellDist < float(cellDistanceRange.x) || ceforllDist > float(cellDistanceRange.y)) {
                     continue;
                 }
             }
@@ -994,12 +1007,14 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
     auto thread_func = [&](int thread_id){
         using model_t = limbo::model::GP<BayOpt::Params>;
         BayOpt::AlgorithmNoGradVariants<BayOpt::Params> acqui_optimizer = BayOpt::getOptimizerAsVariant<BayOpt::Params>(algorithm);
-        //limbo::opt::NLOptNoGrad<BayOpt::Params, nlopt::GN_DIRECT_L_RAND> acqui_optimizer;       // default GN_DIRECT_L_RAND
-        for(int p = cur_pair.fetch_add(batchSize); p < numPairsDownsampled; p = cur_pair.fetch_add(batchSize)){
-            const int true_batch_size = std::min<int>(numPairsDownsampled - p, batchSize);
+        for(while !done){
+            main_signal_workers.acquire();      // waiting for main  threadto signal next round of evaluation
+            auto [pair_start_index, pair_end_index] = thread_start_end_indices[thread_id];
+
+            const int true_batch_size = pair_end_index - pair_start_index;
             auto start_time = std::chrono::system_clock::now();
             // 1. optimizer allocation -----------------------------------------------------------------------
-            std::vector<model_t> optimizers(true_batch_size);
+            
             // 2. drawing a batch size already done in the for loop ------------------------------------------
             // 3. Init ---------------------------------------------------------------------------------------
             std::vector<float> sample_positions(true_batch_size * 6);
@@ -1099,6 +1114,11 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
     int thread_id{};
     for(auto& t: threads)
         t = std::thread(thread_func, thread_id++);
+
+
+
+
+
     for(auto& t: threads)
         t.join();
 
