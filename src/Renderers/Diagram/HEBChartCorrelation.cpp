@@ -158,6 +158,11 @@ void HEBChart::computeCorrelationsMean(
     int cs = getCorrelationMemberCount();
     int numPoints0 = xsd0 * ysd0 * zsd0;
     int numPoints1 = xsd1 * ysd1 * zsd1;
+    int numPairs = regionsEqual ? (numPoints0 * numPoints0 - numPoints0) / 2 : numPoints0 * numPoints1;
+    if (isSubselection) {
+        numPoints0 = numPairs = int(subselectionBlockPairs.size());
+        numPoints1 = 1;
+    }
 #ifdef USE_TBB
     miFieldEntries = tbb::parallel_reduce(
             tbb::blocked_range<int>(0, numPoints0), std::vector<MIFieldEntry>(),
@@ -168,7 +173,7 @@ void HEBChart::computeCorrelationsMean(
 
                 for (int i = r.begin(); i != r.end(); i++) {
 #else
-    miFieldEntries.reserve(regionsEqual ? (numPoints0 * numPoints0 - numPoints0) / 2 : numPoints0 * numPoints1);
+    miFieldEntries.reserve(numPairs);
 #if _OPENMP >= 201107
     #pragma omp parallel default(none) shared(miFieldEntries, numPoints0, numPoints1, cs, k, numBins) \
     shared(downscaledFields0, downscaledFields1)
@@ -184,9 +189,16 @@ void HEBChart::computeCorrelationsMean(
 #endif
         for (int i = 0; i < numPoints0; i++) {
 #endif
+            int upperBounds = regionsEqual ? i : numPoints1;
+            int ir = i, jr;
+            if (isSubselection) {
+                std::tie(ir, jr) = subselectionBlockPairs.at(i);
+                upperBounds = 1;
+            }
+
             bool isNan = false;
             for (int c = 0; c < cs; c++) {
-                X[c] = downscaledFields0.at(c)[i];
+                X[c] = downscaledFields0.at(c)[ir];
                 if (std::isnan(X[c])) {
                     isNan = true;
                     break;
@@ -206,26 +218,28 @@ void HEBChart::computeCorrelationsMean(
                     maxFieldValRef = std::max(maxFieldValRef, X[c]);
                 }
                 for (int c = 0; c < cs; c++) {
-                    X[c] = (downscaledFields0.at(c)[i] - minFieldValRef) / (maxFieldValRef - minFieldValRef);
+                    X[c] = (downscaledFields0.at(c)[ir] - minFieldValRef) / (maxFieldValRef - minFieldValRef);
                 }
             }
 
-            int upperBounds = regionsEqual ? i : numPoints1;
             for (int j = 0; j < upperBounds; j++) {
+                if (!isSubselection) {
+                    jr = j;
+                }
                 if (regionsEqual && (cellDistanceRange.x > 0 || cellDistanceRange.y < cellDistanceRangeTotal.y)) {
-                    glm::vec3 pti(i % uint32_t(xsd0), (i / uint32_t(xsd0)) % uint32_t(ysd0), i / uint32_t(xsd0 * ysd0));
-                    glm::vec3 ptj(j % uint32_t(xsd1), (j / uint32_t(xsd1)) % uint32_t(ysd1), j / uint32_t(xsd1 * ysd1));
+                    glm::vec3 pti(ir % uint32_t(xsd0), (ir / uint32_t(xsd0)) % uint32_t(ysd0), ir / uint32_t(xsd0 * ysd0));
+                    glm::vec3 ptj(jr % uint32_t(xsd1), (jr / uint32_t(xsd1)) % uint32_t(ysd1), jr / uint32_t(xsd1 * ysd1));
                     float cellDist = glm::length(pti - ptj);
                     if (cellDist < float(cellDistanceRange.x) || cellDist > float(cellDistanceRange.y)) {
                         continue;
                     }
                 }
                 if (regionsEqual && showCorrelationForClickedPoint
-                        && clickedPointGridIdx != uint32_t(i) && clickedPointGridIdx != uint32_t(j)) {
+                        && clickedPointGridIdx != uint32_t(ir) && clickedPointGridIdx != uint32_t(jr)) {
                     continue;
                 }
                 for (int c = 0; c < cs; c++) {
-                    Y[c] = downscaledFields1.at(c)[j];
+                    Y[c] = downscaledFields1.at(c)[jr];
                     if (std::isnan(Y[c])) {
                         isNan = true;
                         break;
@@ -240,8 +254,8 @@ void HEBChart::computeCorrelationsMean(
                             maxFieldVal = std::max(maxFieldVal, Y[c]);
                         }
                         for (int c = 0; c < cs; c++) {
-                            X[c] = (downscaledFields0.at(c)[i] - minFieldVal) / (maxFieldVal - minFieldVal);
-                            Y[c] = (downscaledFields1.at(c)[j] - minFieldVal) / (maxFieldVal - minFieldVal);
+                            X[c] = (downscaledFields0.at(c)[ir] - minFieldVal) / (maxFieldVal - minFieldVal);
+                            Y[c] = (downscaledFields1.at(c)[jr] - minFieldVal) / (maxFieldVal - minFieldVal);
                         }
                     }
 
@@ -267,7 +281,7 @@ void HEBChart::computeCorrelationsMean(
                     if (correlationValue < correlationRange.x || correlationValue > correlationRange.y) {
                         continue;
                     }
-                    miFieldEntriesThread.emplace_back(correlationValue, i, j);
+                    miFieldEntriesThread.emplace_back(correlationValue, ir, jr);
                 }
             }
         }
@@ -632,21 +646,15 @@ sgl::vk::BufferPtr HEBChart::computeCorrelationsForRequests(
 void HEBChart::createBatchCacheData(uint32_t& batchSizeSamplesMax) {
     int cs = getCorrelationMemberCount();
     const uint32_t batchSizeSamplesMaxAllCs = 1 << 17; // Up to 131072 samples per batch.
-    //if(batchSizeSamplesMax == 0)
-        batchSizeSamplesMax = batchSizeSamplesMaxAllCs;
+    batchSizeSamplesMax = batchSizeSamplesMaxAllCs;
     if (cs > 100) {
         double factorN = double(cs) / 100.0 * std::log2(double(cs) / 100.0 + 1.0);
         batchSizeSamplesMax = std::ceil(double(batchSizeSamplesMax) / factorN);
         batchSizeSamplesMax = uint32_t(sgl::nextPowerOfTwo(int(batchSizeSamplesMax)));
     }
 
-    //if(requestsBuffer && requestsBuffer->getSizeInBytes() / sizeof(CorrelationRequestData) != batchSizeSamplesMax){
-    //    delete computeRenderer;
-    //    requestsBuffer = {};
-    //}
-
     sgl::vk::Device* device = sgl::AppSettings::get()->getPrimaryDevice();
-    if (!requestsBuffer) {
+    if (!computeRenderer) {
         computeRenderer = new sgl::vk::Renderer(device, 100);
         if (device->getGraphicsQueue() == device->getComputeQueue()) {
             supportsAsyncCompute = false;
@@ -658,6 +666,11 @@ void HEBChart::createBatchCacheData(uint32_t& batchSizeSamplesMax) {
         commandPoolType.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
         commandBuffer = device->allocateCommandBuffer(commandPoolType, &commandPool);
 
+        correlationComputePass = std::make_shared<CorrelationComputePass>(computeRenderer);
+        correlationComputePass->setUseRequestEvaluationMode(true);
+    }
+
+    if (!requestsBuffer || cachedBatchSizeSamplesMax != batchSizeSamplesMax) {
         requestsBuffer = std::make_shared<sgl::vk::Buffer>(
                 device, sizeof(CorrelationRequestData) * batchSizeSamplesMax,
                 VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
@@ -675,8 +688,6 @@ void HEBChart::createBatchCacheData(uint32_t& batchSizeSamplesMax) {
                 VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                 VMA_MEMORY_USAGE_GPU_TO_CPU);
 
-        correlationComputePass = std::make_shared<CorrelationComputePass>(computeRenderer);
-        correlationComputePass->setUseRequestEvaluationMode(true);
         correlationComputePass->setRequestsBuffer(requestsBuffer);
         correlationComputePass->setOutputBuffer(correlationOutputBuffer);
     }
@@ -920,7 +931,7 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
     } else {
         numPairsDownsampled = regionsEqual ? (numPoints0 * numPoints0 - numPoints0) / 2 : numPoints0 * numPoints1;
     }
-    constexpr int batchSize = 100;
+    int batchSize = std::clamp(sgl::iceil(numPairsDownsampled, int(std::thread::hardware_concurrency())), 25, 100);
     uint32_t batchSizeNeeded = batchSize * numInitSamples;
     createBatchCacheData(batchSizeNeeded);
     auto fieldCache = getFieldCache(fieldData);
@@ -992,7 +1003,7 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
             // 2. drawing a batch size already done in the for loop ------------------------------------------
             // 3. Init ---------------------------------------------------------------------------------------
             std::vector<float> sample_positions(true_batch_size * 6);
-            generateSamples(sample_positions.data(), true_batch_size, SamplingMethodType::QUASIRANDOM_HALTON);
+            generateSamples(sample_positions.data(), true_batch_size, SamplingMethodType::QUASIRANDOM_PLASTIC);
             // generate requests
             auto requests = generate_requests(sample_positions, p, p + true_batch_size, BayOpt::Params::init_randomsampling::samples());
             // evaluate requests and download scores (thread safe)
@@ -1007,8 +1018,8 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
                 for(int i: BayOpt::i_range(true_batch_size)){
                     for(int s: BayOpt::i_range(BayOpt::Params::init_randomsampling::samples())){
                         int lin_index = i * BayOpt::Params::init_randomsampling::samples() + s;
-                        v(0) = correlationValues[lin_index];
-                        if(std::isnan(v(0)) || std::isinf(v(0))) v(0) = -1;
+                        v(0) = std::abs(correlationValues[lin_index]);
+                        if(std::isnan(v(0)) || std::isinf(v(0))) v(0) = 0;
                         std::copy(sample_positions.begin() + 6 * lin_index, sample_positions.begin() + 6 * lin_index + 6, p.data());
                         optimizers[i].add_sample(p, v);
                     }
@@ -1047,7 +1058,7 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
                     Eigen::VectorXd v(1);
                     assert(p.size() == 6 && v.size() == 1);
                     for(int o: BayOpt::i_range(true_batch_size)){
-                        v(0) = correlationValues[o];
+                        v(0) = std::abs(correlationValues[o]);
                         if(std::isnan(v(0)) || std::isinf(v(0))) v(0) = -1;
                         std::copy(sample_positions.begin() + 6 * o, sample_positions.begin() + 6 * o + 6, p.data());
                         optimizers[o].add_sample(p, v);
@@ -1097,14 +1108,15 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
 }
 
 HEBChart::PerfStatistics HEBChart::computeCorrelationsBlockPairs(
-        const std::vector<std::pair<uint32_t, uint32_t>>& blockPairs) {
+        const std::vector<std::pair<uint32_t, uint32_t>>& blockPairs,
+        const std::vector<float*>& downscaledFields0, const std::vector<float*>& downscaledFields1) {
     HEBChart::PerfStatistics statistics{};
     isSubselection = true;
     subselectionBlockPairs = blockPairs;
 
     auto startTime = std::chrono::system_clock::now();
     std::vector<MIFieldEntry> miFieldEntries;
-    computeCorrelations(fieldDataArray.front().get(), {}, {}, miFieldEntries);
+    computeCorrelations(fieldDataArray.front().get(), downscaledFields0, downscaledFields1, miFieldEntries);
     auto endTime = std::chrono::system_clock::now();
     auto elapsedTime = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
     statistics.elapsedTimeMicroseconds = double(elapsedTime.count());

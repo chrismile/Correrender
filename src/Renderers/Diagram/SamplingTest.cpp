@@ -43,18 +43,27 @@ struct TestCase {
     double elapsedTimeMicroseconds = 0.0;
     double maximumQuantile = 0.0;
     double rangeLinear = 0.0;
+
+    // Bayesian Optimization.
+    int numInitSamples = 20;
+    int numBOIterations = 150;
+    nlopt::algorithm algorithm = nlopt::GN_DIRECT_L_RAND;
 };
 
 void runTestCase(
         HEBChart* chart, TestCase& testCase, int numRuns,
         const std::vector<std::pair<uint32_t, uint32_t>>& blockPairs,
-        const std::vector<std::vector<float>>& allValuesSortedArray) {
+        const std::vector<std::vector<float>>& allValuesSortedArray,
+        const std::vector<float*>& downscaledFields) {
     chart->setSamplingMethodType(testCase.samplingMethodType);
     chart->setNumSamples(testCase.numSamples);
+    chart->setNumInitSamples(testCase.numInitSamples);
+    chart->setNumBOIterations(testCase.numBOIterations);
+    chart->setNloptAlgorithm(testCase.algorithm);
 
     auto invN = 1.0 / double(blockPairs.size() * size_t(numRuns));
     for (int runIdx = 0; runIdx < numRuns; runIdx++) {
-        auto statisticsList = chart->computeCorrelationsBlockPairs(blockPairs);
+        auto statisticsList = chart->computeCorrelationsBlockPairs(blockPairs, downscaledFields, downscaledFields);
 
         // Binary search.
         for (size_t i = 0; i < blockPairs.size(); i++) {
@@ -89,7 +98,7 @@ void runSamplingTests(const std::string& dataSetPath) {
     VolumeDataPtr volumeData(new VolumeData(renderer));
     DataSetInformation dataSetInformation;
     dataSetInformation.filenames = { dataSetPath };
-    volumeData->setInputFiles({ "/home/neuhauser/datasets/Necker/nc/necker_t5_tk_u.nc" }, dataSetInformation, nullptr);
+    volumeData->setInputFiles({ "/home/neuhauser/datasets/Necker/nc/necker_t5_e100_tk.nc" }, dataSetInformation, nullptr);
     int xs = volumeData->getGridSizeX();
     int ys = volumeData->getGridSizeY();
     int zs = volumeData->getGridSizeZ();
@@ -101,7 +110,7 @@ void runSamplingTests(const std::string& dataSetPath) {
     int numBins = 80;
 
     // Settings.
-    constexpr CorrelationMeasureType correlationMeasureType = CorrelationMeasureType::PEARSON;
+    constexpr CorrelationMeasureType correlationMeasureType = CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV;
     const auto& fieldNames = volumeData->getFieldNamesBase(FieldType::SCALAR);
     constexpr int fieldIdx = 0;
     constexpr bool useGpu = true;
@@ -111,7 +120,7 @@ void runSamplingTests(const std::string& dataSetPath) {
     constexpr int dfx = 8;
     constexpr int dfy = 8;
     constexpr int dfz = 8;
-    constexpr int numRuns = 10;
+    constexpr int numRuns = 5;
     int numPairsToCheck = 1000;
     int numLogSteps = 3;
     std::vector<int> numSamplesArray;
@@ -126,6 +135,9 @@ void runSamplingTests(const std::string& dataSetPath) {
         }
     }
     numSamplesArray.push_back(int(std::pow(10, numLogSteps)));
+    //if (numLogSteps == 2) {
+    //    numSamplesArray.push_back(200);
+    //}
 
     // Create the chart.
     auto* chart = new HEBChart();
@@ -146,6 +158,7 @@ void runSamplingTests(const std::string& dataSetPath) {
     int xsd = sgl::iceil(xs, dfx);
     int ysd = sgl::iceil(ys, dfy);
     int zsd = sgl::iceil(zs, dfz);
+    bool computeMean = true;
 
     // Numerate all block pairs.
     std::vector<std::pair<uint32_t, uint32_t>> blockPairs;
@@ -186,9 +199,18 @@ void runSamplingTests(const std::string& dataSetPath) {
     auto elapsedTime = std::chrono::duration<double>(endTime - startTime);
     std::cout << "Time for GT: " << elapsedTime.count() << "s" << std::endl;
 
+    // Compute the downscaled field.
+    std::vector<float*> downscaledFields;
+    if (computeMean) {
+        downscaledFields.resize(cs);
+        chart->computeDownscaledFieldPerfTest(downscaledFields);
+    }
+
     // Add the test cases.
+    SamplingMethodType firstSamplingMethodType =
+            computeMean ? SamplingMethodType::MEAN : SamplingMethodType::RANDOM_UNIFORM;
     std::vector<TestCase> testCases;
-    for (int samplingMethodTypeIdx = int(SamplingMethodType::RANDOM_UNIFORM);
+    for (int samplingMethodTypeIdx = int(firstSamplingMethodType);
             samplingMethodTypeIdx <= int(SamplingMethodType::QUASIRANDOM_PLASTIC);
             samplingMethodTypeIdx++) {
         for (int numSamples : numSamplesArray) {
@@ -204,22 +226,37 @@ void runSamplingTests(const std::string& dataSetPath) {
         TestCase testCase;
         testCase.samplingMethodType = SamplingMethodType::BAYESIAN_OPTIMIZATION;
         testCase.numSamples = numSamples;
+        testCase.numInitSamples = std::min(numSamples, 20);
         testCases.push_back(testCase);
     }
 
     // Run the tests and write the results to a file.
     sgl::CsvWriter file(
             std::string("Sampling ") + CORRELATION_MEASURE_TYPE_NAMES[int(correlationMeasureType)] + ".csv");
-    file.writeRow({ "Sampling Method", "Samples", "Time", "Quantile", "Linear" });
-    for (TestCase& testCase : testCases) {
+    file.writeRow({ "Sampling Method", "Samples", "Time", "Quantile", "Linear", "Init Samples" });
+    size_t firstMeanIdx = 0;
+    for (size_t testCaseIdx = 0; testCaseIdx < testCases.size(); testCaseIdx++) {
+        TestCase& testCaseAtIdx = testCases.at(testCaseIdx);
+        size_t testCaseIdxReal = testCaseIdx;
+        if (testCaseAtIdx.samplingMethodType == SamplingMethodType::MEAN && testCaseIdx > 0) {
+            testCaseIdxReal = firstMeanIdx;
+        }
+
+        TestCase& testCase = testCases.at(testCaseIdxReal);
+        if (testCase.samplingMethodType == SamplingMethodType::BAYESIAN_OPTIMIZATION && testCase.numSamples > 100) {
+            continue;
+        }
         std::cout << "Test case: " << SAMPLING_METHOD_TYPE_NAMES[int(testCase.samplingMethodType)];
-        std::cout << ", samples: " << std::to_string(testCase.numSamples) << std::endl;
-        runTestCase(chart, testCase, numRuns, blockPairs, allValuesSortedArray);
+        std::cout << ", samples: " << std::to_string(testCaseAtIdx.numSamples) << std::endl;
+        if (testCaseIdx == testCaseIdxReal) {
+            runTestCase(chart, testCase, numRuns, blockPairs, allValuesSortedArray, downscaledFields);
+        }
         file.writeCell(SAMPLING_METHOD_TYPE_NAMES[int(testCase.samplingMethodType)]);
-        file.writeCell(std::to_string(testCase.numSamples));
+        file.writeCell(std::to_string(testCaseAtIdx.numSamples));
         file.writeCell(std::to_string(testCase.elapsedTimeMicroseconds));
         file.writeCell(std::to_string(testCase.maximumQuantile));
         file.writeCell(std::to_string(testCase.rangeLinear));
+        file.writeCell(std::to_string(testCase.numInitSamples));
         file.newRow();
     }
     file.close();

@@ -220,8 +220,11 @@ public:
         double elapsedTimeMicroseconds{};
         std::vector<float> maximumValues{};
     };
-    PerfStatistics computeCorrelationsBlockPairs(const std::vector<std::pair<uint32_t, uint32_t>>& blockPairs);
+    PerfStatistics computeCorrelationsBlockPairs(
+            const std::vector<std::pair<uint32_t, uint32_t>>& blockPairs,
+            const std::vector<float*>& downscaledFields0, const std::vector<float*>& downscaledFields1);
     void computeAllCorrelationsBlockPair(uint32_t i, uint32_t j, std::vector<float>& allValues);
+    void computeDownscaledFieldPerfTest(std::vector<float*>& downscaledFields);
 
 protected:
     bool hasData() override {
@@ -316,6 +319,7 @@ private:
     bool useCorrelationComputationGpu = true;
     bool supportsAsyncCompute = true;
     sgl::vk::Renderer* computeRenderer = nullptr;
+    uint32_t cachedBatchSizeSamplesMax = 0;
     sgl::vk::BufferPtr requestsBuffer{}, requestsStagingBuffer{};
     sgl::vk::BufferPtr correlationOutputBuffer{}, correlationOutputStagingBuffer{};
     sgl::vk::FencePtr fence{};

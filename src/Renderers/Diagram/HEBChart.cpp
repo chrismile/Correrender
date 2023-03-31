@@ -356,6 +356,10 @@ void HEBChart::computeDownscaledField(
     }
 }
 
+void HEBChart::computeDownscaledFieldPerfTest(std::vector<float*>& downscaledFields) {
+    computeDownscaledField(fieldDataArray.front().get(), 0, downscaledFields);
+}
+
 void HEBChart::computeDownscaledFieldVariance(HEBChartFieldData* fieldData, int idx) {
     // Compute the standard deviation inside the downscaled grids.
     int cs = getCorrelationMemberCount();
