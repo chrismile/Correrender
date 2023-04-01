@@ -958,7 +958,7 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
     int iteration{};
     float* correlationValues{};
 
-    auto generate_requests = [&](const std::vector<float>& sample_positions, int start_pair_index, int end_pair_index, int samples_per_pair){
+    auto generate_requests = [&](const float* sample_positions, int start_pair_index, int end_pair_index, int samples_per_pair){
         std::vector<CorrelationRequestData> requests;
         for(int q: BayOpt::i_range(start_pair_index, end_pair_index)){
             uint32_t i,j;
@@ -989,6 +989,7 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
 
             CorrelationRequestData request;
             for(int sampleIdx: BayOpt::i_range(samples_per_pair)){
+                sampleIdx += (q - start_pair_index) * samples_per_pair;
                 int xi = std::clamp(int(BayOpt::pr(sample_positions[sampleIdx * 6 + 0] * float(region0.xsr) - 0.5f)), 0, region0.xsr - 1) + region0.xoff;
                 int yi = std::clamp(int(BayOpt::pr(sample_positions[sampleIdx * 6 + 1] * float(region0.ysr) - 0.5f)), 0, region0.ysr - 1) + region0.yoff;
                 int zi = std::clamp(int(BayOpt::pr(sample_positions[sampleIdx * 6 + 2] * float(region0.zsr) - 0.5f)), 0, region0.zsr - 1) + region0.zoff;
@@ -1017,11 +1018,13 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
             int cur_thread_pair_count = std::max(std::min(pairs_per_thread, cur_pair_count - thread_id * pairs_per_thread), 0);
             // creating initial sample positions
             if(cur_thread_pair_count){
-                std::vector<float> thread_samples(numInitSamples * cur_thread_pair_count * 6);
-                generateSamples(thread_samples.data(), numInitSamples * cur_thread_pair_count, SamplingMethodType::QUASIRANDOM_PLASTIC);
-                auto corr_requ = generate_requests(thread_samples, global_pair_base_index, global_pair_base_index + cur_thread_pair_count, numInitSamples);
+                int sample_offset = thread_id * pairs_per_thread * numInitSamples * 6;
+                assert(sample_offset + cur_thread_pair_count * setNumInitSamples * 6 < samples.size());
+                generateSamples(samples.data() + sample_offset, numInitSamples * cur_thread_pair_count, SamplingMethodType::QUASIRANDOM_PLASTIC);
+                auto corr_requ = generate_requests(samples.data() + sample_offset, global_pair_base_index, global_pair_base_index + cur_thread_pair_count, numInitSamples);
                 int request_offset = thread_id * pairs_per_thread * numInitSamples;
                 assert(request_offset + corr_requ.size() <= correlation_requests.size());
+                assert(corr_requ.size() == cur_thread_pair_count * numInitSamples);
                 std::copy(corr_requ.begin(), corr_requ.end(), correlation_requests.begin() + request_offset);
             }
             workers_signal_main[thread_id].release();
@@ -1036,9 +1039,11 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
                 i += thread_id * pairs_per_thread;
                 for(int s: BayOpt::i_range(BayOpt::Params::init_randomsampling::samples())){
                     int lin_index = i * BayOpt::Params::init_randomsampling::samples() + s;
+                    assert(lin_index < correlation_requests.size());
                     v(0) = std::abs(correlationValues[lin_index]);
                     if(std::isnan(v(0)) || std::isinf(v(0))) v(0) = 0;
                     std::copy(samples.begin() + 6 * lin_index, samples.begin() + 6 * lin_index + 6, p.data());
+                    assert(i < optimizers.size());
                     optimizers[i].add_sample(p, v);
                 }
             }
@@ -1065,7 +1070,7 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
                     std::copy(new_sample.data(), new_sample.data() + 6, sample_positions.begin() + o * 6);
                 }
                 if(cur_thread_pair_count){
-                    auto corr_requ = generate_requests(sample_positions, global_pair_base_index, global_pair_base_index + cur_thread_pair_count, 1);
+                    auto corr_requ = generate_requests(sample_positions.data(), global_pair_base_index, global_pair_base_index + cur_thread_pair_count, 1);
                     std::copy(corr_requ.begin(), corr_requ.end(), correlation_requests.begin() + thread_id * pairs_per_thread);
                 }
                 workers_signal_main[thread_id].release();  // signal the main thread
@@ -1073,12 +1078,12 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
                 main_signal_workers[thread_id].acquire();
                 // update optimizers
                 for(int i: BayOpt::i_range(cur_thread_pair_count)){
-                    i += thread_id * pairs_per_thread;
+                    //i += thread_id * pairs_per_thread;
                     int lin_index = i;
                     v(0) = std::abs(correlationValues[lin_index]);
                     if(std::isnan(v(0)) || std::isinf(v(0))) v(0) = 0;
-                    std::copy(samples.begin() + 6 * lin_index, samples.begin() + 6 * lin_index + 6, p.data());
-                    optimizers[i].add_sample(p, v);
+                    std::copy(sample_positions.begin() + 6 * lin_index, sample_positions.begin() + 6 * lin_index + 6, p.data());
+                    optimizers[i + thread_id * pairs_per_thread].add_sample(p, v);
                 }
                 // signal main
                 workers_signal_main[thread_id].release();
