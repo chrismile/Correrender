@@ -119,7 +119,7 @@ void runSamplingTests(const std::string& dataSetPath) {
     int ts = volumeData->getTimeStepCount();
     bool isEnsembleMode = es > 1;
     int cs = isEnsembleMode ? es : ts;
-    int k = std::max(sgl::iceil(3 * cs, 100), 1);
+    int k = 10;//std::max(sgl::iceil(3 * cs, 100), 1);
     int numBins = 80;
 
     // Settings.
@@ -130,12 +130,12 @@ void runSamplingTests(const std::string& dataSetPath) {
     //constexpr int dfx = 16;
     //constexpr int dfy = 16;
     //constexpr int dfz = 20;
-    constexpr int dfx = 10;
-    constexpr int dfy = 10;
-    constexpr int dfz = 10;
-    constexpr int numRuns = 100;
-    int numPairsToCheck = 100;
-    int numLogSteps = 2;
+    constexpr int dfx = 32;
+    constexpr int dfy = 32;
+    constexpr int dfz = 20;
+    constexpr int numRuns = 40;
+    int numPairsToCheck = 1000;
+    int numLogSteps = 3;
     std::vector<int> numSamplesArray;
     for (int l = 0; l < numLogSteps; l++) {
         auto step = int(std::pow(10, l));
@@ -153,7 +153,7 @@ void runSamplingTests(const std::string& dataSetPath) {
     //}
     bool computeMean = true;
     bool runTestsOptimizers = false;
-    bool computeGroundTruth = true;
+    bool computeGroundTruth = false;
 
     // Create the chart.
     auto* chart = new HEBChart();
