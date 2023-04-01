@@ -1019,7 +1019,7 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
             // creating initial sample positions
             if(cur_thread_pair_count){
                 int sample_offset = thread_id * pairs_per_thread * numInitSamples * 6;
-                assert(sample_offset + cur_thread_pair_count * setNumInitSamples * 6 < samples.size());
+                assert(sample_offset + cur_thread_pair_count * numInitSamples * 6 < samples.size());
                 generateSamples(samples.data() + sample_offset, numInitSamples * cur_thread_pair_count, SamplingMethodType::QUASIRANDOM_PLASTIC);
                 auto corr_requ = generate_requests(samples.data() + sample_offset, global_pair_base_index, global_pair_base_index + cur_thread_pair_count, numInitSamples);
                 int request_offset = thread_id * pairs_per_thread * numInitSamples;
@@ -1146,11 +1146,13 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
             outputBuffer->unmapMemory();
             end = std::chrono::system_clock::now();
             sample_evaluation_time += std::chrono::duration<double>(end - start).count();
+            start = end;
         }
         iterate = false;
         release_all_workers();
         end = std::chrono::system_clock::now();
         iteration_time += std::chrono::duration<double>(end - iteration_start).count();
+        start = end;
 
         // 7. Writing back the best results -------------------------------------------
         for(int o: BayOpt::i_range(cur_pair_count)){
