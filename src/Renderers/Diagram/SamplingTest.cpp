@@ -49,7 +49,7 @@ struct TestCase {
 
     // Bayesian Optimization.
     int numInitSamples = 20;
-    int numBOIterations = 150;
+    int numBOIterations = 60;
     nlopt::algorithm algorithm = nlopt::GN_DIRECT_L_RAND;
 };
 
