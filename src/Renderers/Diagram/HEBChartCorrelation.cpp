@@ -704,6 +704,7 @@ void HEBChart::computeCorrelationsSamplingGpu(
 }
 
 void HEBChart::correlationSamplingExecuteGpuDefault(HEBChartFieldData* fieldData, std::vector<MIFieldEntry>& miFieldEntries){
+    const auto function_start = std::chrono::system_clock::now();
     int numPoints0 = xsd0 * ysd0 * zsd0;
     int numPoints1 = xsd1 * ysd1 * zsd1;
 
@@ -832,10 +833,13 @@ void HEBChart::correlationSamplingExecuteGpuDefault(HEBChartFieldData* fieldData
 #endif
         cellIdxOffset += batchSizeCells;
 
+        auto start = std::chrono::system_clock::now();
         auto outputBuffer = computeCorrelationsForRequests(requests, fieldCache, batchIdx == 0);
 
         // Finally, insert the values of this batch.
         auto* correlationValues = static_cast<float*>(outputBuffer->mapMemory());
+        auto end = std::chrono::system_clock::now();
+        //std::cout << "Needed " << std::chrono::duration<double>(end - start).count() << " s to evaluate " << requests.size() << " requests on the gpu" << std::endl;
         auto numValidCells = int(requests.size() / size_t(numSamples));
 #ifdef USE_TBB
         std::vector<MIFieldEntry> newMiFieldEntries = tbb::parallel_reduce(
@@ -906,6 +910,8 @@ void HEBChart::correlationSamplingExecuteGpuDefault(HEBChartFieldData* fieldData
 #endif
         outputBuffer->unmapMemory();
     }
+    const auto function_end = std::chrono::system_clock::now();
+    //std::cout << "In total took " << std::chrono::duration<double>(function_end - function_start).count() << "s" << std::endl;
 }
 
 void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldData, std::vector<MIFieldEntry>& miFieldEntries){
@@ -922,6 +928,7 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
 
     using model_t = limbo::model::GP<BayOpt::Params>;
     
+    const auto function_start = std::chrono::system_clock::now();
     int numPoints0 = xsd0 * ysd0 * zsd0;
     int numPoints1 = xsd1 * ysd1 * zsd1;
     const int bayOptIterationCount = std::max(0, numSamples - numInitSamples);
@@ -951,6 +958,7 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
     std::atomic<bool> iterate{};
     std::atomic<bool> done{};
     std::vector<model_t> optimizers(max_pairs_count);
+    auto setup_end = std::chrono::system_clock::now();
 
     int cur_pair_offset{};
     int cur_pair_count{};
@@ -1093,33 +1101,46 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
     auto release_all_workers = [&](){for(auto& s: main_signal_workers) s.release();};
     auto acquire_all_workers = [&](){for(auto& s: workers_signal_main) s.acquire();};
 
+    double init_time{}, sample_generation_time{}, gpu_init_eval_time{}, model_init_time{}, iteration_time{}, refinement_time{}, sample_evaluation_time{}, writeback_time{}, thread_time{}, setup_time{std::chrono::duration<double>(setup_end - function_start).count()};
+    
+    auto thread_start = std::chrono::system_clock::now();
     int thread_id{};
     for(auto& t: threads)
         t = std::thread(thread_func, thread_id++);
+    auto thread_end = std::chrono::system_clock::now();
+    thread_time += std::chrono::duration<double>(thread_end - thread_start).count();
 
-    double init_time{}, iteration_time{}, refinement_time{}, sample_evaluation_time{};
     for(int base_pair_index: BayOpt::i_range<int>(0, numPairsDownsampled, max_pairs_count)){
+        auto start = std::chrono::system_clock::now();
+        auto init_start = start;
         iterate = false;
         cur_pair_offset = base_pair_index;
         cur_pair_count = std::min<int>(numPairsDownsampled - base_pair_index, max_pairs_count);
         pairs_per_thread = (cur_pair_count + threads.size() - 1) / threads.size();
-        optimizers.clear();
-        optimizers.resize(cur_pair_count);
+        optimizers = std::vector<model_t>(cur_pair_count);
         //std::cout << "Base pair: " << base_pair_index << " with max pair index: " << numPairsDownsampled << " , and " << bayOptIterationCount << " refinement iterations" << std::endl;
         // create, evaluate and add to meodels the initial samples -----------------------------------------------------------------------
-        auto start = std::chrono::system_clock::now();
         correlation_requests.resize(cur_pair_count * numInitSamples);
+        start = std::chrono::system_clock::now();
         release_all_workers();
         acquire_all_workers();
+        auto end = std::chrono::system_clock::now();
+        sample_generation_time = std::chrono::duration<double>(end - start).count();
+        start = end;
+        //std::cout << "Correlation requests: " << correlation_requests.size() << " for " << cur_pair_count << " box pairs with " << numInitSamples << " initial samples" << std::endl;
         auto outputBuffer = computeCorrelationsForRequests(correlation_requests, fieldCache, base_pair_index == 0);
         correlationValues = static_cast<float*>(outputBuffer->mapMemory());
+        end = std::chrono::system_clock::now();
+        gpu_init_eval_time += std::chrono::duration<double>(end - start).count();
+        start = end;
+
         // execute the evaluation on the worker threads and wait for completion
         release_all_workers();
         acquire_all_workers();
         outputBuffer->unmapMemory();
-
-        auto end = std::chrono::system_clock::now();
-        init_time += std::chrono::duration<double>(end - start).count();
+        end = std::chrono::system_clock::now();
+        model_init_time += std::chrono::duration<double>(end - start).count();
+        init_time += std::chrono::duration<double>(end - init_start).count();
         start = end;
         auto iteration_start = start;
 
@@ -1172,15 +1193,24 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
             }
             miFieldEntries.emplace_back(float(max_val), i, j);
         }
+        end = std::chrono::system_clock::now();
+        writeback_time += std::chrono::duration<double>(end - start).count();
+        start = end;
     }
-    std::cout << "BayOpt details: init_time[" << std::setw(10) << init_time << "s] iteration_tim[" << std::setw(10) << iteration_time << "(refinement:" << std::setw(10) << refinement_time << "s, sample_eval:" << std::setw(10) << sample_evaluation_time << "s)]" << std::endl;
     
     // signaling the threads job is done
+    thread_start = std::chrono::system_clock::now();
     done = true;
     release_all_workers();
 
     for(auto& t: threads)
         t.join();
+    thread_end = std::chrono::system_clock::now();
+    thread_time += std::chrono::duration<double>(thread_end - thread_start).count();
+
+    auto function_end = std::chrono::system_clock::now();
+    if(!isHeadlessMode)
+        std::cout << "BayOpt details: init_time[" << std::setw(10) << init_time << "s (sample_gen:" << sample_generation_time << "s, gpu_eval" << gpu_init_eval_time << "s, model_init: " << model_init_time << "s)] iteration_time[" << std::setw(10) << iteration_time << "s (refinement:" << std::setw(10) << refinement_time << "s, sample_eval:" << std::setw(10) << sample_evaluation_time << "s)] writeback_time[" << writeback_time << "s] threading_overhead[" << thread_time << "s] setup_time[" << setup_time << "s]  Total time: " << std::chrono::duration<double>(function_end - function_start).count() << "s" << std::endl;
 }
 
 HEBChart::PerfStatistics HEBChart::computeCorrelationsBlockPairs(

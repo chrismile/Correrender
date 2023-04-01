@@ -309,7 +309,7 @@ private:
     SamplingMethodType samplingMethodType = SamplingMethodType::MEAN;
     int numSamples = 100;
     int numInitSamples = 20;
-    int numBOIterations = 250;
+    int numBOIterations = 100;
     nlopt::algorithm algorithm = nlopt::GN_DIRECT_L_RAND;
     // Performance/quality measurement code.
     bool isSubselection = false;
