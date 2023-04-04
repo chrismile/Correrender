@@ -42,7 +42,9 @@
         "nlohmann-json",
         "python3",
         "netcdf-c",
-        "blosc"
+        "blosc",
+        "eigen3",
+        "nlopt"
     ],
     "features": {
         "tbb": {

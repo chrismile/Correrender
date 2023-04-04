@@ -515,6 +515,13 @@ if $build_with_vkvg_support; then
     fi
 fi
 
+if [ ! -d "${PROJECTPATH}/third_party/limbo" ]; then
+    echo "------------------------"
+    echo "    downloading limbo   "
+    echo "------------------------"
+    git clone --recursive https://github.com/resibots/limbo.git "${PROJECTPATH}/third_party/limbo"
+fi
+
 popd >/dev/null # back to project root
 
 if [ $debug = true ]; then
