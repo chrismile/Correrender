@@ -381,8 +381,8 @@ void HEBChart::computeDownscaledFieldVariance(HEBChartFieldData* fieldData, int 
     }
 
 #ifdef USE_TBB
-    tbb::parallel_for(tbb::blocked_range<int>(0, numPoints), [&](auto const& r) {
-            for (auto pointIdx = r.begin(); pointIdx != r.end(); pointIdx++) {
+    tbb::parallel_for(tbb::blocked_range<int>(0, numPoints), [&](auto const& reg) {
+            for (auto pointIdx = reg.begin(); pointIdx != reg.end(); pointIdx++) {
 #else
 #if _OPENMP >= 200805
     #pragma omp parallel for default(none) shared(fields, fieldData, pointToNodeIndexMap, xsd, ysd, zsd, r, numPoints, cs)

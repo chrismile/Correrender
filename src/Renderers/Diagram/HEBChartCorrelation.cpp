@@ -26,6 +26,8 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#define NOMINMAX
+
 #include <iostream>
 
 #ifdef _OPENMP
@@ -539,7 +541,7 @@ void HEBChart::correlationSamplingExecuteCpuBayesian(HEBChartFieldData* fieldDat
             BayOpt::Params::opt_nloptnograd::set_iterations(numBOIterations);
             switch(correlationType){
             case CorrelationMeasureType::PEARSON:
-                optimizer.optimize(BayOpt::Eval<BayOpt::PearsonFunctor>{fields, region_min, region_max, cs, xs, ys});
+                optimizer.optimize(BayOpt::Eval<BayOpt::PearsonFunctor>{fields, region_min, region_max, cs, xs, ys, BayOpt::PearsonFunctor()});
                 break;
             case CorrelationMeasureType::SPEARMAN:
                 optimizer.optimize(BayOpt::Eval<BayOpt::SpearmanFunctor>{fields, region_min, region_max, cs, xs, ys});
@@ -556,7 +558,7 @@ void HEBChart::correlationSamplingExecuteCpuBayesian(HEBChartFieldData* fieldDat
             default: assert(false && "Unimplemented Correlation measure type");
             }
 
-            float correlationValueMax = optimizer.best_observation()(0);
+            auto correlationValueMax = float(optimizer.best_observation()(0));
             if (correlationValueMax >= correlationRange.x && correlationValueMax <= correlationRange.y) {
                 miFieldEntriesThread[id].emplace_back(correlationValueMax, i, j);
             }
@@ -651,7 +653,7 @@ void HEBChart::createBatchCacheData(uint32_t& batchSizeSamplesMax) {
     batchSizeSamplesMax = batchSizeSamplesMaxAllCs;
     if (cs > 100) {
         double factorN = double(cs) / 100.0 * std::log2(double(cs) / 100.0 + 1.0);
-        batchSizeSamplesMax = std::ceil(double(batchSizeSamplesMax) / factorN);
+        batchSizeSamplesMax = uint32_t(std::ceil(double(batchSizeSamplesMax) / factorN));
         batchSizeSamplesMax = uint32_t(sgl::nextPowerOfTwo(int(batchSizeSamplesMax)));
     }
 
@@ -747,7 +749,7 @@ void HEBChart::correlationSamplingExecuteGpuDefault(HEBChartFieldData* fieldData
 #ifdef USE_TBB
         requests = tbb::parallel_reduce(
             tbb::blocked_range<uint32_t>(cellIdxOffset, loopMax), std::vector<CorrelationRequestData>(),
-            [&](tbb::blocked_range<int> const& r, std::vector<CorrelationRequestData> requestsThread) -> std::vector<CorrelationRequestData> {
+            [&](tbb::blocked_range<uint32_t> const& r, std::vector<CorrelationRequestData> requestsThread) -> std::vector<CorrelationRequestData> {
                 for (int m = r.begin(); m != r.end(); m++) {
 #else
 #if _OPENMP >= 201107
@@ -846,9 +848,7 @@ void HEBChart::correlationSamplingExecuteGpuDefault(HEBChartFieldData* fieldData
             tbb::blocked_range<int>(0, numPairsDownsampled), std::vector<MIFieldEntry>(),
             [&](tbb::blocked_range<int> const& r, std::vector<MIFieldEntry> miFieldEntriesThread) -> std::vector<MIFieldEntry> {
                 const CorrelationMeasureType cmt = correlationMeasureType;
-                CORRELATION_CACHE;
-
-                for (int m = r.begin(); m != r.end(); m++) {
+                for (int cellIdx = r.begin(); cellIdx != r.end(); cellIdx++) {
 #else
         miFieldEntries.reserve(numPairsDownsampled);
 #if _OPENMP >= 201107
@@ -1116,7 +1116,7 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
         iterate = false;
         cur_pair_offset = base_pair_index;
         cur_pair_count = std::min<int>(numPairsDownsampled - base_pair_index, max_pairs_count);
-        pairs_per_thread = (cur_pair_count + threads.size() - 1) / threads.size();
+        pairs_per_thread = (cur_pair_count + int(threads.size()) - 1) / int(threads.size());
         optimizers = std::vector<model_t>(cur_pair_count);
         //std::cout << "Base pair: " << base_pair_index << " with max pair index: " << numPairsDownsampled << " , and " << bayOptIterationCount << " refinement iterations" << std::endl;
         // create, evaluate and add to meodels the initial samples -----------------------------------------------------------------------
@@ -1176,9 +1176,9 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
         start = end;
 
         // 7. Writing back the best results -------------------------------------------
-        for(int o: BayOpt::i_range(cur_pair_count)){
+        for (int o: BayOpt::i_range(cur_pair_count)){
             double max_val{std::numeric_limits<float>::lowest()};
-            for(int v: BayOpt::i_range(optimizers[o].observations_matrix().size()))
+            for (int v: BayOpt::i_range(int(optimizers[o].observations_matrix().size())))
                 max_val = std::max(max_val, optimizers[o].observations_matrix().data()[v]);
             
             uint32_t i, j, q = base_pair_index + o;
@@ -1296,8 +1296,8 @@ void HEBChart::computeAllCorrelationsBlockPair(uint32_t i, uint32_t j, std::vect
 #ifdef USE_TBB
         requests = tbb::parallel_reduce(
             tbb::blocked_range<uint32_t>(sampleIdxOffset, loopMax), std::vector<CorrelationRequestData>(),
-            [&](tbb::blocked_range<int> const& r, std::vector<CorrelationRequestData> requestsThread) -> std::vector<CorrelationRequestData> {
-                for (int m = r.begin(); m != r.end(); m++) {
+            [&](tbb::blocked_range<uint32_t> const& r, std::vector<CorrelationRequestData> requestsThread) -> std::vector<CorrelationRequestData> {
+                for (uint32_t m = r.begin(); m != r.end(); m++) {
 #else
 #if _OPENMP >= 201107
         #pragma omp parallel default(none) shared(requests, sampleIdxOffset, numPoints1, region0, region1, loopMax) \
