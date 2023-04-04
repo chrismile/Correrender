@@ -91,10 +91,8 @@ protected:
     void getNanoVGContext();
     NVGcontext* vg = nullptr;
 
-#if defined(SUPPORT_SKIA) || defined(SUPPORT_VKVG)
     // Scale factor used for rendering.
     float s = 1.0f;
-#endif
 
     // Skia backend.
 #ifdef SUPPORT_SKIA
