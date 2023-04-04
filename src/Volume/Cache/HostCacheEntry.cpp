@@ -108,7 +108,7 @@ const float* HostCacheEntryType::getDataFloat() {
     if (!dataFloat && scalarDataFormatNative == ScalarDataFormat::BYTE) {
         dataFloat = new float[numEntries];
 #ifdef USE_TBB
-        tbb::parallel_for(tbb::blocked_range<size_t>(0, sizeInBytes), [&](auto const& r) {
+        tbb::parallel_for(tbb::blocked_range<size_t>(0, numEntries), [&](auto const& r) {
             for (auto i = r.begin(); i != r.end(); i++) {
 #else
 #if _OPENMP >= 201107

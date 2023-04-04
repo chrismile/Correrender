@@ -656,7 +656,7 @@ void HEBChart::updateData() {
         }
 
 #ifdef USE_TBB
-        tbb::parallel_for(tbb::blocked_range<int>(0, NUM_LINES), [&](auto const& r) {
+        tbb::parallel_for(tbb::blocked_range<int>(0, numLinesLocal), [&](auto const& r) {
             std::vector<glm::vec2> controlPoints;
             for (auto lineIdx = r.begin(); lineIdx != r.end(); lineIdx++) {
 #else

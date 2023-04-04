@@ -171,7 +171,7 @@ void HEBChart::computeCorrelationsMean(
             [&](tbb::blocked_range<int> const& r, std::vector<MIFieldEntry> miFieldEntriesThread) -> std::vector<MIFieldEntry> {
                 const CorrelationMeasureType cmt = correlationMeasureType;
                 CORRELATION_CACHE;
-                float minFieldValRef, maxFieldValRef, minFieldVal, maxFieldVal;
+                float minFieldValRef = 0.0f, maxFieldValRef = 0.0f, minFieldVal = 0.0f, maxFieldVal = 0.0f;
 
                 for (int i = r.begin(); i != r.end(); i++) {
 #else
@@ -184,7 +184,7 @@ void HEBChart::computeCorrelationsMean(
         const CorrelationMeasureType cmt = correlationMeasureType;
         std::vector<MIFieldEntry> miFieldEntriesThread;
         CORRELATION_CACHE;
-        float minFieldValRef, maxFieldValRef, minFieldVal, maxFieldVal;
+        float minFieldValRef = 0.0f, maxFieldValRef = 0.0f, minFieldVal = 0.0f, maxFieldVal = 0.0f;
 
 #if _OPENMP >= 201107
         #pragma omp for schedule(dynamic)
