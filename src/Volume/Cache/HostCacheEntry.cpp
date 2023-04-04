@@ -28,6 +28,11 @@
 
 #include <Utils/File/Logfile.hpp>
 
+#ifdef USE_TBB
+#include <tbb/parallel_for.h>
+#include <tbb/blocked_range.h>
+#endif
+
 #include "Loaders/half/half.h"
 #include "HostCacheEntry.hpp"
 
