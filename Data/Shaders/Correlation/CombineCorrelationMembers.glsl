@@ -34,7 +34,7 @@
 layout(local_size_x = BLOCK_SIZE, local_size_y = 1, local_size_z = 1) in;
 
 layout (binding = 0) uniform UniformBuffer {
-    uint xs, ys, zs, es;
+    uint xs, ys, zs, cs;
     vec3 boundingBoxMin;
     float minFieldVal;
     vec3 boundingBoxMax;
@@ -43,8 +43,8 @@ layout (binding = 0) uniform UniformBuffer {
 layout (binding = 1) writeonly buffer OutputBuffer {
     vec4 outputBuffer[];
 };
-layout (binding = 2) uniform sampler scalarFieldSampler;
-layout (binding = 3) uniform texture3D scalarFields[MEMBER_COUNT];
+
+#include "ScalarFields.glsl"
 
 layout(push_constant) uniform PushConstants {
     uint batchOffset;
@@ -53,7 +53,7 @@ layout(push_constant) uniform PushConstants {
 
 void main() {
     uint globalThreadIdx = gl_GlobalInvocationID.x;
-    uint pointIdxWriteOffset = globalThreadIdx * es;
+    uint pointIdxWriteOffset = globalThreadIdx * cs;
     uint pointIdxReadOffset = globalThreadIdx + batchOffset;
     uint x = pointIdxReadOffset % xs;
     uint y = (pointIdxReadOffset / xs) % ys;
@@ -62,11 +62,15 @@ void main() {
         return;
     }
     vec3 pointCoords = vec3(x, y, z) / vec3(xs - 1, ys - 1, zs - 1) * 2.0 - vec3(1.0);
-    for (uint e = 0; e < es; e++) {
+    for (uint c = 0; c < cs; c++) {
+#ifdef USE_SCALAR_FIELD_IMAGES
         float fieldValue = texelFetch(sampler3D(
-                scalarFields[nonuniformEXT(e)], scalarFieldSampler), ivec3(x, y, z), 0).r;
+                scalarFields[nonuniformEXT(c)], scalarFieldSampler), ivec3(x, y, z), 0).r;
+#else
+        float fieldValue = scalarFields[nonuniformEXT(c)].values[IDXS(x, y, z)];
+#endif
         fieldValue = (fieldValue - minFieldVal) / (maxFieldVal - minFieldVal);
-        outputBuffer[pointIdxWriteOffset + e] = vec4(fieldValue, pointCoords.x, pointCoords.y, pointCoords.z);
+        outputBuffer[pointIdxWriteOffset + c] = vec4(fieldValue, pointCoords.x, pointCoords.y, pointCoords.z);
     }
 }
 
@@ -88,8 +92,8 @@ layout (binding = 0) uniform UniformBuffer {
 layout (binding = 1) writeonly buffer OutputBuffer {
     vec4 outputBuffer[];
 };
-layout (binding = 2) uniform sampler scalarFieldSampler;
-layout (binding = 3) uniform texture3D scalarFields[MEMBER_COUNT];
+
+#include "ScalarFields.glsl"
 
 layout(push_constant) uniform PushConstants {
     uvec3 referencePointIdx;
@@ -101,8 +105,16 @@ void main() {
         return;
     }
     vec3 pointCoords = vec3(referencePointIdx) / vec3(xs - 1, ys - 1, zs - 1) * 2.0 - vec3(1.0);
+#ifdef SEPARATE_REFERENCE_AND_QUERY_FIELDS
+    float fieldValue = referenceValues[c];
+#else
+#ifdef USE_SCALAR_FIELD_IMAGES
     float fieldValue = texelFetch(sampler3D(
             scalarFields[nonuniformEXT(c)], scalarFieldSampler), ivec3(referencePointIdx), 0).r;
+#else
+    float fieldValue = scalarFields[nonuniformEXT(c)].values[IDXS(referencePointIdx.x, referencePointIdx.y, referencePointIdx.z)];
+#endif
+#endif
     fieldValue = (fieldValue - minFieldVal) / (maxFieldVal - minFieldVal);
     outputBuffer[c] = vec4(fieldValue, pointCoords.x, pointCoords.y, pointCoords.z);
 }

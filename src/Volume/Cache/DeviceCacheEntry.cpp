@@ -115,3 +115,23 @@ const sgl::vk::ImageCudaExternalMemoryVkPtr& DeviceCacheEntryType::getImageCudaE
     return cudaTexture->getImageCudaExternalMemory();
 }
 #endif
+
+
+DeviceCacheEntryType::DeviceCacheEntryType(sgl::vk::BufferPtr vulkanBuffer) : vulkanBuffer(std::move(vulkanBuffer)) {
+}
+
+#ifdef SUPPORT_CUDA_INTEROP
+CUdeviceptr DeviceCacheEntryType::getCudaBuffer() {
+    if (!cudaBuffer) {
+        cudaBuffer = std::make_shared<sgl::vk::BufferCudaExternalMemoryVk>(vulkanBuffer);
+    }
+    return cudaBuffer->getCudaDevicePtr();
+}
+
+const sgl::vk::BufferCudaExternalMemoryVkPtr& DeviceCacheEntryType::getBufferCudaExternalMemory() {
+    if (!cudaBuffer) {
+        cudaBuffer = std::make_shared<sgl::vk::BufferCudaExternalMemoryVk>(vulkanBuffer);
+    }
+    return cudaBuffer;
+}
+#endif

@@ -58,6 +58,7 @@ public:
     bool getFieldEntry(
             VolumeData* volumeData, FieldType fieldType, const std::string& fieldName,
             int timestepIdx, int memberIdx, HostCacheEntryType*& fieldEntry) override;
+    bool getHasFloat32Data() override { return fileHeader.fieldType == 0; }
 
 private:
     std::string dataSourceFilename;

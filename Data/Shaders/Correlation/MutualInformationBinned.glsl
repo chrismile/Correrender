@@ -37,21 +37,17 @@ layout(local_size_x = BLOCK_SIZE_X, local_size_y = BLOCK_SIZE_Y, local_size_z = 
 #ifdef USE_REQUESTS_BUFFER
 #include "RequestsBuffer.glsl"
 #else
-layout (binding = 0) uniform UniformBuffer {
-    uint xs, ys, zs, cs;
-};
 layout (binding = 1, r32f) uniform writeonly image3D outputImage;
 layout(push_constant) uniform PushConstants {
     ivec3 referencePointIdx;
     int padding0;
     uvec3 batchOffset;
     uint padding1;
-    float minFieldVal, maxFieldVal;
+    float minFieldValRef, maxFieldValRef, minFieldValQuery, maxFieldValQuery;
 };
 #endif
 
-layout (binding = 2) uniform sampler scalarFieldSampler;
-layout (binding = 3) uniform texture3D scalarFields[MEMBER_COUNT];
+#include "ScalarFields.glsl"
 
 void main() {
 #include "CorrelationMain.glsl"
@@ -71,14 +67,34 @@ void main() {
         }
     }
 
+#if !defined(USE_SCALAR_FIELD_IMAGES) && !defined(SEPARATE_REFERENCE_AND_QUERY_FIELDS)
+    uint referenceIdx = IDXS(referencePointIdx.x, referencePointIdx.y, referencePointIdx.z);
+#endif
+#if !defined(USE_SCALAR_FIELD_IMAGES)
+    uint queryIdx = IDXS(currentPointIdx.x, currentPointIdx.y, currentPointIdx.z);
+#endif
+
     // Compute the 2D joint histogram.
     float nanValue = 0.0;
     for (int c = 0; c < MEMBER_COUNT; c++) {
+#ifdef USE_SCALAR_FIELD_IMAGES
+#ifdef SEPARATE_REFERENCE_AND_QUERY_FIELDS
+        float val0 = referenceValues[c];
+#else
         float val0 = texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), referencePointIdx, 0).r;
+#endif
         float val1 = texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), currentPointIdx, 0).r;
+#else
+#ifdef SEPARATE_REFERENCE_AND_QUERY_FIELDS
+        float val0 = referenceValues[c];
+#else
+        float val0 = scalarFields[nonuniformEXT(c)].values[referenceIdx];
+#endif
+        float val1 = scalarFields[nonuniformEXT(c)].values[queryIdx];
+#endif
         if (!isnan(val0) && !isnan(val1)) {
-            val0 = (val0 - minFieldVal) / (maxFieldVal - minFieldVal);
-            val1 = (val1 - minFieldVal) / (maxFieldVal - minFieldVal);
+            val0 = (val0 - minFieldValRef) / (maxFieldValRef - minFieldValRef);
+            val1 = (val1 - minFieldValQuery) / (maxFieldValQuery - minFieldValQuery);
             int binIdx0 = clamp(int(val0 * float(numBins)), 0, numBins - 1);
             int binIdx1 = clamp(int(val1 * float(numBins)), 0, numBins - 1);
             histogram2d[binIdx0 * numBins + binIdx1] += 1;

@@ -743,6 +743,17 @@ FieldAccess VolumeData::createFieldAccessStruct(
     return access;
 }
 
+bool VolumeData::getScalarFieldSupportsBufferMode(int scalarFieldIdx) {
+    const auto& scalarFieldNames = getFieldNames(FieldType::SCALAR);
+    const auto& scalarFieldNamesBase = getFieldNamesBase(FieldType::SCALAR);
+    const std::string& fieldName = scalarFieldNames.at(scalarFieldIdx);
+    if (scalarFieldIdx >= int(scalarFieldNamesBase.size())) {
+        auto itCalc = calculatorsDevice.find(fieldName);
+        return itCalc != calculatorsDevice.end();
+    }
+    return volumeLoaders.front()->getHasFloat32Data();
+}
+
 template<class T>
 static void transposeScalarField(T* fieldEntryBuffer, int ssxs, int ssys, int sszs) {
     auto* scalarFieldCopy = new T[ssxs * ssys * sszs];
@@ -931,8 +942,11 @@ VolumeData::HostCacheEntry VolumeData::getFieldEntryCpu(
 }
 
 VolumeData::DeviceCacheEntry VolumeData::getFieldEntryDevice(
-        FieldType fieldType, const std::string& fieldName, int timeStepIdx, int ensembleIdx) {
+        FieldType fieldType, const std::string& fieldName, int timeStepIdx, int ensembleIdx,
+        bool wantsImageData, const glm::uvec3& bufferTileSize) {
     FieldAccess access = createFieldAccessStruct(fieldType, fieldName, timeStepIdx, ensembleIdx);
+    access.isImageData = wantsImageData;
+    access.bufferTileSize = bufferTileSize;
 
     if (deviceFieldCache->exists(access)) {
         return deviceFieldCache->reaccess(access);
@@ -959,34 +973,50 @@ VolumeData::DeviceCacheEntry VolumeData::getFieldEntryDevice(
     bool canUseCuda = false;
 #endif
 
-    sgl::vk::ImageSettings imageSettings{};
-    imageSettings.width = uint32_t(xs);
-    imageSettings.height = uint32_t(ys);
-    imageSettings.depth = uint32_t(zs);
-    imageSettings.imageType = VK_IMAGE_TYPE_3D;
-    if (scalarDataFormat == ScalarDataFormat::FLOAT) {
-        imageSettings.format = fieldType == FieldType::SCALAR ? VK_FORMAT_R32_SFLOAT : VK_FORMAT_R32G32B32A32_SFLOAT;
-    } else if (scalarDataFormat == ScalarDataFormat::BYTE) {
-        imageSettings.format = fieldType == FieldType::SCALAR ? VK_FORMAT_R8_UNORM : VK_FORMAT_R8G8B8A8_UNORM;
-    } else if (scalarDataFormat == ScalarDataFormat::SHORT) {
-        imageSettings.format = fieldType == FieldType::SCALAR ? VK_FORMAT_R16_UNORM : VK_FORMAT_R16G16B16A16_UNORM;
-    } else if (scalarDataFormat == ScalarDataFormat::FLOAT16) {
-        imageSettings.format = fieldType == FieldType::SCALAR ? VK_FORMAT_R16_SFLOAT : VK_FORMAT_R16G16B16A16_SFLOAT;
-    }
-    imageSettings.tiling = VK_IMAGE_TILING_OPTIMAL;
-    imageSettings.usage =
-            VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
-            | VK_IMAGE_USAGE_STORAGE_BIT;
-    imageSettings.memoryUsage = VMA_MEMORY_USAGE_GPU_ONLY;
-    imageSettings.exportMemory = canUseCuda;
-    imageSettings.useDedicatedAllocationForExportedMemory = false;
+    bool tileBufferMemory = bufferTileSize.x > 1 || bufferTileSize.y > 1 || bufferTileSize.z > 1;
+    const uint32_t tileSizeX = bufferTileSize.x;
+    const uint32_t tileSizeY = bufferTileSize.y;
+    const uint32_t tileSizeZ = bufferTileSize.z;
 
-    if (itCalc != calculatorsDevice.end()) {
-        imageSettings.usage |= VK_IMAGE_USAGE_STORAGE_BIT;
-    }
+    DeviceCacheEntry deviceCacheEntry;
+    if (wantsImageData) {
+        sgl::vk::ImageSettings imageSettings{};
+        imageSettings.width = uint32_t(xs);
+        imageSettings.height = uint32_t(ys);
+        imageSettings.depth = uint32_t(zs);
+        imageSettings.imageType = VK_IMAGE_TYPE_3D;
+        if (scalarDataFormat == ScalarDataFormat::FLOAT) {
+            imageSettings.format = fieldType == FieldType::SCALAR ? VK_FORMAT_R32_SFLOAT : VK_FORMAT_R32G32B32A32_SFLOAT;
+        } else if (scalarDataFormat == ScalarDataFormat::BYTE) {
+            imageSettings.format = fieldType == FieldType::SCALAR ? VK_FORMAT_R8_UNORM : VK_FORMAT_R8G8B8A8_UNORM;
+        } else if (scalarDataFormat == ScalarDataFormat::SHORT) {
+            imageSettings.format = fieldType == FieldType::SCALAR ? VK_FORMAT_R16_UNORM : VK_FORMAT_R16G16B16A16_UNORM;
+        } else if (scalarDataFormat == ScalarDataFormat::FLOAT16) {
+            imageSettings.format = fieldType == FieldType::SCALAR ? VK_FORMAT_R16_SFLOAT : VK_FORMAT_R16G16B16A16_SFLOAT;
+        }
+        imageSettings.tiling = VK_IMAGE_TILING_OPTIMAL;
+        imageSettings.usage =
+                VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
+                | VK_IMAGE_USAGE_STORAGE_BIT;
+        imageSettings.memoryUsage = VMA_MEMORY_USAGE_GPU_ONLY;
+        imageSettings.exportMemory = canUseCuda;
+        imageSettings.useDedicatedAllocationForExportedMemory = false;
 
-    auto image = std::make_shared<sgl::vk::Image>(device, imageSettings);
-    DeviceCacheEntry deviceCacheEntry = std::make_shared<DeviceCacheEntry::element_type>(image, imageSampler);
+        auto image = std::make_shared<sgl::vk::Image>(device, imageSettings);
+        deviceCacheEntry = std::make_shared<DeviceCacheEntry::element_type>(image, imageSampler);
+    } else {
+        if (tileBufferMemory) {
+            bufferSize =
+                    4 * size_t(sgl::uiceil(uint32_t(xs), tileSizeX) * tileSizeX)
+                    * size_t(sgl::uiceil(uint32_t(ys), tileSizeY) * tileSizeY)
+                    * size_t(sgl::uiceil(uint32_t(zs), tileSizeZ) * tileSizeZ);
+            access.sizeInBytes = bufferSize;
+        }
+        VkBufferUsageFlags bufferUsage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+        auto buffer = std::make_shared<sgl::vk::Buffer>(
+                device, bufferSize, bufferUsage, VMA_MEMORY_USAGE_GPU_ONLY, true, canUseCuda, false);
+        deviceCacheEntry = std::make_shared<DeviceCacheEntry::element_type>(buffer);
+    }
 
     if (itCalc != calculatorsDevice.end()) {
         Calculator* calculator = itCalc->second.get();
@@ -996,7 +1026,8 @@ VolumeData::DeviceCacheEntry VolumeData::getFieldEntryDevice(
                     "field \"" + fieldName + "\".");
         }
         calculator->calculateDevice(timeStepIdx, ensembleIdx, deviceCacheEntry);
-    } else {
+    } else if (wantsImageData) {
+        auto& image = deviceCacheEntry->getVulkanImage();
         if (fieldType == FieldType::SCALAR) {
             image->uploadData(access.sizeInBytes, bufferCpu->getDataNative());
         } else {
@@ -1099,9 +1130,56 @@ VolumeData::DeviceCacheEntry VolumeData::getFieldEntryDevice(
                 delete[] bufferPadded;
             }
         }
+        access.sizeInBytes = image->getDeviceMemoryAllocationSize();
+    } else {
+        auto& buffer = deviceCacheEntry->getVulkanBuffer();
+        if (tileBufferMemory) {
+            size_t numEntries = bufferSize / 4;
+            auto* linearBufferData = bufferCpu->getDataFloat();
+            auto* tiledBufferData = new float[numEntries];
+            auto tileNumVoxels = tileSizeX * tileSizeY * tileSizeZ;
+            uint32_t xst = sgl::uiceil(xs, tileSizeX);
+            uint32_t yst = sgl::uiceil(ys, tileSizeY);
+            uint32_t zst = sgl::uiceil(zs, tileSizeZ);
+            uint32_t numTilesTotal = xst * yst * zst;
+#ifdef USE_TBB
+            tbb::parallel_for(tbb::blocked_range<uint32_t>(0, numTilesTotal), [&](auto const& r) {
+                for (auto tileIdx = r.begin(); tileIdx != r.end(); tileIdx++) {
+#else
+#if _OPENMP >= 200805
+            #pragma omp parallel for default(none) shared(numTilesTotal, tileNumVoxels, xst, yst, zst) \
+            shared(tileSizeX, tileSizeY, tileSizeZ, linearBufferData, tiledBufferData)
+#endif
+            for (uint32_t tileIdx = 0; tileIdx < numTilesTotal; tileIdx++) {
+#endif
+                uint32_t xt = tileIdx % xst;
+                uint32_t yt = (tileIdx / xst) % yst;
+                uint32_t zt = tileIdx / (xst * yst);
+                for (uint32_t voxelIdx = 0; voxelIdx < tileNumVoxels; voxelIdx++) {
+                    uint32_t vx = voxelIdx % tileSizeX;
+                    uint32_t vy = (voxelIdx / tileSizeX) % tileSizeY;
+                    uint32_t vz = voxelIdx / (tileSizeX * tileSizeY);
+                    uint32_t x = vx + xt * tileSizeX;
+                    uint32_t y = vy + yt * tileSizeY;
+                    uint32_t z = vz + zt * tileSizeZ;
+                    float value = 0.0f;
+                    if (x < uint32_t(xs) && y < uint32_t(ys) && z < uint32_t(zs)) {
+                        value = linearBufferData[IDXS(x, y, z)];
+                    }
+                    tiledBufferData[tileIdx * tileNumVoxels + voxelIdx] = value;
+                }
+            }
+#ifdef USE_TBB
+            });
+#endif
+            buffer->uploadData(access.sizeInBytes, tiledBufferData);
+            delete[] tiledBufferData;
+        } else {
+            buffer->uploadData(access.sizeInBytes, bufferCpu->getDataNative());
+        }
+        access.sizeInBytes = buffer->getDeviceMemoryAllocationSize();
     }
 
-    access.sizeInBytes = image->getDeviceMemoryAllocationSize();
     deviceFieldCache->push(access, deviceCacheEntry);
     return deviceCacheEntry;
 }

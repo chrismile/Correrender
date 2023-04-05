@@ -81,6 +81,7 @@ protected:
     void renderGuiImpl(sgl::PropertyEditor& propertyEditor) override;
 
 private:
+    bool getSupportsBufferMode();
     void updateScalarFieldComboValue();
     void recreateDiagramSwapchain(int diagramIdx = -1);
     void resetSelections(int idx = 0);
@@ -140,6 +141,8 @@ private:
     bool useGlobalStdDevRange = true;
     bool use2dField = false;
     bool useCorrelationComputationGpu = true;
+    CorrelationDataMode dataMode = CorrelationDataMode::BUFFER_ARRAY;
+    bool useBufferTiling = true;
     bool showOnlySelectedVariableInFocusDiagrams = true;
     OctreeMethod octreeMethod = OctreeMethod::TOP_DOWN_POT;
 

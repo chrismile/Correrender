@@ -105,9 +105,6 @@ layout(local_size_x = BLOCK_SIZE_X, local_size_y = BLOCK_SIZE_Y, local_size_z = 
 #ifdef USE_REQUESTS_BUFFER
 #include "RequestsBuffer.glsl"
 #else
-layout (binding = 0) uniform UniformBuffer {
-    uint xs, ys, zs, cs;
-};
 layout(binding = 1, r32f) uniform writeonly image3D outputImage;
 layout(push_constant) uniform PushConstants {
     ivec3 referencePointIdx;
@@ -115,13 +112,12 @@ layout(push_constant) uniform PushConstants {
     uvec3 batchOffset;
     uint padding1;
 };
-layout(binding = 4) readonly buffer ReferenceRankBuffer {
+layout(binding = 6) readonly buffer ReferenceRankBuffer {
     float referenceRankArray[MEMBER_COUNT];
 };
 #endif
 
-layout(binding = 2) uniform sampler scalarFieldSampler;
-layout(binding = 3) uniform texture3D scalarFields[MEMBER_COUNT];
+#include "ScalarFields.glsl"
 
 float valueArray[MEMBER_COUNT];
 uint ordinalRankArray[MEMBER_COUNT];
@@ -182,9 +178,20 @@ void main() {
     float nanValue = 0.0;
     float value;
 
+#if !defined(USE_SCALAR_FIELD_IMAGES) && !defined(SEPARATE_REFERENCE_AND_QUERY_FIELDS)
+    uint referenceIdx = IDXS(referencePointIdx.x, referencePointIdx.y, referencePointIdx.z);
+#endif
+#if !defined(USE_SCALAR_FIELD_IMAGES)
+    uint queryIdx = IDXS(currentPointIdx.x, currentPointIdx.y, currentPointIdx.z);
+#endif
+
 #ifdef USE_REQUESTS_BUFFER
     for (uint c = 0; c < MEMBER_COUNT; c++) {
-        value = texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), currentPointIdx, 0).r;
+#ifdef USE_SCALAR_FIELD_IMAGES
+        value = texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), referencePointIdx, 0).r;
+#else
+        value = scalarFields[nonuniformEXT(c)].values[referenceIdx];
+#endif
         if (isnan(value)) {
             nanValue = value;
         }
@@ -198,7 +205,11 @@ void main() {
 
     // 1. Fill the value array.
     for (uint c = 0; c < MEMBER_COUNT; c++) {
+#ifdef USE_SCALAR_FIELD_IMAGES
         value = texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), currentPointIdx, 0).r;
+#else
+        value = scalarFields[nonuniformEXT(c)].values[queryIdx];
+#endif
         if (isnan(value)) {
             nanValue = value;
         }
@@ -232,15 +243,11 @@ void main() {
 #version 450 core
 #extension GL_EXT_nonuniform_qualifier : require
 
-layout(local_size_x = BLOCK_SIZE_X, local_size_y = BLOCK_SIZE_Y, local_size_z = BLOCK_SIZE_Z) in;
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 
-layout(binding = 0) uniform UniformBuffer {
-    uint xs, ys, zs, cs;
-};
-layout(binding = 2) uniform sampler scalarFieldSampler;
-layout(binding = 3) uniform texture3D scalarFields[MEMBER_COUNT];
+#include "ScalarFields.glsl"
 
-layout(binding = 4) writeonly buffer ReferenceRankBuffer {
+layout(binding = 6, std430) writeonly buffer ReferenceRankBuffer {
     float rankArray[MEMBER_COUNT];
 };
 
@@ -255,14 +262,21 @@ uint ordinalRankArray[MEMBER_COUNT];
 #import ".FractionalRanking"
 
 void main() {
-    ivec3 currentPointIdx = ivec3(gl_GlobalInvocationID.xyz);
-    if (gl_GlobalInvocationID.x >= xs || gl_GlobalInvocationID.y >= ys || gl_GlobalInvocationID.z >= zs) {
-        return;
-    }
+#if !defined(USE_SCALAR_FIELD_IMAGES) && !defined(SEPARATE_REFERENCE_AND_QUERY_FIELDS)
+    uint referenceIdx = IDXS(referencePointIdx.x, referencePointIdx.y, referencePointIdx.z);
+#endif
 
     // 1. Fill the value array.
     for (uint c = 0; c < MEMBER_COUNT; c++) {
+#ifdef SEPARATE_REFERENCE_AND_QUERY_FIELDS
+        valueArray[c] = referenceValues[c];
+#else
+#ifdef USE_SCALAR_FIELD_IMAGES
         valueArray[c] = texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), referencePointIdx, 0).r;
+#else
+        valueArray[c] = scalarFields[nonuniformEXT(c)].values[referenceIdx];
+#endif
+#endif
         ordinalRankArray[c] = c;
     }
 

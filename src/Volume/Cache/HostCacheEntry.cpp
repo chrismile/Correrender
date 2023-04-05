@@ -158,3 +158,19 @@ const float* HostCacheEntryType::getDataFloat() {
     }
     return dataFloat;
 }
+
+float HostCacheEntryType::getDataFloatAt(size_t idx) {
+    if (dataFloat) {
+        return dataFloat[idx];
+    }
+    if (scalarDataFormatNative == ScalarDataFormat::BYTE) {
+        return float(dataByte[idx]) / 255.0f;
+    }
+    if (scalarDataFormatNative == ScalarDataFormat::SHORT) {
+        return float(dataShort[idx]) / 65535.0f;
+    }
+    if (scalarDataFormatNative == ScalarDataFormat::FLOAT16) {
+        return FLOAT16::ToFloat32(dataFloat16[idx]);
+    }
+    return 0.0f;
+}

@@ -117,6 +117,7 @@ struct HEBChartFieldCache {
     float maxFieldVal;
     std::vector<VolumeData::DeviceCacheEntry> fieldEntries;
     std::vector<sgl::vk::ImageViewPtr> fieldImageViews;
+    std::vector<sgl::vk::BufferPtr> fieldBuffers;
 };
 
 /**
@@ -169,6 +170,8 @@ public:
     void setShowSelectedRegionsByColor(bool _show);
     void setUse2DField(bool _use2dField);
     void setUseCorrelationComputationGpu(bool _useGpu);
+    void setDataMode(CorrelationDataMode _dataMode);
+    void setUseBufferTiling(bool _useBufferTiling);
     void setShowVariablesForFieldIdxOnly(int _limitedFieldIdx);
     void setOctreeMethod(OctreeMethod _octreeMethod);
 
@@ -248,7 +251,7 @@ private:
 
     int getCorrelationMemberCount();
     HostCacheEntry getFieldEntryCpu(const std::string& fieldName, int fieldIdx);
-    DeviceCacheEntry getFieldEntryDevice(const std::string& fieldName, int fieldIdx);
+    DeviceCacheEntry getFieldEntryDevice(const std::string& fieldName, int fieldIdx, bool wantsImageData = true);
     std::pair<float, float> getMinMaxScalarFieldValue(const std::string& fieldName, int fieldIdx);
     bool isEnsembleMode = true; //< Ensemble or time mode?
 
@@ -257,6 +260,8 @@ private:
     bool useAbsoluteCorrelationMeasure = true; ///< For non-MI measures.
     int numBins = 80; ///< For CorrelationMeasureType::MUTUAL_INFORMATION_BINNED.
     int k = 3; ///< For CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV.
+    CorrelationDataMode dataMode = CorrelationDataMode::BUFFER_ARRAY;
+    bool useBufferTiling = true;
     int dfx = 32, dfy = 32, dfz = 32; ///< Downscaling factors.
     int xs = 0, ys = 0, zs = 0; //< Grid size.
     int xsd0 = 0, ysd0 = 0, zsd0 = 0; //< Downscaled grid size.
@@ -300,6 +305,7 @@ private:
     void computeCorrelationsSamplingGpu(HEBChartFieldData* fieldData, std::vector<MIFieldEntry>& miFieldEntries);
     void correlationSamplingExecuteGpuDefault(HEBChartFieldData* fieldData, std::vector<MIFieldEntry>& miFieldEntries);
     void correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldData, std::vector<MIFieldEntry>& miFieldEntries);
+    void clearFieldDeviceData();
     std::shared_ptr<HEBChartFieldCache> getFieldCache(HEBChartFieldData* fieldData);
     sgl::vk::BufferPtr computeCorrelationsForRequests(
             std::vector<CorrelationRequestData>& requests,

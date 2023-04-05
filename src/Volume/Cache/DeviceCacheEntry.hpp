@@ -57,6 +57,7 @@ std::string getImageFormatGlslString(const sgl::vk::ImagePtr& image);
 
 class DeviceCacheEntryType {
 public:
+    // Image mode.
     DeviceCacheEntryType(sgl::vk::ImagePtr vulkanImage, sgl::vk::ImageSamplerPtr vulkanSampler);
     inline const sgl::vk::ImagePtr& getVulkanImage() { return vulkanImage; }
     [[nodiscard]] ScalarDataFormat getScalarDataFormat() const;
@@ -68,9 +69,18 @@ public:
     const sgl::vk::ImageCudaExternalMemoryVkPtr& getImageCudaExternalMemory();
 #endif
 
+    // Buffer mode.
+    explicit DeviceCacheEntryType(sgl::vk::BufferPtr vulkanBuffer);
+    inline const sgl::vk::BufferPtr& getVulkanBuffer() { return vulkanBuffer; }
+#ifdef SUPPORT_CUDA_INTEROP
+    CUdeviceptr getCudaBuffer();
+    const sgl::vk::BufferCudaExternalMemoryVkPtr& getBufferCudaExternalMemory();
+#endif
+
 private:
     sgl::vk::ImagePtr vulkanImage;
     sgl::vk::ImageSamplerPtr vulkanSampler;
+    sgl::vk::BufferPtr vulkanBuffer;
 
     /// Optional, created when @see getVulkanImageView or @see getVulkanTexture are called.
     sgl::vk::ImageViewPtr vulkanImageView;
@@ -80,6 +90,11 @@ private:
 #ifdef SUPPORT_CUDA_INTEROP
     /// Optional, created when @see getCudaTexture is called.
     sgl::vk::TextureCudaExternalMemoryVkPtr cudaTexture;
+#endif
+
+#ifdef SUPPORT_CUDA_INTEROP
+    /// Optional, created when @see getCudaBuffer is called.
+    sgl::vk::BufferCudaExternalMemoryVkPtr cudaBuffer;
 #endif
 };
 

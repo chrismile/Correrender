@@ -193,9 +193,19 @@ void PyTorchCorrelationCalculator::onCorrelationMemberCountChanged() {
     correlationMembersCombinePass->setCorrelationMemberCount(cs);
 }
 
-void PyTorchCorrelationCalculator::clearFieldImageViews() {
+void PyTorchCorrelationCalculator::clearFieldDeviceData() {
     referenceCorrelationMembersCombinePass->setFieldImageViews({});
     correlationMembersCombinePass->setFieldImageViews({});
+}
+
+bool PyTorchCorrelationCalculator::getSupportsBufferMode() {
+    dataMode = CorrelationDataMode::IMAGE_3D_ARRAY;
+    return false;
+}
+
+bool PyTorchCorrelationCalculator::getSupportsSeparateFields() {
+    useSeparateFields = false;
+    return false;
 }
 
 bool PyTorchCorrelationCalculator::loadModelFromFile(int idx, const std::string& modelPath) {
@@ -807,8 +817,8 @@ void PyTorchCorrelationCalculator::setPyTorchDevice(PyTorchDevice pyTorchDeviceN
    }
 }
 
-void PyTorchCorrelationCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
-    ICorrelationCalculator::renderGuiImpl(propertyEditor);
+void PyTorchCorrelationCalculator::renderGuiImplSub(sgl::PropertyEditor& propertyEditor) {
+    ICorrelationCalculator::renderGuiImplSub(propertyEditor);
     if (IGFD_DisplayDialog(
             fileDialogInstance,
             "ChoosePyTorchModelFile", ImGuiWindowFlags_NoCollapse,

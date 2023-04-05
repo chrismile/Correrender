@@ -46,6 +46,7 @@ public:
     bool getFieldEntry(
             VolumeData* volumeData, FieldType fieldType, const std::string& fieldName,
             int timestepIdx, int memberIdx, HostCacheEntryType*& fieldEntry) override;
+    bool getHasFloat32Data() override { return !dataSetInformation.useFormatCast; }
 
 private:
     bool getDimensionExists(const std::string& dimensionName);

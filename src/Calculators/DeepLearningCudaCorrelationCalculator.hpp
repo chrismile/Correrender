@@ -74,7 +74,10 @@ public:
 
 protected:
     virtual void loadModelFromFile(const std::string& modelPath) = 0;
-    void clearFieldImageViews() override {}
+    void clearFieldDeviceData() override {}
+    bool getSupportsBufferMode() override;
+    bool getSupportsSeparateFields() override;
+    [[nodiscard]] bool getNeedsScalarFieldData() const override { return networkType == NetworkType::MINE; }
 
     // Inference steps to be implemented by subclasses.
     virtual void callbackBeginCompute() {}
@@ -90,7 +93,7 @@ protected:
     virtual uint32_t getSrnStride() { return 3; }
 
     /// Renders the GUI. Returns whether re-rendering has become necessary due to the user's actions.
-    void renderGuiImpl(sgl::PropertyEditor& propertyEditor) override;
+    void renderGuiImplSub(sgl::PropertyEditor& propertyEditor) override;
 
     std::string modelFilePath;
     std::string fileDialogDirectory;
@@ -122,8 +125,12 @@ protected:
     std::vector<CUtexObject> cachedFieldTexturesCu;
     CUstream stream{};
     CUmodule combineCorrelationMembersModuleCu{};
+    // Functions that take a 3D image array as an input.
     CUfunction combineCorrelationMembersFunctionCu{}, combineCorrelationMembersReferenceFunctionCu{};
     CUfunction combineCorrelationMembersAlignedFunctionCu{}, combineCorrelationMembersReferenceAlignedFunctionCu{};
+    // Functions that take a buffer as an input.
+    CUfunction combineCorrelationMembersBufferFunctionCu{}, combineCorrelationMembersReferenceBufferFunctionCu{};
+    CUfunction combineCorrelationMembersAlignedBufferFunctionCu{}, combineCorrelationMembersReferenceAlignedBufferFunctionCu{};
     // For networkType == NetworkType::SRN_MINE.
     CUfunction writeGridPositionsFunctionCu{}, writeGridPositionReferenceFunctionCu{};
 

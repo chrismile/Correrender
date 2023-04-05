@@ -30,6 +30,8 @@
 #define CORRERENDER_FIELDACCESS_HPP
 
 #include <string>
+#include <glm/vec3.hpp>
+
 #include <Utils/HashCombine.hpp>
 
 #include "FieldType.hpp"
@@ -40,10 +42,14 @@ struct FieldAccess {
     int timeStepIdx = 0;
     int ensembleIdx = 0;
     size_t sizeInBytes = 0;
+    bool isImageData = true; //< Only for device data: Buffer or image?
+    glm::uvec3 bufferTileSize{1, 1, 1}; //< Only for device data: Buffer tile size (for better performance).
 
     bool operator==(const FieldAccess& other) const {
         return fieldType == other.fieldType && fieldName == other.fieldName
-                && other.timeStepIdx == timeStepIdx && other.ensembleIdx == ensembleIdx;
+                && other.timeStepIdx == timeStepIdx && other.ensembleIdx == ensembleIdx
+                && other.isImageData == isImageData
+                && (other.isImageData || other.bufferTileSize == bufferTileSize);
     }
 };
 

@@ -169,6 +169,9 @@ public:
     FieldAccess createFieldAccessStruct(
             FieldType fieldType, const std::string& fieldName, int& timeStepIdx, int& ensembleIdx) const;
 
+    /// Only fields with 32-bit floats not coming from a calculator support buffer mode currently.
+    bool getScalarFieldSupportsBufferMode(int scalarFieldIdx);
+
     virtual bool setInputFiles(
             const std::vector<std::string>& _filePaths, DataSetInformation _dataSetInformation,
             glm::mat4* transformationMatrixPtr);
@@ -203,7 +206,8 @@ public:
     HostCacheEntry getFieldEntryCpu(
             FieldType fieldType, const std::string& fieldName, int timeStepIdx = -1, int ensembleIdx = -1);
     DeviceCacheEntry getFieldEntryDevice(
-            FieldType fieldType, const std::string& fieldName, int timeStepIdx = -1, int ensembleIdx = -1);
+            FieldType fieldType, const std::string& fieldName, int timeStepIdx = -1, int ensembleIdx = -1,
+            bool wantsImageData = true, const glm::uvec3& bufferTileSize = glm::uvec3(1, 1, 1));
     std::pair<float, float> getMinMaxScalarFieldValue(
             const std::string& fieldName, int timeStepIdx = -1, int ensembleIdx = -1);
 

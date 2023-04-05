@@ -115,6 +115,8 @@ void DeepLearningCudaCorrelationCalculator::initialize() {
             moduleBuffer, bufferSize, true);
     sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleLoadFatBinary(
             &combineCorrelationMembersModuleCu, moduleBuffer), "Error in cuModuleLoadFatBinary: ");
+
+    // Functions that take a 3D image array as an input.
     sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
             &combineCorrelationMembersFunctionCu, combineCorrelationMembersModuleCu,
             "combineCorrelationMembers"), "Error in cuModuleGetFunction: ");
@@ -127,6 +129,22 @@ void DeepLearningCudaCorrelationCalculator::initialize() {
     sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
             &combineCorrelationMembersReferenceAlignedFunctionCu, combineCorrelationMembersModuleCu,
             "combineCorrelationMembersReferenceAligned"), "Error in cuModuleGetFunction: ");
+
+    // Functions that take a buffer as an input.
+    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
+            &combineCorrelationMembersBufferFunctionCu, combineCorrelationMembersModuleCu,
+            "combineCorrelationMembersBuffer"), "Error in cuModuleGetFunction: ");
+    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
+            &combineCorrelationMembersReferenceBufferFunctionCu, combineCorrelationMembersModuleCu,
+            "combineCorrelationMembersReferenceBuffer"), "Error in cuModuleGetFunction: ");
+    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
+            &combineCorrelationMembersAlignedBufferFunctionCu, combineCorrelationMembersModuleCu,
+            "combineCorrelationMembersAlignedBuffer"), "Error in cuModuleGetFunction: ");
+    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
+            &combineCorrelationMembersReferenceAlignedBufferFunctionCu, combineCorrelationMembersModuleCu,
+            "combineCorrelationMembersReferenceAlignedBuffer"), "Error in cuModuleGetFunction: ");
+
+    // For networkType == NetworkType::SRN_MINE.
     sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
             &writeGridPositionsFunctionCu, combineCorrelationMembersModuleCu,
             "writeGridPositions"), "Error in cuModuleGetFunction: ");
@@ -162,8 +180,8 @@ DeepLearningCudaCorrelationCalculator::~DeepLearningCudaCorrelationCalculator() 
             stream), "Error in cuStreamDestroy: ");
 }
 
-void DeepLearningCudaCorrelationCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
-    ICorrelationCalculator::renderGuiImpl(propertyEditor);
+void DeepLearningCudaCorrelationCalculator::renderGuiImplSub(sgl::PropertyEditor& propertyEditor) {
+    ICorrelationCalculator::renderGuiImplSub(propertyEditor);
     if (IGFD_DisplayDialog(
             fileDialogInstance,
             fileDialogKey.c_str(), ImGuiWindowFlags_NoCollapse,
@@ -239,6 +257,16 @@ void DeepLearningCudaCorrelationCalculator::renderGuiImpl(sgl::PropertyEditor& p
 
     // TODO
     //propertyEditor.addText("Data type:", "Float");
+}
+
+bool DeepLearningCudaCorrelationCalculator::getSupportsBufferMode() {
+    dataMode = CorrelationDataMode::IMAGE_3D_ARRAY;
+    return false;
+}
+
+bool DeepLearningCudaCorrelationCalculator::getSupportsSeparateFields() {
+    useSeparateFields = false;
+    return false;
 }
 
 void DeepLearningCudaCorrelationCalculator::calculateDevice(

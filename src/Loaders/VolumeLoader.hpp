@@ -45,6 +45,7 @@ public:
     virtual bool getFieldEntry(
             VolumeData* volumeData, FieldType fieldType, const std::string& fieldName,
             int timestepIdx, int memberIdx, HostCacheEntryType*& fieldEntry) = 0;
+    virtual bool getHasFloat32Data() { return true; }
 };
 
 #endif //CORRERENDER_VOLUMELOADER_HPP

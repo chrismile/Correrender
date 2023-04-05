@@ -574,20 +574,37 @@ void HEBChart::correlationSamplingExecuteCpuBayesian(HEBChartFieldData* fieldDat
         miFieldEntries.insert(miFieldEntries.end(), fieldEntry.begin(), fieldEntry.end());
 }
 
+void HEBChart::clearFieldDeviceData() {
+    if (correlationComputePass) {
+        correlationComputePass->setFieldImageViews({});
+        correlationComputePass->setFieldBuffers({});
+    }
+}
+
 std::shared_ptr<HEBChartFieldCache> HEBChart::getFieldCache(HEBChartFieldData* fieldData) {
     int cs = getCorrelationMemberCount();
     auto fieldCache = std::make_shared<HEBChartFieldCache>();
     fieldCache->minFieldVal = std::numeric_limits<float>::max();
     fieldCache->maxFieldVal = std::numeric_limits<float>::lowest();
     fieldCache->fieldEntries.reserve(cs);
-    fieldCache->fieldImageViews.reserve(cs);
+    bool useImageArray = dataMode == CorrelationDataMode::IMAGE_3D_ARRAY;
+    if (useImageArray) {
+        fieldCache->fieldImageViews.reserve(cs);
+    } else {
+        fieldCache->fieldBuffers.reserve(cs);
+    }
     for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
-        VolumeData::DeviceCacheEntry fieldEntry = getFieldEntryDevice(fieldData->selectedScalarFieldName, fieldIdx);
+        VolumeData::DeviceCacheEntry fieldEntry = getFieldEntryDevice(
+                fieldData->selectedScalarFieldName, fieldIdx, useImageArray);
         fieldCache->fieldEntries.push_back(fieldEntry);
-        fieldCache->fieldImageViews.push_back(fieldEntry->getVulkanImageView());
-        if (fieldEntry->getVulkanImage()->getVkImageLayout() != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
-            fieldEntry->getVulkanImage()->transitionImageLayout(
-                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, computeRenderer->getVkCommandBuffer());
+        if (useImageArray) {
+            fieldCache->fieldImageViews.push_back(fieldEntry->getVulkanImageView());
+            if (fieldEntry->getVulkanImage()->getVkImageLayout() != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+                fieldEntry->getVulkanImage()->transitionImageLayout(
+                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, computeRenderer->getVkCommandBuffer());
+            }
+        } else {
+            fieldCache->fieldBuffers.push_back(fieldEntry->getVulkanBuffer());
         }
         if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
             auto [minVal, maxVal] = getMinMaxScalarFieldValue(fieldData->selectedScalarFieldName, fieldIdx);
@@ -611,7 +628,13 @@ sgl::vk::BufferPtr HEBChart::computeCorrelationsForRequests(
         correlationComputePass->setCorrelationMemberCount(cs);
         correlationComputePass->setNumBins(numBins);
         correlationComputePass->setKraskovNumNeighbors(k);
-        correlationComputePass->setFieldImageViews(fieldCache->fieldImageViews);
+        correlationComputePass->setDataMode(dataMode);
+        correlationComputePass->setUseBufferTiling(useBufferTiling);
+        if (dataMode == CorrelationDataMode::IMAGE_3D_ARRAY) {
+            correlationComputePass->setFieldImageViews(fieldCache->fieldImageViews);
+        } else {
+            correlationComputePass->setFieldBuffers(fieldCache->fieldBuffers);
+        }
         correlationComputePass->buildIfNecessary();
     }
 
@@ -624,8 +647,7 @@ sgl::vk::BufferPtr HEBChart::computeCorrelationsForRequests(
             requestsStagingBuffer);
     computeRenderer->pushConstants(
             correlationComputePass->getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, 0,
-            //glm::uvec2(batchSizeCells * uint32_t(numSamples), uint32_t(cs)));
-            glm::uvec2(requests.size(), uint32_t(cs)));
+            uint32_t(requests.size()));
     if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
         computeRenderer->pushConstants(
                 correlationComputePass->getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, 2 * sizeof(float),
@@ -699,10 +721,11 @@ void HEBChart::createBatchCacheData(uint32_t& batchSizeSamplesMax) {
 
 void HEBChart::computeCorrelationsSamplingGpu(
         HEBChartFieldData* fieldData, std::vector<MIFieldEntry>& miFieldEntries) {
-    if(samplingMethodType == SamplingMethodType::BAYESIAN_OPTIMIZATION)
+    if (samplingMethodType == SamplingMethodType::BAYESIAN_OPTIMIZATION) {
         correlationSamplingExecuteGpuBayesian(fieldData, miFieldEntries);
-    else
+    } else {
         correlationSamplingExecuteGpuDefault(fieldData, miFieldEntries);
+    }
 }
 
 void HEBChart::correlationSamplingExecuteGpuDefault(HEBChartFieldData* fieldData, std::vector<MIFieldEntry>& miFieldEntries){

@@ -76,19 +76,29 @@ public:
     HostCacheEntry getFieldEntryCpu(
             const std::string& fieldName, int fieldIdx, int timeStepIdx, int ensembleIdx);
     DeviceCacheEntry getFieldEntryDevice(
-            const std::string& fieldName, int fieldIdx, int timeStepIdx, int ensembleIdx);
+            const std::string& fieldName, int fieldIdx, int timeStepIdx, int ensembleIdx, bool wantsImageData = true);
     std::pair<float, float> getMinMaxScalarFieldValue(
             const std::string& fieldName, int fieldIdx, int timeStepIdx, int ensembleIdx);
 
 protected:
     void renderGuiImpl(sgl::PropertyEditor& propertyEditor) override;
-    virtual void clearFieldImageViews()=0;
+    virtual void renderGuiImplSub(sgl::PropertyEditor& propertyEditor) {}
+    virtual void renderGuiImplAdvanced(sgl::PropertyEditor& propertyEditor);
+    virtual void clearFieldDeviceData()=0;
+    virtual bool getSupportsBufferMode();
+    virtual bool getSupportsSeparateFields();
+    /// For SRNs that may not require the field data, but only the position and/or field index.
+    [[nodiscard]] virtual bool getNeedsScalarFieldData() const { return true; }
 
     ViewManager* viewManager = nullptr;
     std::vector<std::string> scalarFieldNames;
     std::vector<size_t> scalarFieldIndexArray;
     int fieldIndex = 0, fieldIndexGui = 0;
+    int fieldIndex2 = 0, fieldIndex2Gui = 0;
     glm::ivec3 referencePointIndex{};
+    CorrelationDataMode dataMode = CorrelationDataMode::BUFFER_ARRAY;
+    bool useBufferTiling = true;
+    bool useSeparateFields = false;
     RendererPtr calculatorRenderer;
     ReferencePointSelectionRenderer* referencePointSelectionRenderer = nullptr;
     bool continuousRecompute = false; ///< Debug option.
@@ -154,13 +164,18 @@ public:
 
 protected:
     /// Renders the GUI. Returns whether re-rendering has become necessary due to the user's actions.
-    void renderGuiImpl(sgl::PropertyEditor& propertyEditor) override;
+    void renderGuiImplSub(sgl::PropertyEditor& propertyEditor) override;
     void onCorrelationMemberCountChanged() override;
-    void clearFieldImageViews() override;
+    void clearFieldDeviceData() override;
 
 private:
     std::shared_ptr<CorrelationComputePass> correlationComputePass;
     int cachedMemberCount = 0;
+    std::vector<float> referenceValuesCpu;
+    sgl::vk::BufferPtr referenceValuesBuffer;
+#ifdef SUPPORT_CUDA_INTEROP
+    sgl::vk::BufferCudaExternalMemoryVkPtr referenceValuesCudaBuffer;
+#endif
     CorrelationMeasureType correlationMeasureType = CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV;
     bool useGpu = true;
     bool useCuda = false; ///< Currently only for CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV.
@@ -180,7 +195,15 @@ public:
     ~CorrelationComputePass() override;
     void setVolumeData(VolumeData* _volumeData, int correlationMemberCount, bool isNewData);
     void setCorrelationMemberCount(int correlationMemberCount);
+    void setDataMode(CorrelationDataMode _dataMode);
+    void setUseBufferTiling(bool _useBufferTiling);
+    void setUseSeparateFields(bool _useSeparateFields);
+    void setFieldBuffers(const std::vector<sgl::vk::BufferPtr>& _fieldBuffers);
     void setFieldImageViews(const std::vector<sgl::vk::ImageViewPtr>& _fieldImageViews);
+    void setReferenceValuesBuffer(const sgl::vk::BufferPtr& _referenceValuesBuffer);
+#ifdef SUPPORT_CUDA_INTEROP
+    void setReferenceValuesCudaBuffer(const sgl::vk::BufferCudaExternalMemoryVkPtr& _referenceValuesCudaBuffer);
+#endif
     void setCorrelationMeasureType(CorrelationMeasureType _correlationMeasureType);
     void setCalculateAbsoluteValue(bool _calculateAbsoluteValue);
     void setNumBins(int _numBins);
@@ -228,7 +251,15 @@ private:
     UniformData uniformData{};
     sgl::vk::BufferPtr uniformBuffer;
 
+    CorrelationDataMode dataMode = CorrelationDataMode::BUFFER_ARRAY;
+    bool useBufferTiling = true;
+    bool useSeparateFields = false;
+    std::vector<sgl::vk::BufferPtr> fieldBuffers;
     std::vector<sgl::vk::ImageViewPtr> fieldImageViews;
+    sgl::vk::BufferPtr referenceValuesBuffer;
+#ifdef SUPPORT_CUDA_INTEROP
+    sgl::vk::BufferCudaExternalMemoryVkPtr referenceValuesCudaBuffer;
+#endif
 
     // 3D field evaluation mode.
     sgl::vk::ImageViewPtr outputImage;
@@ -262,8 +293,9 @@ private:
     size_t cachedCorrelationMemberCountDevice = std::numeric_limits<size_t>::max();
     size_t cachedVolumeDataSlice3dSize = 0;
     CUdeviceptr outputImageBufferCu{};
-    CUdeviceptr fieldTextureArrayCu{};
+    CUdeviceptr fieldTextureArrayCu{}, fieldBufferArrayCu{};
     std::vector<CUtexObject> cachedFieldTexturesCu;
+    std::vector<CUdeviceptr> cachedFieldBuffersCu;
     CUstream stream{};
     CorrelationCalculatorKernelCache* kernelCache = nullptr;
 #endif
@@ -274,7 +306,12 @@ public:
     SpearmanReferenceRankComputePass(sgl::vk::Renderer* renderer, sgl::vk::BufferPtr uniformBuffer);
     void setVolumeData(VolumeData* _volumeData, bool isNewData);
     void setCorrelationMemberCount(int correlationMemberCount);
+    void setDataMode(CorrelationDataMode _dataMode);
+    void setUseBufferTiling(bool _useBufferTiling);
+    void setUseSeparateFields(bool _useSeparateFields);
+    void setFieldBuffers(const std::vector<sgl::vk::BufferPtr>& _fieldBuffers);
     void setFieldImageViews(const std::vector<sgl::vk::ImageViewPtr>& _fieldImageViews);
+    void setReferenceValuesBuffer(const sgl::vk::BufferPtr& _referenceValuesBuffer);
     inline const sgl::vk::BufferPtr& getReferenceRankBuffer() { return referenceRankBuffer; }
 
 protected:
@@ -286,10 +323,14 @@ private:
     VolumeData* volumeData = nullptr;
     int cachedCorrelationMemberCount = 0;
 
-    const int computeBlockSizeX = 8, computeBlockSizeY = 8, computeBlockSizeZ = 4;
     sgl::vk::BufferPtr uniformBuffer;
 
+    CorrelationDataMode dataMode = CorrelationDataMode::BUFFER_ARRAY;
+    bool useBufferTiling = true;
+    bool useSeparateFields = false;
+    std::vector<sgl::vk::BufferPtr> fieldBuffers;
     std::vector<sgl::vk::ImageViewPtr> fieldImageViews;
+    sgl::vk::BufferPtr referenceValuesBuffer;
     sgl::vk::BufferPtr referenceRankBuffer;
 };
 
