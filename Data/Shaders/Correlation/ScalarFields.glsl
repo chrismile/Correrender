@@ -1,6 +1,16 @@
+#ifndef COMBINE_CORRELATION_MEMBERS
 layout (binding = 0) uniform UniformBuffer {
     uint xs, ys, zs, cs;
 };
+#else
+layout (binding = 0) uniform UniformBuffer {
+    uint xs, ys, zs, cs;
+    vec3 boundingBoxMin;
+    float minFieldVal;
+    vec3 boundingBoxMax;
+    float maxFieldVal;
+};
+#endif
 
 #ifdef SUPPORT_TILING
 #define TILE_SIZE_X 8
@@ -9,7 +19,7 @@ layout (binding = 0) uniform UniformBuffer {
 uint IDXS(uint x, uint y, uint z) {
     uint xst = (xs - 1) / TILE_SIZE_X + 1;
     uint yst = (ys - 1) / TILE_SIZE_Y + 1;
-    uint zst = (zs - 1) / TILE_SIZE_Z + 1;
+    //uint zst = (zs - 1) / TILE_SIZE_Z + 1;
     uint xt = x / TILE_SIZE_X;
     uint yt = y / TILE_SIZE_Y;
     uint zt = z / TILE_SIZE_Z;

@@ -75,7 +75,6 @@ public:
 protected:
     virtual void loadModelFromFile(const std::string& modelPath) = 0;
     void clearFieldDeviceData() override {}
-    bool getSupportsBufferMode() override;
     bool getSupportsSeparateFields() override;
     [[nodiscard]] bool getNeedsScalarFieldData() const override { return networkType == NetworkType::MINE; }
 
@@ -121,8 +120,9 @@ protected:
     uint64_t timelineValue = 0;
     CUdeviceptr permutationIndicesBufferCu{};
     CUdeviceptr outputImageBufferCu{};
-    CUdeviceptr fieldTextureArrayCu{};
+    CUdeviceptr fieldTextureArrayCu{}, fieldBufferArrayCu{};
     std::vector<CUtexObject> cachedFieldTexturesCu;
+    std::vector<CUdeviceptr> cachedFieldBuffersCu;
     CUstream stream{};
     CUmodule combineCorrelationMembersModuleCu{};
     // Functions that take a 3D image array as an input.
@@ -131,6 +131,9 @@ protected:
     // Functions that take a buffer as an input.
     CUfunction combineCorrelationMembersBufferFunctionCu{}, combineCorrelationMembersReferenceBufferFunctionCu{};
     CUfunction combineCorrelationMembersAlignedBufferFunctionCu{}, combineCorrelationMembersReferenceAlignedBufferFunctionCu{};
+    // Functions that take a tiled buffer as an input.
+    CUfunction combineCorrelationMembersBufferTiledFunctionCu{}, combineCorrelationMembersReferenceBufferTiledFunctionCu{};
+    CUfunction combineCorrelationMembersAlignedBufferTiledFunctionCu{}, combineCorrelationMembersReferenceAlignedBufferTiledFunctionCu{};
     // For networkType == NetworkType::SRN_MINE.
     CUfunction writeGridPositionsFunctionCu{}, writeGridPositionReferenceFunctionCu{};
 

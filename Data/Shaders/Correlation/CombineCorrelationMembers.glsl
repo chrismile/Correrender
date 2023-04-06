@@ -33,17 +33,11 @@
 
 layout(local_size_x = BLOCK_SIZE, local_size_y = 1, local_size_z = 1) in;
 
-layout (binding = 0) uniform UniformBuffer {
-    uint xs, ys, zs, cs;
-    vec3 boundingBoxMin;
-    float minFieldVal;
-    vec3 boundingBoxMax;
-    float maxFieldVal;
-};
 layout (binding = 1) writeonly buffer OutputBuffer {
     vec4 outputBuffer[];
 };
 
+#define COMBINE_CORRELATION_MEMBERS
 #include "ScalarFields.glsl"
 
 layout(push_constant) uniform PushConstants {
@@ -82,17 +76,11 @@ void main() {
 
 layout(local_size_x = BLOCK_SIZE, local_size_y = 1, local_size_z = 1) in;
 
-layout (binding = 0) uniform UniformBuffer {
-    uint xs, ys, zs, cs;
-    vec3 boundingBoxMin;
-    float minFieldVal;
-    vec3 boundingBoxMax;
-    float maxFieldVal;
-};
 layout (binding = 1) writeonly buffer OutputBuffer {
     vec4 outputBuffer[];
 };
 
+#define COMBINE_CORRELATION_MEMBERS
 #include "ScalarFields.glsl"
 
 layout(push_constant) uniform PushConstants {

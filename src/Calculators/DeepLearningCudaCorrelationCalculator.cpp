@@ -144,6 +144,20 @@ void DeepLearningCudaCorrelationCalculator::initialize() {
             &combineCorrelationMembersReferenceAlignedBufferFunctionCu, combineCorrelationMembersModuleCu,
             "combineCorrelationMembersReferenceAlignedBuffer"), "Error in cuModuleGetFunction: ");
 
+    // Functions that take a tiled buffer as an input.
+    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
+            &combineCorrelationMembersBufferTiledFunctionCu, combineCorrelationMembersModuleCu,
+            "combineCorrelationMembersBufferTiled"), "Error in cuModuleGetFunction: ");
+    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
+            &combineCorrelationMembersReferenceBufferTiledFunctionCu, combineCorrelationMembersModuleCu,
+            "combineCorrelationMembersReferenceBufferTiled"), "Error in cuModuleGetFunction: ");
+    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
+            &combineCorrelationMembersAlignedBufferTiledFunctionCu, combineCorrelationMembersModuleCu,
+            "combineCorrelationMembersAlignedBufferTiled"), "Error in cuModuleGetFunction: ");
+    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
+            &combineCorrelationMembersReferenceAlignedBufferTiledFunctionCu, combineCorrelationMembersModuleCu,
+            "combineCorrelationMembersReferenceAlignedBufferTiled"), "Error in cuModuleGetFunction: ");
+
     // For networkType == NetworkType::SRN_MINE.
     sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
             &writeGridPositionsFunctionCu, combineCorrelationMembersModuleCu,
@@ -173,6 +187,10 @@ DeepLearningCudaCorrelationCalculator::~DeepLearningCudaCorrelationCalculator() 
     if (fieldTextureArrayCu != 0) {
         sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFree(
                 fieldTextureArrayCu), "Error in cuMemFree: ");
+    }
+    if (fieldBufferArrayCu != 0) {
+        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFree(
+                fieldBufferArrayCu), "Error in cuMemFree: ");
     }
     sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleUnload(
             combineCorrelationMembersModuleCu), "Error in cuModuleUnload: ");
@@ -259,11 +277,6 @@ void DeepLearningCudaCorrelationCalculator::renderGuiImplSub(sgl::PropertyEditor
     //propertyEditor.addText("Data type:", "Float");
 }
 
-bool DeepLearningCudaCorrelationCalculator::getSupportsBufferMode() {
-    dataMode = CorrelationDataMode::IMAGE_3D_ARRAY;
-    return false;
-}
-
 bool DeepLearningCudaCorrelationCalculator::getSupportsSeparateFields() {
     useSeparateFields = false;
     return false;
@@ -329,12 +342,20 @@ void DeepLearningCudaCorrelationCalculator::calculateDevice(
                     fieldTextureArrayCu, stream), "Error in cuMemFreeAsync: ");
             fieldTextureArrayCu = 0;
         }
+        if (fieldBufferArrayCu != 0) {
+            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
+                    fieldBufferArrayCu, stream), "Error in cuMemFreeAsync: ");
+            fieldBufferArrayCu = 0;
+        }
         cachedCorrelationMemberCountDevice = size_t(cs);
+
         if (networkType == NetworkType::MINE) {
             sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
                     &permutationIndicesBufferCu, gpuBatchSize1D * cs * sizeof(uint32_t), stream), "Error in cuMemAllocAsync: ");
             sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
                     &fieldTextureArrayCu, cs * sizeof(CUtexObject), stream), "Error in cuMemAllocAsync: ");
+            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
+                    &fieldBufferArrayCu, cs * sizeof(CUdeviceptr), stream), "Error in cuMemAllocAsync: ");
         }
         cacheNeedsRecreate = true;
     }
@@ -366,23 +387,33 @@ void DeepLearningCudaCorrelationCalculator::calculateDevice(
 
     float minFieldVal = std::numeric_limits<float>::max();
     float maxFieldVal = std::numeric_limits<float>::lowest();
+    bool useImageArray = dataMode == CorrelationDataMode::IMAGE_3D_ARRAY;
     std::vector<VolumeData::DeviceCacheEntry> fieldEntries;
     std::vector<CUtexObject> fieldTexturesCu;
+    std::vector<CUtexObject> fieldBuffersCu;
     if (networkType == NetworkType::MINE) {
 #ifdef TEST_INFERENCE_SPEED
         auto startLoad = std::chrono::system_clock::now();
 #endif
 
         fieldEntries.reserve(cs);
-        fieldTexturesCu.reserve(cs);
+        if (useImageArray) {
+            fieldTexturesCu.reserve(cs);
+        } else {
+            fieldBuffersCu.reserve(cs);
+        }
         for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
             VolumeData::DeviceCacheEntry fieldEntry = getFieldEntryDevice(
-                    scalarFieldNames.at(fieldIndexGui), fieldIdx, timeStepIdx, ensembleIdx);
+                    scalarFieldNames.at(fieldIndexGui), fieldIdx, timeStepIdx, ensembleIdx, useImageArray);
             fieldEntries.push_back(fieldEntry);
-            fieldTexturesCu.push_back(fieldEntry->getCudaTexture());
-            if (fieldEntry->getVulkanImage()->getVkImageLayout() != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
-                deviceCacheEntry->getVulkanImage()->transitionImageLayout(
-                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, renderer->getVkCommandBuffer());
+            if (useImageArray) {
+                fieldTexturesCu.push_back(fieldEntry->getCudaTexture());
+                if (fieldEntry->getVulkanImage()->getVkImageLayout() != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+                    deviceCacheEntry->getVulkanImage()->transitionImageLayout(
+                            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, renderer->getVkCommandBuffer());
+                }
+            } else {
+                fieldBuffersCu.push_back(fieldEntry->getCudaBuffer());
             }
             auto [minVal, maxVal] = getMinMaxScalarFieldValue(
                     scalarFieldNames.at(fieldIndexGui), fieldIdx, timeStepIdx, ensembleIdx);
@@ -390,12 +421,19 @@ void DeepLearningCudaCorrelationCalculator::calculateDevice(
             maxFieldVal = std::max(maxFieldVal, maxVal);
         }
 
-        if (cachedFieldTexturesCu != fieldTexturesCu) {
+        if (useImageArray && cachedFieldTexturesCu != fieldTexturesCu) {
             cachedFieldTexturesCu = fieldTexturesCu;
             sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
                     stream), "Error in cuStreamSynchronize: ");
             sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyHtoD(
                     fieldTextureArrayCu, fieldTexturesCu.data(), sizeof(CUtexObject) * cs), "Error in cuMemcpyHtoD: ");
+        }
+        if (!useImageArray && cachedFieldBuffersCu != fieldBuffersCu) {
+            cachedFieldBuffersCu = fieldBuffersCu;
+            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
+                    stream), "Error in cuStreamSynchronize: ");
+            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyHtoD(
+                    fieldBufferArrayCu, fieldBuffersCu.data(), sizeof(CUdeviceptr) * cs), "Error in cuMemcpyHtoD: ");
         }
 
 #ifdef TEST_INFERENCE_SPEED
@@ -423,18 +461,35 @@ void DeepLearningCudaCorrelationCalculator::calculateDevice(
     callbackBeginCompute();
 
     std::vector<void*> kernelParametersRef;
-    CUfunction referenceInputAssemblyFunction;
-    CUdeviceptr scalarFields = {};
+    CUfunction referenceInputAssemblyFunction{};
+    CUdeviceptr scalarFields{};
     CUdeviceptr outputBufferRef = getReferenceInputPointer();
     uint32_t srnStride = 0;
     if (networkType == NetworkType::MINE) {
-        scalarFields = fieldTextureArrayCu;
+        scalarFields = useImageArray ? fieldTextureArrayCu : fieldBufferArrayCu;
         kernelParametersRef = {
                 &xs, &ys, &zs, &cs, &referencePointIndex.x, &minFieldVal, &maxFieldVal,
                 &outputBufferRef, &scalarFields, &alignmentVec4
         };
-        referenceInputAssemblyFunction =
-                alignmentVec4 == 1 ? combineCorrelationMembersReferenceFunctionCu : combineCorrelationMembersReferenceAlignedFunctionCu;
+        if (useImageArray) {
+            if (alignmentVec4 == 1) {
+                referenceInputAssemblyFunction = combineCorrelationMembersReferenceFunctionCu;
+            } else {
+                referenceInputAssemblyFunction = combineCorrelationMembersReferenceAlignedFunctionCu;
+            }
+        } else if (useBufferTiling) {
+            if (alignmentVec4 == 1) {
+                referenceInputAssemblyFunction = combineCorrelationMembersReferenceBufferTiledFunctionCu;
+            } else {
+                referenceInputAssemblyFunction = combineCorrelationMembersReferenceAlignedBufferTiledFunctionCu;
+            }
+        } else {
+            if (alignmentVec4 == 1) {
+                referenceInputAssemblyFunction = combineCorrelationMembersReferenceBufferFunctionCu;
+            } else {
+                referenceInputAssemblyFunction = combineCorrelationMembersReferenceAlignedBufferFunctionCu;
+            }
+        }
     } else {
         srnStride = getSrnStride();
         kernelParametersRef = {
@@ -461,14 +516,31 @@ void DeepLearningCudaCorrelationCalculator::calculateDevice(
 
         CUdeviceptr outputBuffer = getQueryInputPointer();
         std::vector<void*> kernelParameters;
-        CUfunction queryInputAssemblyFunction;
+        CUfunction queryInputAssemblyFunction{};
         if (networkType == NetworkType::MINE) {
             kernelParameters = {
                     &xs, &ys, &zs, &cs, &batchOffset, &batchSize, &minFieldVal, &maxFieldVal,
                     &outputBuffer, &scalarFields, &alignmentVec4
             };
-            queryInputAssemblyFunction =
-                    alignmentVec4 == 1 ? combineCorrelationMembersFunctionCu : combineCorrelationMembersAlignedFunctionCu;
+            if (useImageArray) {
+                if (alignmentVec4 == 1) {
+                    queryInputAssemblyFunction = combineCorrelationMembersFunctionCu;
+                } else {
+                    queryInputAssemblyFunction = combineCorrelationMembersAlignedFunctionCu;
+                }
+            } else if (useBufferTiling) {
+                if (alignmentVec4 == 1) {
+                    queryInputAssemblyFunction = combineCorrelationMembersBufferTiledFunctionCu;
+                } else {
+                    queryInputAssemblyFunction = combineCorrelationMembersAlignedBufferTiledFunctionCu;
+                }
+            } else {
+                if (alignmentVec4 == 1) {
+                    queryInputAssemblyFunction = combineCorrelationMembersBufferFunctionCu;
+                } else {
+                    queryInputAssemblyFunction = combineCorrelationMembersAlignedBufferFunctionCu;
+                }
+            }
         } else {
             kernelParameters = {
                     &xs, &ys, &zs, &batchOffset, &batchSize, &outputBuffer, &srnStride
