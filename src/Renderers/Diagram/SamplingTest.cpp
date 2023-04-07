@@ -103,7 +103,7 @@ void runTestCase(
     }
 }
 
-void runSamplingTests(const std::string& dataSetPath) {
+void runSamplingTests(const std::string& dataSetPath, int testIdx) {
     sgl::vk::Device* device = sgl::AppSettings::get()->getPrimaryDevice();
     auto* renderer = new sgl::vk::Renderer(device, 100);
 
@@ -122,7 +122,7 @@ void runSamplingTests(const std::string& dataSetPath) {
     int k = std::max(sgl::iceil(3 * cs, 100), 10);
     int numBins = 80;
 
-    constexpr bool modeGT = false;
+    const bool modeGT = testIdx == 0;
 
     // Settings.
     constexpr CorrelationMeasureType correlationMeasureType = CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV;
@@ -132,10 +132,10 @@ void runSamplingTests(const std::string& dataSetPath) {
     //constexpr int dfx = 10;
     //constexpr int dfy = 10;
     //constexpr int dfz = 10;
-    constexpr int dfx = modeGT ? 10 : 32;
-    constexpr int dfy = modeGT ? 10 : 32;
-    constexpr int dfz = modeGT ? 10 : 20;
-    constexpr int numRuns = modeGT ? 10 : 40;
+    const int dfx = modeGT ? 10 : 32;
+    const int dfy = modeGT ? 10 : 32;
+    const int dfz = modeGT ? 10 : 20;
+    const int numRuns = modeGT ? 10 : 40;
     int numPairsToCheck = 1000;
     int numLogSteps = 3;
     std::vector<int> numSamplesArray;

@@ -29,6 +29,6 @@
 #ifndef CORRERENDER_SAMPLINGTEST_HPP
 #define CORRERENDER_SAMPLINGTEST_HPP
 
-void runSamplingTests(const std::string& dataSetPath);
+void runSamplingTests(const std::string& dataSetPath, int testIdx);
 
 #endif //CORRERENDER_SAMPLINGTEST_HPP
