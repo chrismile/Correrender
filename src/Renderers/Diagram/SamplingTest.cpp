@@ -104,6 +104,7 @@ void runTestCase(
 }
 
 void runSamplingTests(const std::string& dataSetPath, int testIdx) {
+    std::cout << "Starting test case #" << testIdx << "for data set '" << dataSetPath << "'." << std::endl;
     sgl::vk::Device* device = sgl::AppSettings::get()->getPrimaryDevice();
     auto* renderer = new sgl::vk::Renderer(device, 100);
 
