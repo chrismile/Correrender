@@ -224,8 +224,8 @@ int main(int argc, char *argv[]) {
 
     if (useSamplingMode) {
         if (dataSetPath.empty()) {
-            //dataSetPath = sgl::FileUtils::get()->getUserDirectory() + "datasets/Necker/nc/necker_t5_tk_u.nc";
-            dataSetPath = sgl::FileUtils::get()->getUserDirectory() + "datasets/Necker/nc/necker_t5_e100_tk.nc";
+            dataSetPath = sgl::FileUtils::get()->getUserDirectory() + "datasets/Necker/nc/necker_t5_tk_u.nc";
+            //dataSetPath = sgl::FileUtils::get()->getUserDirectory() + "datasets/Necker/nc/necker_t5_e100_tk.nc";
         }
         runSamplingTests(dataSetPath);
     }

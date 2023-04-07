@@ -119,21 +119,23 @@ void runSamplingTests(const std::string& dataSetPath) {
     int ts = volumeData->getTimeStepCount();
     bool isEnsembleMode = es > 1;
     int cs = isEnsembleMode ? es : ts;
-    int k = 10;//std::max(sgl::iceil(3 * cs, 100), 1);
+    int k = std::max(sgl::iceil(3 * cs, 100), 10);
     int numBins = 80;
+
+    constexpr bool modeGT = false;
 
     // Settings.
     constexpr CorrelationMeasureType correlationMeasureType = CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV;
     const auto& fieldNames = volumeData->getFieldNamesBase(FieldType::SCALAR);
     constexpr int fieldIdx = 0;
     constexpr bool useGpu = true;
-    //constexpr int dfx = 16;
-    //constexpr int dfy = 16;
-    //constexpr int dfz = 20;
-    constexpr int dfx = 32;
-    constexpr int dfy = 32;
-    constexpr int dfz = 20;
-    constexpr int numRuns = 40;
+    //constexpr int dfx = 10;
+    //constexpr int dfy = 10;
+    //constexpr int dfz = 10;
+    constexpr int dfx = modeGT ? 10 : 32;
+    constexpr int dfy = modeGT ? 10 : 32;
+    constexpr int dfz = modeGT ? 10 : 20;
+    constexpr int numRuns = modeGT ? 10 : 40;
     int numPairsToCheck = 1000;
     int numLogSteps = 3;
     std::vector<int> numSamplesArray;
@@ -153,7 +155,7 @@ void runSamplingTests(const std::string& dataSetPath) {
     //}
     bool computeMean = true;
     bool runTestsOptimizers = false;
-    bool computeGroundTruth = false;
+    bool computeGroundTruth = modeGT;
 
     // Create the chart.
     auto* chart = new HEBChart();
