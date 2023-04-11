@@ -49,9 +49,9 @@ float computePearson1(
         sumXX += x * x;
         sumYY += y * y;
     }
-    float pearsonCorrelation =
+    auto pearsonCorrelation =
             (n * sumXY - sumX * sumY) / std::sqrt((n * sumXX - sumX * sumX) * (n * sumYY - sumY * sumY));
-    return (float)pearsonCorrelation;
+    return float(pearsonCorrelation);
 }
 template
 float computePearson1<float>(
@@ -78,9 +78,9 @@ float computePearson1(
         sumXX += x * x;
         sumYY += y * y;
     }
-    float pearsonCorrelation =
+    auto pearsonCorrelation =
             (n * sumXY - sumX * sumY) / std::sqrt((n * sumXX - sumX * sumX) * (n * sumYY - sumY * sumY));
-    return (float)pearsonCorrelation;
+    return float(pearsonCorrelation);
 }
 template
 float computePearson1<float>(
@@ -121,7 +121,7 @@ float computePearson2(
         T y = (T)ensembleFields.at(e)[gridPointIdx];
         pearsonCorrelation += invNm1 * ((x - meanX) / stdDevX) * ((y - meanY) / stdDevY);
     }
-    return (float)pearsonCorrelation;
+    return float(pearsonCorrelation);
 }
 template
 float computePearson2<float>(

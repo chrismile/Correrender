@@ -285,6 +285,13 @@ if %build_with_cuda_support% == true (
     )
 )
 
+if not exist ".\limbo" (
+    echo ------------------------
+    echo     downloading limbo
+    echo ------------------------
+    git clone --recursive https://github.com/resibots/limbo.git limbo
+)
+
 popd
 
 if %debug% == true (

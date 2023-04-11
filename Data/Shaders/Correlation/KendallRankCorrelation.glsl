@@ -97,9 +97,6 @@ layout(local_size_x = BLOCK_SIZE_X, local_size_y = BLOCK_SIZE_Y, local_size_z = 
 #ifdef USE_REQUESTS_BUFFER
 #include "RequestsBuffer.glsl"
 #else
-layout (binding = 0) uniform UniformBuffer {
-    uint xs, ys, zs, cs;
-};
 layout (binding = 1, r32f) uniform writeonly image3D outputImage;
 layout(push_constant) uniform PushConstants {
     ivec3 referencePointIdx;
@@ -109,8 +106,8 @@ layout(push_constant) uniform PushConstants {
 };
 #endif
 
-layout (binding = 2) uniform sampler scalarFieldSampler;
-layout (binding = 3) uniform texture3D scalarFields[MEMBER_COUNT];
+#define KENDALL_RANK_CORRELATION
+#include "ScalarFields.glsl"
 
 
 /*
@@ -172,15 +169,34 @@ uint S() {
 void main() {
 #include "CorrelationMain.glsl"
 
+#if !defined(USE_SCALAR_FIELD_IMAGES) && !defined(SEPARATE_REFERENCE_AND_QUERY_FIELDS)
+    uint referenceIdx = IDXS(referencePointIdx.x, referencePointIdx.y, referencePointIdx.z);
+#endif
+#if !defined(USE_SCALAR_FIELD_IMAGES)
+    uint queryIdx = IDXS(currentPointIdx.x, currentPointIdx.y, currentPointIdx.z);
+#endif
+
     float nanValue = 0.0;
     float value;
     for (uint c = 0; c < MEMBER_COUNT; c++) {
+#ifdef SEPARATE_REFERENCE_AND_QUERY_FIELDS
+        value = referenceValuesOrig[c];
+#else
+#ifdef USE_SCALAR_FIELD_IMAGES
         value = texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), referencePointIdx, 0).r;
+#else
+        value = scalarFields[nonuniformEXT(c)].values[referenceIdx];
+#endif
+#endif
         if (isnan(value)) {
             nanValue = value;
         }
         referenceValues[c] = value;
+#ifdef USE_SCALAR_FIELD_IMAGES
         value = texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), currentPointIdx, 0).r;
+#else
+        value = scalarFields[nonuniformEXT(c)].values[queryIdx];
+#endif
         if (isnan(value)) {
             nanValue = value;
         }

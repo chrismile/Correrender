@@ -33,6 +33,11 @@ const char* const CORRELATION_MODE_NAMES[2] = {
         "Ensemble", "Time"
 };
 
+enum class CorrelationDataMode {
+    IMAGE_3D_ARRAY, BUFFER_ARRAY
+};
+const char* const DATA_MODE_NAMES[] = { "Image 3D Array", "Buffer Array" };
+
 enum class CorrelationMeasureType {
     PEARSON, SPEARMAN, KENDALL, MUTUAL_INFORMATION_BINNED, MUTUAL_INFORMATION_KRASKOV
 };

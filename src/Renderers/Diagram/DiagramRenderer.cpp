@@ -99,12 +99,31 @@ void DiagramRenderer::initialize() {
         parentDiagram->setUse2DField(use2dField);
         parentDiagram->setClearColor(viewManager->getClearColor());
         parentDiagram->setUseCorrelationComputationGpu(useCorrelationComputationGpu);
+        parentDiagram->setDataMode(dataMode);
+        parentDiagram->setUseBufferTiling(useBufferTiling);
     }
     diagrams.push_back(parentDiagram);
 }
 
 int DiagramRenderer::getCorrelationMemberCount() {
     return isEnsembleMode ? volumeData->getEnsembleMemberCount() : volumeData->getTimeStepCount();
+}
+
+bool DiagramRenderer::getSupportsBufferMode() {
+    bool supportsBufferMode = true;
+    for (const auto& selectedScalarField : selectedScalarFields) {
+        if (!volumeData->getScalarFieldSupportsBufferMode(selectedScalarField.first)) {
+            supportsBufferMode = false;
+            break;
+        }
+    }
+    if (!supportsBufferMode && dataMode == CorrelationDataMode::BUFFER_ARRAY) {
+        dataMode = CorrelationDataMode::IMAGE_3D_ARRAY;
+        for (auto& diagram : diagrams) {
+            diagram->setDataMode(dataMode);
+        }
+    }
+    return supportsBufferMode;
 }
 
 void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) {
@@ -145,6 +164,12 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
             downscalingFactorX = downscalingFactorY = downscalingFactorZ = dsw;
         } else {
             downscalingFactorX = downscalingFactorY = downscalingFactorZ = dsw;
+        }
+
+        if (!getSupportsBufferMode() || volumeData->getGridSizeZ() < 4) {
+            dataMode = CorrelationDataMode::IMAGE_3D_ARRAY;
+        } else {
+            dataMode = CorrelationDataMode::BUFFER_ARRAY;
         }
     }
 
@@ -193,6 +218,8 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
         parentDiagram->setUse2DField(use2dField);
         parentDiagram->setClearColor(viewManager->getClearColor());
         parentDiagram->setUseCorrelationComputationGpu(useCorrelationComputationGpu);
+        parentDiagram->setDataMode(dataMode);
+        parentDiagram->setUseBufferTiling(useBufferTiling);
 
         correlationRangeTotal = correlationRange = parentDiagram->getCorrelationRangeTotal();
         cellDistanceRange = cellDistanceRangeTotal = parentDiagram->getCellDistanceRangeTotal();
@@ -373,6 +400,8 @@ void DiagramRenderer::resetSelections(int idx) {
             diagram->setUse2DField(use2dField);
             diagram->setClearColor(viewManager->getClearColor());
             diagram->setUseCorrelationComputationGpu(useCorrelationComputationGpu);
+            diagram->setDataMode(dataMode);
+            diagram->setUseBufferTiling(useBufferTiling);
             diagram->getCorrelationRangeTotal();
             diagram->getCellDistanceRangeTotal();
             //diagram->setCorrelationRange(parentDiagram->getCorrelationRangeTotal());
@@ -1209,6 +1238,22 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
             }
             reRender = true;
             reRenderTriggeredByDiagram = true;
+        }
+
+        if (getSupportsBufferMode() && propertyEditor.addCombo(
+                "Data Mode", (int*)&dataMode, DATA_MODE_NAMES, IM_ARRAYSIZE(DATA_MODE_NAMES))) {
+            for (auto& diagram : diagrams) {
+                diagram->setDataMode(dataMode);
+            }
+            dirty = true;
+        }
+
+        if (dataMode != CorrelationDataMode::IMAGE_3D_ARRAY && propertyEditor.addCheckbox(
+                "Use Buffer Tiling", &useBufferTiling)) {
+            for (auto& diagram : diagrams) {
+                diagram->setUseBufferTiling(useBufferTiling);
+            }
+            dirty = true;
         }
 
         if (propertyEditor.addCheckbox("Focus: Only Selected Var.", &showOnlySelectedVariableInFocusDiagrams)) {

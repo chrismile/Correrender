@@ -76,4 +76,4 @@ public:
 };
 using unique_semaphore = std::unique_ptr<Semaphore>;
 
-#endif;
+#endif

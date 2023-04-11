@@ -92,6 +92,13 @@ public:
         return getDataFloat16();
     }
 
+    // Access data at a certain index.
+    [[nodiscard]] float getDataFloatAt(size_t idx);
+    template<class T>
+    [[nodiscard]] inline typename std::enable_if<std::is_same<T, float>::value, T>::type dataAt(size_t idx) {
+        return getDataFloatAt(idx);
+    }
+
 private:
     ScalarDataFormat scalarDataFormatNative;
     size_t numEntries = 0;

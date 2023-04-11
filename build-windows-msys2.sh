@@ -88,7 +88,8 @@ if command -v pacman &> /dev/null && [ ! -d $build_dir_debug ] && [ ! -d $build_
             || ! is_installed_pacman "mingw-w64-x86_64-eccodes" \
             || ! is_installed_pacman "mingw-w64-x86_64-blosc" \
             || ! is_installed_pacman "mingw-w64-x86_64-python" \
-            || ! is_installed_pacman "mingw-w64-x86_64-python-numpy"; then
+            || ! is_installed_pacman "mingw-w64-x86_64-eigen3" \
+            || ! is_installed_pacman "mingw-w64-x86_64-nlopt"; then
         echo "------------------------"
         echo "installing dependencies "
         echo "------------------------"
@@ -103,7 +104,7 @@ if command -v pacman &> /dev/null && [ ! -d $build_dir_debug ] && [ ! -d $build_
         mingw64/mingw-w64-x86_64-jsoncpp mingw64/mingw-w64-x86_64-nlohmann-json \
         mingw64/mingw-w64-x86_64-netcdf \
         mingw64/mingw-w64-x86_64-eccodes mingw64/mingw-w64-x86_64-blosc \
-        mingw64/mingw-w64-x86_64-python mingw64/mingw-w64-x86_64-python-numpy
+        mingw64/mingw-w64-x86_64-python mingw64/mingw-w64-x86_64-eigen3 mingw64/mingw-w64-x86_64-nlopt
     fi
 fi
 
@@ -288,6 +289,13 @@ if $build_with_zarr_support; then
     -Dxtensor_DIR="${xtensor_CMAKE_DIR}" \
     -Dxsimd_DIR="${PROJECTPATH}/third_party/xsimd/lib/cmake/xsimd" \
     -Dz5_DIR="${PROJECTPATH}/third_party/z5/lib/cmake/z5")
+fi
+
+if [ ! -d "${PROJECTPATH}/third_party/limbo" ]; then
+    echo "------------------------"
+    echo "    downloading limbo   "
+    echo "------------------------"
+    git clone --recursive https://github.com/resibots/limbo.git "${PROJECTPATH}/third_party/limbo"
 fi
 
 popd >/dev/null # back to project root

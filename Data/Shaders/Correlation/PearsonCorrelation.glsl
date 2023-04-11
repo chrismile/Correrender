@@ -36,9 +36,6 @@ layout(local_size_x = BLOCK_SIZE_X, local_size_y = BLOCK_SIZE_Y, local_size_z = 
 #ifdef USE_REQUESTS_BUFFER
 #include "RequestsBuffer.glsl"
 #else
-layout (binding = 0) uniform UniformBuffer {
-    uint xs, ys, zs, cs;
-};
 layout (binding = 1, r32f) uniform writeonly image3D outputImage;
 layout(push_constant) uniform PushConstants {
     ivec3 referencePointIdx;
@@ -48,25 +45,49 @@ layout(push_constant) uniform PushConstants {
 };
 #endif
 
-layout (binding = 2) uniform sampler scalarFieldSampler;
-layout (binding = 3) uniform texture3D scalarFields[MEMBER_COUNT];
+#include "ScalarFields.glsl"
+
 
 void main() {
 #include "CorrelationMain.glsl"
 
+#ifndef SEPARATE_REFERENCE_AND_QUERY_FIELDS
     float referenceValues[MEMBER_COUNT];
+#endif
     float queryValues[MEMBER_COUNT];
+
+#if !defined(USE_SCALAR_FIELD_IMAGES) && !defined(SEPARATE_REFERENCE_AND_QUERY_FIELDS)
+    uint referenceIdx = IDXS(referencePointIdx.x, referencePointIdx.y, referencePointIdx.z);
+#endif
+#if !defined(USE_SCALAR_FIELD_IMAGES)
+    uint queryIdx = IDXS(currentPointIdx.x, currentPointIdx.y, currentPointIdx.z);
+#endif
 
     float n = float(MEMBER_COUNT);
     float meanX = 0;
     float meanY = 0;
     float invN = 1.0 / n;
     for (uint c = 0; c < MEMBER_COUNT; c++) {
+#ifdef USE_SCALAR_FIELD_IMAGES
+#ifdef SEPARATE_REFERENCE_AND_QUERY_FIELDS
+        float x = referenceValues[c];
+#else
         float x = texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), referencePointIdx, 0).r;
+#endif
         float y = texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), currentPointIdx, 0).r;
+#else
+#ifdef SEPARATE_REFERENCE_AND_QUERY_FIELDS
+        float x = referenceValues[c];
+#else
+        float x = scalarFields[nonuniformEXT(c)].values[referenceIdx];
+#endif
+        float y = scalarFields[nonuniformEXT(c)].values[queryIdx];
+#endif
         meanX += invN * x;
         meanY += invN * y;
+#ifndef SEPARATE_REFERENCE_AND_QUERY_FIELDS
         referenceValues[c] = x;
+#endif
         queryValues[c] = y;
     }
     float varX = 0.0;

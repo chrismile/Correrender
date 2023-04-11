@@ -99,10 +99,11 @@ protected:
     bool loadModelFromFile(int idx, const std::string& modelPath);
     void setPyTorchDevice(PyTorchDevice pyTorchDeviceNew);
     void onCorrelationMemberCountChanged() override;
-    void clearFieldImageViews();
+    void clearFieldDeviceData() override;
+    bool getSupportsSeparateFields() override;
 
     /// Renders the GUI. Returns whether re-rendering has become necessary due to the user's actions.
-    void renderGuiImpl(sgl::PropertyEditor& propertyEditor) override;
+    void renderGuiImplSub(sgl::PropertyEditor& propertyEditor) override;
 
 private:
     void openModelSelectionDialog();
@@ -113,6 +114,12 @@ private:
     std::string fileDialogDirectory;
     bool isFirstContiguousWarning = true;
     NetworkType networkType = NetworkType::MINE;
+
+    void parseModelPresetsFile(const std::string& filename);
+    std::vector<std::string> modelPresets;
+    std::vector<std::string> modelPresetFilenamesEncoder;
+    std::vector<std::string> modelPresetFilenamesDecoder;
+    int modelPresetIndex = 0;
 
     /// For networkType == NetworkType::{MINE,SRN_MINE}.
     size_t cachedCorrelationMemberCountHost = std::numeric_limits<size_t>::max();
@@ -141,10 +148,16 @@ private:
     sgl::vk::SemaphoreVkCudaDriverApiInteropPtr vulkanFinishedSemaphore, cudaFinishedSemaphore;
     uint64_t timelineValue = 0;
     CUdeviceptr outputImageBufferCu{};
-    CUdeviceptr fieldTextureArrayCu{};
+    CUdeviceptr fieldTextureArrayCu{}, fieldBufferArrayCu{};
     std::vector<CUtexObject> cachedFieldTexturesCu;
+    std::vector<CUdeviceptr> cachedFieldBuffersCu;
     CUmodule combineCorrelationMembersModuleCu{};
+    // Function that takes a 3D image array as an input.
     CUfunction combineCorrelationMembersFunctionCu{};
+    // Function that takes a buffer as an input.
+    CUfunction combineCorrelationMembersBufferFunctionCu{};
+    // Function that takes a tiled buffer as an input.
+    CUfunction combineCorrelationMembersBufferTiledFunctionCu{};
     CUfunction memcpyFloatClampToZeroFunctionCu{};
     // For networkType == NetworkType::SRN_MINE.
     CUfunction writeGridPositionsFunctionCu{}, writeGridPositionReferenceFunctionCu{};
@@ -158,6 +171,9 @@ public:
     explicit CorrelationMembersCombinePass(sgl::vk::Renderer* renderer);
     void setVolumeData(VolumeData* _volumeData, int correlationMemberCount, bool isNewData);
     void setCorrelationMemberCount(int correlationMemberCount);
+    void setDataMode(CorrelationDataMode _dataMode);
+    void setUseBufferTiling(bool _useBufferTiling);
+    void setFieldBuffers(const std::vector<sgl::vk::BufferPtr>& _fieldBuffers);
     void setFieldImageViews(const std::vector<sgl::vk::ImageViewPtr>& _fieldImageViews);
     void setOutputBuffer(const sgl::vk::BufferPtr& _outputBuffer);
     void setFieldMinMax(float minFieldVal, float maxFieldVal);
@@ -171,6 +187,8 @@ protected:
 private:
     VolumeData* volumeData = nullptr;
     int cachedCorrelationMemberCount = 0;
+    CorrelationDataMode dataMode = CorrelationDataMode::BUFFER_ARRAY;
+    bool useBufferTiling = true;
 
     const int computeBlockSize = 256;
     int batchSize = 0;
@@ -184,6 +202,7 @@ private:
     UniformData uniformData{};
     sgl::vk::BufferPtr uniformBuffer;
 
+    std::vector<sgl::vk::BufferPtr> fieldBuffers;
     std::vector<sgl::vk::ImageViewPtr> fieldImageViews;
     sgl::vk::BufferPtr outputBuffer;
 };
@@ -193,6 +212,9 @@ public:
     explicit ReferenceCorrelationMembersCombinePass(sgl::vk::Renderer* renderer);
     void setVolumeData(VolumeData* _volumeData, int correlationMemberCount, bool isNewData);
     void setCorrelationMemberCount(int correlationMemberCount);
+    void setDataMode(CorrelationDataMode _dataMode);
+    void setUseBufferTiling(bool _useBufferTiling);
+    void setFieldBuffers(const std::vector<sgl::vk::BufferPtr>& _fieldBuffers);
     void setFieldImageViews(const std::vector<sgl::vk::ImageViewPtr>& _fieldImageViews);
     void setOutputBuffer(const sgl::vk::BufferPtr& _outputBuffer);
     void setFieldMinMax(float minFieldVal, float maxFieldVal);
@@ -205,6 +227,8 @@ protected:
 private:
     VolumeData* volumeData = nullptr;
     int cachedCorrelationMemberCount = 0;
+    CorrelationDataMode dataMode = CorrelationDataMode::BUFFER_ARRAY;
+    bool useBufferTiling = true;
 
     const int computeBlockSize = 256;
     struct UniformData {
@@ -217,6 +241,7 @@ private:
     UniformData uniformData{};
     sgl::vk::BufferPtr uniformBuffer;
 
+    std::vector<sgl::vk::BufferPtr> fieldBuffers;
     std::vector<sgl::vk::ImageViewPtr> fieldImageViews;
     sgl::vk::BufferPtr outputBuffer;
 };

@@ -63,6 +63,7 @@ int main(int argc, char *argv[]) {
     // Parse the arguments.
     bool usePerfMode = false, useSamplingMode = false;
     std::string dataSetPath;
+    int testIdx = -1;
     for (int i = 1; i < argc; i++) {
         std::string command = argv[i];
         if (command == "--perf") {
@@ -73,6 +74,10 @@ int main(int argc, char *argv[]) {
             if (i + 1 < argc && !sgl::startsWith(argv[i + 1], "-")) {
                 i++;
                 dataSetPath = argv[i];
+            }
+            if (i + 1 < argc && !sgl::startsWith(argv[i + 1], "-")) {
+                i++;
+                testIdx = sgl::fromString<int>(argv[i]);
             }
         }
     }
@@ -175,10 +180,12 @@ int main(int argc, char *argv[]) {
     requestedDeviceFeatures.requestedPhysicalDeviceFeatures.fragmentStoresAndAtomics = VK_TRUE;
     // For ensemble combination when using Vulkan-CUDA interop with PyTorch.
     requestedDeviceFeatures.optionalPhysicalDeviceFeatures.shaderSampledImageArrayDynamicIndexing = VK_TRUE;
+    requestedDeviceFeatures.optionalPhysicalDeviceFeatures.shaderStorageBufferArrayDynamicIndexing = VK_TRUE;
     requestedDeviceFeatures.optionalVulkan12Features.descriptorIndexing = VK_TRUE;
     requestedDeviceFeatures.optionalVulkan12Features.descriptorBindingVariableDescriptorCount = VK_TRUE;
     requestedDeviceFeatures.optionalVulkan12Features.runtimeDescriptorArray = VK_TRUE;
     requestedDeviceFeatures.optionalVulkan12Features.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
+    requestedDeviceFeatures.optionalVulkan12Features.shaderStorageBufferArrayNonUniformIndexing = VK_TRUE;
     if (isHeadlessMode) {
         device->createDeviceHeadless(
                 instance, {
@@ -222,10 +229,13 @@ int main(int argc, char *argv[]) {
 
     if (useSamplingMode) {
         if (dataSetPath.empty()) {
-            //dataSetPath = sgl::FileUtils::get()->getUserDirectory() + "datasets/Necker/nc/necker_t5_tk_u.nc";
-            dataSetPath = sgl::FileUtils::get()->getUserDirectory() + "datasets/Necker/nc/necker_t5_e100_tk.nc";
+            dataSetPath = sgl::FileUtils::get()->getUserDirectory() + "datasets/Necker/nc/necker_t5_tk_u.nc";
+            //dataSetPath = sgl::FileUtils::get()->getUserDirectory() + "datasets/Necker/nc/necker_t5_e100_tk.nc";
         }
-        runSamplingTests(dataSetPath);
+        if (testIdx < 0) {
+            testIdx = 0;
+        }
+        runSamplingTests(dataSetPath, testIdx);
     }
 
     sgl::AppSettings::get()->release();

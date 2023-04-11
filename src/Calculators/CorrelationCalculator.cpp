@@ -95,9 +95,18 @@ void ICorrelationCalculator::setVolumeData(VolumeData* _volumeData, bool isNewDa
             referencePointSelectionRenderer->setReferencePosition(referencePointIndex);
         }
 
-        fieldIndex = volumeData->getStandardScalarFieldIdx();
-        fieldIndexGui = volumeData->getStandardScalarFieldIdx();
+        fieldIndex = fieldIndex2 = volumeData->getStandardScalarFieldIdx();
+        fieldIndexGui = fieldIndex2Gui = volumeData->getStandardScalarFieldIdx();
         volumeData->acquireScalarField(this, fieldIndex);
+        if (useSeparateFields) {
+            volumeData->acquireScalarField(this, fieldIndex2);
+        }
+
+        if (!getSupportsBufferMode() || volumeData->getGridSizeZ() < 4) {
+            dataMode = CorrelationDataMode::IMAGE_3D_ARRAY;
+        } else {
+            dataMode = CorrelationDataMode::BUFFER_ARRAY;
+        }
     }
 }
 
@@ -115,11 +124,12 @@ VolumeData::HostCacheEntry ICorrelationCalculator::getFieldEntryCpu(
 }
 
 VolumeData::DeviceCacheEntry ICorrelationCalculator::getFieldEntryDevice(
-        const std::string& fieldName, int fieldIdx, int timeStepIdx, int ensembleIdx) {
+        const std::string& fieldName, int fieldIdx, int timeStepIdx, int ensembleIdx, bool wantsImageData) {
     VolumeData::DeviceCacheEntry ensembleEntryField = volumeData->getFieldEntryDevice(
             FieldType::SCALAR, fieldName,
             isEnsembleMode ? timeStepIdx : fieldIdx,
-            isEnsembleMode ? fieldIdx : ensembleIdx);
+            isEnsembleMode ? fieldIdx : ensembleIdx,
+            wantsImageData, (!wantsImageData && useBufferTiling) ? glm::uvec3(8, 8, 4) : glm::uvec3(1, 1, 1));
     return ensembleEntryField;
 }
 
@@ -141,6 +151,17 @@ void ICorrelationCalculator::onFieldRemoved(FieldType fieldType, int fieldIdx) {
             fieldIndex--;
         }
         fieldIndexGui = fieldIndex;
+
+        if (fieldIndex2 == fieldIdx) {
+            fieldIndex2 = 0;
+            if (useSeparateFields) {
+                volumeData->acquireScalarField(this, fieldIndex2);
+                dirty = true;
+            }
+        } else if (fieldIndex2 > fieldIdx) {
+            fieldIndex2--;
+        }
+        fieldIndex2Gui = fieldIndex2;
     }
 }
 
@@ -257,11 +278,33 @@ void ICorrelationCalculator::setReferencePointFromFocusPoint() {
 }
 
 void ICorrelationCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
-    if (propertyEditor.addCombo(
-            "Scalar Field", &fieldIndexGui, scalarFieldNames.data(), int(scalarFieldNames.size()))) {
-        clearFieldImageViews();
-        fieldIndex = int(scalarFieldIndexArray.at(fieldIndexGui));
-        dirty = true;
+    bool needsScalarFieldData = getNeedsScalarFieldData();
+    if (needsScalarFieldData && useSeparateFields) {
+        if (propertyEditor.addCombo(
+                "Scalar Field Reference", &fieldIndex2Gui, scalarFieldNames.data(), int(scalarFieldNames.size()))) {
+            clearFieldDeviceData();
+            volumeData->releaseScalarField(this, fieldIndex2);
+            fieldIndex2 = int(scalarFieldIndexArray.at(fieldIndex2Gui));
+            volumeData->acquireScalarField(this, fieldIndex2);
+            dirty = true;
+        }
+        if (propertyEditor.addCombo(
+                "Scalar Field Query", &fieldIndexGui, scalarFieldNames.data(), int(scalarFieldNames.size()))) {
+            clearFieldDeviceData();
+            volumeData->releaseScalarField(this, fieldIndex);
+            fieldIndex = int(scalarFieldIndexArray.at(fieldIndexGui));
+            volumeData->acquireScalarField(this, fieldIndex);
+            dirty = true;
+        }
+    } else if (needsScalarFieldData && !useSeparateFields) {
+        if (propertyEditor.addCombo(
+                "Scalar Field", &fieldIndexGui, scalarFieldNames.data(), int(scalarFieldNames.size()))) {
+            clearFieldDeviceData();
+            volumeData->releaseScalarField(this, fieldIndex);
+            fieldIndex = int(scalarFieldIndexArray.at(fieldIndexGui));
+            volumeData->acquireScalarField(this, fieldIndex);
+            dirty = true;
+        }
     }
 
     if (volumeData->getEnsembleMemberCount() > 1 && volumeData->getTimeStepCount() > 1) {
@@ -269,6 +312,7 @@ void ICorrelationCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEditor) 
         if (propertyEditor.addCombo("Correlation Mode", &modeIdx, CORRELATION_MODE_NAMES, 2)) {
             isEnsembleMode = modeIdx == 0;
             onCorrelationMemberCountChanged();
+            clearFieldDeviceData();
             dirty = true;
         }
     }
@@ -294,9 +338,60 @@ void ICorrelationCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEditor) 
         dirty = true;
     }
 
+    if (scalarFieldNames.size() > 1 && getSupportsSeparateFields() && propertyEditor.addCheckbox(
+            "Two Fields Mode", &useSeparateFields)) {
+        if (useSeparateFields) {
+            volumeData->acquireScalarField(this, fieldIndex2);
+        } else {
+            volumeData->releaseScalarField(this, fieldIndex2);
+        }
+        clearFieldDeviceData();
+        dirty = true;
+    }
+
+    renderGuiImplSub(propertyEditor);
+
+    if (propertyEditor.beginNode("Advanced Settings")) {
+        renderGuiImplAdvanced(propertyEditor);
+        propertyEditor.endNode();
+    }
+}
+
+void ICorrelationCalculator::renderGuiImplAdvanced(sgl::PropertyEditor& propertyEditor) {
+    if (!scalarFieldNames.empty() && getSupportsBufferMode() && propertyEditor.addCombo(
+            "Data Mode", (int*)&dataMode, DATA_MODE_NAMES, IM_ARRAYSIZE(DATA_MODE_NAMES))) {
+        clearFieldDeviceData();
+        dirty = true;
+    }
+
+    if (dataMode != CorrelationDataMode::IMAGE_3D_ARRAY && propertyEditor.addCheckbox(
+            "Use Buffer Tiling", &useBufferTiling)) {
+        clearFieldDeviceData();
+        dirty = true;
+    }
+
     if (!volumeData || volumeData->getGridSizeZ() > 1) {
         propertyEditor.addCheckbox("Fix Picking Z", &fixPickingZPlane);
     }
+}
+
+bool ICorrelationCalculator::getSupportsBufferMode() {
+    bool supportsBufferMode = true;
+    if (!volumeData->getScalarFieldSupportsBufferMode(fieldIndex)) {
+        supportsBufferMode = false;
+    }
+    if (useSeparateFields && !volumeData->getScalarFieldSupportsBufferMode(fieldIndex2)) {
+        supportsBufferMode = false;
+    }
+    if (!supportsBufferMode && dataMode == CorrelationDataMode::BUFFER_ARRAY) {
+        dataMode = CorrelationDataMode::IMAGE_3D_ARRAY;
+        dirty = true;
+    }
+    return supportsBufferMode;
+}
+
+bool ICorrelationCalculator::getSupportsSeparateFields() {
+    return true;
 }
 
 
@@ -331,10 +426,32 @@ void CorrelationCalculator::onCorrelationMemberCountChanged() {
     correlationComputePass->setCorrelationMemberCount(cs);
     correlationComputePass->setKraskovNumNeighbors(k);
     cachedMemberCount = cs;
+
+#ifdef SUPPORT_CUDA_INTEROP
+    bool canUseCuda =
+            sgl::vk::getIsCudaDeviceApiFunctionTableInitialized() && sgl::vk::getIsNvrtcFunctionTableInitialized();
+#else
+    bool canUseCuda = false;
+#endif
+    referenceValuesBuffer = std::make_shared<sgl::vk::Buffer>(
+            renderer->getDevice(), cs * sizeof(float),
+            VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+            VMA_MEMORY_USAGE_GPU_ONLY, true, canUseCuda, false);
+#ifdef SUPPORT_CUDA_INTEROP
+    if (canUseCuda) {
+        referenceValuesCudaBuffer = std::make_shared<sgl::vk::BufferCudaExternalMemoryVk>(referenceValuesBuffer);
+    }
+#endif
+    referenceValuesCpu.resize(cs);
 }
 
-void CorrelationCalculator::clearFieldImageViews() {
+void CorrelationCalculator::clearFieldDeviceData() {
     correlationComputePass->setFieldImageViews({});
+    correlationComputePass->setFieldBuffers({});
+    correlationComputePass->setReferenceValuesBuffer({});
+#ifdef SUPPORT_CUDA_INTEROP
+    correlationComputePass->setReferenceValuesCudaBuffer({});
+#endif
 }
 
 bool CorrelationCalculator::getIsRealtime() const {
@@ -355,8 +472,8 @@ FilterDevice CorrelationCalculator::getFilterDevice() {
     return FilterDevice::CPU;
 }
 
-void CorrelationCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
-    ICorrelationCalculator::renderGuiImpl(propertyEditor);
+void CorrelationCalculator::renderGuiImplSub(sgl::PropertyEditor& propertyEditor) {
+    ICorrelationCalculator::renderGuiImplSub(propertyEditor);
     if (propertyEditor.addCombo(
             "Correlation Measure", (int*)&correlationMeasureType,
             CORRELATION_MEASURE_TYPE_NAMES, IM_ARRAYSIZE(CORRELATION_MEASURE_TYPE_NAMES))) {
@@ -438,26 +555,46 @@ void CorrelationCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float
         fields.push_back(fieldEntry->data<float>());
     }
 
-    //size_t referencePointIdx =
-    //        size_t(referencePointIndex.x) * size_t(referencePointIndex.y) * size_t(referencePointIndex.z);
     size_t referencePointIdx = IDXS(referencePointIndex.x, referencePointIndex.y, referencePointIndex.z);
     auto* referenceValues = new float[cs];
-    for (int c = 0; c < cs; c++) {
-        referenceValues[c] = fields.at(c)[referencePointIdx];
+    if (useSeparateFields) {
+        for (int c = 0; c < cs; c++) {
+            VolumeData::HostCacheEntry fieldEntry = getFieldEntryCpu(
+                    scalarFieldNames.at(fieldIndex2Gui), c, timeStepIdx, ensembleIdx);
+            referenceValues[c] = fieldEntry->dataAt<float>(referencePointIdx);
+        }
+    } else {
+        for (int c = 0; c < cs; c++) {
+            referenceValues[c] = fields.at(c)[referencePointIdx];
+        }
     }
 
-    float minFieldVal = std::numeric_limits<float>::max();
-    float maxFieldVal = std::numeric_limits<float>::lowest();
+    float minFieldValRef = std::numeric_limits<float>::max();
+    float maxFieldValRef = std::numeric_limits<float>::lowest();
     if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
         for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
             auto [minVal, maxVal] = getMinMaxScalarFieldValue(
-                    scalarFieldNames.at(fieldIndexGui), fieldIdx, timeStepIdx, ensembleIdx);
-            minFieldVal = std::min(minFieldVal, minVal);
-            maxFieldVal = std::max(maxFieldVal, maxVal);
+                    scalarFieldNames.at(useSeparateFields ? fieldIndex2Gui : fieldIndexGui),
+                    fieldIdx, timeStepIdx, ensembleIdx);
+            minFieldValRef = std::min(minFieldValRef, minVal);
+            maxFieldValRef = std::max(maxFieldValRef, maxVal);
         }
         for (int c = 0; c < cs; c++) {
-            referenceValues[c] = (referenceValues[c] - minFieldVal) / (maxFieldVal - minFieldVal);
+            referenceValues[c] = (referenceValues[c] - minFieldValRef) / (maxFieldValRef - minFieldValRef);
         }
+    }
+    float minFieldValQuery = std::numeric_limits<float>::max();
+    float maxFieldValQuery = std::numeric_limits<float>::lowest();
+    if (useSeparateFields && correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
+        for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
+            auto [minVal, maxVal] = getMinMaxScalarFieldValue(
+                    scalarFieldNames.at(fieldIndexGui), fieldIdx, timeStepIdx, ensembleIdx);
+            minFieldValQuery = std::min(minFieldValQuery, minVal);
+            maxFieldValQuery = std::max(maxFieldValQuery, maxVal);
+        }
+    } else if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
+        minFieldValQuery = minFieldValRef;
+        maxFieldValQuery = maxFieldValRef;
     }
 
 
@@ -643,7 +780,7 @@ void CorrelationCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float
 #else
 #if _OPENMP >= 200805
         #pragma omp parallel shared(numGridPoints, cs, referenceValues, fields, buffer) default(none) \
-        shared(minFieldVal, maxFieldVal)
+        shared(minFieldValQuery, maxFieldValQuery)
         {
 #endif
             auto* gridPointValues = new float[cs];
@@ -667,7 +804,8 @@ void CorrelationCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float
                         isNan = true;
                         break;
                     }
-                    gridPointValues[c] = (gridPointValues[c] - minFieldVal) / (maxFieldVal - minFieldVal);
+                    gridPointValues[c] =
+                            (gridPointValues[c] - minFieldValQuery) / (maxFieldValQuery - minFieldValQuery);
                 }
                 if (isNan) {
                     buffer[gridPointIdx] = std::numeric_limits<float>::quiet_NaN();
@@ -696,8 +834,7 @@ void CorrelationCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float
             for (auto gridPointIdx = r.begin(); gridPointIdx != r.end(); gridPointIdx++) {
 #else
 #if _OPENMP >= 200805
-        #pragma omp parallel shared(numGridPoints, cs, k, referenceValues, fields, buffer) default(none) \
-        shared(minFieldVal, maxFieldVal)
+        #pragma omp parallel shared(numGridPoints, cs, k, referenceValues, fields, buffer) default(none)
         {
 #endif
             auto* gridPointValues = new float[cs];
@@ -719,7 +856,6 @@ void CorrelationCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float
                         isNan = true;
                         break;
                     }
-                    //gridPointValues[c] = (gridPointValues[c] - minFieldVal) / (maxFieldVal - minFieldVal);
                 }
                 if (isNan) {
                     buffer[gridPointIdx] = std::numeric_limits<float>::quiet_NaN();
@@ -769,20 +905,51 @@ void CorrelationCalculator::calculateDevice(int timeStepIdx, int ensembleIdx, co
 
     std::vector<VolumeData::DeviceCacheEntry> fieldEntries;
     std::vector<sgl::vk::ImageViewPtr> fieldImageViews;
+    std::vector<sgl::vk::BufferPtr> fieldBuffers;
+    correlationComputePass->setDataMode(dataMode);
+    correlationComputePass->setUseBufferTiling(useBufferTiling);
+    correlationComputePass->setUseSeparateFields(useSeparateFields);
+    bool useImageArray = dataMode == CorrelationDataMode::IMAGE_3D_ARRAY;
     fieldEntries.reserve(cs);
-    fieldImageViews.reserve(cs);
+    if (useImageArray) {
+        fieldBuffers.reserve(cs);
+    } else {
+        fieldImageViews.reserve(cs);
+    }
     for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
         VolumeData::DeviceCacheEntry fieldEntry = getFieldEntryDevice(
-                scalarFieldNames.at(fieldIndexGui), fieldIdx, timeStepIdx, ensembleIdx);
+                scalarFieldNames.at(fieldIndexGui), fieldIdx, timeStepIdx, ensembleIdx, useImageArray);
         fieldEntries.push_back(fieldEntry);
-        fieldImageViews.push_back(fieldEntry->getVulkanImageView());
-        if (fieldEntry->getVulkanImage()->getVkImageLayout() != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
-            fieldEntry->getVulkanImage()->transitionImageLayout(
-                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, renderer->getVkCommandBuffer());
+        if (useImageArray) {
+            fieldImageViews.push_back(fieldEntry->getVulkanImageView());
+            if (fieldEntry->getVulkanImage()->getVkImageLayout() != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+                fieldEntry->getVulkanImage()->transitionImageLayout(
+                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, renderer->getVkCommandBuffer());
+            }
+        } else {
+            fieldBuffers.push_back(fieldEntry->getVulkanBuffer());
         }
-        //if (fieldEntry->getScalarDataFormat() != ScalarDataFormat::FLOAT) {
-        //    useCuda = false;
-        //}
+    }
+    if (useImageArray) {
+        correlationComputePass->setFieldImageViews(fieldImageViews);
+    } else {
+        correlationComputePass->setFieldBuffers(fieldBuffers);
+    }
+    if (useSeparateFields) {
+        int xs = volumeData->getGridSizeX();
+        int ys = volumeData->getGridSizeY();
+        size_t referencePointIdx = IDXS(referencePointIndex.x, referencePointIndex.y, referencePointIndex.z);
+        for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
+            VolumeData::HostCacheEntry fieldEntry = getFieldEntryCpu(
+                    scalarFieldNames.at(fieldIndex2Gui), fieldIdx, timeStepIdx, ensembleIdx);
+            referenceValuesCpu[fieldIdx] = fieldEntry->dataAt<float>(referencePointIdx);
+        }
+        referenceValuesBuffer->updateData(
+                sizeof(float) * cs, referenceValuesCpu.data(), renderer->getVkCommandBuffer());
+        correlationComputePass->setReferenceValuesBuffer(referenceValuesBuffer);
+#ifdef SUPPORT_CUDA_INTEROP
+        correlationComputePass->setReferenceValuesCudaBuffer(referenceValuesCudaBuffer);
+#endif
     }
 
 #ifdef TEST_INFERENCE_SPEED
@@ -797,7 +964,6 @@ void CorrelationCalculator::calculateDevice(int timeStepIdx, int ensembleIdx, co
 
     if (correlationMeasureType != CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV || !useCuda) {
         correlationComputePass->setOutputImage(deviceCacheEntry->getVulkanImageView());
-        correlationComputePass->setFieldImageViews(fieldImageViews);
 
         renderer->insertImageMemoryBarrier(
                 deviceCacheEntry->getVulkanImage(),
@@ -808,23 +974,44 @@ void CorrelationCalculator::calculateDevice(int timeStepIdx, int ensembleIdx, co
         correlationComputePass->buildIfNecessary();
         correlationComputePass->setReferencePoint(referencePointIndex);
         if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
-            float minFieldVal = std::numeric_limits<float>::max();
-            float maxFieldVal = std::numeric_limits<float>::lowest();
-            if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
-                for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
-                    auto [minVal, maxVal] = getMinMaxScalarFieldValue(
-                            scalarFieldNames.at(fieldIndexGui), fieldIdx, timeStepIdx, ensembleIdx);
-                    minFieldVal = std::min(minFieldVal, minVal);
-                    maxFieldVal = std::max(maxFieldVal, maxVal);
+            if (useSeparateFields) {
+                float minFieldValRef = std::numeric_limits<float>::max();
+                float maxFieldValRef = std::numeric_limits<float>::lowest();
+                float minFieldValQuery = std::numeric_limits<float>::max();
+                float maxFieldValQuery = std::numeric_limits<float>::lowest();
+                if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
+                    for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
+                        auto [minValRef, maxValRef] = getMinMaxScalarFieldValue(
+                                scalarFieldNames.at(fieldIndex2Gui), fieldIdx, timeStepIdx, ensembleIdx);
+                        minFieldValRef = std::min(minFieldValRef, minValRef);
+                        maxFieldValRef = std::max(maxFieldValRef, maxValRef);
+                        auto [minValQuery, maxValQuery] = getMinMaxScalarFieldValue(
+                                scalarFieldNames.at(fieldIndexGui), fieldIdx, timeStepIdx, ensembleIdx);
+                        minFieldValQuery = std::min(minFieldValQuery, minValQuery);
+                        maxFieldValQuery = std::max(maxFieldValQuery, maxValQuery);
+                    }
                 }
+                renderer->pushConstants(
+                        correlationComputePass->getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, 2 * sizeof(glm::vec4),
+                        glm::vec4(minFieldValRef, maxFieldValRef, minFieldValQuery, maxFieldValQuery));
+            } else {
+                float minFieldVal = std::numeric_limits<float>::max();
+                float maxFieldVal = std::numeric_limits<float>::lowest();
+                if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
+                    for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
+                        auto [minVal, maxVal] = getMinMaxScalarFieldValue(
+                                scalarFieldNames.at(fieldIndexGui), fieldIdx, timeStepIdx, ensembleIdx);
+                        minFieldVal = std::min(minFieldVal, minVal);
+                        maxFieldVal = std::max(maxFieldVal, maxVal);
+                    }
+                }
+                renderer->pushConstants(
+                        correlationComputePass->getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, 2 * sizeof(glm::vec4),
+                        glm::vec4(minFieldVal, maxFieldVal, minFieldVal, maxFieldVal));
             }
-            renderer->pushConstants(
-                    correlationComputePass->getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, 2 * sizeof(glm::vec4),
-                    glm::vec2(minFieldVal, maxFieldVal));
         }
         correlationComputePass->render();
     } else {
-        correlationComputePass->setFieldImageViews(fieldImageViews);
 #ifdef SUPPORT_CUDA_INTEROP
         correlationComputePass->computeCuda(
                 this, scalarFieldNames.at(fieldIndexGui), timeStepIdx, ensembleIdx, deviceCacheEntry,
@@ -882,6 +1069,10 @@ CorrelationComputePass::~CorrelationComputePass() {
         sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFree(
                 fieldTextureArrayCu), "Error in cuMemFree: ");
     }
+    if (fieldBufferArrayCu != 0) {
+        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFree(
+                fieldBufferArrayCu), "Error in cuMemFree: ");
+    }
     if (kernelCache) {
         delete kernelCache;
         kernelCache = nullptr;
@@ -926,16 +1117,69 @@ void CorrelationComputePass::setCorrelationMemberCount(int correlationMemberCoun
     }
 }
 
+void CorrelationComputePass::setDataMode(CorrelationDataMode _dataMode) {
+    if (dataMode != _dataMode) {
+        dataMode = _dataMode;
+        setShaderDirty();
+    }
+    spearmanReferenceRankComputePass->setDataMode(_dataMode);
+}
+
+void CorrelationComputePass::setUseBufferTiling(bool _useBufferTiling) {
+    if (useBufferTiling != _useBufferTiling) {
+        useBufferTiling = _useBufferTiling;
+        setShaderDirty();
+    }
+    spearmanReferenceRankComputePass->setUseBufferTiling(_useBufferTiling);
+}
+
+void CorrelationComputePass::setUseSeparateFields(bool _useSeparateFields) {
+    if (useSeparateFields != _useSeparateFields) {
+        useSeparateFields = _useSeparateFields;
+        setShaderDirty();
+    }
+    spearmanReferenceRankComputePass->setUseSeparateFields(_useSeparateFields);
+}
+
+void CorrelationComputePass::setFieldBuffers(const std::vector<sgl::vk::BufferPtr>& _fieldBuffers) {
+    if (fieldBuffers == _fieldBuffers) {
+        return;
+    }
+    fieldBuffers = _fieldBuffers;
+    if (computeData) {
+        computeData->setStaticBufferArrayOptional(fieldBuffers, "ScalarFieldBuffers");
+    }
+    spearmanReferenceRankComputePass->setFieldBuffers(fieldBuffers);
+}
+
 void CorrelationComputePass::setFieldImageViews(const std::vector<sgl::vk::ImageViewPtr>& _fieldImageViews) {
     if (fieldImageViews == _fieldImageViews) {
         return;
     }
     fieldImageViews = _fieldImageViews;
     if (computeData) {
-        computeData->setStaticImageViewArray(fieldImageViews, "scalarFields");
+        computeData->setStaticImageViewArrayOptional(fieldImageViews, "scalarFields");
     }
     spearmanReferenceRankComputePass->setFieldImageViews(_fieldImageViews);
 }
+
+void CorrelationComputePass::setReferenceValuesBuffer(const sgl::vk::BufferPtr& _referenceValuesBuffer) {
+    if (referenceValuesBuffer == _referenceValuesBuffer) {
+        return;
+    }
+    referenceValuesBuffer = _referenceValuesBuffer;
+    if (computeData) {
+        computeData->setStaticBufferOptional(referenceValuesBuffer, "ReferenceValuesBuffer");
+    }
+    spearmanReferenceRankComputePass->setReferenceValuesBuffer(_referenceValuesBuffer);
+}
+
+#ifdef SUPPORT_CUDA_INTEROP
+void CorrelationComputePass::setReferenceValuesCudaBuffer(
+        const sgl::vk::BufferCudaExternalMemoryVkPtr& _referenceValuesCudaBuffer) {
+    referenceValuesCudaBuffer = _referenceValuesCudaBuffer;
+}
+#endif
 
 void CorrelationComputePass::setOutputImage(const sgl::vk::ImageViewPtr& _outputImage) {
     outputImage = _outputImage;
@@ -1034,6 +1278,14 @@ void CorrelationComputePass::loadShader() {
     }
     preprocessorDefines.insert(std::make_pair(
             "MEMBER_COUNT", std::to_string(cachedCorrelationMemberCount)));
+    if (dataMode == CorrelationDataMode::IMAGE_3D_ARRAY) {
+        preprocessorDefines.insert(std::make_pair("USE_SCALAR_FIELD_IMAGES", ""));
+    } else if (useBufferTiling) {
+        preprocessorDefines.insert(std::make_pair("SUPPORT_TILING", ""));
+    }
+    if (useSeparateFields) {
+        preprocessorDefines.insert(std::make_pair("SEPARATE_REFERENCE_AND_QUERY_FIELDS", ""));
+    }
     if (useRequestEvaluationMode) {
         preprocessorDefines.insert(std::make_pair("USE_REQUESTS_BUFFER", ""));
     }
@@ -1075,13 +1327,20 @@ void CorrelationComputePass::loadShader() {
 
 void CorrelationComputePass::createComputeData(sgl::vk::Renderer* renderer, sgl::vk::ComputePipelinePtr& computePipeline) {
     computeData = std::make_shared<sgl::vk::ComputeData>(renderer, computePipeline);
-    computeData->setImageSampler(volumeData->getImageSampler(), "scalarFieldSampler");
-    computeData->setStaticImageViewArray(fieldImageViews, "scalarFields");
+    computeData->setStaticBuffer(uniformBuffer, "UniformBuffer");
+    if (dataMode == CorrelationDataMode::IMAGE_3D_ARRAY) {
+        computeData->setImageSampler(volumeData->getImageSampler(), "scalarFieldSampler");
+        computeData->setStaticImageViewArray(fieldImageViews, "scalarFields");
+    } else {
+        computeData->setStaticBufferArray(fieldBuffers, "ScalarFieldBuffers");
+    }
+    if (useSeparateFields) {
+        computeData->setStaticBuffer(referenceValuesBuffer, "ReferenceValuesBuffer");
+    }
     if (useRequestEvaluationMode) {
         computeData->setStaticBuffer(requestsBuffer, "RequestsBuffer");
         computeData->setStaticBuffer(outputBuffer, "OutputBuffer");
     } else {
-        computeData->setStaticBuffer(uniformBuffer, "UniformBuffer");
         computeData->setStaticImageView(outputImage, "outputImage");
     }
     if (correlationMeasureType == CorrelationMeasureType::SPEARMAN) {
@@ -1224,9 +1483,15 @@ void CorrelationComputePass::computeCuda(
             sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
                     fieldTextureArrayCu, stream), "Error in cuMemFreeAsync: ");
         }
+        if (fieldBufferArrayCu != 0) {
+            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
+                    fieldBufferArrayCu, stream), "Error in cuMemFreeAsync: ");
+        }
         cachedCorrelationMemberCountDevice = size_t(cs);
         sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
                 &fieldTextureArrayCu, cs * sizeof(CUtexObject), stream), "Error in cuMemAllocAsync: ");
+        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
+                &fieldBufferArrayCu, cs * sizeof(CUdeviceptr), stream), "Error in cuMemAllocAsync: ");
     }
 
     sgl::vk::Swapchain* swapchain = sgl::AppSettings::get()->getSwapchain();
@@ -1249,27 +1514,44 @@ void CorrelationComputePass::computeCuda(
     }
     timelineValue++;
 
+    bool useImageArray = dataMode == CorrelationDataMode::IMAGE_3D_ARRAY;
     std::vector<VolumeData::DeviceCacheEntry> fieldEntries;
     std::vector<CUtexObject> fieldTexturesCu;
+    std::vector<CUdeviceptr> fieldBuffersCu;
     fieldEntries.reserve(cs);
-    fieldTexturesCu.reserve(cs);
+    if (useImageArray) {
+        fieldTexturesCu.reserve(cs);
+    } else {
+        fieldBuffersCu.reserve(cs);
+    }
     for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
         VolumeData::DeviceCacheEntry fieldEntry = correlationCalculator->getFieldEntryDevice(
-                fieldName, fieldIdx, timeStepIdx, ensembleIdx);
+                fieldName, fieldIdx, timeStepIdx, ensembleIdx, useImageArray);
         fieldEntries.push_back(fieldEntry);
-        fieldTexturesCu.push_back(fieldEntry->getCudaTexture());
-        if (fieldEntry->getVulkanImage()->getVkImageLayout() != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
-            deviceCacheEntry->getVulkanImage()->transitionImageLayout(
-                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, renderer->getVkCommandBuffer());
+        if (useImageArray) {
+            fieldTexturesCu.push_back(fieldEntry->getCudaTexture());
+            if (fieldEntry->getVulkanImage()->getVkImageLayout() != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+                deviceCacheEntry->getVulkanImage()->transitionImageLayout(
+                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, renderer->getVkCommandBuffer());
+            }
+        } else {
+            fieldBuffersCu.push_back(fieldEntry->getCudaBuffer());
         }
     }
 
-    if (cachedFieldTexturesCu != fieldTexturesCu) {
+    if (useImageArray && cachedFieldTexturesCu != fieldTexturesCu) {
         cachedFieldTexturesCu = fieldTexturesCu;
         sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
                 stream), "Error in cuStreamSynchronize: ");
         sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyHtoD(
                 fieldTextureArrayCu, fieldTexturesCu.data(), sizeof(CUtexObject) * cs), "Error in cuMemcpyHtoD: ");
+    }
+    if (!useImageArray && cachedFieldBuffersCu != fieldBuffersCu) {
+        cachedFieldBuffersCu = fieldBuffersCu;
+        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
+                stream), "Error in cuStreamSynchronize: ");
+        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyHtoD(
+                fieldBufferArrayCu, fieldBuffersCu.data(), sizeof(CUdeviceptr) * cs), "Error in cuMemcpyHtoD: ");
     }
 
     sgl::vk::CommandBufferPtr commandBufferRender = renderer->getCommandBuffer();
@@ -1290,6 +1572,14 @@ void CorrelationComputePass::computeCuda(
     preprocessorDefines.insert(std::make_pair(
             "MAX_STACK_SIZE_KN", std::to_string(maxBinaryTreeLevels)));
     preprocessorDefines.insert(std::make_pair("k", std::to_string(k)));
+    if (dataMode == CorrelationDataMode::IMAGE_3D_ARRAY) {
+        preprocessorDefines.insert(std::make_pair("USE_SCALAR_FIELD_IMAGES", ""));
+    } else if (useBufferTiling) {
+        preprocessorDefines.insert(std::make_pair("SUPPORT_TILING", ""));
+    }
+    if (useSeparateFields) {
+        preprocessorDefines.insert(std::make_pair("SEPARATE_REFERENCE_AND_QUERY_FIELDS", ""));
+    }
 
     if (!kernelCache || kernelCache->preprocessorDefines != preprocessorDefines) {
         if (kernelCache) {
@@ -1378,13 +1668,15 @@ void CorrelationComputePass::computeCuda(
     double factorCores = double(numCudaCoresRtx3090) / double(deviceCoresInfo.numCudaCoresEquivalent);
     auto batchCount = uint32_t(std::ceil(factorM * factorN * factorCores));
 
-    CUdeviceptr scalarFields = fieldTextureArrayCu;
+    CUdeviceptr scalarFields =
+            dataMode == CorrelationDataMode::IMAGE_3D_ARRAY ? fieldTextureArrayCu : fieldBufferArrayCu;
     CUdeviceptr miArray = outputImageBufferCu;
+    CUdeviceptr referenceValuesPtr = useSeparateFields ? referenceValuesCudaBuffer->getCudaDevicePtr() : 0;
     auto batchSize = uint32_t(M);
     if (batchCount == 1) {
         auto batchOffset = uint32_t(0);
         void* kernelParameters[] = {
-                &scalarFields, &miArray, &xs, &ys, &zs, &referencePointIndex.x,
+                &scalarFields, &referenceValuesPtr, &miArray, &xs, &ys, &zs, &referencePointIndex.x,
                 &batchOffset, &batchSize
         };
         sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuLaunchKernel(
@@ -1403,7 +1695,7 @@ void CorrelationComputePass::computeCuda(
                 batchSizeLocal = uint32_t(M) - batchSizeLocal;
             }
             void* kernelParameters[] = {
-                    &scalarFields, &miArray, &xs, &ys, &zs, &referencePointIndex.x,
+                    &scalarFields, &referenceValuesPtr, &miArray, &xs, &ys, &zs, &referencePointIndex.x,
                     &batchOffset, &batchSize
             };
             sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuLaunchKernel(
@@ -1449,24 +1741,70 @@ void SpearmanReferenceRankComputePass::setCorrelationMemberCount(int correlation
     setShaderDirty();
 }
 
+void SpearmanReferenceRankComputePass::setDataMode(CorrelationDataMode _dataMode) {
+    if (dataMode != _dataMode) {
+        dataMode = _dataMode;
+        setShaderDirty();
+    }
+}
+
+void SpearmanReferenceRankComputePass::setUseBufferTiling(bool _useBufferTiling) {
+    if (useBufferTiling != _useBufferTiling) {
+        useBufferTiling = _useBufferTiling;
+        setShaderDirty();
+    }
+}
+
+void SpearmanReferenceRankComputePass::setUseSeparateFields(bool _useSeparateFields) {
+    if (useSeparateFields != _useSeparateFields) {
+        useSeparateFields = _useSeparateFields;
+        setShaderDirty();
+    }
+}
+
+void SpearmanReferenceRankComputePass::setFieldBuffers(const std::vector<sgl::vk::BufferPtr>& _fieldBuffers) {
+    if (fieldBuffers == _fieldBuffers) {
+        return;
+    }
+    fieldBuffers = _fieldBuffers;
+    if (computeData) {
+        computeData->setStaticBufferArrayOptional(fieldBuffers, "ScalarFieldBuffers");
+    }
+}
+
 void SpearmanReferenceRankComputePass::setFieldImageViews(const std::vector<sgl::vk::ImageViewPtr>& _fieldImageViews) {
     if (fieldImageViews == _fieldImageViews) {
         return;
     }
     fieldImageViews = _fieldImageViews;
     if (computeData) {
-        computeData->setStaticImageViewArray(fieldImageViews, "scalarFields");
+        computeData->setStaticImageViewArrayOptional(fieldImageViews, "scalarFields");
+    }
+}
+
+void SpearmanReferenceRankComputePass::setReferenceValuesBuffer(const sgl::vk::BufferPtr& _referenceValuesBuffer) {
+    if (referenceValuesBuffer == _referenceValuesBuffer) {
+        return;
+    }
+    referenceValuesBuffer = _referenceValuesBuffer;
+    if (computeData) {
+        computeData->setStaticBufferOptional(referenceValuesBuffer, "ReferenceValuesBuffer");
     }
 }
 
 void SpearmanReferenceRankComputePass::loadShader() {
     sgl::vk::ShaderManager->invalidateShaderCache();
     std::map<std::string, std::string> preprocessorDefines;
-    preprocessorDefines.insert(std::make_pair("BLOCK_SIZE_X", std::to_string(computeBlockSizeX)));
-    preprocessorDefines.insert(std::make_pair("BLOCK_SIZE_Y", std::to_string(computeBlockSizeY)));
-    preprocessorDefines.insert(std::make_pair("BLOCK_SIZE_Z", std::to_string(computeBlockSizeZ)));
     preprocessorDefines.insert(std::make_pair(
             "MEMBER_COUNT", std::to_string(cachedCorrelationMemberCount)));
+    if (dataMode == CorrelationDataMode::IMAGE_3D_ARRAY) {
+        preprocessorDefines.insert(std::make_pair("USE_SCALAR_FIELD_IMAGES", ""));
+    } else if (useBufferTiling) {
+        preprocessorDefines.insert(std::make_pair("SUPPORT_TILING", ""));
+    }
+    if (useSeparateFields) {
+        preprocessorDefines.insert(std::make_pair("SEPARATE_REFERENCE_AND_QUERY_FIELDS", ""));
+    }
     shaderStages = sgl::vk::ShaderManager->getShaderStages(
             { "SpearmanRankCorrelation.Reference.Compute" }, preprocessorDefines);
 }
@@ -1474,15 +1812,18 @@ void SpearmanReferenceRankComputePass::loadShader() {
 void SpearmanReferenceRankComputePass::createComputeData(sgl::vk::Renderer* renderer, sgl::vk::ComputePipelinePtr& computePipeline) {
     computeData = std::make_shared<sgl::vk::ComputeData>(renderer, computePipeline);
     computeData->setStaticBuffer(uniformBuffer, "UniformBuffer");
-    computeData->setImageSampler(volumeData->getImageSampler(), "scalarFieldSampler");
-    computeData->setStaticImageViewArray(fieldImageViews, "scalarFields");
+    if (dataMode == CorrelationDataMode::IMAGE_3D_ARRAY) {
+        computeData->setImageSampler(volumeData->getImageSampler(), "scalarFieldSampler");
+        computeData->setStaticImageViewArray(fieldImageViews, "scalarFields");
+    } else {
+        computeData->setStaticBufferArray(fieldBuffers, "ScalarFieldBuffers");
+    }
+    if (useSeparateFields) {
+        computeData->setStaticBuffer(referenceValuesBuffer, "ReferenceValuesBuffer");
+    }
     computeData->setStaticBuffer(referenceRankBuffer, "ReferenceRankBuffer");
 }
 
 void SpearmanReferenceRankComputePass::_render() {
-    renderer->dispatch(
-            computeData,
-            sgl::iceil(volumeData->getGridSizeX(), computeBlockSizeX),
-            sgl::iceil(volumeData->getGridSizeY(), computeBlockSizeY),
-            sgl::iceil(volumeData->getGridSizeZ(), computeBlockSizeZ));
+    renderer->dispatch(computeData, 1, 1, 1);
 }

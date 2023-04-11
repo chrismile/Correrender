@@ -28,6 +28,11 @@
 
 #include <Utils/File/Logfile.hpp>
 
+#ifdef USE_TBB
+#include <tbb/parallel_for.h>
+#include <tbb/blocked_range.h>
+#endif
+
 #include "Loaders/half/half.h"
 #include "HostCacheEntry.hpp"
 
@@ -103,7 +108,7 @@ const float* HostCacheEntryType::getDataFloat() {
     if (!dataFloat && scalarDataFormatNative == ScalarDataFormat::BYTE) {
         dataFloat = new float[numEntries];
 #ifdef USE_TBB
-        tbb::parallel_for(tbb::blocked_range<size_t>(0, sizeInBytes), [&](auto const& r) {
+        tbb::parallel_for(tbb::blocked_range<size_t>(0, numEntries), [&](auto const& r) {
             for (auto i = r.begin(); i != r.end(); i++) {
 #else
 #if _OPENMP >= 201107
@@ -152,4 +157,20 @@ const float* HostCacheEntryType::getDataFloat() {
 #endif
     }
     return dataFloat;
+}
+
+float HostCacheEntryType::getDataFloatAt(size_t idx) {
+    if (dataFloat) {
+        return dataFloat[idx];
+    }
+    if (scalarDataFormatNative == ScalarDataFormat::BYTE) {
+        return float(dataByte[idx]) / 255.0f;
+    }
+    if (scalarDataFormatNative == ScalarDataFormat::SHORT) {
+        return float(dataShort[idx]) / 65535.0f;
+    }
+    if (scalarDataFormatNative == ScalarDataFormat::FLOAT16) {
+        return FLOAT16::ToFloat32(dataFloat16[idx]);
+    }
+    return 0.0f;
 }

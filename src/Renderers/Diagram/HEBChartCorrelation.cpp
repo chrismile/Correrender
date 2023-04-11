@@ -26,6 +26,8 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#define NOMINMAX
+
 #include <iostream>
 
 #ifdef _OPENMP
@@ -171,7 +173,7 @@ void HEBChart::computeCorrelationsMean(
             [&](tbb::blocked_range<int> const& r, std::vector<MIFieldEntry> miFieldEntriesThread) -> std::vector<MIFieldEntry> {
                 const CorrelationMeasureType cmt = correlationMeasureType;
                 CORRELATION_CACHE;
-                float minFieldValRef, maxFieldValRef, minFieldVal, maxFieldVal;
+                float minFieldValRef = 0.0f, maxFieldValRef = 0.0f, minFieldVal = 0.0f, maxFieldVal = 0.0f;
 
                 for (int i = r.begin(); i != r.end(); i++) {
 #else
@@ -184,7 +186,7 @@ void HEBChart::computeCorrelationsMean(
         const CorrelationMeasureType cmt = correlationMeasureType;
         std::vector<MIFieldEntry> miFieldEntriesThread;
         CORRELATION_CACHE;
-        float minFieldValRef, maxFieldValRef, minFieldVal, maxFieldVal;
+        float minFieldValRef = 0.0f, maxFieldValRef = 0.0f, minFieldVal = 0.0f, maxFieldVal = 0.0f;
 
 #if _OPENMP >= 201107
         #pragma omp for schedule(dynamic)
@@ -539,7 +541,7 @@ void HEBChart::correlationSamplingExecuteCpuBayesian(HEBChartFieldData* fieldDat
             BayOpt::Params::opt_nloptnograd::set_iterations(numBOIterations);
             switch(correlationType){
             case CorrelationMeasureType::PEARSON:
-                optimizer.optimize(BayOpt::Eval<BayOpt::PearsonFunctor>{fields, region_min, region_max, cs, xs, ys});
+                optimizer.optimize(BayOpt::Eval<BayOpt::PearsonFunctor>{fields, region_min, region_max, cs, xs, ys, BayOpt::PearsonFunctor()});
                 break;
             case CorrelationMeasureType::SPEARMAN:
                 optimizer.optimize(BayOpt::Eval<BayOpt::SpearmanFunctor>{fields, region_min, region_max, cs, xs, ys});
@@ -556,7 +558,7 @@ void HEBChart::correlationSamplingExecuteCpuBayesian(HEBChartFieldData* fieldDat
             default: assert(false && "Unimplemented Correlation measure type");
             }
 
-            float correlationValueMax = optimizer.best_observation()(0);
+            auto correlationValueMax = float(optimizer.best_observation()(0));
             if (correlationValueMax >= correlationRange.x && correlationValueMax <= correlationRange.y) {
                 miFieldEntriesThread[id].emplace_back(correlationValueMax, i, j);
             }
@@ -572,20 +574,37 @@ void HEBChart::correlationSamplingExecuteCpuBayesian(HEBChartFieldData* fieldDat
         miFieldEntries.insert(miFieldEntries.end(), fieldEntry.begin(), fieldEntry.end());
 }
 
+void HEBChart::clearFieldDeviceData() {
+    if (correlationComputePass) {
+        correlationComputePass->setFieldImageViews({});
+        correlationComputePass->setFieldBuffers({});
+    }
+}
+
 std::shared_ptr<HEBChartFieldCache> HEBChart::getFieldCache(HEBChartFieldData* fieldData) {
     int cs = getCorrelationMemberCount();
     auto fieldCache = std::make_shared<HEBChartFieldCache>();
     fieldCache->minFieldVal = std::numeric_limits<float>::max();
     fieldCache->maxFieldVal = std::numeric_limits<float>::lowest();
     fieldCache->fieldEntries.reserve(cs);
-    fieldCache->fieldImageViews.reserve(cs);
+    bool useImageArray = dataMode == CorrelationDataMode::IMAGE_3D_ARRAY;
+    if (useImageArray) {
+        fieldCache->fieldImageViews.reserve(cs);
+    } else {
+        fieldCache->fieldBuffers.reserve(cs);
+    }
     for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
-        VolumeData::DeviceCacheEntry fieldEntry = getFieldEntryDevice(fieldData->selectedScalarFieldName, fieldIdx);
+        VolumeData::DeviceCacheEntry fieldEntry = getFieldEntryDevice(
+                fieldData->selectedScalarFieldName, fieldIdx, useImageArray);
         fieldCache->fieldEntries.push_back(fieldEntry);
-        fieldCache->fieldImageViews.push_back(fieldEntry->getVulkanImageView());
-        if (fieldEntry->getVulkanImage()->getVkImageLayout() != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
-            fieldEntry->getVulkanImage()->transitionImageLayout(
-                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, computeRenderer->getVkCommandBuffer());
+        if (useImageArray) {
+            fieldCache->fieldImageViews.push_back(fieldEntry->getVulkanImageView());
+            if (fieldEntry->getVulkanImage()->getVkImageLayout() != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+                fieldEntry->getVulkanImage()->transitionImageLayout(
+                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, computeRenderer->getVkCommandBuffer());
+            }
+        } else {
+            fieldCache->fieldBuffers.push_back(fieldEntry->getVulkanBuffer());
         }
         if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
             auto [minVal, maxVal] = getMinMaxScalarFieldValue(fieldData->selectedScalarFieldName, fieldIdx);
@@ -609,7 +628,13 @@ sgl::vk::BufferPtr HEBChart::computeCorrelationsForRequests(
         correlationComputePass->setCorrelationMemberCount(cs);
         correlationComputePass->setNumBins(numBins);
         correlationComputePass->setKraskovNumNeighbors(k);
-        correlationComputePass->setFieldImageViews(fieldCache->fieldImageViews);
+        correlationComputePass->setDataMode(dataMode);
+        correlationComputePass->setUseBufferTiling(useBufferTiling);
+        if (dataMode == CorrelationDataMode::IMAGE_3D_ARRAY) {
+            correlationComputePass->setFieldImageViews(fieldCache->fieldImageViews);
+        } else {
+            correlationComputePass->setFieldBuffers(fieldCache->fieldBuffers);
+        }
         correlationComputePass->buildIfNecessary();
     }
 
@@ -622,8 +647,7 @@ sgl::vk::BufferPtr HEBChart::computeCorrelationsForRequests(
             requestsStagingBuffer);
     computeRenderer->pushConstants(
             correlationComputePass->getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, 0,
-            //glm::uvec2(batchSizeCells * uint32_t(numSamples), uint32_t(cs)));
-            glm::uvec2(requests.size(), uint32_t(cs)));
+            uint32_t(requests.size()));
     if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
         computeRenderer->pushConstants(
                 correlationComputePass->getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, 2 * sizeof(float),
@@ -651,7 +675,7 @@ void HEBChart::createBatchCacheData(uint32_t& batchSizeSamplesMax) {
     batchSizeSamplesMax = batchSizeSamplesMaxAllCs;
     if (cs > 100) {
         double factorN = double(cs) / 100.0 * std::log2(double(cs) / 100.0 + 1.0);
-        batchSizeSamplesMax = std::ceil(double(batchSizeSamplesMax) / factorN);
+        batchSizeSamplesMax = uint32_t(std::ceil(double(batchSizeSamplesMax) / factorN));
         batchSizeSamplesMax = uint32_t(sgl::nextPowerOfTwo(int(batchSizeSamplesMax)));
     }
 
@@ -697,10 +721,11 @@ void HEBChart::createBatchCacheData(uint32_t& batchSizeSamplesMax) {
 
 void HEBChart::computeCorrelationsSamplingGpu(
         HEBChartFieldData* fieldData, std::vector<MIFieldEntry>& miFieldEntries) {
-    if(samplingMethodType == SamplingMethodType::BAYESIAN_OPTIMIZATION)
+    if (samplingMethodType == SamplingMethodType::BAYESIAN_OPTIMIZATION) {
         correlationSamplingExecuteGpuBayesian(fieldData, miFieldEntries);
-    else
+    } else {
         correlationSamplingExecuteGpuDefault(fieldData, miFieldEntries);
+    }
 }
 
 void HEBChart::correlationSamplingExecuteGpuDefault(HEBChartFieldData* fieldData, std::vector<MIFieldEntry>& miFieldEntries){
@@ -747,7 +772,7 @@ void HEBChart::correlationSamplingExecuteGpuDefault(HEBChartFieldData* fieldData
 #ifdef USE_TBB
         requests = tbb::parallel_reduce(
             tbb::blocked_range<uint32_t>(cellIdxOffset, loopMax), std::vector<CorrelationRequestData>(),
-            [&](tbb::blocked_range<int> const& r, std::vector<CorrelationRequestData> requestsThread) -> std::vector<CorrelationRequestData> {
+            [&](tbb::blocked_range<uint32_t> const& r, std::vector<CorrelationRequestData> requestsThread) -> std::vector<CorrelationRequestData> {
                 for (int m = r.begin(); m != r.end(); m++) {
 #else
 #if _OPENMP >= 201107
@@ -846,9 +871,7 @@ void HEBChart::correlationSamplingExecuteGpuDefault(HEBChartFieldData* fieldData
             tbb::blocked_range<int>(0, numPairsDownsampled), std::vector<MIFieldEntry>(),
             [&](tbb::blocked_range<int> const& r, std::vector<MIFieldEntry> miFieldEntriesThread) -> std::vector<MIFieldEntry> {
                 const CorrelationMeasureType cmt = correlationMeasureType;
-                CORRELATION_CACHE;
-
-                for (int m = r.begin(); m != r.end(); m++) {
+                for (int cellIdx = r.begin(); cellIdx != r.end(); cellIdx++) {
 #else
         miFieldEntries.reserve(numPairsDownsampled);
 #if _OPENMP >= 201107
@@ -1030,7 +1053,7 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
             if(cur_thread_pair_count){
                 int sample_offset = thread_id * pairs_per_thread * numInitSamples * 6;
                 assert(sample_offset + cur_thread_pair_count * numInitSamples * 6 < samples.size());
-                generateSamples(samples.data() + sample_offset, numInitSamples * cur_thread_pair_count, SamplingMethodType::QUASIRANDOM_PLASTIC);
+                generateSamples(samples.data() + sample_offset, numInitSamples * cur_thread_pair_count, SamplingMethodType::RANDOM_UNIFORM);
                 auto corr_requ = generate_requests(samples.data() + sample_offset, global_pair_base_index, global_pair_base_index + cur_thread_pair_count, numInitSamples);
                 int request_offset = thread_id * pairs_per_thread * numInitSamples;
                 assert(request_offset + corr_requ.size() <= correlation_requests.size());
@@ -1118,7 +1141,7 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
         iterate = false;
         cur_pair_offset = base_pair_index;
         cur_pair_count = std::min<int>(numPairsDownsampled - base_pair_index, max_pairs_count);
-        pairs_per_thread = (cur_pair_count + threads.size() - 1) / threads.size();
+        pairs_per_thread = (cur_pair_count + int(threads.size()) - 1) / int(threads.size());
         optimizers = std::vector<model_t>(cur_pair_count);
         //std::cout << "Base pair: " << base_pair_index << " with max pair index: " << numPairsDownsampled << " , and " << bayOptIterationCount << " refinement iterations" << std::endl;
         // create, evaluate and add to meodels the initial samples -----------------------------------------------------------------------
@@ -1178,9 +1201,9 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
         start = end;
 
         // 7. Writing back the best results -------------------------------------------
-        for(int o: BayOpt::i_range(cur_pair_count)){
+        for (int o: BayOpt::i_range(cur_pair_count)){
             double max_val{std::numeric_limits<float>::lowest()};
-            for(int v: BayOpt::i_range(optimizers[o].observations_matrix().size()))
+            for (int v: BayOpt::i_range(int(optimizers[o].observations_matrix().size())))
                 max_val = std::max(max_val, optimizers[o].observations_matrix().data()[v]);
             
             uint32_t i, j, q = base_pair_index + o;
@@ -1298,8 +1321,8 @@ void HEBChart::computeAllCorrelationsBlockPair(uint32_t i, uint32_t j, std::vect
 #ifdef USE_TBB
         requests = tbb::parallel_reduce(
             tbb::blocked_range<uint32_t>(sampleIdxOffset, loopMax), std::vector<CorrelationRequestData>(),
-            [&](tbb::blocked_range<int> const& r, std::vector<CorrelationRequestData> requestsThread) -> std::vector<CorrelationRequestData> {
-                for (int m = r.begin(); m != r.end(); m++) {
+            [&](tbb::blocked_range<uint32_t> const& r, std::vector<CorrelationRequestData> requestsThread) -> std::vector<CorrelationRequestData> {
+                for (uint32_t m = r.begin(); m != r.end(); m++) {
 #else
 #if _OPENMP >= 201107
         #pragma omp parallel default(none) shared(requests, sampleIdxOffset, numPoints1, region0, region1, loopMax) \

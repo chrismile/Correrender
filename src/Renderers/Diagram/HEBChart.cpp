@@ -85,9 +85,10 @@ VolumeData::HostCacheEntry HEBChart::getFieldEntryCpu(const std::string& fieldNa
     return ensembleEntryField;
 }
 
-DeviceCacheEntry HEBChart::getFieldEntryDevice(const std::string& fieldName, int fieldIdx) {
+DeviceCacheEntry HEBChart::getFieldEntryDevice(const std::string& fieldName, int fieldIdx, bool wantsImageData) {
     VolumeData::DeviceCacheEntry ensembleEntryField = volumeData->getFieldEntryDevice(
-            FieldType::SCALAR, fieldName, isEnsembleMode ? -1 : fieldIdx, isEnsembleMode ? fieldIdx : -1);
+            FieldType::SCALAR, fieldName, isEnsembleMode ? -1 : fieldIdx, isEnsembleMode ? fieldIdx : -1,
+            wantsImageData, (!wantsImageData && useBufferTiling) ? glm::uvec3(8, 8, 4) : glm::uvec3(1, 1, 1));
     return ensembleEntryField;
 }
 
@@ -138,6 +139,7 @@ void HEBChart::addScalarField(int _selectedFieldIdx, const std::string& _scalarF
         fieldDataArray.push_back(fieldData);
     }
     computeColorLegendHeight();
+    clearFieldDeviceData();
     dataDirty = true;
 }
 
@@ -156,12 +158,16 @@ void HEBChart::removeScalarField(int _selectedFieldIdx, bool shiftIndicesBack) {
         i++;
     }
     computeColorLegendHeight();
+    clearFieldDeviceData();
     dataDirty = true;
 }
 
 void HEBChart::setIsEnsembleMode(bool _isEnsembleMode) {
-    isEnsembleMode = _isEnsembleMode;
-    dataDirty = true;
+    if (isEnsembleMode != _isEnsembleMode) {
+        isEnsembleMode = _isEnsembleMode;
+        dataDirty = true;
+        clearFieldDeviceData();
+    }
 }
 
 void HEBChart::setCorrelationMeasureType(CorrelationMeasureType _correlationMeasureType) {
@@ -229,6 +235,22 @@ void HEBChart::setUse2DField(bool _use2dField) {
 void HEBChart::setUseCorrelationComputationGpu(bool _useGpu) {
     useCorrelationComputationGpu = _useGpu;
     dataDirty = true;
+}
+
+void HEBChart::setDataMode(CorrelationDataMode _dataMode) {
+    if (dataMode != _dataMode) {
+        dataMode = _dataMode;
+        dataDirty = true;
+        clearFieldDeviceData();
+    }
+}
+
+void HEBChart::setUseBufferTiling(bool _useBufferTiling) {
+    if (useBufferTiling != _useBufferTiling) {
+        useBufferTiling = _useBufferTiling;
+        dataDirty = true;
+        clearFieldDeviceData();
+    }
 }
 
 void HEBChart::setShowVariablesForFieldIdxOnly(int _limitedFieldIdx) {
@@ -381,8 +403,8 @@ void HEBChart::computeDownscaledFieldVariance(HEBChartFieldData* fieldData, int 
     }
 
 #ifdef USE_TBB
-    tbb::parallel_for(tbb::blocked_range<int>(0, numPoints), [&](auto const& r) {
-            for (auto pointIdx = r.begin(); pointIdx != r.end(); pointIdx++) {
+    tbb::parallel_for(tbb::blocked_range<int>(0, numPoints), [&](auto const& reg) {
+            for (auto pointIdx = reg.begin(); pointIdx != reg.end(); pointIdx++) {
 #else
 #if _OPENMP >= 200805
     #pragma omp parallel for default(none) shared(fields, fieldData, pointToNodeIndexMap, xsd, ysd, zsd, r, numPoints, cs)
@@ -656,7 +678,7 @@ void HEBChart::updateData() {
         }
 
 #ifdef USE_TBB
-        tbb::parallel_for(tbb::blocked_range<int>(0, NUM_LINES), [&](auto const& r) {
+        tbb::parallel_for(tbb::blocked_range<int>(0, numLinesLocal), [&](auto const& r) {
             std::vector<glm::vec2> controlPoints;
             for (auto lineIdx = r.begin(); lineIdx != r.end(); lineIdx++) {
 #else

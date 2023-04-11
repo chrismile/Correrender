@@ -371,9 +371,37 @@ __device__ float findKNearestNeighbors(KdNode* nodes, float point[2], uint e) {
 }
 // ----------------------------------------------------------------------------------
 
+#ifdef SUPPORT_TILING
+#define TILE_SIZE_X 8
+#define TILE_SIZE_Y 8
+#define TILE_SIZE_Z 4
+__device__ inline uint IDXST(uint x, uint y, uint z, uint xs, uint ys, uint zs) {
+    uint xst = (xs - 1) / TILE_SIZE_X + 1;
+    uint yst = (ys - 1) / TILE_SIZE_Y + 1;
+    //uint zst = (zs - 1) / TILE_SIZE_Z + 1;
+    uint xt = x / TILE_SIZE_X;
+    uint yt = y / TILE_SIZE_Y;
+    uint zt = z / TILE_SIZE_Z;
+    uint tileAddressLinear = (xt + yt * xst + zt * xst * yst) * (TILE_SIZE_X * TILE_SIZE_Y * TILE_SIZE_Z);
+    uint vx = x & (TILE_SIZE_X - 1u);
+    uint vy = y & (TILE_SIZE_Y - 1u);
+    uint vz = z & (TILE_SIZE_Z - 1u);
+    uint voxelAddressLinear = vx + vy * TILE_SIZE_X + vz * TILE_SIZE_X * TILE_SIZE_Y;
+    return tileAddressLinear | voxelAddressLinear;
+}
+#define IDXS(x,y,z) IDXST(x, y, z, xs, ys, zs)
+#else
+#define IDXS(x,y,z) ((z)*xs*ys + (y)*xs + (x))
+#endif
 
 __global__ void mutualInformationKraskov(
-        cudaTextureObject_t* scalarFields, float* __restrict__ miArray,
+#ifdef USE_SCALAR_FIELD_IMAGES
+        cudaTextureObject_t* scalarFields,
+#else
+        const float** __restrict__ scalarFields,
+#endif
+        const float* __restrict__ referenceValuesOrig,
+        float* __restrict__ miArray,
         uint32_t xs, uint32_t ys, uint32_t zs, uint3 referencePointIdx,
         const uint32_t batchOffset, const uint32_t batchSize) {
     uint globalThreadIdx = blockIdx.x * blockDim.x + threadIdx.x + batchOffset;
@@ -399,27 +427,51 @@ __global__ void mutualInformationKraskov(
     rngState.z = 521288629u ^ seed;
 #endif
 
+#if !defined(USE_SCALAR_FIELD_IMAGES) && !defined(SEPARATE_REFERENCE_AND_QUERY_FIELDS)
+    uint referenceIdx = IDXS(referencePointIdx.x, referencePointIdx.y, referencePointIdx.z);
+#endif
+#if !defined(USE_SCALAR_FIELD_IMAGES)
+    uint queryIdx = IDXS(x, y, z);
+#endif
+
     float nanValue = 0.0;
     float referenceValue, queryValue;
     for (uint c = 0; c < MEMBER_COUNT; c++) {
+#ifdef SEPARATE_REFERENCE_AND_QUERY_FIELDS
+        referenceValue = referenceValuesOrig[c];
+#else
+#ifdef USE_SCALAR_FIELD_IMAGES
 #ifdef USE_NORMALIZED_COORDINATES
         referenceValue = tex3D<float>(
-                scalarFields[e],
+                scalarFields[c],
                 (float(referencePointIdx.x) + 0.5f) / float(xs),
                 (float(referencePointIdx.y) + 0.5f) / float(ys),
                 (float(referencePointIdx.z) + 0.5f) / float(zs));
-        queryValue = tex3D<float>(
-                scalarFields[e],
-                (float(x) + 0.5f) / float(xs),
-                (float(y) + 0.5f) / float(ys),
-                (float(z) + 0.5f) / float(zs));
 #else
         referenceValue = tex3D<float>(
                 scalarFields[c], float(referencePointIdx.x) + 0.5f,
                 float(referencePointIdx.y) + 0.5f, float(referencePointIdx.z) + 0.5f);
+#endif
+#else
+        referenceValue = scalarFields[c][referenceIdx];
+#endif
+#endif
+
+#ifdef USE_SCALAR_FIELD_IMAGES
+#ifdef USE_NORMALIZED_COORDINATES
+        queryValue = tex3D<float>(
+                scalarFields[c],
+                (float(x) + 0.5f) / float(xs),
+                (float(y) + 0.5f) / float(ys),
+                (float(z) + 0.5f) / float(zs));
+#else
         queryValue = tex3D<float>(
                 scalarFields[c], float(x) + 0.5f, float(y) + 0.5f, float(z) + 0.5f);
 #endif
+#else
+        queryValue = scalarFields[c][queryIdx];
+#endif
+
 #ifdef KRASKOV_USE_RANDOM_NOISE
         referenceValue += EPSILON_NOISE * getRandomFloatNorm(rngState);
         queryValue += EPSILON_NOISE * getRandomFloatNorm(rngState);

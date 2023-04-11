@@ -1705,7 +1705,7 @@ void HEBChart::drawColorLegends() {
         std::function<std::string(float)> labelMap;
         bool isEnsembleSpread = separateColorVarianceAndCorrelation && i == 0;
         if (isEnsembleSpread) {
-            variableName = "\u03C3"; //< sigma.
+            variableName = u8"\u03C3"; //< sigma.
             colorMap = [fieldDataArrayLocal](float t) {
                 return fieldDataArrayLocal.front()->evalColorMapVec4Variance(t, true);
             };
