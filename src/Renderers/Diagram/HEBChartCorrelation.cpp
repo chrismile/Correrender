@@ -960,6 +960,8 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
     std::vector<model_t> optimizers(max_pairs_count);
     auto setup_end = std::chrono::system_clock::now();
 
+    std::mutex cout_mut;
+
     int cur_pair_offset{};
     int cur_pair_count{};
     int pairs_per_thread{};
@@ -967,7 +969,7 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
     float* correlationValues{};
 
     auto generate_requests = [&](const float* sample_positions, int start_pair_index, int end_pair_index, int samples_per_pair){
-        std::vector<CorrelationRequestData> requests;
+        std::vector<CorrelationRequestData> requests(samples_per_pair);
         for(int q: BayOpt::i_range(start_pair_index, end_pair_index)){
             uint32_t i,j;
             if (isSubselection) {
@@ -1012,7 +1014,7 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData* fieldDat
                 request.xj = uint32_t(xj);
                 request.yj = uint32_t(yj);
                 request.zj = uint32_t(zj);
-                requests.emplace_back(request);
+                requests[sampleIdx] = request;
             }
         }
         return requests;
