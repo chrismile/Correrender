@@ -570,18 +570,20 @@ if ("SUPPORT_CUDA_INTEROP" IN_LIST SGL_INTERFACE_COMPILE_DEFINITIONS AND NOT MSY
     add_dependencies(${CMAKE_PROJECT_NAME} COMPILE_CUDA_MODULES)
 endif()
 
-# Include directories and link libraries for Limbo.
+# Eigen3 includes.
 if(VCPKG_TOOLCHAIN)
-    find_package(Eigen3 CONFIG QUIET)
+    find_package(Eigen3 CONFIG REQUIRED)
 else()
-    find_package(Eigen3 QUIET)
+    find_package(Eigen3 REQUIRED)
 endif()
-IF (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/limbo" AND Eigen3_FOUND)
-    if (NOT (EIGEN3_VERSION_STRING LESS 3.3))
-        target_link_libraries(Correrender PRIVATE Eigen3::Eigen)
-    else()
-        target_include_directories(Correrender PRIVATE ${EIGEN3_INCLUDE_DIR})
-    endif()
+if (NOT (EIGEN3_VERSION_STRING LESS 3.3))
+    target_link_libraries(Correrender PRIVATE Eigen3::Eigen)
+else()
+    target_include_directories(Correrender PRIVATE ${EIGEN3_INCLUDE_DIR})
+endif()
+
+# Include directories and link libraries for Limbo.
+if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/limbo" AND Eigen3_FOUND)
     target_include_directories(Correrender PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/third_party/limbo/src")
     if (VCPKG_TOOLCHAIN)
         find_package(NLopt CONFIG REQUIRED)
