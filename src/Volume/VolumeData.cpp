@@ -1286,6 +1286,15 @@ void VolumeData::getPreprocessorDefines(std::map<std::string, std::string>& prep
     preprocessorDefines.insert(std::make_pair("USE_MULTI_VAR_TRANSFER_FUNCTION", ""));
 }
 
+void VolumeData::setBaseFieldsDirty() {
+    dirty = true;
+    reRender = true;
+    auto numFieldsBase = int(typeToFieldNamesMapBase[FieldType::SCALAR].size());
+    for (int fieldIdx = 0; fieldIdx < numFieldsBase; fieldIdx++) {
+        multiVarTransferFunctionWindow.setAttributeDataDirty(fieldIdx);
+    }
+}
+
 void VolumeData::renderGui(sgl::PropertyEditor& propertyEditor) {
     if (propertyEditor.beginNode("Volume Data")) {
         propertyEditor.addText(
@@ -1293,14 +1302,12 @@ void VolumeData::renderGui(sgl::PropertyEditor& propertyEditor) {
         if (ts > 1 && propertyEditor.addSliderIntEdit(
                 "Time Step", &currentTimeStepIdx, 0, ts - 1) == ImGui::EditMode::INPUT_FINISHED) {
             currentTimeStepIdx = std::clamp(currentTimeStepIdx, 0, std::max(ts - 1, 0));
-            dirty = true;
-            reRender = true;
+            setBaseFieldsDirty();
         }
         if (es > 1 && propertyEditor.addSliderIntEdit(
                 "Ensemble Member", &currentEnsembleIdx, 0, es - 1) == ImGui::EditMode::INPUT_FINISHED) {
             currentEnsembleIdx = std::clamp(currentEnsembleIdx, 0, std::max(es - 1, 0));
-            dirty = true;
-            reRender = true;
+            setBaseFieldsDirty();
         }
         propertyEditor.addCheckbox("Render Color Legend", &shallRenderColorLegendWidgets);
         propertyEditor.endNode();

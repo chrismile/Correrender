@@ -306,6 +306,7 @@ protected:
     // Color legend widgets for different attributes.
     bool getIsTransferFunctionVisible(uint32_t viewIdx, uint32_t varIdx);
     void recomputeColorLegend();
+    void setBaseFieldsDirty();
     bool shallRenderColorLegendWidgets = true;
     std::vector<sgl::ColorLegendWidget> colorLegendWidgets;
     /// Keep track of transfer function use in renderers to display overlays in renderer.
