@@ -58,6 +58,7 @@ class VolumeData;
 typedef std::shared_ptr<VolumeData> VolumeDataPtr;
 class CorrelationComputePass;
 class HEBChart;
+class MultivariateGaussian;
 
 struct MIFieldEntry {
     float correlationValue;
@@ -218,6 +219,7 @@ public:
 
     // For performance tests.
     inline void setIsHeadlessMode(bool _isHeadlessMode)  { isHeadlessMode = _isHeadlessMode; }
+    void setSyntheticTestCase(const std::vector<std::pair<uint32_t, uint32_t>>& blockPairs);
 
     struct PerfStatistics {
         double elapsedTimeMicroseconds{};
@@ -320,6 +322,8 @@ private:
     // Performance/quality measurement code.
     bool isSubselection = false;
     std::vector<std::pair<uint32_t, uint32_t>> subselectionBlockPairs;
+    bool isSyntheticTestCase = false;
+    std::map<std::pair<int, int>, std::shared_ptr<MultivariateGaussian>> syntheticFieldsMap;
 
     // GPU computations.
     bool useCorrelationComputationGpu = true;

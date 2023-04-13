@@ -33,8 +33,8 @@
 #include "Sampling.hpp"
 
 /**
- * Generates a sequence of random samples uniformly distributed in [0, 1].
- * @param samples An array of numSamples * 6 random samples in [0, 1].
+ * Generates a sequence of random samples uniformly distributed in [0, 1).
+ * @param samples An array of numSamples * 6 random samples in [0, 1).
  * @param numSamples The number of samples.
  */
 void generateSamplesRandomUniform(float* samples, int numSamples) {
@@ -49,7 +49,7 @@ void generateSamplesRandomUniform(float* samples, int numSamples) {
 
 /**
  * For more details on this quasi-random sequence, please refer to: https://en.wikipedia.org/wiki/Halton_sequence
- * @param samples An array of numSamples * 6 quasi-random samples in [0, 1].
+ * @param samples An array of numSamples * 6 quasi-random samples in [0, 1).
  * @param numSamples The number of samples.
  */
 void generateSamplesQuasirandomHalton(float* samples, int numSamples) {
@@ -80,12 +80,20 @@ void generateSamplesQuasirandomHalton(float* samples, int numSamples) {
 /**
  * For more details on this quasi-random sequence, please refer to:
  * http://extremelearning.com.au/unreasonable-effectiveness-of-quasirandom-sequences/
- * @param samples An array of numSamples * 6 quasi-random samples in [0, 1].
+ * @param samples An array of numSamples * 6 quasi-random samples in [0, 1).
  * @param numSamples The number of samples.
+ * @param useRandomSeed Whether to use 0.5 as the seed or a random seed in [0, 1).
  */
-void generateSamplesQuasirandomPlastic(float* samples, int numSamples) {
+void generateSamplesQuasirandomPlastic(float* samples, int numSamples, bool useRandomSeed) {
+    double seed = 0.5f;
+    if  (useRandomSeed) {
+        std::random_device rd;
+        std::mt19937 generator(rd());
+        std::uniform_real_distribution<float> dis(0, 1);
+        seed = dis(generator);
+    }
+
     // Compute phi(6).
-    constexpr double seed = 0.5f;
     constexpr int d = 6;
     double g = 2.0;
     for (int i = 0; i < 10; i++) {
@@ -104,13 +112,14 @@ void generateSamplesQuasirandomPlastic(float* samples, int numSamples) {
     }
 }
 
-void generateSamples(float* samples, int numSamples, SamplingMethodType samplingMethodType) {
+void generateSamples(
+        float* samples, int numSamples, SamplingMethodType samplingMethodType, bool useRandomSeed) {
     if (samplingMethodType == SamplingMethodType::RANDOM_UNIFORM) {
         generateSamplesRandomUniform(samples, numSamples);
     } else if (samplingMethodType == SamplingMethodType::QUASIRANDOM_HALTON) {
         generateSamplesQuasirandomHalton(samples, numSamples);
     } else if (samplingMethodType == SamplingMethodType::QUASIRANDOM_PLASTIC) {
-        generateSamplesQuasirandomPlastic(samples, numSamples);
+        generateSamplesQuasirandomPlastic(samples, numSamples, useRandomSeed);
     } else {
         sgl::Logfile::get()->throwError("Error in generateSamples: Unsupported sampling method type.");
     }

@@ -104,9 +104,12 @@ void runTestCase(
 }
 
 void runSamplingTests(const std::string& dataSetPath, int testIdx) {
-    std::cout << "Starting test case #" << testIdx << "for data set '" << dataSetPath << "'." << std::endl;
+    std::cout << "Starting test case #" << testIdx << " for data set '" << dataSetPath << "'." << std::endl;
     sgl::vk::Device* device = sgl::AppSettings::get()->getPrimaryDevice();
     auto* renderer = new sgl::vk::Renderer(device, 100);
+
+    const bool modeGT = testIdx != 1;
+    bool isSyntheticTestCase = testIdx == 2;
 
     // Load the volume data set.
     VolumeDataPtr volumeData(new VolumeData(renderer));
@@ -123,8 +126,6 @@ void runSamplingTests(const std::string& dataSetPath, int testIdx) {
     int k = std::max(sgl::iceil(3 * cs, 100), 10);
     int numBins = 80;
 
-    const bool modeGT = testIdx == 0;
-
     // Settings.
     constexpr CorrelationMeasureType correlationMeasureType = CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV;
     const auto& fieldNames = volumeData->getFieldNamesBase(FieldType::SCALAR);
@@ -133,10 +134,10 @@ void runSamplingTests(const std::string& dataSetPath, int testIdx) {
     //constexpr int dfx = 10;
     //constexpr int dfy = 10;
     //constexpr int dfz = 10;
-    const int dfx = modeGT ? 10 : 32;
-    const int dfy = modeGT ? 10 : 32;
-    const int dfz = modeGT ? 10 : 20;
-    const int numRuns = modeGT ? 10 : 40;
+    const int dfx = testIdx == 0 ? 10 : 32;
+    const int dfy = testIdx == 0 ? 10 : 32;
+    const int dfz = testIdx == 0 ? 10 : (isSyntheticTestCase ? 32 : 20);
+    const int numRuns = testIdx == 0 ? 10 : 40;
     int numPairsToCheck = 1000;
     int numLogSteps = 3;
     std::vector<int> numSamplesArray;
@@ -201,6 +202,11 @@ void runSamplingTests(const std::string& dataSetPath, int testIdx) {
         }
         return x.second < y.second;
     });
+
+    if (isSyntheticTestCase) {
+        chart->setCorrelationRange(glm::vec2(std::numeric_limits<float>::lowest(), std::numeric_limits<float>::max()));
+        chart->setSyntheticTestCase(blockPairs);
+    }
 
     // Compute the ground truth.
     std::vector<std::vector<float>> allValuesSortedArray;
@@ -275,8 +281,15 @@ void runSamplingTests(const std::string& dataSetPath, int testIdx) {
     }
 
     // Run the tests and write the results to a file.
-    sgl::CsvWriter file(
-            std::string("Sampling ") + CORRELATION_MEASURE_TYPE_NAMES[int(correlationMeasureType)] + ".csv");
+    std::string csvFilename = "Sampling ";
+    if (isSyntheticTestCase) {
+        csvFilename += "Synthetic";
+    } else {
+        csvFilename += CORRELATION_MEASURE_TYPE_NAMES[int(correlationMeasureType)];
+    }
+    csvFilename += " " + std::to_string(dfx) + "x" + std::to_string(dfy) + "x" + std::to_string(dfz);
+    csvFilename += ".csv";
+    sgl::CsvWriter file(csvFilename);
     file.writeRow({ "Sampling Method", "Samples", "Time", "Quantile", "Linear", "Absolute", "Init Samples" });
     size_t firstMeanIdx = 0;
     for (size_t testCaseIdx = 0; testCaseIdx < testCases.size(); testCaseIdx++) {
