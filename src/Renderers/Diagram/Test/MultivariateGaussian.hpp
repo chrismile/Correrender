@@ -35,14 +35,16 @@ struct MultivariateGaussianCache;
 
 class MultivariateGaussian {
 public:
-    MultivariateGaussian(int xsd, int ysd, int zsd);
+    MultivariateGaussian(int dfx, int dfy, int dfz);
     ~MultivariateGaussian();
     void initRandom(std::mt19937& generator);
     float eval(int xi, int yi, int zi, int xj, int yj, int zj);
+    float eval(double* data);
+    std::pair<float, float> getGlobalMinMax();
 
 private:
     MultivariateGaussianCache* cache = nullptr;
-    int xsd, ysd, zsd;
+    int dfx, dfy, dfz;
 };
 
 #endif //CORRERENDER_MULTIVARIATEGAUSSIAN_HPP

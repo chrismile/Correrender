@@ -73,8 +73,8 @@ public:
             evictLast();
         }
 
-        constexpr bool failOnCacheExhausted = false;
-        if (cacheSize + bufferSize > cacheSizeMax && failOnCacheExhausted) {
+        constexpr bool failOnCacheExhaustion = false;
+        if (cacheSize + bufferSize > cacheSizeMax && failOnCacheExhaustion) {
             sgl::Logfile::get()->throwError(
                     "Fatal error in FieldCache::ensureSufficientMemory: "
                     "Not enough memory could be freed to store the data!");

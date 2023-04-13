@@ -31,7 +31,6 @@
 
 #include <Eigen/Core>
 #include <Eigen/LU>
-#include <Math/Math.hpp>
 
 #include "MultivariateGaussian.hpp"
 
@@ -41,7 +40,7 @@ struct MultivariateGaussianCache {
     Eigen::MatrixXd invCov;
 };
 
-MultivariateGaussian::MultivariateGaussian(int xsd, int ysd, int zsd) : xsd(xsd), ysd(ysd), zsd(zsd) {
+MultivariateGaussian::MultivariateGaussian(int dfx, int dfy, int dfz) : dfx(dfx), dfy(dfy), dfz(dfz) {
     cache = new MultivariateGaussianCache;
 }
 
@@ -59,8 +58,9 @@ static Eigen::VectorXd proj(const Eigen::VectorXd& u, const Eigen::VectorXd& v) 
 }
 
 void MultivariateGaussian::initRandom(std::mt19937& generator) {
-    constexpr double domainOffset = 0.25;
+    constexpr double domainOffset = 0.0; // TODO: Max may lie outside domain if this is > 0.
     std::uniform_real_distribution<double> dm(-domainOffset, 1.0 + domainOffset);
+    cache->mean = Eigen::VectorXd(6);
     cache->mean << dm(generator), dm(generator), dm(generator), dm(generator), dm(generator), dm(generator);
 
     // Use Gram-Schmidt to sample orthogonal random vectors.
@@ -78,7 +78,7 @@ void MultivariateGaussian::initRandom(std::mt19937& generator) {
 
     // Compute the covariance matrix with randomly generated eigenvectors.
     Eigen::DiagonalMatrix<double, 6> E;
-    std::uniform_real_distribution<double> dev(0.01, 0.5);
+    std::uniform_real_distribution<double> dev(0.1, 0.5);
     E.diagonal() << dev(generator), dev(generator), dev(generator), dev(generator), dev(generator), dev(generator);
     Eigen::MatrixXd cov = Q * E * Q.transpose();
 
@@ -89,8 +89,34 @@ void MultivariateGaussian::initRandom(std::mt19937& generator) {
 
 float MultivariateGaussian::eval(int xi, int yi, int zi, int xj, int yj, int zj) {
     Eigen::VectorXd x(6);
-    x << double(xi) / double(xsd - 1), double(yi) / double(ysd - 1), double(zi) / double(zsd - 1),
-            double(xj) / double(xsd - 1), double(yj) / double(ysd - 1), double(zj) / double(zsd - 1);
+    x << double(xi) / double(dfx - 1), double(yi) / double(dfy - 1), double(zi) / double(dfz - 1),
+            double(xj) / double(dfx - 1), double(yj) / double(dfy - 1), double(zj) / double(dfz - 1);
     auto diff = x - cache->mean;
-    return float(std::exp(-0.5 * diff.dot(cache->invCov * diff)) * cache->normFactor);
+    auto value = float(std::exp(-0.5 * diff.dot(cache->invCov * diff)) * cache->normFactor);
+    return value;
+}
+
+float MultivariateGaussian::eval(double* data) {
+    Eigen::VectorXd x(6);
+    x << data[0], data[1], data[2], data[3], data[4], data[5];
+    auto diff = x - cache->mean;
+    auto value = float(std::exp(-0.5 * diff.dot(cache->invCov * diff)) * cache->normFactor);
+    return value;
+}
+
+std::pair<float, float> MultivariateGaussian::getGlobalMinMax() {
+    // Compute maximum.
+    float maxVal = eval(cache->mean.data());
+
+    // Compute minimum.
+    float minVal = std::numeric_limits<float>::max();
+    Eigen::VectorXd cornerPoint(6);
+    for (int cornerIdx = 0; cornerIdx < (1 << 6); cornerIdx++) {
+        for (int i = 0; i < 6; i++) {
+            cornerPoint(i) = ((cornerIdx >> i) & 0x1) == 0 ? 0.0 : 1.0;
+        }
+        minVal = std::min(minVal, eval(cornerPoint.data()));
+    }
+
+    return std::make_pair(minVal, maxVal);
 }

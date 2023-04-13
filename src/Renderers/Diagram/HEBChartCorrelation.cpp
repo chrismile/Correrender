@@ -47,6 +47,7 @@
 #include "Calculators/Correlation.hpp"
 #include "Calculators/CorrelationCalculator.hpp"
 #include "Calculators/MutualInformation.hpp"
+#include "Test/MultivariateGaussian.hpp"
 #include "HEBChart.hpp"
 #include "BayOpt.hpp"
 
@@ -396,19 +397,18 @@ void HEBChart::computeCorrelationsSamplingCpu(
         correlationSamplingExecuteCpuDefault(fieldData, miFieldEntries, fields, minFieldVal, maxFieldVal);
 }
 
-void HEBChart::correlationSamplingExecuteCpuDefault(HEBChartFieldData *fieldData, std::vector<MIFieldEntry> &miFieldEntries, const std::vector<const float *> &fields, float minFieldVal, float maxFieldVal)
-{
-
+void HEBChart::correlationSamplingExecuteCpuDefault(HEBChartFieldData* fieldData, std::vector<MIFieldEntry>& miFieldEntries, const std::vector<const float*>& fields, float minFieldVal, float maxFieldVal){
     const int cs = getCorrelationMemberCount();
     const int numPoints0 = xsd0 * ysd0 * zsd0;
     const int numPoints1 = xsd1 * ysd1 * zsd1;
     int numPairsDownsampled;
-    if (isSubselection)
+    if (isSubselection) {
         numPairsDownsampled = int(subselectionBlockPairs.size());
-    else
+    } else {
         numPairsDownsampled = regionsEqual ? (numPoints0 * numPoints0 - numPoints0) / 2 : numPoints0 * numPoints1;
+    }
     std::vector<float> samples(6 * numSamples);
-    generateSamples(samples.data(), numSamples, samplingMethodType);
+    generateSamples(samples.data(), numSamples, samplingMethodType, isSubselection);
 
 #ifdef USE_TBB
     miFieldEntries = tbb::parallel_reduce(
@@ -728,16 +728,41 @@ std::shared_ptr<HEBChartFieldCache> HEBChart::getFieldCache(HEBChartFieldData *f
     return fieldCache;
 }
 
+void HEBChart::setSyntheticTestCase(const std::vector<std::pair<uint32_t, uint32_t>>& blockPairs) {
+    isSyntheticTestCase = true;
+    std::mt19937 generator(17);
+    for (const auto& blockPair : blockPairs) {
+        auto data = std::make_shared<MultivariateGaussian>(dfx, dfy, dfz);
+        data->initRandom(generator);
+        syntheticFieldsMap.insert(std::make_pair(std::make_pair(blockPair.first, blockPair.second), data));
+    }
+}
+
 sgl::vk::BufferPtr HEBChart::computeCorrelationsForRequests(
-    std::vector<CorrelationRequestData> &requests,
-    std::shared_ptr<HEBChartFieldCache> &fieldCache, bool isFirstBatch)
-{
-    int cs = getCorrelationMemberCount();
+        std::vector<CorrelationRequestData>& requests,
+        std::shared_ptr<HEBChartFieldCache>& fieldCache, bool isFirstBatch) {
+    if (isSyntheticTestCase) {
+        auto* values = static_cast<float*>(correlationOutputStagingBuffer->mapMemory());
+        int requestIdx = 0;
+        for (const auto& request : requests) {
+            auto it = syntheticFieldsMap.find(std::make_pair(request.i, request.j));
+            if (it == syntheticFieldsMap.end()) {
+                sgl::Logfile::get()->throwError(
+                        "Error in HEBChart::computeAllCorrelationsBlockPair: Invalid block pair.");
+            }
+            values[requestIdx] = it->second->eval(
+                    int(request.xi) % dfx, int(request.yi) % dfy, int(request.zi) % dfz,
+                    int(request.xj) % dfx, int(request.yj) % dfy, int(request.zj) % dfz);
+            requestIdx++;
+        }
+        correlationOutputStagingBuffer->unmapMemory();
+        return correlationOutputStagingBuffer;
+    }
 
     computeRenderer->setCustomCommandBuffer(commandBuffer, false);
     computeRenderer->beginCommandBuffer();
-    if (isFirstBatch)
-    {
+    if (isFirstBatch) {
+        int cs = getCorrelationMemberCount();
         correlationComputePass->setCorrelationMeasureType(correlationMeasureType);
         correlationComputePass->setVolumeData(volumeData.get(), cs, false);
         correlationComputePass->setCorrelationMemberCount(cs);
@@ -873,7 +898,7 @@ void HEBChart::correlationSamplingExecuteGpuDefault(HEBChartFieldData *fieldData
     }
 
     std::vector<float> samples(6 * numSamples);
-    generateSamples(samples.data(), numSamples, samplingMethodType);
+    generateSamples(samples.data(), numSamples, samplingMethodType, isSubselection);
 
     uint32_t batchSizeSamplesMax{};
     createBatchCacheData(batchSizeSamplesMax);
@@ -1239,10 +1264,9 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData *fieldDat
             samples_pos[correlation_request_worker()].resize(6 * numInitSamples * cur_thread_pair_count);
             samples_pos[correlation_request_main].resize(6 * cur_thread_pair_count);
             // creating initial sample positions
-            if (cur_thread_pair_count)
-            {
+            if (cur_thread_pair_count){
                 assert(samples_pos[correlation_request_worker()].size() == 6 * numInitSamples * cur_thread_pair_count);
-                generateSamples(samples_pos[correlation_request_worker()].data(), numInitSamples * cur_thread_pair_count, SamplingMethodType::RANDOM_UNIFORM);
+                generateSamples(samples_pos[correlation_request_worker()].data(), numInitSamples * cur_thread_pair_count, SamplingMethodType::RANDOM_UNIFORM, false);
                 auto corr_requ = generate_requests(samples_pos[correlation_request_worker()].data(), global_pair_base_index, global_pair_base_index + cur_thread_pair_count, numInitSamples);
                 int request_offset = thread_id * pairs_per_thread * numInitSamples;
                 assert(request_offset + corr_requ.size() <= correlation_requests[correlation_request_worker()].size());
@@ -1268,7 +1292,7 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData *fieldDat
                 // Drawing new samples from the model and creating the requests for the samples
                 if(i < bayOptIterationCount){
                     if(i == 0)
-                        generateSamples(samples_pos[correlation_request_worker()].data(), cur_thread_pair_count, SamplingMethodType::RANDOM_UNIFORM);
+                        generateSamples(samples_pos[correlation_request_worker()].data(), cur_thread_pair_count, SamplingMethodType::RANDOM_UNIFORM, false);
                     else{
                         for (int o : BayOpt::i_range(cur_thread_pair_count))
                         {
@@ -1497,8 +1521,19 @@ HEBChart::PerfStatistics HEBChart::computeCorrelationsBlockPairs(
     return statistics;
 }
 
-void HEBChart::computeAllCorrelationsBlockPair(uint32_t i, uint32_t j, std::vector<float> &allValues)
-{
+void HEBChart::computeAllCorrelationsBlockPair(uint32_t i, uint32_t j, std::vector<float>& allValues) {
+    if (isSyntheticTestCase) {
+        auto it = syntheticFieldsMap.find(std::make_pair(int(i), int(j)));
+        if (it == syntheticFieldsMap.end()) {
+            sgl::Logfile::get()->throwError(
+                    "Error in HEBChart::computeAllCorrelationsBlockPair: Invalid block pair.");
+        }
+        auto minMaxVal = it->second->getGlobalMinMax();
+        allValues.push_back(minMaxVal.first);
+        allValues.push_back(minMaxVal.second);
+        return;
+    }
+
     uint32_t batchSizeSamplesMax;
     createBatchCacheData(batchSizeSamplesMax);
 

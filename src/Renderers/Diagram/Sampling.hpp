@@ -37,6 +37,7 @@ const char* const SAMPLING_METHOD_TYPE_NAMES[] = {
         "Mean", "Random Uniform", "Quasirandom Halton", "Quasirandom Plastic", "Bayesian Optimization"
 };
 
-void generateSamples(float* samples, int numSamples, SamplingMethodType samplingMethodType);
+void generateSamples(
+        float* samples, int numSamples, SamplingMethodType samplingMethodType, bool useRandomSeed);
 
 #endif //CORRERENDER_SAMPLING_HPP
