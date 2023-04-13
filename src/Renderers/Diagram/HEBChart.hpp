@@ -60,9 +60,10 @@ class CorrelationComputePass;
 class HEBChart;
 
 struct MIFieldEntry {
-    float correlationValue;
-    uint32_t pointIndex0, pointIndex1;
+    float correlationValue{};
+    uint32_t pointIndex0{}, pointIndex1{};
 
+    MIFieldEntry() = default;
     MIFieldEntry(float correlationValue, uint32_t pointIndex0, uint32_t pointIndex1)
             : correlationValue(correlationValue), pointIndex0(pointIndex0), pointIndex1(pointIndex1) {}
     bool operator<(const MIFieldEntry& rhs) const { return correlationValue > rhs.correlationValue; }
