@@ -105,12 +105,42 @@ float MultivariateGaussian::eval(double* data) {
 }
 
 std::pair<float, float> MultivariateGaussian::getGlobalMinMax() {
+    Eigen::VectorXd cornerPoint(6);
+
     // Compute maximum.
-    float maxVal = eval(cache->mean.data());
+    //float maxVal = eval(cache->mean.data());
+    double posGridLower[6];
+    double posGridUpper[6];
+    for (int i = 0; i < 6; i++) {
+        int df = 0;
+        switch(i % 3) {
+            case 0:
+            case 3:
+                df = dfx;
+                break;
+            case 1:
+            case 4:
+                df = dfy;
+                break;
+            case 2:
+            case 5:
+                df = dfz;
+                break;
+        }
+        double posGrid = cache->mean(i) * double(df - 1);
+        posGridLower[i] = std::floor(posGrid) / double(df - 1);
+        posGridUpper[i] = std::ceil(posGrid) / double(df - 1);
+    }
+    float maxVal = std::numeric_limits<float>::lowest();
+    for (int cornerIdx = 0; cornerIdx < (1 << 6); cornerIdx++) {
+        for (int i = 0; i < 6; i++) {
+            cornerPoint(i) = ((cornerIdx >> i) & 0x1) == 0 ? posGridLower[i] : posGridUpper[i];
+        }
+        maxVal = std::max(maxVal, eval(cornerPoint.data()));
+    }
 
     // Compute minimum.
     float minVal = std::numeric_limits<float>::max();
-    Eigen::VectorXd cornerPoint(6);
     for (int cornerIdx = 0; cornerIdx < (1 << 6); cornerIdx++) {
         for (int i = 0; i < 6; i++) {
             cornerPoint(i) = ((cornerIdx >> i) & 0x1) == 0 ? 0.0 : 1.0;

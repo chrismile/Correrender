@@ -155,7 +155,7 @@ void runSamplingTests(const std::string& dataSetPath, int testIdx) {
     //if (numLogSteps == 2) {
     //    numSamplesArray.push_back(200);
     //}
-    bool computeMean = true;
+    bool computeMean = !isSyntheticTestCase;
     bool runTestsOptimizers = false;
     bool computeGroundTruth = modeGT;
 
