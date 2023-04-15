@@ -789,8 +789,7 @@ sgl::vk::BufferPtr HEBChart::computeCorrelationsForRequests(
         VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
         requestsStagingBuffer);
     computeRenderer->pushConstants(
-        correlationComputePass->getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, 0,
-        uint32_t(requests.size()));
+            correlationComputePass->getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, 0, uint32_t(requests.size()));
     if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED)
     {
         computeRenderer->pushConstants(
@@ -1397,6 +1396,7 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData *fieldDat
     auto thread_end = std::chrono::system_clock::now();
     thread_time = std::chrono::duration<double>(thread_end - thread_start).count();
 
+    bool isFirstBatch = true;
     miFieldEntries.resize(numPairsDownsampled);
     for (int base_pair_index : BayOpt::i_range<int>(0, numPairsDownsampled, max_pairs_count))
     {
@@ -1406,8 +1406,8 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData *fieldDat
         pairs_per_thread = (cur_pair_count + int(threads.size()) - 1) / int(threads.size());
         optimizers = std::vector<model_t>(cur_pair_count);
         //std::cout << "Base pair: " << base_pair_index << " with max pair index: " << numPairsDownsampled << " , and " << bayOptIterationCount << " refinement iterations" << std::endl;
-        // create, evaluate and add to meodels the initial samples -----------------------------------------------------------------------
-        correlation_requests[0].resize(cur_pair_count);
+        // create, evaluate and add the initial samples to models -----------------------------------------------------------------------
+        correlation_requests[0].resize(cur_pair_count * numInitSamples);
         correlation_requests[1].resize(cur_pair_count * numInitSamples);
         // filling the back buffer of the correlation requests
         // this is stage 1, only workers run
@@ -1421,7 +1421,7 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData *fieldDat
 
         auto start = std::chrono::system_clock::now();
         auto end = start;
-        // iteratively generating new good samples. Generation of sample positoins is done multi threaded -------------------
+        // iteratively generating new good samples. Generation of sample positions is done multi threaded -------------------
         iterate = bayOptIterationCount;
         for (int i : BayOpt::i_range(bayOptIterationCount + 1))
         {
@@ -1431,7 +1431,9 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData *fieldDat
             //          worker add samples from the correlationValues to their model and creates a new sample after addition
 
             // evaluating the requests and updating the models
-            auto outputBuffer = computeCorrelationsForRequests(correlation_requests[correlation_request_main], fieldCache, false);
+            auto outputBuffer = computeCorrelationsForRequests(
+                    correlation_requests[correlation_request_main], fieldCache, isFirstBatch);
+            isFirstBatch = false;
             auto vals = static_cast<float *>(outputBuffer->mapMemory());
             correlationValues[correlation_request_main] = std::vector(vals, vals + cur_pair_count * samples);
             outputBuffer->unmapMemory();
