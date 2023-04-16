@@ -58,9 +58,10 @@ else()
     set(DEFAULT_USE_TBB OFF)
 endif()
 
-option(USE_PYTHON "Build with Python 3 support for replay scripts." ON)
-option(USE_TBB "Build with TBB threading support instead of using OpenMP." ${DEFAULT_USE_TBB})
 option(USE_STATIC_STD_LIBRARIES "Link with standard libraries statically (only supported on Linux for now)." OFF)
+option(USE_GLIBCXX_DEBUG "Use the -D_GLIBCXX_DEBUG flag when compiling with GCC." OFF)
+option(USE_TBB "Build with TBB threading support instead of using OpenMP." ${DEFAULT_USE_TBB})
+option(USE_PYTHON "Build with Python 3 support for replay scripts." ON)
 option(SUPPORT_PYTORCH "Build the PyTorch correlation calculator module." ON)
 option(SUPPORT_TINY_CUDA_NN "Build the tiny-cuda-nn correlation calculator module." ON)
 option(SUPPORT_QUICK_MLP "Build the QuickMLP correlation calculator module." ON)
@@ -80,6 +81,10 @@ if (MSYS)
     set(SUPPORT_QUICK_MLP OFF)
 endif()
 
+
+if((MSYS OR (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")) AND ${USE_GLIBCXX_DEBUG})
+    add_compile_definitions(_GLIBCXX_DEBUG)
+endif()
 
 if (USE_PYTHON)
     if (${CMAKE_VERSION} VERSION_GREATER "3.11")
@@ -233,7 +238,7 @@ else()
     add_executable(Correrender ${SOURCES} ${CUDA_SOURCES})
 endif()
 
-if(${USE_STATIC_STD_LIBRARIES})
+if((MSYS OR (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")) AND ${USE_STATIC_STD_LIBRARIES})
     target_link_options(Correrender PRIVATE -static-libgcc -static-libstdc++)
 endif()
 

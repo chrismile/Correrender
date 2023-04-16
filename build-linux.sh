@@ -33,24 +33,9 @@ PROJECTPATH="$SCRIPTPATH"
 pushd $SCRIPTPATH > /dev/null
 
 debug=false
-
-if (($# > 0)); then
-    command_line=$1
-    if [ "$command_line" = "debug" ]; then
-        debug=true
-    fi
-fi
-
+glibcxx_debug=false
 build_dir_debug=".build_debug"
 build_dir_release=".build_release"
-if [ $debug = true ]; then
-    cmake_config="Debug"
-    build_dir=$build_dir_debug
-else
-    cmake_config="Release"
-    build_dir=$build_dir_release
-fi
-destination_dir="Shipping"
 build_with_zarr_support=true
 build_with_cuda_support=true
 build_with_skia_support=true
@@ -61,10 +46,25 @@ build_with_vkvg_support=true
 custom_glslang=false
 for ((i=1;i<=$#;i++));
 do
+    if [ ${!i} = "--debug" ] || [ ${!i} = "debug" ]; then
+        debug=true
+    fi
+    if [ ${!i} = "--glibcxx-debug" ]; then
+        glibcxx_debug=true
+    fi
     if [ ${!i} = "--custom-glslang" ]; then
         custom_glslang=true
     fi
 done
+
+if [ $debug = true ]; then
+    cmake_config="Debug"
+    build_dir=$build_dir_debug
+else
+    cmake_config="Release"
+    build_dir=$build_dir_release
+fi
+destination_dir="Shipping"
 
 is_installed_apt() {
     local pkg_name="$1"
@@ -310,6 +310,12 @@ if [[ ! -v VULKAN_SDK ]]; then
 fi
 
 params_sgl=()
+params=()
+
+if $glibcxx_debug; then
+    params_sgl+=(-DUSE_GLIBCXX_DEBUG=On)
+    params+=(-DUSE_GLIBCXX_DEBUG=On)
+fi
 
 if $custom_glslang; then
     if [ ! -d "./glslang" ]; then
@@ -385,8 +391,6 @@ if [ ! -d "./sgl/install" ]; then
 
     popd >/dev/null
 fi
-
-params=()
 
 if $build_with_zarr_support; then
     if [ ! -d "./xtl" ]; then
