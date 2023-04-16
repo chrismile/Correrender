@@ -68,6 +68,7 @@ typedef std::shared_ptr<VolumeData> VolumeDataPtr;
 class DataView;
 typedef std::shared_ptr<DataView> DataViewPtr;
 class ViewManager;
+class TFOptimization;
 
 class MainApp : public sgl::SciVisApp {
 public:
@@ -143,6 +144,7 @@ private:
     void openExportFieldFileDialog();
     int selectedFieldIndexExport = 0;
     std::string exportFieldFileDialogDirectory;
+    TFOptimization* tfOptimization = nullptr;
 
     // For making performance measurements.
     AutomaticPerformanceMeasurer* performanceMeasurer = nullptr;

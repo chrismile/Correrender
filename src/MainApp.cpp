@@ -80,6 +80,7 @@
 #include "Renderers/SliceRenderer.hpp"
 #include "Renderers/Diagram/DiagramRenderer.hpp"
 #include "Utils/AutomaticPerformanceMeasurer.hpp"
+#include "Optimization/TFOptimization.hpp"
 
 #include "Widgets/ViewManager.hpp"
 #include "Widgets/DataView.hpp"
@@ -401,6 +402,8 @@ MainApp::MainApp()
                 [this](const InternalState &newState) { this->setNewState(newState); });
     }
 
+    tfOptimization = new TFOptimization;
+
 #ifdef __linux__
     signal(SIGSEGV, signalHandler);
 #endif
@@ -415,6 +418,7 @@ MainApp::~MainApp() {
         performanceMeasurer = nullptr;
     }
 
+    delete tfOptimization;
     volumeRenderers = {};
     volumeData = {};
     dataViews.clear();
@@ -1425,6 +1429,7 @@ void MainApp::openExportFieldFileDialog() {
 
 void MainApp::renderGuiMenuBar() {
     bool openExportFieldDialog = false;
+    bool openOptimizeTFDialog = false;
     if (ImGui::BeginMainMenuBar()) {
         if (ImGui::BeginMenu("File")) {
             if (ImGui::MenuItem("Open Dataset...", "CTRL+O")) {
@@ -1527,6 +1532,10 @@ void MainApp::renderGuiMenuBar() {
             if (volumeData && ImGui::MenuItem("Export Field...")) {
                 openExportFieldDialog = true;
             }
+            if (volumeData && ImGui::MenuItem("Optimize Transfer Function...")) {
+                openOptimizeTFDialog = true;
+            }
+
             if (ImGui::MenuItem("Print Camera State")) {
                 std::cout << "Position: (" << camera->getPosition().x << ", " << camera->getPosition().y
                           << ", " << camera->getPosition().z << ")" << std::endl;
@@ -1562,10 +1571,12 @@ void MainApp::renderGuiMenuBar() {
     if (openExportFieldDialog) {
         ImGui::OpenPopup("Export Field");
     }
-
     if (ImGui::BeginPopupModal("Export Field", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
         auto fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
-        ImGui::Combo("Field Name", &selectedFieldIndexExport, fieldNames.data(), int(fieldNames.size()));
+        selectedFieldIndexExport = std::min(selectedFieldIndexExport, int(fieldNames.size()) - 1);
+        ImGui::Combo(
+                "Field Name", &selectedFieldIndexExport,
+                fieldNames.data(), int(fieldNames.size()));
         if (ImGui::Button("OK", ImVec2(120, 0))) {
             ImGui::CloseCurrentPopup();
             openExportFieldFileDialog();
@@ -1577,6 +1588,11 @@ void MainApp::renderGuiMenuBar() {
         }
         ImGui::EndPopup();
     }
+
+    if (openOptimizeTFDialog) {
+        tfOptimization->openDialog();
+    }
+    tfOptimization->renderGuiDialog();
 }
 
 void MainApp::renderGuiPropertyEditorBegin() {
@@ -2023,6 +2039,9 @@ void MainApp::reloadDataSet() {
 }
 
 void MainApp::prepareVisualizationPipeline() {
+    if (volumeData && volumeData->isDirty()) {
+        tfOptimization->setVolumeData(volumeData.get(), newDataLoaded);
+    }
     if (volumeData && !volumeRenderers.empty()) {
         bool isPreviousNodeDirty = volumeData->isDirty();
         for (auto& volumeRenderer : volumeRenderers) {
