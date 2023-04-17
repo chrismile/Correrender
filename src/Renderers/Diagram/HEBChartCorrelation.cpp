@@ -1164,7 +1164,7 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData *fieldDat
     //uint32_t numBatches = sgl::uiceil(uint32_t(numPairsDownsampled), max_pairs_count);
 
     auto fieldCache = getFieldCache(fieldData);
-    std::vector<std::thread> threads(std::thread::hardware_concurrency() - 2);
+    std::vector<std::thread> threads(std::thread::hardware_concurrency());
     std::vector<CorrelationRequestData> correlation_requests[2]; // front and back buffer for correlation requests to allow staggered evaluation
     std::atomic<int> correlation_request_main{};                 // int to indicate on which requests the main thread works on
     auto correlation_request_worker = [&correlation_request_main]()
