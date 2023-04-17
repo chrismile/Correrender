@@ -1467,7 +1467,7 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData *fieldDat
 
     auto function_end = std::chrono::system_clock::now();
     if (!isHeadlessMode)
-        std::cout << "BayOpt details: sample_gen_time[" << sample_gen_time << "s] sample_eval_time[" << sample_gpu_calc_time << "s] threading_overhead[" << thread_time << "s] setup_time[" << setup_time << "s]  Total time: " << std::chrono::duration<double>(function_end - function_start).count() << "s" << std::endl;
+        std::cout << "BayOpt details: sample_gen_time[" << sample_gen_time / threads.size() << "s] sample_eval_time[" << sample_gpu_calc_time << "s] threading_overhead[" << thread_time << "s] setup_time[" << setup_time << "s]  Total time: " << std::chrono::duration<double>(function_end - function_start).count() << "s" << std::endl;
 }
 
 HEBChart::PerfStatistics HEBChart::computeCorrelationsBlockPairs(
