@@ -1164,7 +1164,7 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData *fieldDat
     //uint32_t numBatches = sgl::uiceil(uint32_t(numPairsDownsampled), max_pairs_count);
 
     auto fieldCache = getFieldCache(fieldData);
-    std::vector<std::thread> threads(std::thread::hardware_concurrency());
+    std::vector<std::thread> threads(std::thread::hardware_concurrency() - 2);
     std::vector<CorrelationRequestData> correlation_requests[2]; // front and back buffer for correlation requests to allow staggered evaluation
     std::atomic<int> correlation_request_main{};                 // int to indicate on which requests the main thread works on
     auto correlation_request_worker = [&correlation_request_main]()
@@ -1407,8 +1407,8 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData *fieldDat
         optimizers = std::vector<model_t>(cur_pair_count);
         //std::cout << "Base pair: " << base_pair_index << " with max pair index: " << numPairsDownsampled << " , and " << bayOptIterationCount << " refinement iterations" << std::endl;
         // create, evaluate and add the initial samples to models -----------------------------------------------------------------------
-        correlation_requests[0].resize(cur_pair_count * numInitSamples);
-        correlation_requests[1].resize(cur_pair_count * numInitSamples);
+        correlation_requests[correlation_request_main].resize(cur_pair_count);
+        correlation_requests[correlation_request_worker()].resize(cur_pair_count * numInitSamples);
         // filling the back buffer of the correlation requests
         // this is stage 1, only workers run
         release_all_workers();
@@ -1434,25 +1434,24 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData *fieldDat
             auto outputBuffer = computeCorrelationsForRequests(
                     correlation_requests[correlation_request_main], fieldCache, isFirstBatch);
             isFirstBatch = false;
+            correlation_requests[correlation_request_main].resize(cur_pair_count);
             auto vals = static_cast<float *>(outputBuffer->mapMemory());
             correlationValues[correlation_request_main] = std::vector(vals, vals + cur_pair_count * samples);
             outputBuffer->unmapMemory();
             end = std::chrono::system_clock::now();
             sample_gpu_calc_time += std::chrono::duration<double>(end - start).count();
-            start = end;
 
             acquire_all_workers();
             correlation_request_swap(); // swap back and front buffer
 
             release_all_workers();
+            start = std::chrono::system_clock::now();
         }
         //std::cout << "Main iteration done" << std::endl;
         // adding the last samples and writing the result back to the field entries
         acquire_all_workers();
 
-        end = std::chrono::system_clock::now();
-        sample_gpu_calc_time += std::chrono::duration<double>(end - start).count();
-        start = end;
+        start = std::chrono::system_clock::now();
     }
 
     // signaling the threads job is done
