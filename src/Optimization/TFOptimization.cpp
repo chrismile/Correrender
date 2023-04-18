@@ -36,6 +36,7 @@
 #include <ImGui/imgui_custom.h>
 
 #include "Volume/VolumeData.hpp"
+#include "SmoothingPriorLossPass.hpp"
 #include "OptimizerPass.hpp"
 #include "TFOptimization.hpp"
 
@@ -308,7 +309,7 @@ TFOptimizationWorker::TFOptimizationWorker(sgl::vk::Renderer* parentRenderer) : 
     //forwardPass = std::make_shared<ForwardPass>(renderer);
     //lossPass = std::make_shared<LossPass>(renderer);
     //adjointPass = std::make_shared<AdjointPass>(renderer);
-    //smoothingPriorLossPass = std::make_shared<SmoothingPriorLossPass>(renderer);
+    smoothingPriorLossPass = std::make_shared<SmoothingPriorLossPass>(renderer);
     optimizerPass = std::make_shared<OptimizerPass>(renderer);
 
     if (supportsAsyncCompute) {
@@ -494,14 +495,14 @@ void TFOptimizationWorker::runEpoch() {
             transferFunctionGradientBuffer);
 
     // Compute the gradients wrt. the transfer function entries for the smoothing prior loss.
-    //smoothingPriorLossPass->render();
+    smoothingPriorLossPass->render();
     renderer->insertMemoryBarrier(
             VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
             VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
     // Run the optimizer.
-    //optimizerPass->render();
+    optimizerPass->render();
     renderer->insertMemoryBarrier(
             VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
