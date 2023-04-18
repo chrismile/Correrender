@@ -30,6 +30,11 @@
 #define CORRERENDER_TFOPTIMIZATION_HPP
 
 #include <vector>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
+
+#include "OptDefines.hpp"
 
 namespace sgl { namespace vk {
 class Buffer;
@@ -40,51 +45,37 @@ class Renderer;
 class VolumeData;
 class TFOptimizationWorker;
 
-enum class OptimizerType {
-    SGD, ADAM
-};
-const char* const OPTIMIZER_TYPE_NAMES[] = {
-        "SGD", "Adam"
-};
-
-enum class LossType {
-    L1, L2
-};
-const char* const LOSS_TYPE_NAMES[] = {
-        "L1", "L2"
-};
-
 const int possibleTfSizes[] = {
         3, 4, 5, 7, 8, 10, 16, 32, 64, 96, 128, 256
 };
 
 class TFOptimization {
 public:
-    TFOptimization();
+    explicit TFOptimization(sgl::vk::Renderer* parentRenderer);
+    ~TFOptimization();
     void setVolumeData(VolumeData* _volumeData, bool isNewData);
     void onFieldRemoved(int fieldIdx);
     void openDialog();
     void renderGuiDialog();
 
 private:
-    sgl::vk::Renderer* renderer = nullptr;
+    sgl::vk::Renderer* parentRenderer = nullptr;
     VolumeData* volumeData = nullptr;
     TFOptimizationWorker* worker = nullptr;
 
     void startOptimization();
     bool isOptimizationSettingsDialogOpen = false;
     bool isOptimizationProgressDialogOpen = false;
-    float time = 0.0f;
 
     // Settings.
-    int fieldGTIdx = 0, fieldOptIdx = 0;
+    int fieldIdxGT = 0, fieldIdxOpt = 0;
     int tfSizeIdx = 0;
     std::vector<int> tfSizes;
     std::vector<std::string> tfSizeStrings;
     OptimizerType optimizerType = OptimizerType::ADAM;
     int maxNumEpochs = 200;
     // SGD & Adam.
-    float learningRate = 0.8f;
+    float learningRate = 0.4f;
     // Adam.
     float beta1 = 0.9f;
     float beta2 = 0.999f;
@@ -94,11 +85,16 @@ private:
 struct TFOptimizationWorkerSettings {
     int fieldIdxGT = -1;
     int fieldIdxOpt = -1;
+    uint32_t tfSize = 0;
     OptimizerType optimizerType = OptimizerType::ADAM;
     int maxNumEpochs = 200;
 
+    // DVR.
+    float stepSize = 0.2f;
+    float attenuationCoefficient = 100.0f;
+
     // SGD & Adam.
-    float learningRate = 0.8f;
+    float learningRate = 0.4f;
 
     // Adam.
     float beta1 = 0.9f;
@@ -106,32 +102,112 @@ struct TFOptimizationWorkerSettings {
     float epsilon = 1e-8f;
 };
 
+struct TFOptimizationWorkerReply {
+    bool hasStopped = false;
+};
+
+class ForwardPass;
+class ForwardPass;
+class LossPass;
+class AdjointPass;
+class SmoothingPriorLossPass;
+class OptimizerPass;
+
 class TFOptimizationWorker {
 public:
-    void start(const TFOptimizationWorkerSettings& newSettings);
+    TFOptimizationWorker(sgl::vk::Renderer* parentRenderer);
+    ~TFOptimizationWorker();
+
+    /**
+     * Starts a new request.
+     * @param newSettings The settings of the new request.
+     */
+    void queueRequest(const TFOptimizationWorkerSettings& newSettings, VolumeData* volumeData);
+    /// Queues a request for stopping the current computation.
     void stop();
-    float getProgress();
+    /// Waits for the requester thread to terminate.
+    void join();
+    /// Returns the progress of the current request.
+    float getProgress() const;
+    /**
+     * Checks if a reply was received to a request.
+     * @return Whether a reply was received.
+     */
+    bool getReply(TFOptimizationWorkerReply& reply);
+    /// Returns the result buffer belonging to the last reply.
     const sgl::vk::BufferPtr& getTFBuffer();
-    bool getIsResultAvailable();
 
 private:
+    void mainLoop();
+    void recreateCache(
+            VkFormat formatGT, VkFormat formatOpt, uint32_t xs, uint32_t ys, uint32_t zs);
     void runEpochs();
     void runEpoch();
+    void sampleCameraPoses();
 
+    // Multithreading.
+    bool supportsAsyncCompute = true;
+    std::thread requesterThread;
+    std::condition_variable hasRequestConditionVariable;
+    std::condition_variable hasReplyConditionVariable;
+    std::mutex requestMutex;
+    std::mutex replyMutex;
+    bool programIsFinished = false;
+    bool hasRequest = false;
+    bool hasReply = false;
+    bool shallStop = false, hasStopped = false;
+    TFOptimizationWorkerReply reply;
+
+    // Cached data.
     TFOptimizationWorkerSettings settings;
 
-    sgl::vk::BufferPtr gtFinalColorsBuffer;
+    sgl::vk::Renderer* parentRenderer = nullptr;
+    sgl::vk::Renderer* renderer = nullptr;
+    sgl::vk::FencePtr fence{};
+    VkCommandPool commandPool{};
+    VkCommandBuffer commandBuffer{};
 
+    uint32_t batchSize = 8;
+    uint32_t viewportWidth = 512;
+    uint32_t viewportHeight = 512;
+    int currentEpoch = 0;
+    int maxNumEpochs = 0;
+
+    struct DvrSettingsBufferTf {
+        glm::mat4 inverseProjectionMatrix;
+        glm::vec3 minBoundingBox;
+        float attenuationCoefficient;
+        glm::vec3 maxBoundingBox;
+        float stepSize;
+    };
+
+    uint32_t cachedBatchSize = 0;
+    uint32_t cachedViewportWidth = 0;
+    uint32_t cachedViewportHeight = 0;
+    uint32_t cachedTfSize = 0;
+    VkFormat cachedFormatGT{}, cachedFormatOpt{};
+    DvrSettingsBufferTf dvrSettings{};
+    std::vector<glm::mat4> batchSettingsArray;
     sgl::vk::BufferPtr batchSettingsBuffer;
     sgl::vk::BufferPtr dvrSettingsBuffer;
+    sgl::vk::BufferPtr gtFinalColorsBuffer;
     sgl::vk::BufferPtr finalColorsBuffer;
     sgl::vk::BufferPtr terminationIndexBuffer;
     sgl::vk::BufferPtr transferFunctionBuffer;
     sgl::vk::BufferPtr transferFunctionGradientBuffer;
+    sgl::vk::ImageViewPtr imageViewFieldGT, imageViewFieldOpt;
 
     // For Adam.
     sgl::vk::BufferPtr firstMomentEstimateBuffer;
     sgl::vk::BufferPtr secondMomentEstimateBuffer;
+
+    // Compute passes.
+    std::shared_ptr<ForwardPass> gtForwardPass;
+    std::shared_ptr<ForwardPass> forwardPass;
+    std::shared_ptr<LossPass> lossPass;
+    std::shared_ptr<AdjointPass> adjointPass;
+    std::shared_ptr<SmoothingPriorLossPass> smoothingPriorLossPass;
+    std::shared_ptr<OptimizerPass> optimizerPass;
 };
 
 #endif //CORRERENDER_TFOPTIMIZATION_HPP

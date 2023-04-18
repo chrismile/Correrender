@@ -402,7 +402,7 @@ MainApp::MainApp()
                 [this](const InternalState &newState) { this->setNewState(newState); });
     }
 
-    tfOptimization = new TFOptimization;
+    tfOptimization = new TFOptimization(rendererVk);
 
 #ifdef __linux__
     signal(SIGSEGV, signalHandler);

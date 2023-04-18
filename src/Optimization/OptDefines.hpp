@@ -26,43 +26,21 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
--- Compute
+#ifndef CORRERENDER_OPTDEFINES_HPP
+#define CORRERENDER_OPTDEFINES_HPP
 
-#version 450 core
-
-layout(local_size_x = BLOCK_SIZE) in;
-
-layout(binding = 0) uniform SmoothingPriorSettingsBuffer {
-    float lambda; ///< Smoothing rate.
-    uint R; ///< Number of TF entries in the value axis.
+enum class OptimizerType {
+    SGD, ADAM
+};
+const char* const OPTIMIZER_TYPE_NAMES[] = {
+        "SGD", "Adam"
 };
 
-layout(binding = 1) readonly buffer TransferFunctionBuffer {
-    float tfEntries[NUM_TF_ENTRIES];
+enum class LossType {
+    L1, L2
+};
+const char* const LOSS_TYPE_NAMES[] = {
+        "L1", "L2"
 };
 
-layout(binding = 2) buffer TransferFunctionGradientBuffer {
-    float g[NUM_TF_ENTRIES];
-};
-
-#define IDXTF(c, r) ((c) + (r) * 4u)
-
-void main() {
-    if (gl_GlobalInvocationID.x >= NUM_TF_ENTRIES) {
-        return;
-    }
-    uint c = gl_GlobalInvocationID.x % 4u;
-    uint r = gl_GlobalInvocationID.x / 4u;
-
-    float gradVal = 0.0;
-    float centerVal = tfEntries[IDXTF(c, r)];
-    if (r > 0) {
-        gradVal += centerVal - tfEntries[IDXTF(c, r - 1)];
-    }
-    if (r < R - 1) {
-        gradVal += centerVal - tfEntries[IDXTF(c, r + 1)];
-    }
-
-    gradVal /= 2.0 * (R - 1);
-    g[gl_GlobalInvocationID.x] += lambda * gradVal;
-}
+#endif //CORRERENDER_OPTDEFINES_HPP

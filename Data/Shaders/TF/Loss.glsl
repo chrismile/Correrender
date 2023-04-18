@@ -32,37 +32,31 @@
 
 layout(local_size_x = BLOCK_SIZE) in;
 
-layout(binding = 0) uniform SmoothingPriorSettingsBuffer {
-    float lambda; ///< Smoothing rate.
-    uint R; ///< Number of TF entries in the value axis.
+layout(binding = 0) uniform DvrSettingsBuffer {
+    uint imageWidth, imageHeight, batchSize;
 };
 
-layout(binding = 1) readonly buffer TransferFunctionBuffer {
-    float tfEntries[NUM_TF_ENTRIES];
+layout(binding = 1, std430) readonly buffer GTFinalColorsBuffer {
+    vec4 gtFinalColors[];
 };
 
-layout(binding = 2) buffer TransferFunctionGradientBuffer {
-    float g[NUM_TF_ENTRIES];
+layout(binding = 2, std430) readonly buffer FinalColorsBuffer {
+    vec4 finalColors[];
 };
 
-#define IDXTF(c, r) ((c) + (r) * 4u)
+layout(binding = 3, std430) writeonly buffer AdjointColorsBuffer {
+    vec4 adjointColors[];
+};
 
 void main() {
-    if (gl_GlobalInvocationID.x >= NUM_TF_ENTRIES) {
-        return;
+    const uint workSizeLinear = imageWidth * imageHeight * batchSize;
+    const uint workStep = gl_WorkGroupSize.x * gl_NumWorkGroups.x;
+    for (uint workIdx = gl_GlobalInvocationID.x; workIdx < workSizeLinear; workIdx += workStep) {
+        vec4 diff = finalColors[workIdx] - gtFinalColors[workIdx];
+#if defined(L1_LOSS)
+        adjointColors[workIdx] = 2.0 * vec4(greaterThanEqual(diff)) - vec4(1.0);
+#elif defined(L2_LOSS)
+        adjointColors[workIdx] = 2.0 * diff;
+#endif
     }
-    uint c = gl_GlobalInvocationID.x % 4u;
-    uint r = gl_GlobalInvocationID.x / 4u;
-
-    float gradVal = 0.0;
-    float centerVal = tfEntries[IDXTF(c, r)];
-    if (r > 0) {
-        gradVal += centerVal - tfEntries[IDXTF(c, r - 1)];
-    }
-    if (r < R - 1) {
-        gradVal += centerVal - tfEntries[IDXTF(c, r + 1)];
-    }
-
-    gradVal /= 2.0 * (R - 1);
-    g[gl_GlobalInvocationID.x] += lambda * gradVal;
 }

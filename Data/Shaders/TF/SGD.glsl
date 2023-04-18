@@ -36,20 +36,23 @@
 
 layout(local_size_x = BLOCK_SIZE) in;
 
-layout(binding = 0) uniform SGDOptimizerSettingsBuffer {
+layout(binding = 0) uniform OptimizerSettingsBuffer {
     float alpha; ///< Learning rate.
 };
 
-layout(binding = 1) buffer TransferFunctionBuffer {
+layout(binding = 1, std430) buffer TransferFunctionBuffer {
     float tfEntries[NUM_TF_ENTRIES];
 };
 
-layout(binding = 2) readonly buffer TransferFunctionGradientBuffer {
+layout(binding = 2, std430) readonly buffer TransferFunctionGradientBuffer {
     float g[NUM_TF_ENTRIES];
 };
 
 void main() {
     uint globalThreadIdx = gl_GlobalInvocationID.x;
+    if (globalThreadIdx >= NUM_TF_ENTRIES) {
+        return;
+    }
 
     // Update the parameters.
     tfEntries[globalThreadIdx] -= alpha * g[globalThreadIdx];

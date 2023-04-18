@@ -38,11 +38,14 @@
 
 layout(local_size_x = BLOCK_SIZE) in;
 
-layout(binding = 0) uniform AdamOptimizerSettingsBuffer {
+layout(binding = 0) uniform OptimizerSettingsBuffer {
     float alpha; ///< Learning rate.
     float beta1; ///< First moment update rate.
     float beta2; ///< Second moment update rate.
     float epsilon; ///< Small epsilon value used to avoid division by zero.
+};
+
+layout(push_constant) uniform PushConstants {
     float t; ///< Time step.
 };
 
@@ -64,6 +67,9 @@ layout(binding = 4, std430) readonly buffer SecondMomentEstimateBuffer {
 
 void main() {
     uint globalThreadIdx = gl_GlobalInvocationID.x;
+    if (globalThreadIdx >= NUM_TF_ENTRIES) {
+        return;
+    }
 
     // Update biased first and second moment estimate.
     float gt = g[globalThreadIdx];

@@ -33,14 +33,15 @@
 layout(local_size_x = BLOCK_SIZE) in;
 
 layout(binding = 0) uniform DvrSettingsBuffer {
-    mat4 inverseViewMatrix;
     mat4 inverseProjectionMatrix;
     vec3 minBoundingBox;
     float attenuationCoefficient;
     vec3 maxBoundingBox;
     float stepSize;
-    uvec3 padding0;
-    uint fieldIndex;
+};
+
+layout(push_constant) uniform PushConstants {
+    vec2 minMaxFieldValues;
 };
 
 struct BatchSettings {
@@ -51,15 +52,17 @@ layout(binding = 1) readonly buffer BatchSettingsBuffer {
     BatchSettings batchSettingsArray[];
 };
 
-layout(binding = 2, std430) readonly buffer TransferFunctionBuffer {
+layout(binding = 2) uniform sampler3D scalarField;
+
+layout(binding = 3, std430) readonly buffer TransferFunctionBuffer {
     float tfEntries[NUM_TF_ENTRIES];
 };
 
-layout(binding = 3, std430) writeonly buffer FinalColorBuffer {
+layout(binding = 4, std430) writeonly buffer FinalColorsBuffer {
     vec4 finalColors[];
 };
 
-layout(binding = 4, std430) writeonly buffer TerminationIndexBuffer {
+layout(binding = 5, std430) writeonly buffer TerminationIndexBuffer {
     int terminationIndices[];
 };
 
@@ -89,6 +92,7 @@ void renderForward(uint workIdx, uint x, uint y, uint b) {
             vec3 texCoords = (currentPoint - minBoundingBox) / (maxBoundingBox - minBoundingBox);
 
             float scalarValue = texture(scalarField, texCoords).r;
+            // TODO
             vec4 volumeColor = transferFunction(scalarValue, fieldIndex);
             float alpha = 1 - exp(-volumeColor.a * stepSize * attenuationCoefficient);
             vec4 color = vec4(volumeColor.rgb, alpha);
