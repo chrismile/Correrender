@@ -136,7 +136,7 @@ void DvrRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         }
         reRender = true;
     }
-    if (propertyEditor.addSliderFloat("Attenuation Coefficient", &attenuationCoefficient, 0, 500)) {
+    if (propertyEditor.addSliderFloat("Attenuation Coefficient", &attenuationCoefficient, 0.0f, 500.0f)) {
         for (auto& dvrPass : dvrPasses) {
             dvrPass->setAttenuationCoefficient(attenuationCoefficient);
         }

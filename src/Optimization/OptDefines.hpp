@@ -29,18 +29,76 @@
 #ifndef CORRERENDER_OPTDEFINES_HPP
 #define CORRERENDER_OPTDEFINES_HPP
 
+enum class TFOptimizerMethod {
+    OLS, //< Ordinary least squares.
+    OLS_GRAD, //< Gradient descent used for solving the ordinary least squares problem.
+    DIFF_DVR //< Differentiable volume rendering.
+};
+const char* const TF_OPTIMIZER_METHOD_NAMES[] = {
+        "Ordinary Least Squares (OLS)", "Gradient Descent (OLS)", "Differentiable Volume Rendering"
+};
+
+/// For more details see: https://eigen.tuxfamily.org/dox/group__TutorialLinearAlgebra.html
+enum class EigenSolverType {
+    PartialPivLU, FullPivLU, HouseholderQR, ColPivHouseholderQR, FullPivHouseholderQR,
+    CompleteOrthogonalDecomposition, LLT, LDLT, BDCSVD, JacobiSVD
+};
+const char* const EIGEN_SOLVER_TYPE_NAMES[] = {
+        "PartialPivLU", "FullPivLU", "HouseholderQR", "ColPivHouseholderQR", "FullPivHouseholderQR",
+        "CompleteOrthogonalDecomposition", "LLT", "LDLT", "BDCSVD", "JacobiSVD"
+};
+
+/// For more details see: https://eigen.tuxfamily.org/dox/group__TutorialLinearAlgebra.html
+enum class CudaSolverType {
+    LU, LU_PIVOT, QR, CHOL
+};
+const char* const CUDA_SOLVER_TYPE_NAMES[] = {
+        "LU", "LU_PIVOT", "QR", "CHOL"
+};
+
+// For gradient descent.
 enum class OptimizerType {
     SGD, ADAM
 };
 const char* const OPTIMIZER_TYPE_NAMES[] = {
         "SGD", "Adam"
 };
-
 enum class LossType {
     L1, L2
 };
 const char* const LOSS_TYPE_NAMES[] = {
         "L1", "L2"
+};
+
+const char* const OLS_BACKEND_NAMES[] = {
+        "CPU", "CUDA"
+};
+
+struct TFOptimizationWorkerSettings {
+    int fieldIdxGT = -1;
+    int fieldIdxOpt = -1;
+    uint32_t tfSize = 0;
+    TFOptimizerMethod optimizerMethod = TFOptimizerMethod::OLS;
+
+    // For OLS.
+    EigenSolverType eigenSolverType = EigenSolverType::HouseholderQR;
+    CudaSolverType cudaSolverType = CudaSolverType::QR;
+    bool useCuda = false;
+    bool useRelaxation = false;
+    float relaxationLambda = 1.0f;
+
+    // For DiffDVR and OLS_GRAD.
+    OptimizerType optimizerType = OptimizerType::ADAM;
+    int maxNumEpochs = 200;
+    // SGD & Adam.
+    float learningRate = 0.4f;
+    // Adam.
+    float beta1 = 0.9f;
+    float beta2 = 0.999f;
+    float epsilon = 1e-8f;
+    // DVR.
+    float stepSize = 0.2f;
+    float attenuationCoefficient = 100.0f;
 };
 
 #endif //CORRERENDER_OPTDEFINES_HPP

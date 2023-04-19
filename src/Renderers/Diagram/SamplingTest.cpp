@@ -237,6 +237,7 @@ void runSamplingTests(const std::string& dataSetPath, int testIdx) {
     // Add the test cases.
     SamplingMethodType firstSamplingMethodType =
             computeMean ? SamplingMethodType::MEAN : SamplingMethodType::RANDOM_UNIFORM;
+    firstSamplingMethodType = SamplingMethodType::BAYESIAN_OPTIMIZATION; // TODO: Just for testing, remove this line.
     std::vector<TestCase> testCases;
     for (int samplingMethodTypeIdx = int(firstSamplingMethodType);
             samplingMethodTypeIdx <= int(SamplingMethodType::QUASIRANDOM_PLASTIC);

@@ -68,50 +68,17 @@ private:
     bool isOptimizationProgressDialogOpen = false;
 
     // Settings.
-    int fieldIdxGT = 0, fieldIdxOpt = 0;
     int tfSizeIdx = 0;
     std::vector<int> tfSizes;
     std::vector<std::string> tfSizeStrings;
-    OptimizerType optimizerType = OptimizerType::ADAM;
-    int maxNumEpochs = 200;
-    // SGD & Adam.
-    float learningRate = 0.4f;
-    // Adam.
-    float beta1 = 0.9f;
-    float beta2 = 0.999f;
-    float epsilon = 1e-8f;
-};
-
-struct TFOptimizationWorkerSettings {
-    int fieldIdxGT = -1;
-    int fieldIdxOpt = -1;
-    uint32_t tfSize = 0;
-    OptimizerType optimizerType = OptimizerType::ADAM;
-    int maxNumEpochs = 200;
-
-    // DVR.
-    float stepSize = 0.2f;
-    float attenuationCoefficient = 100.0f;
-
-    // SGD & Adam.
-    float learningRate = 0.4f;
-
-    // Adam.
-    float beta1 = 0.9f;
-    float beta2 = 0.999f;
-    float epsilon = 1e-8f;
+    TFOptimizationWorkerSettings settings;
 };
 
 struct TFOptimizationWorkerReply {
     bool hasStopped = false;
 };
 
-class ForwardPass;
-class ForwardPass;
-class LossPass;
-class AdjointPass;
-class SmoothingPriorLossPass;
-class OptimizerPass;
+class TFOptimizer;
 
 class TFOptimizationWorker {
 public:
@@ -128,7 +95,7 @@ public:
     /// Waits for the requester thread to terminate.
     void join();
     /// Returns the progress of the current request.
-    float getProgress() const;
+    [[nodiscard]] float getProgress() const;
     /**
      * Checks if a reply was received to a request.
      * @return Whether a reply was received.
@@ -137,13 +104,8 @@ public:
     /// Returns the result buffer belonging to the last reply.
     const sgl::vk::BufferPtr& getTFBuffer();
 
-private:
+protected:
     void mainLoop();
-    void recreateCache(
-            VkFormat formatGT, VkFormat formatOpt, uint32_t xs, uint32_t ys, uint32_t zs);
-    void runEpochs();
-    void runEpoch();
-    void sampleCameraPoses();
 
     // Multithreading.
     bool supportsAsyncCompute = true;
@@ -159,55 +121,12 @@ private:
     TFOptimizationWorkerReply reply;
 
     // Cached data.
-    TFOptimizationWorkerSettings settings;
+    TFOptimizerMethod optimizerMethod = TFOptimizerMethod::OLS;
+    std::shared_ptr<TFOptimizer> tfOptimizer;
 
     sgl::vk::Renderer* parentRenderer = nullptr;
     sgl::vk::Renderer* renderer = nullptr;
-    sgl::vk::FencePtr fence{};
-    VkCommandPool commandPool{};
-    VkCommandBuffer commandBuffer{};
 
-    uint32_t batchSize = 8;
-    uint32_t viewportWidth = 512;
-    uint32_t viewportHeight = 512;
-    int currentEpoch = 0;
-    int maxNumEpochs = 0;
-
-    struct DvrSettingsBufferTf {
-        glm::mat4 inverseProjectionMatrix;
-        glm::vec3 minBoundingBox;
-        float attenuationCoefficient;
-        glm::vec3 maxBoundingBox;
-        float stepSize;
-    };
-
-    uint32_t cachedBatchSize = 0;
-    uint32_t cachedViewportWidth = 0;
-    uint32_t cachedViewportHeight = 0;
-    uint32_t cachedTfSize = 0;
-    VkFormat cachedFormatGT{}, cachedFormatOpt{};
-    DvrSettingsBufferTf dvrSettings{};
-    std::vector<glm::mat4> batchSettingsArray;
-    sgl::vk::BufferPtr batchSettingsBuffer;
-    sgl::vk::BufferPtr dvrSettingsBuffer;
-    sgl::vk::BufferPtr gtFinalColorsBuffer;
-    sgl::vk::BufferPtr finalColorsBuffer;
-    sgl::vk::BufferPtr terminationIndexBuffer;
-    sgl::vk::BufferPtr transferFunctionBuffer;
-    sgl::vk::BufferPtr transferFunctionGradientBuffer;
-    sgl::vk::ImageViewPtr imageViewFieldGT, imageViewFieldOpt;
-
-    // For Adam.
-    sgl::vk::BufferPtr firstMomentEstimateBuffer;
-    sgl::vk::BufferPtr secondMomentEstimateBuffer;
-
-    // Compute passes.
-    std::shared_ptr<ForwardPass> gtForwardPass;
-    std::shared_ptr<ForwardPass> forwardPass;
-    std::shared_ptr<LossPass> lossPass;
-    std::shared_ptr<AdjointPass> adjointPass;
-    std::shared_ptr<SmoothingPriorLossPass> smoothingPriorLossPass;
-    std::shared_ptr<OptimizerPass> optimizerPass;
 };
 
 #endif //CORRERENDER_TFOPTIMIZATION_HPP

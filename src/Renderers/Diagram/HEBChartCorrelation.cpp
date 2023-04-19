@@ -1265,7 +1265,7 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData *fieldDat
             // creating initial sample positions
             if (cur_thread_pair_count){
                 assert(samples_pos[correlation_request_worker()].size() == 6 * numInitSamples * cur_thread_pair_count);
-                generateSamples(samples_pos[correlation_request_worker()].data(), numInitSamples * cur_thread_pair_count, SamplingMethodType::QUASIRANDOM_HALTON, false);
+                generateSamples(samples_pos[correlation_request_worker()].data(), numInitSamples * cur_thread_pair_count, SamplingMethodType::RANDOM_UNIFORM, false);
                 auto corr_requ = generate_requests(samples_pos[correlation_request_worker()].data(), global_pair_base_index, global_pair_base_index + cur_thread_pair_count, numInitSamples);
                 int request_offset = thread_id * pairs_per_thread * numInitSamples;
                 assert(request_offset + corr_requ.size() <= correlation_requests[correlation_request_worker()].size());
@@ -1291,7 +1291,7 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData *fieldDat
                 // Drawing new samples from the model and creating the requests for the samples
                 if(i < bayOptIterationCount){
                     if(i == 0)
-                        generateSamples(samples_pos[correlation_request_worker()].data(), cur_thread_pair_count, SamplingMethodType::QUASIRANDOM_HALTON, true);
+                        generateSamples(samples_pos[correlation_request_worker()].data(), cur_thread_pair_count, SamplingMethodType::RANDOM_UNIFORM, true);
                     else{
                         for (int o : BayOpt::i_range(cur_thread_pair_count))
                         {

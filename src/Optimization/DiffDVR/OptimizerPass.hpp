@@ -31,7 +31,7 @@
 
 #include <Graphics/Vulkan/Render/Passes/Pass.hpp>
 
-#include "OptDefines.hpp"
+#include "Optimization/OptDefines.hpp"
 
 class OptimizerPass : public sgl::vk::ComputePass {
 public:
