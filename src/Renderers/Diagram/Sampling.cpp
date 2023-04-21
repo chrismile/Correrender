@@ -52,7 +52,15 @@ void generateSamplesRandomUniform(float* samples, int numSamples) {
  * @param samples An array of numSamples * 6 quasi-random samples in [0, 1).
  * @param numSamples The number of samples.
  */
-void generateSamplesQuasirandomHalton(float* samples, int numSamples) {
+void generateSamplesQuasirandomHalton(float* samples, int numSamples, bool useRandomSeed) {
+    double seed = 0.0f;
+    if  (useRandomSeed) {
+        std::random_device rd;
+        std::mt19937 generator(rd());
+        std::uniform_real_distribution<float> dis(0, 1);
+        seed = dis(generator);
+    }
+
     // Use the first 6 prime numbers as bases.
     constexpr int d = 6;
     const int bases[] = { 2, 3, 5, 7, 11, 13 };
@@ -72,7 +80,7 @@ void generateSamplesQuasirandomHalton(float* samples, int numSamples) {
                 }
                 n = (b + 1) * y - x;
             }
-            samples[i * d + j] = float(n) / float(m);
+            samples[i * d + j] = float(std::fmod(seed + float(n) / float(m), 1.0));
         }
     }
 }
@@ -117,7 +125,7 @@ void generateSamples(
     if (samplingMethodType == SamplingMethodType::RANDOM_UNIFORM) {
         generateSamplesRandomUniform(samples, numSamples);
     } else if (samplingMethodType == SamplingMethodType::QUASIRANDOM_HALTON) {
-        generateSamplesQuasirandomHalton(samples, numSamples);
+        generateSamplesQuasirandomHalton(samples, numSamples, useRandomSeed);
     } else if (samplingMethodType == SamplingMethodType::QUASIRANDOM_PLASTIC) {
         generateSamplesQuasirandomPlastic(samples, numSamples, useRandomSeed);
     } else {

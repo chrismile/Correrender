@@ -1469,6 +1469,10 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData *fieldDat
         std::cout << "BayOpt details: sample_gen_time[" << sample_gen_time / threads.size() << "s] sample_eval_time[" << sample_gpu_calc_time << "s] threading_overhead[" << thread_time << "s] setup_time[" << setup_time << "s]  Total time: " << std::chrono::duration<double>(function_end - function_start).count() << "s" << std::endl;
 }
 
+void HEBChart::createFieldCacheForTests() {
+    auto fieldCache = getFieldCache(fieldDataArray.front().get());
+}
+
 HEBChart::PerfStatistics HEBChart::computeCorrelationsBlockPairs(
     const std::vector<std::pair<uint32_t, uint32_t>> &blockPairs,
     const std::vector<float *> &downscaledFields0, const std::vector<float *> &downscaledFields1)

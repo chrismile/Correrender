@@ -208,6 +208,9 @@ void runSamplingTests(const std::string& dataSetPath, int testIdx) {
         chart->setSyntheticTestCase(blockPairs);
     }
 
+    // Cache the field entries so loading is not performed when starting the first technique.
+    chart->createFieldCacheForTests();
+
     // Compute the ground truth.
     std::vector<std::vector<float>> allValuesSortedArray;
     double timeGt = 0.0;
@@ -237,7 +240,7 @@ void runSamplingTests(const std::string& dataSetPath, int testIdx) {
     // Add the test cases.
     SamplingMethodType firstSamplingMethodType =
             computeMean ? SamplingMethodType::MEAN : SamplingMethodType::RANDOM_UNIFORM;
-    firstSamplingMethodType = SamplingMethodType::BAYESIAN_OPTIMIZATION; // TODO: Just for testing, remove this line.
+    //firstSamplingMethodType = SamplingMethodType::BAYESIAN_OPTIMIZATION; // Just for testing, remove this line.
     std::vector<TestCase> testCases;
     for (int samplingMethodTypeIdx = int(firstSamplingMethodType);
             samplingMethodTypeIdx <= int(SamplingMethodType::QUASIRANDOM_PLASTIC);

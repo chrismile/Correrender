@@ -226,6 +226,7 @@ public:
         double elapsedTimeMicroseconds{};
         std::vector<float> maximumValues{};
     };
+    void createFieldCacheForTests();
     PerfStatistics computeCorrelationsBlockPairs(
             const std::vector<std::pair<uint32_t, uint32_t>>& blockPairs,
             const std::vector<float*>& downscaledFields0, const std::vector<float*>& downscaledFields1);
