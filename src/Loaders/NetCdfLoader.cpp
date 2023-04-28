@@ -446,6 +446,39 @@ bool NetCdfLoader::getFieldEntry(
         loadFloatArray3D(varid, memberIdx, zs, ys, xs, fieldEntryBuffer);
     }
 
+    if (dataSetInformation.subsamplingFactorSet) {
+        int subsamplingFactor = dataSetInformation.subsamplingFactor;
+        int xsd = xs / subsamplingFactor;
+        int ysd = ys / subsamplingFactor;
+        int zsd = zs / subsamplingFactor;
+        float* scalarFieldOld = fieldEntryBuffer;
+        fieldEntryBuffer = new float[xsd * ysd * zsd];
+#ifdef USE_TBB
+        tbb::parallel_for(tbb::blocked_range<int>(0, zsd), [&](auto const& r) {
+            for (auto z = r.begin(); z != r.end(); z++) {
+#else
+#if _OPENMP >= 201107
+        #pragma omp parallel for shared(xsd, ysd, zsd, xs, ys, subsamplingFactor, fieldEntryBuffer, scalarFieldOld) default(none)
+#endif
+        for (int z = 0; z < zsd; z++) {
+#endif
+            for (int y = 0; y < ysd; y++) {
+                for (int x = 0; x < xsd; x++) {
+                    int readPos =
+                            ((z * subsamplingFactor)*xs*ys
+                             + (y * subsamplingFactor)*xs
+                             + (x * subsamplingFactor));
+                    int writePos = ((z)*xsd*ysd + (y)*xsd + (x));
+                    fieldEntryBuffer[writePos] = scalarFieldOld[readPos];
+                }
+            }
+        }
+#ifdef USE_TBB
+        });
+#endif
+        delete[] scalarFieldOld;
+    }
+
     fieldEntry = new HostCacheEntryType(xs * ys * zs, fieldEntryBuffer);
     if (dataSetInformation.useFormatCast) {
         fieldEntry->switchNativeFormat(dataSetInformation.formatTarget);

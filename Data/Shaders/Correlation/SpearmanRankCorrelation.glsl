@@ -179,18 +179,18 @@ void main() {
     float value;
 
 #if !defined(USE_SCALAR_FIELD_IMAGES) && !defined(SEPARATE_REFERENCE_AND_QUERY_FIELDS)
-    uint referenceIdx = IDXS(referencePointIdx.x, referencePointIdx.y, referencePointIdx.z);
+    uint referenceIdx = IDXSR(referencePointIdx.x, referencePointIdx.y, referencePointIdx.z);
 #endif
 #if !defined(USE_SCALAR_FIELD_IMAGES)
-    uint queryIdx = IDXS(currentPointIdx.x, currentPointIdx.y, currentPointIdx.z);
+    uint queryIdx = IDXSQ(currentPointIdx.x, currentPointIdx.y, currentPointIdx.z);
 #endif
 
 #ifdef USE_REQUESTS_BUFFER
     for (uint c = 0; c < MEMBER_COUNT; c++) {
 #ifdef USE_SCALAR_FIELD_IMAGES
-        value = texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), referencePointIdx, 0).r;
+        value = texelFetch(sampler3D(scalarFieldsRef[nonuniformEXT(c)], scalarFieldSampler), referencePointIdx, 0).r;
 #else
-        value = scalarFields[nonuniformEXT(c)].values[referenceIdx];
+        value = scalarFieldsRef[nonuniformEXT(c)].values[referenceIdx];
 #endif
         if (isnan(value)) {
             nanValue = value;
@@ -206,9 +206,9 @@ void main() {
     // 1. Fill the value array.
     for (uint c = 0; c < MEMBER_COUNT; c++) {
 #ifdef USE_SCALAR_FIELD_IMAGES
-        value = texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), currentPointIdx, 0).r;
+        value = texelFetch(sampler3D(scalarFieldsQuery[nonuniformEXT(c)], scalarFieldSampler), currentPointIdx, 0).r;
 #else
-        value = scalarFields[nonuniformEXT(c)].values[queryIdx];
+        value = scalarFieldsQuery[nonuniformEXT(c)].values[queryIdx];
 #endif
         if (isnan(value)) {
             nanValue = value;
@@ -263,7 +263,7 @@ uint ordinalRankArray[MEMBER_COUNT];
 
 void main() {
 #if !defined(USE_SCALAR_FIELD_IMAGES) && !defined(SEPARATE_REFERENCE_AND_QUERY_FIELDS)
-    uint referenceIdx = IDXS(referencePointIdx.x, referencePointIdx.y, referencePointIdx.z);
+    uint referenceIdx = IDXSR(referencePointIdx.x, referencePointIdx.y, referencePointIdx.z);
 #endif
 
     // 1. Fill the value array.
@@ -272,9 +272,9 @@ void main() {
         valueArray[c] = referenceValues[c];
 #else
 #ifdef USE_SCALAR_FIELD_IMAGES
-        valueArray[c] = texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), referencePointIdx, 0).r;
+        valueArray[c] = texelFetch(sampler3D(scalarFieldsRef[nonuniformEXT(c)], scalarFieldSampler), referencePointIdx, 0).r;
 #else
-        valueArray[c] = scalarFields[nonuniformEXT(c)].values[referenceIdx];
+        valueArray[c] = scalarFieldsRef[nonuniformEXT(c)].values[referenceIdx];
 #endif
 #endif
         ordinalRankArray[c] = c;

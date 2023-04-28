@@ -800,15 +800,40 @@ void HEBChart::renderBaseNanoVG() {
                     || lineFieldIndexArray.at(selectedLineIdx) == i;
 
             for (int leafIdx = int(leafIdxOffset); leafIdx < int(nodesList.size()); leafIdx++) {
-                if (!regionsEqual && (leafIdx == int(leafIdxOffset1) - 1 || leafIdx == int(nodesList.size()) - 1)) {
-                    continue;
+                bool isSingleElementRegion = false;
+                if (!regionsEqual) {
+                    if (leafIdx == int(leafIdxOffset1) - 1) {
+                        if (leafIdxOffset + 1 == leafIdxOffset1) {
+                            isSingleElementRegion = true;
+                        } else {
+                            continue;
+                        }
+                    }
+                    if (leafIdx == int(nodesList.size()) - 1) {
+                        if (int(leafIdxOffset1) + 1 == int(nodesList.size())) {
+                            isSingleElementRegion = true;
+                        } else {
+                            continue;
+                        }
+                    }
                 }
+                //if (!regionsEqual && (leafIdx == int(leafIdxOffset1) - 1 || leafIdx == int(nodesList.size()) - 1)) {
+                //    continue;
+                //}
                 int numLeaves = int(nodesList.size()) - int(leafIdxOffset);
                 int nextIdx = (leafIdx + 1 - int(leafIdxOffset)) % numLeaves + int(leafIdxOffset);
+                if (isSingleElementRegion) {
+                    nextIdx = leafIdx;
+                }
                 const auto &leafCurr = nodesList.at(leafIdx);
                 const auto &leafNext = nodesList.at(nextIdx);
                 float angle0 = leafCurr.angle;
                 float angle1 = leafNext.angle + 0.01f;
+                if (isSingleElementRegion) {
+                    const float angleRangeHalf = sgl::PI * 0.92f;
+                    angle0 = leafCurr.angle - 0.5f * angleRangeHalf;
+                    angle1 = leafCurr.angle + 0.5f * angleRangeHalf;
+                }
                 float angleMid0 = angle0;
                 float angleMid1 = angle1;
                 if (!regionsEqual && (leafIdx == int(leafIdxOffset) || leafIdx == int(leafIdxOffset1))) {
@@ -820,10 +845,10 @@ void HEBChart::renderBaseNanoVG() {
                         fieldData->a10 = angle0;
                     }
                 }
-                if (!regionsEqual && (leafIdx == int(leafIdxOffset1) - 2 || leafIdx == int(nodesList.size()) - 2)) {
+                if (!regionsEqual && (nextIdx == int(leafIdxOffset1) - 1 || nextIdx == int(nodesList.size()) - 1)) {
                     float deltaAngle = std::min(angle1 - angle0, 0.1f);
                     angle1 += deltaAngle * 0.5f;
-                    if (leafIdx == int(leafIdxOffset1) - 2) {
+                    if (nextIdx == int(leafIdxOffset1) - 1) {
                         fieldData->a01 = angle1;
                     } else {
                         fieldData->a11 = angle1;
@@ -925,7 +950,7 @@ void HEBChart::renderBaseNanoVG() {
 
     if (selectedPointIndices[0] >= 0) {
         drawSelectionArrows();
-    } else if (showSelectedRegionsByColor && isFocusView && !fieldDataArray.empty()) {
+    } else if (!regionsEqual && showSelectedRegionsByColor && isFocusView && !fieldDataArray.empty()) {
         glm::vec2 center(windowWidth / 2.0f, windowHeight / 2.0f);
         HEBChartFieldData* fieldData = nullptr;
         if (limitedFieldIdx >= 0) {
@@ -1127,15 +1152,40 @@ void HEBChart::renderBaseSkia() {
                     || lineFieldIndexArray.at(selectedLineIdx) == i;
 
             for (int leafIdx = int(leafIdxOffset); leafIdx < int(nodesList.size()); leafIdx++) {
-                if (!regionsEqual && (leafIdx == int(leafIdxOffset1) - 1 || leafIdx == int(nodesList.size()) - 1)) {
-                    continue;
+                bool isSingleElementRegion = false;
+                if (!regionsEqual) {
+                    if (leafIdx == int(leafIdxOffset1) - 1) {
+                        if (leafIdxOffset + 1 == leafIdxOffset1) {
+                            isSingleElementRegion = true;
+                        } else {
+                            continue;
+                        }
+                    }
+                    if (leafIdx == int(nodesList.size()) - 1) {
+                        if (int(leafIdxOffset1) + 1 == int(nodesList.size())) {
+                            isSingleElementRegion = true;
+                        } else {
+                            continue;
+                        }
+                    }
                 }
+                //if (!regionsEqual && (leafIdx == int(leafIdxOffset1) - 1 || leafIdx == int(nodesList.size()) - 1)) {
+                //    continue;
+                //}
                 int numLeaves = int(nodesList.size()) - int(leafIdxOffset);
                 int nextIdx = (leafIdx + 1 - int(leafIdxOffset)) % numLeaves + int(leafIdxOffset);
+                if (isSingleElementRegion) {
+                    nextIdx = leafIdx;
+                }
                 const auto &leafCurr = nodesList.at(leafIdx);
                 const auto &leafNext = nodesList.at(nextIdx);
                 float angle0 = leafCurr.angle;
                 float angle1 = leafNext.angle + 0.01f;
+                if (isSingleElementRegion) {
+                    const float angleRangeHalf = sgl::PI * 0.92f;
+                    angle0 = leafCurr.angle - 0.5f * angleRangeHalf;
+                    angle1 = leafCurr.angle + 0.5f * angleRangeHalf;
+                }
                 float angleMid0 = angle0;
                 float angleMid1 = angle1;
                 if (!regionsEqual && (leafIdx == int(leafIdxOffset) || leafIdx == int(leafIdxOffset1))) {
@@ -1147,10 +1197,10 @@ void HEBChart::renderBaseSkia() {
                         fieldData->a10 = angle0;
                     }
                 }
-                if (!regionsEqual && (leafIdx == int(leafIdxOffset1) - 2 || leafIdx == int(nodesList.size()) - 2)) {
+                if (!regionsEqual && (nextIdx == int(leafIdxOffset1) - 1 || nextIdx == int(nodesList.size()) - 1)) {
                     float deltaAngle = std::min(angle1 - angle0, 0.1f);
                     angle1 += deltaAngle * 0.5f;
-                    if (leafIdx == int(leafIdxOffset1) - 2) {
+                    if (nextIdx == int(leafIdxOffset1) - 1) {
                         fieldData->a01 = angle1;
                     } else {
                         fieldData->a11 = angle1;
@@ -1267,7 +1317,7 @@ void HEBChart::renderBaseSkia() {
 
     if (selectedPointIndices[0] >= 0) {
         drawSelectionArrows();
-    } if (showSelectedRegionsByColor && isFocusView && !fieldDataArray.empty()) {
+    } if (!regionsEqual && showSelectedRegionsByColor && isFocusView && !fieldDataArray.empty()) {
         glm::vec2 center(windowWidth / 2.0f * s, windowHeight / 2.0f * s);
         auto* fieldData = fieldDataArray.front().get();
         float rhi = (totalRadius + std::max(totalRadius * 0.015f, 4.0f)) * s;
@@ -1472,15 +1522,40 @@ void HEBChart::renderBaseVkvg() {
                     || lineFieldIndexArray.at(selectedLineIdx) == i;
 
             for (int leafIdx = int(leafIdxOffset); leafIdx < int(nodesList.size()); leafIdx++) {
-                if (!regionsEqual && (leafIdx == int(leafIdxOffset1) - 1 || leafIdx == int(nodesList.size()) - 1)) {
-                    continue;
+                bool isSingleElementRegion = false;
+                if (!regionsEqual) {
+                    if (leafIdx == int(leafIdxOffset1) - 1) {
+                        if (leafIdxOffset + 1 == leafIdxOffset1) {
+                            isSingleElementRegion = true;
+                        } else {
+                            continue;
+                        }
+                    }
+                    if (leafIdx == int(nodesList.size()) - 1) {
+                        if (int(leafIdxOffset1) + 1 == int(nodesList.size())) {
+                            isSingleElementRegion = true;
+                        } else {
+                            continue;
+                        }
+                    }
                 }
+                //if (!regionsEqual && (leafIdx == int(leafIdxOffset1) - 1 || leafIdx == int(nodesList.size()) - 1)) {
+                //    continue;
+                //}
                 int numLeaves = int(nodesList.size()) - int(leafIdxOffset);
                 int nextIdx = (leafIdx + 1 - int(leafIdxOffset)) % numLeaves + int(leafIdxOffset);
+                if (isSingleElementRegion) {
+                    nextIdx = leafIdx;
+                }
                 const auto &leafCurr = nodesList.at(leafIdx);
                 const auto &leafNext = nodesList.at(nextIdx);
                 float angle0 = leafCurr.angle;
                 float angle1 = leafNext.angle + 0.01f;
+                if (isSingleElementRegion) {
+                    const float angleRangeHalf = sgl::PI * 0.92f;
+                    angle0 = leafCurr.angle - 0.5f * angleRangeHalf;
+                    angle1 = leafCurr.angle + 0.5f * angleRangeHalf;
+                }
                 float angleMid0 = angle0;
                 float angleMid1 = angle1;
                 if (!regionsEqual && (leafIdx == int(leafIdxOffset) || leafIdx == int(leafIdxOffset1))) {
@@ -1492,10 +1567,10 @@ void HEBChart::renderBaseVkvg() {
                         fieldData->a10 = angle0;
                     }
                 }
-                if (!regionsEqual && (leafIdx == int(leafIdxOffset1) - 2 || leafIdx == int(nodesList.size()) - 2)) {
+                if (!regionsEqual && (nextIdx == int(leafIdxOffset1) - 1 || nextIdx == int(nodesList.size()) - 1)) {
                     float deltaAngle = std::min(angle1 - angle0, 0.1f);
                     angle1 += deltaAngle * 0.5f;
-                    if (leafIdx == int(leafIdxOffset1) - 2) {
+                    if (nextIdx == int(leafIdxOffset1) - 1) {
                         fieldData->a01 = angle1;
                     } else {
                         fieldData->a11 = angle1;
@@ -1586,7 +1661,7 @@ void HEBChart::renderBaseVkvg() {
 
     if (selectedPointIndices[0] >= 0) {
         drawSelectionArrows();
-    } else if (showSelectedRegionsByColor && isFocusView && !fieldDataArray.empty()) {
+    } else if (!regionsEqual && showSelectedRegionsByColor && isFocusView && !fieldDataArray.empty()) {
         glm::vec2 center(windowWidth / 2.0f * s, windowHeight / 2.0f * s);
         auto* fieldData = fieldDataArray.front().get();
         float rhi = (totalRadius + std::max(totalRadius * 0.015f, 4.0f)) * s;

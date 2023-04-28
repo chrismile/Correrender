@@ -226,6 +226,10 @@ public:
     void setNumRequests(uint32_t _numRequests);
     void setRequestsBuffer(const sgl::vk::BufferPtr& _requestsBuffer);
     void setOutputBuffer(const sgl::vk::BufferPtr& _outputBuffer);
+    void overrideGridSize(int _xsr, int _ysr, int _zsr, int _xsq, int _ysq, int _zsq);
+    void setUseSecondaryFields(bool _useSecondaryFields);
+    void setFieldBuffersSecondary(const std::vector<sgl::vk::BufferPtr>& _fieldBuffers);
+    void setFieldImageViewsSecondary(const std::vector<sgl::vk::ImageViewPtr>& _fieldImageViews);
 
 protected:
     void loadShader() override;
@@ -234,6 +238,7 @@ protected:
 
 private:
     VolumeData* volumeData = nullptr;
+    int xs = 0, ys = 0, zs = 0;
     int cachedCorrelationMemberCount = 0;
     CorrelationMeasureType correlationMeasureType = CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV;
 
@@ -247,6 +252,8 @@ private:
     const int computeBlockSize2dX = 8, computeBlockSize2dY = 8;
     struct UniformData {
         uint32_t xs, ys, zs, cs;
+        uint32_t xsr, ysr, zsr, paddingUniform0;
+        uint32_t xsq, ysq, zsq, paddingUniform1;
     };
     UniformData uniformData{};
     sgl::vk::BufferPtr uniformBuffer;
@@ -254,8 +261,9 @@ private:
     CorrelationDataMode dataMode = CorrelationDataMode::BUFFER_ARRAY;
     bool useBufferTiling = true;
     bool useSeparateFields = false;
-    std::vector<sgl::vk::BufferPtr> fieldBuffers;
-    std::vector<sgl::vk::ImageViewPtr> fieldImageViews;
+    bool useSecondaryFields = false;
+    std::vector<sgl::vk::BufferPtr> fieldBuffers, fieldBuffersSecondary;
+    std::vector<sgl::vk::ImageViewPtr> fieldImageViews, fieldImageViewsSecondary;
     sgl::vk::BufferPtr referenceValuesBuffer;
 #ifdef SUPPORT_CUDA_INTEROP
     sgl::vk::BufferCudaExternalMemoryVkPtr referenceValuesCudaBuffer;

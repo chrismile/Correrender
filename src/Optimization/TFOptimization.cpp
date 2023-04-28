@@ -61,6 +61,7 @@ TFOptimization::TFOptimization(sgl::vk::Renderer* parentRenderer) : parentRender
 
 TFOptimization::~TFOptimization() {
     worker->join();
+    delete worker;
 }
 
 void TFOptimization::setVolumeData(VolumeData* _volumeData, bool isNewData) {

@@ -633,7 +633,7 @@ void DiagramRenderer::renderViewImpl(uint32_t viewIdx) {
                 continue;
             }
             // Only render the last view.
-            if (i > 0 && i != diagrams.size() - 1) {
+            if (alignWithParentWindow && i > 0 && i != diagrams.size() - 1) {
                 continue;
             }
             if (i > 0) {

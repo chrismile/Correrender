@@ -85,7 +85,7 @@ struct DataSetInformation {
     glm::ivec3 axes = { 0, 1, 2 };
     // Optional downscaling for the flow field.
     int subsamplingFactor = 1;
-    bool susamplingFactorSet = false;
+    bool subsamplingFactorSet = false;
     // Name of the velocity field to use (if multiple are available).
     std::string velocityFieldName;
     // Whether to use normalized velocity or normalized vorticity in helicity computation.

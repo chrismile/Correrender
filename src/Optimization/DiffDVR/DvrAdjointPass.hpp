@@ -26,36 +26,30 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef CORRERENDER_REGION_HPP
-#define CORRERENDER_REGION_HPP
+#ifndef CORRERENDER_DVRADJOINTPASS_HPP
+#define CORRERENDER_DVRADJOINTPASS_HPP
 
-struct GridRegion {
-    GridRegion() = default;
-    GridRegion(int xoff, int yoff, int zoff, int xsr, int ysr, int zsr)
-            : xoff(xoff), yoff(yoff), zoff(zoff), xsr(xsr), ysr(ysr), zsr(zsr) {
-        xmin = xoff;
-        ymin = yoff;
-        zmin = zoff;
-        xmax = xoff + xsr - 1;
-        ymax = yoff + ysr - 1;
-        zmax = zoff + zsr - 1;
-    }
-    [[nodiscard]] inline int getNumCells() const {
-        return xsr * ysr * zsr;
-    }
-    inline bool operator==(const GridRegion& rhs) const {
-        return
-                xoff == rhs.xoff && yoff == rhs.yoff && zoff == rhs.zoff
-                && xsr == rhs.xsr && ysr == rhs.ysr && zsr == rhs.zsr;
-    }
-    inline bool operator!=(const GridRegion& rhs) const {
-        return
-                xoff != rhs.xoff || yoff != rhs.yoff || zoff != rhs.zoff
-                || xsr != rhs.xsr || ysr != rhs.ysr || zsr != rhs.zsr;
-    }
-    int xoff = 0, yoff = 0, zoff = 0; //< Offset.
-    int xsr = 0, ysr = 0, zsr = 0; //< Region size.
-    int xmin = 0, ymin = 0, zmin = 0, xmax = 0, ymax = 0, zmax = 0;
+#include <Graphics/Vulkan/Render/Passes/Pass.hpp>
+
+class DvrAdjointPass : public sgl::vk::ComputePass {
+public:
+    explicit DvrAdjointPass(sgl::vk::Renderer* renderer);
+
+protected:
+    void loadShader() override;
+    void createComputeData(sgl::vk::Renderer* renderer, sgl::vk::ComputePipelinePtr& computePipeline) override;
+    void _render() override;
+
+private:
+    const uint32_t computeBlockSize = 64;
+    struct UniformData {
+        float lambda; ///< Smoothing rate.
+        uint32_t R; ///< Number of TF entries in the value axis.
+    };
+    UniformData uniformData{};
+    sgl::vk::BufferPtr uniformBuffer;
+
+    sgl::vk::BufferPtr transferFunctionBuffer, transferFunctionGradientBuffer;
 };
 
-#endif //CORRERENDER_REGION_HPP
+#endif //CORRERENDER_DVRADJOINTPASS_HPP

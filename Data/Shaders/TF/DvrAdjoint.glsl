@@ -70,18 +70,22 @@ layout(binding = 5, std430) readonly buffer TerminationIndexBuffer {
 };
 
 layout(binding = 6, std430) readonly buffer TransferFunctionGradientBuffer {
+#ifdef SUPPORT_BUFFER_FLOAT_ATOMIC_ADD
     float g[NUM_TF_ENTRIES];
+#else
+    uint g[NUM_TF_ENTRIES];
+#endif
 };
 
 void atomicAddGradient(uint tfEntryIdx, float value) {
 #ifdef SUPPORT_BUFFER_FLOAT_ATOMIC_ADD
     atomicAdd(g[tfEntryIdx], value);
 #else
-    float oldValue = g[tfEntryIdx];
-    float expectedValue, newValue;
+    uint oldValue = g[tfEntryIdx];
+    uint expectedValue, newValue;
     do {
         expectedValue = oldValue;
-        newValue = oldValue + value;
+        newValue = floatBitsToUint(uintBitsToFloat(oldValue) + value);
         oldValue = atomicCompSwap(g[tfEntryIdx], expectedValue, newValue);
     } while (oldValue != expectedValue);
 #endif

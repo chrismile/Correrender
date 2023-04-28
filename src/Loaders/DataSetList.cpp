@@ -269,7 +269,7 @@ void processDataSetNodeChildren(Json::Value& childList, DataSetInformation* data
         }
         if (source.isMember("subsampling_factor")) {
             dataSetInformation->subsamplingFactor = source["subsampling_factor"].asInt();
-            dataSetInformation->susamplingFactorSet = true;
+            dataSetInformation->subsamplingFactorSet = true;
         }
         if (source.isMember("velocity_field_name")) {
             dataSetInformation->velocityFieldName = source["velocity_field_name"].asString();

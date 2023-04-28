@@ -161,7 +161,7 @@ void buildHebTreeIterativeTopDownZOrder(
     rootDomain.depth = 0;
     rootDomain.min = glm::ivec3(0, 0, 0);
     rootDomain.max = glm::ivec3(xsd - 1, ysd - 1, zsd - 1);
-    rootDomain.subdivSize = maxDim / 2;
+    rootDomain.subdivSize = std::max(maxDim / 2, 1);
     domainStack.push(rootDomain);
     leafIdxOffset = std::numeric_limits<uint32_t>::max();
     while (!domainStack.empty()) {
@@ -353,7 +353,13 @@ void buildHebTree(
         auto numLeaves = int(pointToNodeIndexMap0.size() + (regionsEqual ? 0 : pointToNodeIndexMap1.size()));
         uint32_t leafCounter = 0;
         for (uint32_t leafIdx = leafIdxOffset0; leafIdx < uint32_t(nodesList.size()); leafIdx++) {
-            float angle = float(leafCounter) / float(numLeaves) * sgl::TWO_PI;
+            float angle;
+            if (numLeaves == 1) {
+                // Should never happen, unless the data set has size 1x1x1.
+                angle = 0.0f;
+            } else {
+                angle = float(leafCounter) / float(numLeaves) * sgl::TWO_PI;
+            }
             nodesList[leafIdx].angle = angle;
             nodesList[leafIdx].normalizedPosition = glm::vec2(std::cos(angle), std::sin(angle));
             if (nodesList[leafIdx].parentIdx != std::numeric_limits<uint32_t>::max()) {
@@ -368,7 +374,12 @@ void buildHebTree(
         auto numLeaves0 = int(pointToNodeIndexMap0.size());
         uint32_t leafCounter0 = 0;
         for (uint32_t leafIdx = leafIdxOffset0; leafIdx < leafIdxOffset1; leafIdx++) {
-            float angle = angleOffset0 + float(leafCounter0) / float(numLeaves0 - 1) * angleRangeHalf;
+            float angle;
+            if (numLeaves0 == 1) {
+                angle = sgl::PI * 0.5f;
+            } else {
+                angle = angleOffset0 + float(leafCounter0) / float(numLeaves0 - 1) * angleRangeHalf;
+            }
             nodesList[leafIdx].angle = angle;
             nodesList[leafIdx].normalizedPosition = glm::vec2(std::cos(angle), std::sin(angle));
             if (nodesList[leafIdx].parentIdx != std::numeric_limits<uint32_t>::max()) {
@@ -380,7 +391,12 @@ void buildHebTree(
         auto numLeaves1 = int(pointToNodeIndexMap1.size());
         uint32_t leafCounter1 = 0;
         for (uint32_t leafIdx = leafIdxOffset1; leafIdx < uint32_t(nodesList.size()); leafIdx++) {
-            float angle = angleOffset1 + float(leafCounter1) / float(numLeaves1 - 1) * angleRangeHalf;
+            float angle;
+            if (numLeaves1 == 1) {
+                angle = sgl::PI * 1.5f;
+            } else {
+                angle = angleOffset1 + float(leafCounter1) / float(numLeaves1 - 1) * angleRangeHalf;
+            }
             nodesList[leafIdx].angle = angle;
             nodesList[leafIdx].normalizedPosition = glm::vec2(std::cos(angle), std::sin(angle));
             if (nodesList[leafIdx].parentIdx != std::numeric_limits<uint32_t>::max()) {

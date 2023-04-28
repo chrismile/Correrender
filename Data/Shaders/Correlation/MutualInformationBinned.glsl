@@ -68,10 +68,10 @@ void main() {
     }
 
 #if !defined(USE_SCALAR_FIELD_IMAGES) && !defined(SEPARATE_REFERENCE_AND_QUERY_FIELDS)
-    uint referenceIdx = IDXS(referencePointIdx.x, referencePointIdx.y, referencePointIdx.z);
+    uint referenceIdx = IDXSR(referencePointIdx.x, referencePointIdx.y, referencePointIdx.z);
 #endif
 #if !defined(USE_SCALAR_FIELD_IMAGES)
-    uint queryIdx = IDXS(currentPointIdx.x, currentPointIdx.y, currentPointIdx.z);
+    uint queryIdx = IDXSQ(currentPointIdx.x, currentPointIdx.y, currentPointIdx.z);
 #endif
 
     // Compute the 2D joint histogram.
@@ -81,16 +81,16 @@ void main() {
 #ifdef SEPARATE_REFERENCE_AND_QUERY_FIELDS
         float val0 = referenceValues[c];
 #else
-        float val0 = texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), referencePointIdx, 0).r;
+        float val0 = texelFetch(sampler3D(scalarFieldsRef[nonuniformEXT(c)], scalarFieldSampler), referencePointIdx, 0).r;
 #endif
-        float val1 = texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), currentPointIdx, 0).r;
+        float val1 = texelFetch(sampler3D(scalarFieldsQuery[nonuniformEXT(c)], scalarFieldSampler), currentPointIdx, 0).r;
 #else
 #ifdef SEPARATE_REFERENCE_AND_QUERY_FIELDS
         float val0 = referenceValues[c];
 #else
-        float val0 = scalarFields[nonuniformEXT(c)].values[referenceIdx];
+        float val0 = scalarFieldsRef[nonuniformEXT(c)].values[referenceIdx];
 #endif
-        float val1 = scalarFields[nonuniformEXT(c)].values[queryIdx];
+        float val1 = scalarFieldsQuery[nonuniformEXT(c)].values[queryIdx];
 #endif
         if (!isnan(val0) && !isnan(val1)) {
             val0 = (val0 - minFieldValRef) / (maxFieldValRef - minFieldValRef);

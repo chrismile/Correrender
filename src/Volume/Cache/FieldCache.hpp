@@ -129,7 +129,7 @@ public:
             auxiliaryMemorySizeTotal -= it->second;
             auxiliaryMemorySizeMap.erase(it);
         } else {
-            sgl::Logfile::get()->throwError("Error in FieldCache::popAuxiliaryMemory: ");
+            sgl::Logfile::get()->throwError("Error in FieldCache::popAuxiliaryMemory: Invalid token.");
         }
     }
 

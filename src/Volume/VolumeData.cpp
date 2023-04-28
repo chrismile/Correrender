@@ -543,7 +543,7 @@ bool VolumeData::setInputFiles(
     filePaths = _filePaths;
     dataSetInformation = std::move(_dataSetInformation);
 
-    if (dataSetInformation.susamplingFactorSet) {
+    if (dataSetInformation.subsamplingFactorSet) {
         subsamplingFactor = dataSetInformation.subsamplingFactor;
     }
     if (dataSetInformation.separateFilesPerAttribute) {

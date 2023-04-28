@@ -31,11 +31,13 @@
 
 #include <string>
 #include <vector>
+#include <mutex>
+
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
+#include <nlopt.hpp>
 
 #include <Math/Geometry/AABB3.hpp>
-#include <nlopt.hpp>
 
 #include "DiagramColorMap.hpp"
 #include "Region.hpp"
@@ -79,6 +81,7 @@ struct HEBChartFieldUpdateData {
 struct HEBChartFieldData {
     explicit HEBChartFieldData(HEBChart* parent, bool* desaturateUnselectedRing)
             : parent(parent), desaturateUnselectedRing(desaturateUnselectedRing) {}
+    ~HEBChartFieldData();
 
     // General data.
     HEBChart* parent = nullptr;
@@ -107,6 +110,33 @@ struct HEBChartFieldData {
     std::vector<glm::vec3> colorPointsLines, colorPointsVariance;
     bool* desaturateUnselectedRing = nullptr;
     bool separateColorVarianceAndCorrelation = true;
+
+    // Mean field cache.
+    void createFieldCache(
+            VolumeData* _volumeData, bool regionsEqual, GridRegion r0, GridRegion r1, int mdfx, int mdfy, int mdfz,
+            bool isEnsembleMode, CorrelationDataMode dataMode, bool useBufferTiling);
+    void clearMemoryTokens();
+    void computeDownscaledFields(int idx, int fieldIdx);
+    int getCorrelationMemberCount();
+    HostCacheEntry getFieldEntryCpu(const std::string& fieldName, int fieldIdx);
+    std::pair<float, float> getMinMaxScalarFieldValue(const std::string& fieldName, int fieldIdx);
+    std::mutex volumeDataMutex;
+    VolumeData* volumeData = nullptr;
+    bool cachedRegionsEqual = false;
+    GridRegion cachedR0, cachedR1;
+    int cachedMdfx = 0, cachedMdfy = 0, cachedMdfz = 0;
+    bool cachedIsEnsembleMode = true;
+    CorrelationDataMode cachedDataMode = CorrelationDataMode::BUFFER_ARRAY;
+    bool cachedUseBufferTiling = true;
+    // Data.
+    float minFieldVal = std::numeric_limits<float>::max(), maxFieldVal = std::numeric_limits<float>::lowest();
+    std::vector<sgl::vk::ImageViewPtr> fieldImageViews;
+    std::vector<sgl::vk::BufferPtr> fieldBuffers;
+    std::vector<AuxiliaryMemoryToken> deviceMemoryTokens;
+    // Optional, if separate regions and downscaled fields are used.
+    std::vector<sgl::vk::ImageViewPtr> fieldImageViewsR1;
+    std::vector<sgl::vk::BufferPtr> fieldBuffersR1;
+    std::vector<AuxiliaryMemoryToken> deviceMemoryTokensR1;
 };
 typedef std::shared_ptr<HEBChartFieldData> HEBChartFieldDataPtr;
 
@@ -120,6 +150,9 @@ struct HEBChartFieldCache {
     std::vector<VolumeData::DeviceCacheEntry> fieldEntries;
     std::vector<sgl::vk::ImageViewPtr> fieldImageViews;
     std::vector<sgl::vk::BufferPtr> fieldBuffers;
+    // Optional, if separate regions and downscaled fields are used.
+    std::vector<sgl::vk::ImageViewPtr> fieldImageViewsR1;
+    std::vector<sgl::vk::BufferPtr> fieldBuffersR1;
 };
 
 /**
@@ -276,6 +309,10 @@ private:
     std::vector<HEBNode> nodesList;
     std::vector<uint32_t> pointToNodeIndexMap0, pointToNodeIndexMap1;
     uint32_t leafIdxOffset = 0, leafIdxOffset1 = 0;
+
+    // Mean field data.
+    bool useMeanFields = false;
+    int mdfx = 1, mdfy = 1, mdfz = 1;
 
     // B-spline data.
     void updateData();

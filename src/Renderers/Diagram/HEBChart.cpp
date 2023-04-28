@@ -580,6 +580,33 @@ void HEBChart::updateRegion() {
         dfz = 1;
         zsd1 = r1.zsr;
     }
+
+    sgl::vk::Device* device = sgl::AppSettings::get()->getPrimaryDevice();
+    auto memoryHeapIndex = uint32_t(device->findMemoryHeapIndex(VK_MEMORY_HEAP_DEVICE_LOCAL_BIT));
+    size_t availableVram = device->getMemoryHeapBudgetVma(memoryHeapIndex);
+    int cs = getCorrelationMemberCount();
+    size_t sizeFields = size_t(xs) * size_t(ys) * size_t(zs) * size_t(cs) * sizeof(float);
+    double budgetVram = double(availableVram) * 0.4;
+    //double budgetVram = double(sizeFields) * 0.6;
+    if (double(sizeFields) > budgetVram) {
+        useMeanFields = true;
+    } else {
+        useMeanFields = false;
+    }
+    if (useMeanFields) {
+        int xsr = std::max(r0.xsr, r1.xsr);
+        int ysr = std::max(r0.ysr, r1.ysr);
+        int zsr = std::max(r0.zsr, r1.zsr);
+        size_t sizeFieldsAtLevel = size_t(xsr) * size_t(ysr) * size_t(zsr) * size_t(cs) * sizeof(float);
+        auto f = std::max(int(std::ceil(std::cbrt(double(sizeFieldsAtLevel) / budgetVram))), 1);
+        mdfx = f;
+        mdfy = f;
+        mdfz = f;
+    } else {
+        mdfx = 1;
+        mdfy = 1;
+        mdfz = 1;
+    }
 }
 
 void HEBChart::updateData() {

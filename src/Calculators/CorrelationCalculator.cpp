@@ -1086,9 +1086,12 @@ CorrelationComputePass::~CorrelationComputePass() {
 
 void CorrelationComputePass::setVolumeData(VolumeData *_volumeData, int correlationMemberCount, bool isNewData) {
     volumeData = _volumeData;
-    uniformData.xs = uint32_t(volumeData->getGridSizeX());
-    uniformData.ys = uint32_t(volumeData->getGridSizeY());
-    uniformData.zs = uint32_t(volumeData->getGridSizeZ());
+    xs = volumeData->getGridSizeX();
+    ys = volumeData->getGridSizeY();
+    zs = volumeData->getGridSizeZ();
+    uniformData.xs = uint32_t(xs);
+    uniformData.ys = uint32_t(ys);
+    uniformData.zs = uint32_t(zs);
     uniformData.cs = uint32_t(correlationMemberCount);
     uniformBuffer->updateData(
             sizeof(UniformData), &uniformData, renderer->getVkCommandBuffer());
@@ -1101,6 +1104,23 @@ void CorrelationComputePass::setVolumeData(VolumeData *_volumeData, int correlat
         setShaderDirty();
         spearmanReferenceRankComputePass->setCorrelationMemberCount(cachedCorrelationMemberCount);
     }
+}
+
+void CorrelationComputePass::overrideGridSize(int _xsr, int _ysr, int _zsr, int _xsq, int _ysq, int _zsq) {
+    uniformData.xs = _xsr;
+    uniformData.ys = _ysr;
+    uniformData.zs = _zsr;
+    uniformData.xsr = _xsr;
+    uniformData.ysr = _ysr;
+    uniformData.zsr = _zsr;
+    uniformData.xsq = _xsq;
+    uniformData.ysq = _ysq;
+    uniformData.zsq = _zsq;
+    uniformBuffer->updateData(
+            sizeof(UniformData), &uniformData, renderer->getVkCommandBuffer());
+    renderer->insertMemoryBarrier(
+            VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_UNIFORM_READ_BIT,
+            VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 }
 
 void CorrelationComputePass::setCorrelationMemberCount(int correlationMemberCount) {
@@ -1160,7 +1180,34 @@ void CorrelationComputePass::setFieldImageViews(const std::vector<sgl::vk::Image
     if (computeData) {
         computeData->setStaticImageViewArrayOptional(fieldImageViews, "scalarFields");
     }
-    spearmanReferenceRankComputePass->setFieldImageViews(_fieldImageViews);
+    spearmanReferenceRankComputePass->setFieldImageViews(fieldImageViews);
+}
+
+void CorrelationComputePass::setUseSecondaryFields(bool _useSecondaryFields) {
+    if (useSecondaryFields != _useSecondaryFields) {
+        useSecondaryFields = _useSecondaryFields;
+        setShaderDirty();
+    }
+}
+
+void CorrelationComputePass::setFieldBuffersSecondary(const std::vector<sgl::vk::BufferPtr>& _fieldBuffers) {
+    if (fieldBuffersSecondary == _fieldBuffers) {
+        return;
+    }
+    fieldBuffersSecondary = _fieldBuffers;
+    if (computeData) {
+        computeData->setStaticBufferArrayOptional(fieldBuffersSecondary, "ScalarFieldBuffersSecondary");
+    }
+}
+
+void CorrelationComputePass::setFieldImageViewsSecondary(const std::vector<sgl::vk::ImageViewPtr>& _fieldImageViews) {
+    if (fieldImageViewsSecondary == _fieldImageViews) {
+        return;
+    }
+    fieldImageViewsSecondary = _fieldImageViews;
+    if (computeData) {
+        computeData->setStaticImageViewArrayOptional(fieldImageViewsSecondary, "scalarFieldsSecondary");
+    }
 }
 
 void CorrelationComputePass::setReferenceValuesBuffer(const sgl::vk::BufferPtr& _referenceValuesBuffer) {
@@ -1267,7 +1314,7 @@ void CorrelationComputePass::loadShader() {
         preprocessorDefines.insert(std::make_pair("BLOCK_SIZE_X", std::to_string(computeBlockSize1D)));
         preprocessorDefines.insert(std::make_pair("BLOCK_SIZE_Y", std::to_string(1)));
         preprocessorDefines.insert(std::make_pair("BLOCK_SIZE_Z", std::to_string(1)));
-    } else if (volumeData->getGridSizeZ() < 4) {
+    } else if (zs < 4) {
         preprocessorDefines.insert(std::make_pair("BLOCK_SIZE_X", std::to_string(computeBlockSize2dX)));
         preprocessorDefines.insert(std::make_pair("BLOCK_SIZE_Y", std::to_string(computeBlockSize2dY)));
         preprocessorDefines.insert(std::make_pair("BLOCK_SIZE_Z", "1"));
@@ -1288,6 +1335,9 @@ void CorrelationComputePass::loadShader() {
     }
     if (useRequestEvaluationMode) {
         preprocessorDefines.insert(std::make_pair("USE_REQUESTS_BUFFER", ""));
+        if (useSecondaryFields) {
+            preprocessorDefines.insert(std::make_pair("USE_SECONDARY_FIELDS", ""));
+        }
     }
     if (correlationMeasureType != CorrelationMeasureType::MUTUAL_INFORMATION_BINNED
             && correlationMeasureType != CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV
@@ -1334,6 +1384,13 @@ void CorrelationComputePass::createComputeData(sgl::vk::Renderer* renderer, sgl:
     } else {
         computeData->setStaticBufferArray(fieldBuffers, "ScalarFieldBuffers");
     }
+    if (useSecondaryFields) {
+        if (dataMode == CorrelationDataMode::IMAGE_3D_ARRAY) {
+            computeData->setStaticImageViewArray(fieldImageViewsSecondary, "scalarFieldsSecondary");
+        } else {
+            computeData->setStaticBufferArray(fieldBuffersSecondary, "ScalarFieldBuffersSecondary");
+        }
+    }
     if (useSeparateFields) {
         computeData->setStaticBuffer(referenceValuesBuffer, "ReferenceValuesBuffer");
     }
@@ -1375,7 +1432,7 @@ void CorrelationComputePass::_render() {
          */
         DeviceThreadInfo deviceCoresInfo = getDeviceThreadInfo(device);
         const uint32_t numCudaCoresRtx3090 = 10496;
-        int M = volumeData->getGridSizeX() * volumeData->getGridSizeY() * volumeData->getGridSizeZ();
+        int M = xs * ys * zs;
         int N = cachedCorrelationMemberCount;
         double factorM = double(M) / (1.76 * 1e6);
         double factorN = double(N) / 100.0 * std::log2(double(N) / 100.0 + 1.0);
@@ -1400,22 +1457,22 @@ void CorrelationComputePass::_render() {
         }
     }
 
-    int blockSizeX = volumeData->getGridSizeZ() < 4 ? computeBlockSize2dX : computeBlockSizeX;
-    int blockSizeY = volumeData->getGridSizeZ() < 4 ? computeBlockSize2dY : computeBlockSizeY;
-    int blockSizeZ = volumeData->getGridSizeZ() < 4 ? 1 : computeBlockSizeZ;
+    int blockSizeX = zs < 4 ? computeBlockSize2dX : computeBlockSizeX;
+    int blockSizeY = zs < 4 ? computeBlockSize2dY : computeBlockSizeY;
+    int blockSizeZ = zs < 4 ? 1 : computeBlockSizeZ;
     if (needsBatchedRendering) {
         auto blockSizeXUint = uint32_t(blockSizeX);
         //auto blockSizeY = uint32_t(computeBlockSizeY);
         //auto blockSizeZ = uint32_t(computeBlockSizeZ);
         /*auto batchSizeX =
-                sgl::uiceil(uint32_t(volumeData->getGridSizeX()), batchCount * blockSizeXUint) * blockSizeXUint;
-        auto batchSizeY = uint32_t(volumeData->getGridSizeY());
-        auto batchSizeZ = uint32_t(volumeData->getGridSizeZ());
-        batchCount = sgl::uiceil(uint32_t(volumeData->getGridSizeX()), batchSizeX);*/
+                sgl::uiceil(uint32_t(xs), batchCount * blockSizeXUint) * blockSizeXUint;
+        auto batchSizeY = uint32_t(ys);
+        auto batchSizeZ = uint32_t(zs);
+        batchCount = sgl::uiceil(uint32_t(xs), batchSizeX);*/
         auto batchSizeX = 2 * blockSizeXUint;
-        auto batchSizeY = uint32_t(volumeData->getGridSizeY());
-        auto batchSizeZ = uint32_t(volumeData->getGridSizeZ());
-        batchCount = sgl::uiceil(uint32_t(volumeData->getGridSizeX()), batchSizeX);
+        auto batchSizeY = uint32_t(ys);
+        auto batchSizeZ = uint32_t(zs);
+        batchCount = sgl::uiceil(uint32_t(xs), batchSizeX);
         for (uint32_t batchIdx = 0; batchIdx < batchCount; batchIdx++) {
             if (supportsBatchedRendering) {
                 renderer->pushConstants(
@@ -1423,7 +1480,7 @@ void CorrelationComputePass::_render() {
                         glm::uvec3(batchSizeX * batchIdx, 0, 0));
             }
             if (batchIdx == batchCount - 1) {
-                batchSizeX = uint32_t(volumeData->getGridSizeX()) - batchSizeX * batchIdx;
+                batchSizeX = uint32_t(xs) - batchSizeX * batchIdx;
             }
             renderer->dispatch(
                     computeData,
@@ -1441,10 +1498,7 @@ void CorrelationComputePass::_render() {
             renderer->dispatch(computeData, sgl::uiceil(numRequests, uint32_t(computeBlockSize1D)), 1, 1);
         } else {
             renderer->dispatch(
-                    computeData,
-                    sgl::iceil(volumeData->getGridSizeX(), blockSizeX),
-                    sgl::iceil(volumeData->getGridSizeY(), blockSizeY),
-                    sgl::iceil(volumeData->getGridSizeZ(), blockSizeZ));
+                    computeData, sgl::iceil(xs, blockSizeX), sgl::iceil(ys, blockSizeY), sgl::iceil(zs, blockSizeZ));
         }
     }
 }
@@ -1454,12 +1508,9 @@ void CorrelationComputePass::computeCuda(
         CorrelationCalculator* correlationCalculator,
         const std::string& fieldName, int timeStepIdx, int ensembleIdx, const DeviceCacheEntry& deviceCacheEntry,
         glm::ivec3& referencePointIndex) {
-    int xs = volumeData->getGridSizeX();
-    int ys = volumeData->getGridSizeY();
-    int zs = volumeData->getGridSizeZ();
     int cs = cachedCorrelationMemberCount;
     int N = cs;
-    int M = volumeData->getGridSizeX() * volumeData->getGridSizeY() * volumeData->getGridSizeZ();
+    int M = xs * ys * zs;
 
     renderer->insertImageMemoryBarrier(
             deviceCacheEntry->getVulkanImage(),
