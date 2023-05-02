@@ -73,6 +73,12 @@ void TFOptimizerDiffDvr::onRequestQueued(VolumeData* volumeData) {
     dvrSettings.stepSize = voxelSize * settings.stepSize;
     dvrSettings.attenuationCoefficient = settings.attenuationCoefficient;
     auto fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
+
+    // TODO
+    std::vector<glm::vec4> tfGT = volumeData->getMultiVarTransferFunctionWindow().getTransferFunctionMap_sRGBDownscaled(
+            settings.fieldIdxGT, int(settings.tfSize));
+    transferFunctionGTBuffer->uploadData(sizeof(glm::vec4) * tfGT.size(), tfGT.data());
+
     // TODO
     parentRenderer->getDevice()->waitIdle();
     auto fieldEntryGT = volumeData->getFieldEntryDevice(FieldType::SCALAR, fieldNames.at(settings.fieldIdxGT));
@@ -126,6 +132,10 @@ void TFOptimizerDiffDvr::recreateCache(
                 device, sizeof(glm::vec4) * settings.tfSize,
                 VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                 VMA_MEMORY_USAGE_GPU_ONLY, false);
+        transferFunctionDownloadStagingBuffer = std::make_shared<sgl::vk::Buffer>(
+                device, sizeof(glm::vec4) * settings.tfSize,
+                VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                VMA_MEMORY_USAGE_GPU_TO_CPU, false);
         transferFunctionGradientBuffer = std::make_shared<sgl::vk::Buffer>(
                 device, sizeof(glm::vec4) * settings.tfSize,
                 VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
@@ -172,6 +182,7 @@ void TFOptimizerDiffDvr::runOptimization(bool shallStop, bool& hasStopped) {
     }
 
     // TODO: Add support for double buffering?
+    bool isLastEpoch = currentEpoch + 1 == maxNumEpochs;
     for (; currentEpoch < maxNumEpochs; currentEpoch++) {
         if (shallStop) {
             hasStopped = true;
@@ -194,7 +205,23 @@ void TFOptimizerDiffDvr::runOptimization(bool shallStop, bool& hasStopped) {
         }
     }
 
-    //renderer->getDevice()->waitComputeQueueIdle();
+    if (isLastEpoch) {
+        renderer->setCustomCommandBuffer(commandBuffer, false);
+        renderer->beginCommandBuffer();
+
+        tfArrayOpt.resize(settings.tfSize);
+        transferFunctionBuffer->copyDataTo(transferFunctionDownloadStagingBuffer, commandBuffer);
+
+        renderer->endCommandBuffer();
+        renderer->submitToQueue({}, {}, fence, VK_PIPELINE_STAGE_TRANSFER_BIT);
+        renderer->resetCustomCommandBuffer();
+        fence->wait();
+        fence->reset();
+
+        auto* tfData = reinterpret_cast<float*>(transferFunctionBuffer->mapMemory());
+        memcpy(tfArrayOpt.data(), tfData, sizeof(glm::vec4) * settings.tfSize);
+        transferFunctionBuffer->unmapMemory();
+    }
 }
 
 void TFOptimizerDiffDvr::sampleCameraPoses() {

@@ -47,7 +47,7 @@ class TFOptimizer {
 public:
     TFOptimizer(sgl::vk::Renderer* renderer, sgl::vk::Renderer* parentRenderer, bool supportsAsyncCompute);
     virtual ~TFOptimizer();
-    [[nodiscard]] inline const sgl::vk::BufferPtr& getTFBuffer() const { return transferFunctionBuffer; }
+    [[nodiscard]] inline const std::vector<glm::vec4>& getTFArrayOpt() const { return tfArrayOpt; }
     inline void setSettings(const TFOptimizationWorkerSettings& newSettings) { settings = newSettings; }
     virtual void onRequestQueued(VolumeData* volumeData)=0;
     virtual void runOptimization(bool shallStop, bool& hasStopped)=0;
@@ -65,7 +65,8 @@ protected:
     VkCommandBuffer commandBuffer{};
 
     TFOptimizationWorkerSettings settings;
-    sgl::vk::BufferPtr transferFunctionBuffer;
+    std::vector<glm::vec4> tfArrayOpt;
+    //sgl::vk::BufferPtr transferFunctionBuffer;
 };
 
 #endif //CORRERENDER_TFOPTIMIZER_HPP

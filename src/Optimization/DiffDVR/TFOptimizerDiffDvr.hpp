@@ -88,6 +88,9 @@ private:
     sgl::vk::BufferPtr gtFinalColorsBuffer;
     sgl::vk::BufferPtr finalColorsBuffer;
     sgl::vk::BufferPtr terminationIndexBuffer;
+    sgl::vk::BufferPtr transferFunctionGTBuffer;
+    sgl::vk::BufferPtr transferFunctionBuffer;
+    sgl::vk::BufferPtr transferFunctionDownloadStagingBuffer;
     sgl::vk::BufferPtr transferFunctionGradientBuffer;
     sgl::vk::ImageViewPtr imageViewFieldGT, imageViewFieldOpt;
 

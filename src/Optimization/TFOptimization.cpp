@@ -148,24 +148,13 @@ void TFOptimization::renderGuiDialog() {
         if (shallStartOptimization) {
             ImGui::OpenPopup("Optimization Progress");
             isOptimizationProgressDialogOpen = true;
-
-            // Initialize the transfer function buffer.
-            auto tfBuffer = worker->getTFBuffer();
-            auto& tfWidget = volumeData->getMultiVarTransferFunctionWindow();
-            auto& tfImage = tfWidget.getTransferFunctionMapTextureVulkan()->getImage();
-            sgl::vk::Device* device = sgl::AppSettings::get()->getPrimaryDevice();
-            device->waitIdle();
-            VkCommandBuffer commandBuffer = device->beginSingleTimeCommands();
-            tfImage->transitionImageLayout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, commandBuffer);
-            tfImage->copyToBufferLayered(tfBuffer, uint32_t(settings.fieldIdxOpt), commandBuffer);
-            device->endSingleTimeCommands(commandBuffer);
-
             settings.tfSize = uint32_t(tfSizes.at(tfSizeIdx));
             worker->queueRequest(settings, volumeData);
         }
         if (ImGui::BeginPopupModal(
                 "Optimization Progress", &isOptimizationProgressDialogOpen, ImGuiWindowFlags_AlwaysAutoResize)) {
-            ImGui::Text("Progress: Epoch %d of %d...", 1, settings.maxNumEpochs);
+            int maxNumEpochs = settings.optimizerMethod == TFOptimizerMethod::OLS ? 1 : settings.maxNumEpochs;
+            ImGui::Text("Progress: Epoch %d of %d...", 1, maxNumEpochs);
             ImGui::ProgressSpinner(
                     "##progress-spinner-tfopt", -1.0f, -1.0f, 4.0f,
                     ImVec4(0.1f, 0.5f, 1.0f, 1.0f));
@@ -176,7 +165,7 @@ void TFOptimization::renderGuiDialog() {
                 worker->stop();
             }
             workerHasReply = worker->getReply(reply);
-            if (workerHasReply && reply.hasStopped) {
+            if (workerHasReply) {
                 ImGui::CloseCurrentPopup();
             }
             ImGui::EndPopup();
@@ -186,11 +175,23 @@ void TFOptimization::renderGuiDialog() {
     }
 
     if (workerHasReply && !reply.hasStopped) {
-        auto tfBuffer = worker->getTFBuffer();
+        std::vector<sgl::OpacityPoint> opacityPoints;
+        std::vector<sgl::ColorPoint_sRGB> colorPoints;
+        auto tfArrayOpt = worker->getTFArrayOpt();
+        opacityPoints.reserve(tfArrayOpt.size());
+        colorPoints.reserve(tfArrayOpt.size());
+        for (size_t i = 0; i < tfArrayOpt.size(); i++) {
+            float t = float(i) / float(tfArrayOpt.size() - 1);
+            const glm::vec4& color = tfArrayOpt.at(i);
+            opacityPoints.emplace_back(color.a, t);
+            auto color16 = sgl::color16FromVec4(color);
+            color16.setA(0xFFFFu);
+            colorPoints.emplace_back(color16, t);
+        }
         auto& tfWidget = volumeData->getMultiVarTransferFunctionWindow();
-        auto& tfImage = tfWidget.getTransferFunctionMapTextureVulkan()->getImage();
-        tfImage->transitionImageLayout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, parentRenderer->getVkCommandBuffer());
-        tfImage->copyFromBufferLayered(tfBuffer, uint32_t(settings.fieldIdxOpt), parentRenderer->getVkCommandBuffer());
+        int varIdx = settings.fieldIdxOpt;
+        tfWidget.setTransferFunction(
+                varIdx, opacityPoints, colorPoints, sgl::ColorSpace::COLOR_SPACE_SRGB);
     }
 }
 
@@ -290,8 +291,8 @@ bool TFOptimizationWorker::getReply(TFOptimizationWorkerReply& reply) {
     return hasReply;
 }
 
-const sgl::vk::BufferPtr& TFOptimizationWorker::getTFBuffer() {
-    return tfOptimizer->getTFBuffer();
+const std::vector<glm::vec4>& TFOptimizationWorker::getTFArrayOpt() const {
+    return tfOptimizer->getTFArrayOpt();
 }
 
 void TFOptimizationWorker::mainLoop() {

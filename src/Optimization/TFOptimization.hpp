@@ -102,7 +102,7 @@ public:
      */
     bool getReply(TFOptimizationWorkerReply& reply);
     /// Returns the result buffer belonging to the last reply.
-    const sgl::vk::BufferPtr& getTFBuffer();
+    const std::vector<glm::vec4>& getTFArrayOpt() const;
 
 protected:
     void mainLoop();

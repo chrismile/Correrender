@@ -58,27 +58,14 @@ TFOptimizerOLS::~TFOptimizerOLS() {
 
 void TFOptimizerOLS::TFOptimizerOLS::onRequestQueued(VolumeData* volumeData) {
     auto fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
-    // TODO
+    auto& tfWindow = volumeData->getMultiVarTransferFunctionWindow();
     std::string fieldNameGT = fieldNames.at(settings.fieldIdxGT);
     std::string fieldNameOpt = fieldNames.at(settings.fieldIdxOpt);
     cache->fieldEntryGT = volumeData->getFieldEntryCpu(FieldType::SCALAR, fieldNameGT);
     cache->fieldEntryOpt = volumeData->getFieldEntryCpu(FieldType::SCALAR, fieldNameOpt);
-    cache->minMaxGT = volumeData->getMinMaxScalarFieldValue(fieldNameGT);
-    cache->minMaxGT = volumeData->getMinMaxScalarFieldValue(fieldNameOpt);
-    auto tfGTColor16 = volumeData->getMultiVarTransferFunctionWindow().getTransferFunctionMap_sRGB(settings.fieldIdxGT);
-    cache->tfGT.clear();
-    cache->tfGT.reserve(settings.tfSize);
-    // TODO: Only settings.tfSize num entries
-    for (auto& color16 : tfGTColor16) {
-        glm::vec4 color;
-        color.r = color16.getFloatR();
-        color.g = color16.getFloatG();
-        color.b = color16.getFloatB();
-        color.a = color16.getFloatA();
-        cache->tfGT.push_back(color);
-    }
-    cache->tfGT.shrink_to_fit();
-    uint32_t cachedTfSize = 0;
+    cache->minMaxGT = tfWindow.getSelectedRangePair(settings.fieldIdxGT);
+    cache->minMaxOpt = tfWindow.getSelectedRangePair(settings.fieldIdxGT);
+    cache->tfGT = tfWindow.getTransferFunctionMap_sRGBDownscaled(settings.fieldIdxGT, int(settings.tfSize));
     uint32_t numVoxels =
             uint32_t(volumeData->getGridSizeX())
             * uint32_t(volumeData->getGridSizeY())
@@ -91,10 +78,6 @@ void TFOptimizerOLS::TFOptimizerOLS::onRequestQueued(VolumeData* volumeData) {
     }
     if (cache->cachedTfSize != settings.tfSize) {
         cache->x = Eigen::VectorXr(settings.tfSize * 4);
-        transferFunctionBuffer = std::make_shared<sgl::vk::Buffer>(
-                renderer->getDevice(), sizeof(glm::vec4) * settings.tfSize,
-                VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                VMA_MEMORY_USAGE_CPU_ONLY, false);
     }
     cache->cachedTfSize = settings.tfSize;
     cache->cachedNumVoxels = numVoxels;
@@ -105,6 +88,7 @@ float TFOptimizerOLS::getProgress() {
 }
 
 void TFOptimizerOLS::runOptimization(bool shallStop, bool& hasStopped) {
+    // TODO: Move matrix setup to CUDA
     // Set up the system matrix A and the right hand side vector b.
     uint32_t tfNumEntries = cache->cachedTfSize * 4;
     for (uint32_t i = 0; i < cache->cachedNumVoxels; i++) {
@@ -118,12 +102,45 @@ void TFOptimizerOLS::runOptimization(bool shallStop, bool& hasStopped) {
     float maxGT = cache->minMaxGT.second;
     float minOpt = cache->minMaxOpt.first;
     float maxOpt = cache->minMaxOpt.second;
+    auto Nj = float(cache->cachedTfSize - 1);
     for (uint32_t i = 0; i < cache->cachedNumVoxels; i++) {
         float scalarGT = fieldDataGT[i];
-        cache->b(i) = fieldDataGT[i];
-
         float scalarOpt = fieldDataOpt[i];
-        //cache->A(i, j0) = 0.0f;
+
+        if (std::isnan(scalarGT) || std::isnan(scalarOpt)) {
+            for (int c = 0; c < 4; c++) {
+                cache->b(i * 4 + c) = 0.0f;
+            }
+            continue;
+        }
+
+        float tGT = (scalarGT - minGT) / (maxGT - minGT);
+        float tGT0 = std::clamp(std::floor(tGT * cache->cachedTfSize), 0.0f, Nj);
+        float tGT1 = std::clamp(std::ceil(tGT * Nj), 0.0f, Nj);
+        float fGT = tGT * Nj - tGT0;
+        int jGT0 = int(tGT0);
+        int jGT1 = int(tGT1);
+        glm::vec4 cGT0 = cache->tfGT.at(jGT0);
+        glm::vec4 cGT1 = cache->tfGT.at(jGT1);
+        glm::vec4 colorGT = glm::mix(cGT0, cGT1, fGT);
+        for (int c = 0; c < 4; c++) {
+            cache->b(i * 4 + c) = colorGT[c];
+        }
+
+        float tOpt = (scalarOpt - minOpt) / (maxOpt - minOpt);
+        float tOpt0 = std::clamp(std::floor(tOpt * cache->cachedTfSize), 0.0f, Nj);
+        float tOpt1 = std::clamp(std::ceil(tOpt * Nj), 0.0f, Nj);
+        float fOpt = tOpt * Nj - tOpt0;
+        int jOpt0 = int(tOpt0);
+        int jOpt1 = int(tOpt1);
+        for (int c = 0; c < 4; c++) {
+            cache->A(i, jOpt0 + c) = 1.0f - fOpt;
+        }
+        if (jOpt0 != jOpt1) {
+            for (int c = 0; c < 4; c++) {
+                cache->A(i, jOpt1 + c) = fOpt;
+            }
+        }
     }
     cache->fieldEntryGT = {};
     cache->fieldEntryOpt = {};
@@ -139,15 +156,13 @@ void TFOptimizerOLS::runOptimization(bool shallStop, bool& hasStopped) {
     solveSystemOfLinearEquationsEigen(
             settings.eigenSolverType, settings.useRelaxation, lambdaL, cache->A, cache->b, cache->x);
 
-    // TODO: Share buffers with CUDA.
-    auto* tfEntries = reinterpret_cast<float*>(transferFunctionBuffer->mapMemory());
+    tfArrayOpt.resize(settings.tfSize);
 #ifdef USE_DOUBLE_PRECISION
     uint32_t numEntries = settings.tfSize * 4;
-    for (uint32_t i = 0; i < numEntries; i++) {
-        tfEntries[i] = float(cache->x(i));
+    for (uint32_t i = 0; i < numEntries; i += 4) {
+        tfArrayOpt[i] = glm::vec4(cache->x(i), cache->x(i + 1), cache->x(i + 2), cache->x(i + 3));
     }
 #else
-    memcpy(tfEntries, cache->x.data(), sizeof(glm::vec4) * settings.tfSize);
+    memcpy(tfArrayOpt.data(), cache->x.data(), sizeof(glm::vec4) * settings.tfSize);
 #endif
-    transferFunctionBuffer->unmapMemory();
 }
