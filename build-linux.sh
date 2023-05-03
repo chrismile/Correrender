@@ -129,6 +129,7 @@ if command -v apt &> /dev/null; then
             || ! is_installed_apt "ocl-icd-opencl-dev" \
             || ! is_installed_apt "libjsoncpp-dev" || ! is_installed_apt "nlohmann-json3-dev" \
             || ! is_installed_apt "python3-dev" || ! is_installed_apt "libblosc-dev" \
+            || ! is_installed_apt "liblz4-dev" \
             || ! is_installed_apt "libnetcdf-dev" || ! is_installed_apt "libeccodes-dev" \
             || ! is_installed_apt "libeccodes-tools" || ! is_installed_apt "libopenjp2-7-dev" \
             || ! is_installed_apt "libeigen3-dev" || ! is_installed_apt "libnlopt-cxx-dev"; then
@@ -137,7 +138,8 @@ if command -v apt &> /dev/null; then
         echo "------------------------"
         sudo apt install -y libglm-dev libsdl2-dev libsdl2-image-dev libpng-dev libboost-filesystem-dev libtinyxml2-dev \
         libarchive-dev libglew-dev opencl-c-headers ocl-icd-opencl-dev libjsoncpp-dev nlohmann-json3-dev python3-dev \
-        libnetcdf-dev libblosc-dev libeccodes-dev libeccodes-tools libopenjp2-7-dev libeigen3-dev libnlopt-cxx-dev
+        libnetcdf-dev libblosc-dev liblz4-dev libeccodes-dev libeccodes-tools libopenjp2-7-dev libeigen3-dev \
+        libnlopt-cxx-dev
     fi
 elif command -v pacman &> /dev/null; then
     if ! command -v cmake &> /dev/null || ! command -v git &> /dev/null || ! command -v curl &> /dev/null \

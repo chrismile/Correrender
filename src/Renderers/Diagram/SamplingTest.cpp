@@ -137,7 +137,7 @@ void runSamplingTests(const std::string& dataSetPath, int testIdx) {
     const int dfx = testIdx == 0 ? 10 : 32;
     const int dfy = testIdx == 0 ? 10 : 32;
     const int dfz = testIdx == 0 ? 10 : (isSyntheticTestCase ? 32 : 20);
-    const int numRuns = testIdx == 0 ? 10 : 40;
+    const int numRuns = testIdx == 0 ? 10 : 100;
     int numPairsToCheck = 1000;
     int numLogSteps = 3;
     std::vector<int> numSamplesArray;

@@ -164,6 +164,22 @@ std::string NetCdfLoader::getStringAttribute(int varid, const char* attname) {
     return attText;
 }
 
+float NetCdfLoader::getFloatAttribute(int varid, const char* attname) {
+    float attrValue = 0.0f;
+    nc_type type;
+    myassert(nc_inq_atttype(ncid, varid, attname, &type) == NC_NOERR);
+    if (type == NC_FLOAT) {
+        nc_get_att_float(ncid, varid, attname, &attrValue);
+    } else if (type == NC_DOUBLE) {
+        double attrValueDouble = 0.0;
+        nc_get_att_double(ncid, varid, attname, &attrValueDouble);
+        attrValue = float(attrValueDouble);
+    } else {
+        sgl::Logfile::get()->throwError("Error in NetCdfLoader::getFloatAttribute: Invalid attribute type.");
+    }
+    return attrValue;
+}
+
 bool NetCdfLoader::setInputFiles(
         VolumeData* volumeData, const std::string& _filePath, const DataSetInformation& _dataSetInformation) {
     filePath = _filePath;
@@ -391,6 +407,8 @@ bool NetCdfLoader::setInputFiles(
 
     // Set the names of the existing fields/datasets.
     std::unordered_map<FieldType, std::vector<std::string>> fieldNameMap;
+    varHasFillValueMap.resize(nvarsp);
+    fillValueMap.resize(nvarsp);
     for (int varid = 0; varid < nvarsp; varid++) {
         nc_type type = NC_FLOAT;
         int ndims = 0;
@@ -400,17 +418,27 @@ bool NetCdfLoader::setInputFiles(
             continue;
         }
 
+        bool hasFillValue = false;
+        float fillValue = std::numeric_limits<float>::quiet_NaN();
         std::string variableDisplayName = varname;
         for (int attnum = 0; attnum < natts; attnum++) {
             nc_inq_attname(ncid, varid, attnum, attname);
             if (strcmp(attname, "standard_name") == 0) {
                 variableDisplayName = getStringAttribute(varid, "standard_name");
+            } else if (strcmp(attname, "missing_value") == 0) {
+                hasFillValue = true;
+                fillValue = getFloatAttribute(varid, "missing_value");
+            } else if (strcmp(attname, "_FillValue") == 0) {
+                hasFillValue = true;
+                fillValue = getFloatAttribute(varid, "_FillValue");
             }
         }
 
         fieldNameMap[FieldType::SCALAR].push_back(variableDisplayName);
         datasetNameMap.insert(std::make_pair(varname, varid));
         datasetNameMap.insert(std::make_pair(variableDisplayName, varid));
+        varHasFillValueMap.at(varid) = hasFillValue;
+        fillValueMap.at(varid) = fillValue;
     }
     volumeData->setFieldNames(fieldNameMap);
 
@@ -444,6 +472,16 @@ bool NetCdfLoader::getFieldEntry(
         loadFloatArray3D(varid, timestepIdx, zs, ys, xs, fieldEntryBuffer);
     } else if (numDims == 4 && es > 1) {
         loadFloatArray3D(varid, memberIdx, zs, ys, xs, fieldEntryBuffer);
+    }
+
+    if (varHasFillValueMap.at(varid)) {
+        int numEntries = xs * ys * zs;
+        float fillValue = fillValueMap.at(varid);
+        for (int i = 0; i < numEntries; i++) {
+            if (fieldEntryBuffer[i] == fillValue) {
+                fieldEntryBuffer[i] = std::numeric_limits<float>::quiet_NaN();
+            }
+        }
     }
 
     if (dataSetInformation.subsamplingFactorSet) {

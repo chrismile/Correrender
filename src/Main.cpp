@@ -56,6 +56,29 @@ void vulkanErrorCallbackHeadless() {
     std::cerr << "Application callback" << std::endl;
 }
 
+#ifdef __linux__
+#include <sys/resource.h>
+// Some systems have 1024 open file descriptors as the maximum. Increase the soft limit of the process to the maximum.
+void setFileDescriptorLimit() {
+    rlimit lim{};
+    getrlimit(RLIMIT_NOFILE, &lim);
+    size_t rlimOld = lim.rlim_cur;
+    if (lim.rlim_cur < lim.rlim_max) {
+        lim.rlim_cur = lim.rlim_max;
+        if (setrlimit(RLIMIT_NOFILE, &lim) == -1) {
+            sgl::Logfile::get()->writeError("Error in setFileDescriptorLimit: setrlimit failed.");
+            return;
+        }
+        getrlimit(RLIMIT_NOFILE, &lim);
+        sgl::Logfile::get()->write(
+                "File descriptor limit: " + std::to_string(lim.rlim_cur)
+                + " (old: " + std::to_string(rlimOld) + ")", sgl::BLUE);
+    } else {
+        sgl::Logfile::get()->write("File descriptor limit: " + std::to_string(lim.rlim_cur), sgl::BLUE);
+    }
+}
+#endif
+
 int main(int argc, char *argv[]) {
     // Initialize the filesystem utilities.
     sgl::FileUtils::get()->initialize("Correrender", argc, argv);
@@ -92,6 +115,10 @@ int main(int argc, char *argv[]) {
 
     std::string iconPath = sgl::AppSettings::get()->getDataDirectory() + "Fonts/icon_256.png";
     sgl::AppSettings::get()->loadApplicationIconFromFile(iconPath);
+
+#ifdef __linux__
+    setFileDescriptorLimit();
+#endif
 
     // Load the file containing the app settings
     if (isHeadlessMode) {

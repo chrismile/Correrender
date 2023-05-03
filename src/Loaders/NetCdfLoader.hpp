@@ -106,11 +106,24 @@ private:
      */
     std::string getStringAttribute(int varid, const char* attname);
 
+    /**
+     * Queries a float attribute of a variable.
+     * @param ncid The NetCDF file ID.
+     * @param varid The ID of the variable.
+     * @param attname The name of the attribute to query.
+     * @return The attribute string.
+     */
+    float getFloatAttribute(int varid, const char* attname);
+
     int ncid = 0;
     std::string filePath;
     DataSetInformation dataSetInformation;
     std::unordered_map<std::string, int> datasetNameMap;
     int xs = 0, ys = 0, zs = 0, ts = 0, es = 0;
+
+    // Fill values are optional and replaced with NaN for visualization purposes.
+    std::vector<bool> varHasFillValueMap;
+    std::vector<float> fillValueMap;
 };
 
 #endif //CORRERENDER_NETCDFLOADER_HPP
