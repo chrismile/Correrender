@@ -53,7 +53,7 @@
 NetCdfLoader::NetCdfLoader() = default;
 
 NetCdfLoader::~NetCdfLoader() {
-    if (nc_close(ncid) != NC_NOERR) {
+    if (isOpen && nc_close(ncid) != NC_NOERR) {
         sgl::Logfile::get()->throwError(
                 "Error in NetCdfLoader::load: nc_close failed for file \"" + filePath + "\".");
     }
@@ -190,6 +190,7 @@ bool NetCdfLoader::setInputFiles(
                 "Error in NetCdfLoader::load: File \"" + filePath + "\" couldn't be opened.");
         return false;
     }
+    isOpen = true;
 
     // Temporary data for storing information about the variables in the data file.
     int nvarsp = 0;

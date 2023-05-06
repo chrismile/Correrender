@@ -46,7 +46,7 @@ class VolumeData;
 class TFOptimizationWorker;
 
 const int possibleTfSizes[] = {
-        3, 4, 5, 7, 8, 10, 16, 32, 64, 96, 128, 256
+        2, 3, 4, 5, 7, 8, 10, 16, 32, 64, 96, 128, 256
 };
 
 class TFOptimization {

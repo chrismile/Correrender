@@ -71,7 +71,7 @@ void TFOptimizerOLS::TFOptimizerOLS::onRequestQueued(VolumeData* volumeData) {
             * uint32_t(volumeData->getGridSizeY())
             * uint32_t(volumeData->getGridSizeZ());
     if (cache->cachedTfSize != settings.tfSize || cache->cachedNumVoxels != numVoxels) {
-        cache->A = Eigen::MatrixXr(numVoxels, settings.tfSize * 4);
+        cache->A = Eigen::MatrixXr(numVoxels * 4, settings.tfSize * 4);
     }
     if (cache->cachedNumVoxels != numVoxels) {
         cache->b = Eigen::VectorXr(numVoxels * 4);
@@ -91,7 +91,8 @@ void TFOptimizerOLS::runOptimization(bool shallStop, bool& hasStopped) {
     // TODO: Move matrix setup to CUDA
     // Set up the system matrix A and the right hand side vector b.
     uint32_t tfNumEntries = cache->cachedTfSize * 4;
-    for (uint32_t i = 0; i < cache->cachedNumVoxels; i++) {
+    uint32_t numMatrixRows = cache->cachedNumVoxels * 4;
+    for (uint32_t i = 0; i < numMatrixRows; i++) {
         for (uint32_t j = 0; j < tfNumEntries; j++) {
             cache->A(i, j) = 0.0f;
         }
@@ -103,19 +104,20 @@ void TFOptimizerOLS::runOptimization(bool shallStop, bool& hasStopped) {
     float minOpt = cache->minMaxOpt.first;
     float maxOpt = cache->minMaxOpt.second;
     auto Nj = float(cache->cachedTfSize - 1);
-    for (uint32_t i = 0; i < cache->cachedNumVoxels; i++) {
-        float scalarGT = fieldDataGT[i];
-        float scalarOpt = fieldDataOpt[i];
+    for (uint32_t voxelIdx = 0; voxelIdx < cache->cachedNumVoxels; voxelIdx++) {
+        float scalarGT = fieldDataGT[voxelIdx];
+        float scalarOpt = fieldDataOpt[voxelIdx];
+        uint32_t i = voxelIdx * 4;
 
         if (std::isnan(scalarGT) || std::isnan(scalarOpt)) {
             for (int c = 0; c < 4; c++) {
-                cache->b(i * 4 + c) = 0.0f;
+                cache->b(i + c) = 0.0f;
             }
             continue;
         }
 
         float tGT = (scalarGT - minGT) / (maxGT - minGT);
-        float tGT0 = std::clamp(std::floor(tGT * cache->cachedTfSize), 0.0f, Nj);
+        float tGT0 = std::clamp(std::floor(tGT * Nj), 0.0f, Nj);
         float tGT1 = std::clamp(std::ceil(tGT * Nj), 0.0f, Nj);
         float fGT = tGT * Nj - tGT0;
         int jGT0 = int(tGT0);
@@ -124,21 +126,24 @@ void TFOptimizerOLS::runOptimization(bool shallStop, bool& hasStopped) {
         glm::vec4 cGT1 = cache->tfGT.at(jGT1);
         glm::vec4 colorGT = glm::mix(cGT0, cGT1, fGT);
         for (int c = 0; c < 4; c++) {
-            cache->b(i * 4 + c) = colorGT[c];
+            cache->b(i + c) = colorGT[c];
         }
 
         float tOpt = (scalarOpt - minOpt) / (maxOpt - minOpt);
-        float tOpt0 = std::clamp(std::floor(tOpt * cache->cachedTfSize), 0.0f, Nj);
+        float tOpt0 = std::clamp(std::floor(tOpt * Nj), 0.0f, Nj);
         float tOpt1 = std::clamp(std::ceil(tOpt * Nj), 0.0f, Nj);
         float fOpt = tOpt * Nj - tOpt0;
         int jOpt0 = int(tOpt0);
         int jOpt1 = int(tOpt1);
+        if (fOpt < 0.0f || fOpt > 1.0f) {
+            std::cout << "ERROR" << std::endl;
+        }
         for (int c = 0; c < 4; c++) {
-            cache->A(i, jOpt0 + c) = 1.0f - fOpt;
+            cache->A(i + c, jOpt0 * 4 + c) = 1.0f - fOpt;
         }
         if (jOpt0 != jOpt1) {
             for (int c = 0; c < 4; c++) {
-                cache->A(i, jOpt1 + c) = fOpt;
+                cache->A(i + c, jOpt1 * 4 + c) = fOpt;
             }
         }
     }
@@ -150,11 +155,61 @@ void TFOptimizerOLS::runOptimization(bool shallStop, bool& hasStopped) {
     if (settings.useCuda) {
         solveSystemOfLinearEquationsCuda(
                 settings.cudaSolverType, settings.useRelaxation, lambdaL, cache->A, cache->b, cache->x);
-        return;
-    }
+    } else {
 #endif
     solveSystemOfLinearEquationsEigen(
             settings.eigenSolverType, settings.useRelaxation, lambdaL, cache->A, cache->b, cache->x);
+#ifdef CUDA_ENABLED
+    }
+#endif
+
+    // Debugging.
+    std::cout << "A:" << std::endl;
+    uint32_t numi = std::min(cache->cachedNumVoxels * 4u, 32u);
+    uint32_t numj = std::min(cache->cachedTfSize * 4u, 20u);
+    for (uint32_t i = 0; i < numi; i++) {
+        for (uint32_t j = 0; j < numj; j++) {
+            std::cout << cache->A(i, j);
+            if (j != numj - 1) {
+                std::cout << ", ";
+            } else if (uint32_t(cache->cachedTfSize) * 4u > numj) {
+                std::cout << ", ...";
+            }
+        }
+        if (i != numi - 1) {
+            std::cout << std::endl;
+        } else if (uint32_t(cache->cachedNumVoxels) * 4u > numi) {
+            std::cout << std::endl << "..." << std::endl;
+        }
+    }
+    std::cout << std::endl << std::endl;
+
+    std::cout << "b:" << std::endl;
+    for (uint32_t i = 0; i < numi; i++) {
+        std::cout << cache->b(i);
+        if (i != numi - 1) {
+            std::cout << std::endl;
+        } else if (uint32_t(cache->cachedNumVoxels) * 4u > numi) {
+            std::cout << std::endl << "..." << std::endl;
+        }
+    }
+    std::cout << std::endl << std::endl;
+
+    std::cout << "x:" << std::endl;
+    for (uint32_t j = 0; j < numj; j++) {
+        std::cout << cache->x(j);
+        if (j != numj - 1) {
+            std::cout << std::endl;
+        } else if (uint32_t(cache->cachedTfSize) * 4u > numj) {
+            std::cout << std::endl << "..." << std::endl;
+        }
+    }
+    std::cout << std::endl << std::endl;
+
+    // Clamp the transfer function values to [0, 1].
+    for (uint32_t j = 0; j < tfNumEntries; j++) {
+        cache->x(j) = std::clamp(cache->x(j), 0.0f, 1.0f);
+    }
 
     tfArrayOpt.resize(settings.tfSize);
 #ifdef USE_DOUBLE_PRECISION

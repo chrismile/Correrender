@@ -115,6 +115,7 @@ private:
      */
     float getFloatAttribute(int varid, const char* attname);
 
+    bool isOpen = false;
     int ncid = 0;
     std::string filePath;
     DataSetInformation dataSetInformation;
