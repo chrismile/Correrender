@@ -34,7 +34,8 @@ void solveSystemOfLinearEquationsEigen(
         EigenSolverType eigenSolverType, bool useRelaxation, const Real lambdaL,
         const Eigen::MatrixXr& A, const Eigen::MatrixXr& b, Eigen::MatrixXr& x) {
     if (useRelaxation) {
-        Eigen::MatrixXr M_I = Eigen::Matrix<Real, 9, 9>::Identity();
+        const auto c = A.cols();
+        Eigen::MatrixXr M_I = Eigen::MatrixXr::Identity(c, c);
 
         Eigen::MatrixXr A_T = A.transpose();
         Eigen::MatrixXr lhs = A_T * A + lambdaL * M_I;

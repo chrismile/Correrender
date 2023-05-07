@@ -37,6 +37,7 @@
 #include "TFOptimizer.hpp"
 #include "Optimization/DiffDVR/TFOptimizerDiffDvr.hpp"
 #include "Optimization/OLS/TFOptimizerOLS.hpp"
+#include "Optimization/OLS/CudaSolver.hpp"
 #include "TFOptimization.hpp"
 
 TFOptimization::TFOptimization(sgl::vk::Renderer* parentRenderer) : parentRenderer(parentRenderer) {
@@ -111,7 +112,15 @@ void TFOptimization::renderGuiDialog() {
                 }
             } else {
                 int backendIdx = settings.useCuda ? 1 : 0;
-                if (ImGui::Combo("Backend", &backendIdx, OLS_BACKEND_NAMES, IM_ARRAYSIZE(OLS_BACKEND_NAMES))) {
+                auto* device = parentRenderer->getDevice();
+                int numBackends = 1;
+#ifdef CUDA_ENABLED
+                if (device->getDeviceDriverId() == VK_DRIVER_ID_NVIDIA_PROPRIETARY
+                        && sgl::vk::getIsCudaDeviceApiFunctionTableInitialized()) {
+                    numBackends++;
+                }
+#endif
+                if (ImGui::Combo("Backend", &backendIdx, OLS_BACKEND_NAMES, numBackends)) {
                     settings.useCuda = backendIdx == 1;
                 }
                 if (settings.useCuda) {
@@ -207,9 +216,24 @@ TFOptimizationWorker::TFOptimizationWorker(sgl::vk::Renderer* parentRenderer) : 
     if (supportsAsyncCompute) {
         requesterThread = std::thread(&TFOptimizationWorker::mainLoop, this);
     }
+#ifdef CUDA_ENABLED
+    else if (device->getDeviceDriverId() == VK_DRIVER_ID_NVIDIA_PROPRIETARY
+            && sgl::vk::getIsCudaDeviceApiFunctionTableInitialized()) {
+        cudaInit();
+    }
+#endif
 }
 
 TFOptimizationWorker::~TFOptimizationWorker() {
+#ifdef CUDA_ENABLED
+    sgl::vk::Device* device = sgl::AppSettings::get()->getPrimaryDevice();
+    if (!supportsAsyncCompute && device->getDeviceDriverId() == VK_DRIVER_ID_NVIDIA_PROPRIETARY
+            && sgl::vk::getIsCudaDeviceApiFunctionTableInitialized()) {
+        cudaRelease();
+    }
+#endif
+
+    tfOptimizer = {};
     if (renderer) {
         delete renderer;
         renderer = nullptr;
@@ -300,6 +324,14 @@ void TFOptimizationWorker::mainLoop() {
     tracy::SetThreadName("TFOptimizationWorker");
 #endif
 
+#ifdef CUDA_ENABLED
+    sgl::vk::Device* device = sgl::AppSettings::get()->getPrimaryDevice();
+    if (device->getDeviceDriverId() == VK_DRIVER_ID_NVIDIA_PROPRIETARY
+            && sgl::vk::getIsCudaDeviceApiFunctionTableInitialized()) {
+        cudaInit();
+    }
+#endif
+
     while (true) {
         std::unique_lock<std::mutex> requestLock(requestMutex);
         hasRequestConditionVariable.wait(requestLock, [this] { return hasRequest; });
@@ -319,4 +351,11 @@ void TFOptimizationWorker::mainLoop() {
             hasReply = true;
         }
     }
+
+#ifdef CUDA_ENABLED
+    if (device->getDeviceDriverId() == VK_DRIVER_ID_NVIDIA_PROPRIETARY
+            && sgl::vk::getIsCudaDeviceApiFunctionTableInitialized()) {
+        cudaRelease();
+    }
+#endif
 }

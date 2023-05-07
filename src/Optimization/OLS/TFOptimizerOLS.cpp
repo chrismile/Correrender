@@ -54,6 +54,7 @@ TFOptimizerOLS::TFOptimizerOLS(
 }
 
 TFOptimizerOLS::~TFOptimizerOLS() {
+    delete cache;
 }
 
 void TFOptimizerOLS::TFOptimizerOLS::onRequestQueued(VolumeData* volumeData) {

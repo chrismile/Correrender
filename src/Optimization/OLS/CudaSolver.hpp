@@ -36,14 +36,14 @@
 /**
  * Initializes CUDA, cuBLAS and cuSOLVE for use in @see solveSystemOfLinearEquationsCuda.
  */
-DLL_OBJECT void cudaInit(void* cudaStream = nullptr);
+void cudaInit(void* cudaStream = nullptr);
 
 /**
  * Releases CUDA, cuBLAS and cuSOLVE.
  * @see cudaInit must be called exactly once before calling cudaRelease.
  * @see solveSystemOfLinearEquationsCuda must no longer be called after a call to cudaRelease.
  */
-DLL_OBJECT void cudaRelease();
+void cudaRelease();
 
 /**
  * Solves A*x = b for the vector x.
