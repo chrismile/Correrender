@@ -30,32 +30,51 @@
 #define SH_AUG_CUDASOLVER_HPP
 
 #include <Eigen/Core>
+#include <Eigen/SparseCore>
 #include "PrecisionDefines.hpp"
 #include "../OptDefines.hpp"
 
 /**
- * Initializes CUDA, cuBLAS and cuSOLVE for use in @see solveSystemOfLinearEquationsCuda.
+ * Initializes CUDA, cuBLAS and cuSOLVE for use in @see solveLeastSquaresCudaDense.
  */
 void cudaInit(void* cudaStream = nullptr);
 
 /**
  * Releases CUDA, cuBLAS and cuSOLVE.
  * @see cudaInit must be called exactly once before calling cudaRelease.
- * @see solveSystemOfLinearEquationsCuda must no longer be called after a call to cudaRelease.
+ * @see solveLeastSquaresCudaDense must no longer be called after a call to cudaRelease.
  */
 void cudaRelease();
 
 /**
- * Solves A*x = b for the vector x.
- * This solver uses the libraries cuSPARSE and cuSOLVER.
+ * Solves A*x = b for the vector x in the least squares sense.
+ * This solver uses the libraries cuBLAS and cuSOLVER.
  * @param cudaSolverType The type of solver to use.
- * @param useRelaxation Whether to use relaxation/a regularizer.
+ * @param useNormalEquations Whether to use relaxation/a regularizer.
+ * @param lambdaL The relaxation/regularization factor.
  * @param A The system matrix A.
  * @param b The right-hand side vector.
- * @param x The left-hand side vector to solve for (output).
+ * @param x The solution of the least squares problem.
  */
-void solveSystemOfLinearEquationsCuda(
-        CudaSolverType cudaSolverType, bool useRelaxation, const Real lambdaL,
+void solveLeastSquaresCudaDense(
+        CudaSolverType cudaSolverType, bool useNormalEquations, const Real lambdaL,
         const Eigen::MatrixXr& A, const Eigen::MatrixXr& b, Eigen::MatrixXr& x);
+
+/**
+ * Solves A*x = b for the vector x in the least squares sense.
+ * This solver uses the libraries cuSPARSE and cuSOLVER.
+ * NOTE: It seems like the cuSOLVER solver is broken. Do not use this function.
+ * @param m The number of rows of the matrix.
+ * @param n The number of columns of the matrix.
+ * @param nnz The number of non-zero values.
+ * @param csrVals The list of non-zero matrix values (CSR format).
+ * @param csrRowPtr The row pointers of the matrix data (CSR format).
+ * @param csrColInd The column indices of the values in csrVals (CSR format).
+ * @param b The right-hand side vector.
+ * @param x The solution of the least squares problem.
+ */
+void solveLeastSquaresCudaSparse(
+        int m, int n, int nnz, const Real* csrVals, const int* csrRowPtr, const int* csrColInd,
+        const Real* b, Eigen::MatrixXr& x);
 
 #endif //SH_AUG_CUDASOLVER_HPP

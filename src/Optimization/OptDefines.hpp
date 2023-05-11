@@ -49,6 +49,14 @@ const char* const EIGEN_SOLVER_TYPE_NAMES[] = {
 };
 
 /// For more details see: https://eigen.tuxfamily.org/dox/group__TutorialLinearAlgebra.html
+enum class EigenSparseSolverType {
+    QR, LEAST_SQUARES_CG, LEAST_SQUARES_CG_PRECONDITIONED
+};
+const char* const EIGEN_SPARSE_SOLVER_TYPE_NAMES[] = {
+        "QR", "Least Squares CG", "Least Squares CG Preconditioned"
+};
+
+/// For more details see: https://eigen.tuxfamily.org/dox/group__TutorialLinearAlgebra.html
 enum class CudaSolverType {
     LU, LU_PIVOT, QR, CHOL
 };
@@ -70,8 +78,11 @@ const char* const LOSS_TYPE_NAMES[] = {
         "L1", "L2"
 };
 
+enum class OLSBackend {
+    CPU, VULKAN, CUDA
+};
 const char* const OLS_BACKEND_NAMES[] = {
-        "CPU", "CUDA"
+        "CPU", "Vulkan", "CUDA"
 };
 
 struct TFOptimizationWorkerSettings {
@@ -82,10 +93,12 @@ struct TFOptimizationWorkerSettings {
 
     // For OLS.
     EigenSolverType eigenSolverType = EigenSolverType::HouseholderQR;
+    EigenSparseSolverType eigenSparseSolverType = EigenSparseSolverType::LEAST_SQUARES_CG_PRECONDITIONED;
     CudaSolverType cudaSolverType = CudaSolverType::QR;
-    bool useCuda = false;
-    bool useRelaxation = false;
-    float relaxationLambda = 1.0f;
+    OLSBackend backend = OLSBackend::VULKAN;
+    bool useSparseSolve = true;
+    bool useNormalEquations = true;
+    float relaxationLambda = 1e-3; // Only used when useNormalEquations == true.
 
     // For DiffDVR and OLS_GRAD.
     OptimizerType optimizerType = OptimizerType::ADAM;

@@ -32,6 +32,8 @@
 #include "../TFOptimizer.hpp"
 
 struct TFOptimizerOLSCache;
+class NormalEquationsComputePass;
+class NormalEquationsCopySymmetricPass;
 
 class TFOptimizerOLS : public TFOptimizer {
 public:
@@ -43,6 +45,11 @@ public:
 
 private:
     TFOptimizerOLSCache* cache = nullptr;
+    void buildSystemDense();
+    void buildSystemSparse();
+
+    std::shared_ptr<NormalEquationsComputePass> normalEquationsComputePass;
+    std::shared_ptr<NormalEquationsCopySymmetricPass> normalEquationsCopySymmetricPass;
 };
 
 #endif //CORRERENDER_TFOPTIMIZEROLS_HPP

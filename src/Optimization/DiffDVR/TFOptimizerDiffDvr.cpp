@@ -80,9 +80,9 @@ void TFOptimizerDiffDvr::onRequestQueued(VolumeData* volumeData) {
     transferFunctionGTBuffer->uploadData(sizeof(glm::vec4) * tfGT.size(), tfGT.data());
 
     // TODO
-    parentRenderer->getDevice()->waitIdle();
     auto fieldEntryGT = volumeData->getFieldEntryDevice(FieldType::SCALAR, fieldNames.at(settings.fieldIdxGT));
     auto fieldEntryOpt = volumeData->getFieldEntryDevice(FieldType::SCALAR, fieldNames.at(settings.fieldIdxOpt));
+    parentRenderer->getDevice()->waitIdle();
     recreateCache(
             fieldEntryGT->getVulkanImage()->getImageSettings().format,
             fieldEntryOpt->getVulkanImage()->getImageSettings().format,
@@ -152,7 +152,6 @@ void TFOptimizerDiffDvr::recreateCache(
         imageSettings.depth = zs;
         imageSettings.imageType = VK_IMAGE_TYPE_3D;
         imageSettings.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-        imageSettings.sharingMode = VK_SHARING_MODE_CONCURRENT;
         imageSettings.format = formatGT;
         imageViewFieldGT = std::make_shared<sgl::vk::ImageView>(
                 std::make_shared<sgl::vk::Image>(device, imageSettings), VK_IMAGE_VIEW_TYPE_3D);

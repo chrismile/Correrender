@@ -45,6 +45,21 @@ const std::unordered_map<cublasStatus_t, std::string> cublasStatusNames = {
         {CUBLAS_STATUS_LICENSE_ERROR, "CUBLAS_STATUS_LICENSE_ERROR"},
 };
 
+const std::unordered_map<cusparseStatus_t, std::string> cusparseStatusNames = {
+        {CUSPARSE_STATUS_SUCCESS, "CUSPARSE_STATUS_SUCCESS"},
+        {CUSPARSE_STATUS_NOT_INITIALIZED, "CUSPARSE_STATUS_NOT_INITIALIZED"},
+        {CUSPARSE_STATUS_ALLOC_FAILED, "CUSPARSE_STATUS_ALLOC_FAILED"},
+        {CUSPARSE_STATUS_INVALID_VALUE, "CUSPARSE_STATUS_INVALID_VALUE"},
+        {CUSPARSE_STATUS_ARCH_MISMATCH, "CUSPARSE_STATUS_ARCH_MISMATCH"},
+        {CUSPARSE_STATUS_MAPPING_ERROR, "CUSPARSE_STATUS_MAPPING_ERROR"},
+        {CUSPARSE_STATUS_EXECUTION_FAILED, "CUSPARSE_STATUS_EXECUTION_FAILED"},
+        {CUSPARSE_STATUS_INTERNAL_ERROR, "CUSPARSE_STATUS_INTERNAL_ERROR"},
+        {CUSPARSE_STATUS_MATRIX_TYPE_NOT_SUPPORTED, "CUSPARSE_STATUS_MATRIX_TYPE_NOT_SUPPORTED"},
+        {CUSPARSE_STATUS_ZERO_PIVOT, "CUSPARSE_STATUS_ZERO_PIVOT"},
+        {CUSPARSE_STATUS_NOT_SUPPORTED, "CUSPARSE_STATUS_NOT_SUPPORTED"},
+        {CUSPARSE_STATUS_INSUFFICIENT_RESOURCES, "CUSPARSE_STATUS_INSUFFICIENT_RESOURCES"},
+};
+
 const std::unordered_map<cusolverStatus_t, std::string> cusolverStatusNames = {
         {CUSOLVER_STATUS_SUCCESS, "CUSOLVER_STATUS_SUCCESS"},
         {CUSOLVER_STATUS_NOT_INITIALIZED, "CUSOLVER_STATUS_NOT_INITIALIZED"},
@@ -87,7 +102,16 @@ inline void cudaAssert(cudaError_t errorCode, const char* file, int line, bool a
 inline void cudaAssert(cublasStatus_t errorCode, const char* file, int line, bool abort = true) {
     if (errorCode != CUBLAS_STATUS_SUCCESS) {
         std::cerr << "cudaAssert (cuBLAS): " << cublasStatusNames.at(errorCode)
-                << " " << file << " " << line << std::endl;
+                  << " " << file << " " << line << std::endl;
+        if (abort) {
+            exit(errorCode);
+        }
+    }
+}
+inline void cudaAssert(cusparseStatus_t errorCode, const char* file, int line, bool abort = true) {
+    if (errorCode != CUSPARSE_STATUS_SUCCESS) {
+        std::cerr << "cudaAssert (cuSPARSE): " << cusparseStatusNames.at(errorCode)
+                  << " " << file << " " << line << std::endl;
         if (abort) {
             exit(errorCode);
         }

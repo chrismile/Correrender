@@ -1593,6 +1593,9 @@ void MainApp::renderGuiMenuBar() {
         tfOptimization->openDialog();
     }
     tfOptimization->renderGuiDialog();
+    if (tfOptimization->getNeedsReRender()) {
+        reRender = true;
+    }
 }
 
 void MainApp::renderGuiPropertyEditorBegin() {

@@ -26,11 +26,17 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <iostream>
+
 #include <Eigen/Dense>
+#include <Eigen/SparseQR>
+#include <Eigen/IterativeLinearSolvers>
+
+#include <Utils/File/Logfile.hpp>
 
 #include "EigenSolver.hpp"
 
-void solveSystemOfLinearEquationsEigen(
+void solveLeastSquaresEigenDense(
         EigenSolverType eigenSolverType, bool useRelaxation, const Real lambdaL,
         const Eigen::MatrixXr& A, const Eigen::MatrixXr& b, Eigen::MatrixXr& x) {
     if (useRelaxation) {
@@ -38,7 +44,10 @@ void solveSystemOfLinearEquationsEigen(
         Eigen::MatrixXr M_I = Eigen::MatrixXr::Identity(c, c);
 
         Eigen::MatrixXr A_T = A.transpose();
-        Eigen::MatrixXr lhs = A_T * A + lambdaL * M_I;
+        Eigen::MatrixXr lhs = A_T * A;
+        if (lambdaL > Real(0)) {
+            lhs += lambdaL * M_I;
+        }
         Eigen::MatrixXr rhs = A_T * b;
 
         switch(eigenSolverType) {
@@ -106,5 +115,146 @@ void solveSystemOfLinearEquationsEigen(
                 x = A.jacobiSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(b);
                 break;
         }
+    }
+}
+
+void solveLinearSystemEigenSymmetric(
+        EigenSolverType eigenSolverType, const Real lambdaL,
+        const Eigen::MatrixXr& A, const Eigen::MatrixXr& b, Eigen::MatrixXr& x) {
+    const auto c = A.cols();
+    Eigen::MatrixXr M_I = Eigen::MatrixXr::Identity(c, c);
+
+    Eigen::MatrixXr A_T = A.transpose();
+    Eigen::MatrixXr lhs = A_T * A;
+    if (lambdaL > Real(0)) {
+        lhs += lambdaL * M_I;
+    }
+    Eigen::MatrixXr rhs = A_T * b;
+
+    switch(eigenSolverType) {
+        case EigenSolverType::PartialPivLU:
+            x = lhs.partialPivLu().solve(rhs);
+            break;
+        case EigenSolverType::FullPivLU:
+            x = lhs.fullPivLu().solve(rhs);
+            break;
+        case EigenSolverType::HouseholderQR:
+            x = lhs.householderQr().solve(rhs);
+            break;
+        case EigenSolverType::ColPivHouseholderQR:
+            x = lhs.colPivHouseholderQr().solve(rhs);
+            break;
+        case EigenSolverType::FullPivHouseholderQR:
+            x = lhs.fullPivHouseholderQr().solve(rhs);
+            break;
+        case EigenSolverType::CompleteOrthogonalDecomposition:
+            x = lhs.completeOrthogonalDecomposition().solve(rhs);
+            break;
+        case EigenSolverType::LLT:
+            x = lhs.llt().solve(rhs);
+            break;
+        case EigenSolverType::LDLT:
+            x = lhs.ldlt().solve(rhs);
+            break;
+        case EigenSolverType::BDCSVD:
+            x = lhs.bdcSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(rhs);
+            break;
+        case EigenSolverType::JacobiSVD:
+            x = lhs.jacobiSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(rhs);
+            break;
+    }
+}
+
+void solveLeastSquaresEigenSparse(
+        EigenSparseSolverType solverType,
+        const Eigen::SparseMatrixXr& A, const Eigen::MatrixXr& b, Eigen::MatrixXr& x) {
+    if (solverType == EigenSparseSolverType::QR) {
+        //Eigen::SparseQR<Eigen::SparseMatrixXr, Eigen::COLAMDOrdering<int>> sparseQr;
+        //Eigen::SparseQR<Eigen::SparseMatrixXr, Eigen::NaturalOrdering<int>> sparseQr;
+        Eigen::SparseQR<Eigen::SparseMatrixXr, Eigen::AMDOrdering<int>> sparseQr;
+        sparseQr.compute(A);
+        if (sparseQr.info() != Eigen::Success) {
+            sgl::Logfile::get()->writeError("Error in solveLeastSquaresEigenSparse: QR decomposition failed!");
+            return;
+        }
+        x = sparseQr.solve(b);
+        if (sparseQr.info() != Eigen::Success) {
+            sgl::Logfile::get()->writeError("Error in solveLeastSquaresEigenSparse: QR solver failed!");
+            return;
+        }
+    } else if (solverType == EigenSparseSolverType::LEAST_SQUARES_CG) {
+        Eigen::LeastSquaresConjugateGradient<Eigen::SparseMatrixXr, Eigen::IdentityPreconditioner> cgSolver;
+        cgSolver.compute(A);
+        if (cgSolver.info() != Eigen::Success) {
+            sgl::Logfile::get()->writeError("Error in solveLeastSquaresEigenSparse: CG decomposition failed!");
+            return;
+        }
+        x = cgSolver.solve(b);
+        if (cgSolver.info() != Eigen::Success) {
+            sgl::Logfile::get()->writeError("Error in solveLeastSquaresEigenSparse: CG solver failed!");
+            return;
+        }
+        std::cout << "CG solver iterations: " << cgSolver.iterations() << std::endl;
+        std::cout << "CG solver error: " << cgSolver.error() << std::endl;
+    } else {
+        Eigen::LeastSquaresConjugateGradient<Eigen::SparseMatrixXr, Eigen::LeastSquareDiagonalPreconditioner<Real>> cgSolver;
+        cgSolver.compute(A);
+        if (cgSolver.info() != Eigen::Success) {
+            sgl::Logfile::get()->writeError("Error in solveLeastSquaresEigenSparse: CG decomposition failed!");
+            return;
+        }
+        x = cgSolver.solve(b);
+        if (cgSolver.info() != Eigen::Success) {
+            sgl::Logfile::get()->writeError("Error in solveLeastSquaresEigenSparse: CG solver failed!");
+            return;
+        }
+        std::cout << "CG solver iterations: " << cgSolver.iterations() << std::endl;
+        std::cout << "CG solver error: " << cgSolver.error() << std::endl;
+    }
+}
+
+void solveLeastSquaresEigenSparseNormalEquations(
+        EigenSolverType eigenSolverType, const Real lambdaL,
+        const Eigen::SparseMatrixXr& A, const Eigen::MatrixXr& b, Eigen::MatrixXr& x) {
+    auto AT = A.adjoint();
+    auto lhs = Eigen::MatrixXr(AT * A);
+    auto rhs = Eigen::MatrixXr(AT * b);
+    if (lambdaL > 0.0f) {
+        const auto c = A.cols();
+        Eigen::MatrixXr M_I = Eigen::MatrixXr::Identity(c, c);
+        lhs += lambdaL * M_I;
+    }
+    x = lhs.householderQr().solve(rhs);
+    switch(eigenSolverType) {
+        case EigenSolverType::PartialPivLU:
+            x = lhs.partialPivLu().solve(rhs);
+            break;
+        case EigenSolverType::FullPivLU:
+            x = lhs.fullPivLu().solve(rhs);
+            break;
+        case EigenSolverType::HouseholderQR:
+            x = lhs.householderQr().solve(rhs);
+            break;
+        case EigenSolverType::ColPivHouseholderQR:
+            x = lhs.colPivHouseholderQr().solve(rhs);
+            break;
+        case EigenSolverType::FullPivHouseholderQR:
+            x = lhs.fullPivHouseholderQr().solve(rhs);
+            break;
+        case EigenSolverType::CompleteOrthogonalDecomposition:
+            x = lhs.completeOrthogonalDecomposition().solve(rhs);
+            break;
+        case EigenSolverType::LLT:
+            x = lhs.llt().solve(rhs);
+            break;
+        case EigenSolverType::LDLT:
+            x = lhs.ldlt().solve(rhs);
+            break;
+        case EigenSolverType::BDCSVD:
+            x = lhs.bdcSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(rhs);
+            break;
+        case EigenSolverType::JacobiSVD:
+            x = lhs.jacobiSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(rhs);
+            break;
     }
 }

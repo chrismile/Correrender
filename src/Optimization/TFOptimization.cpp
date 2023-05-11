@@ -57,6 +57,14 @@ TFOptimization::TFOptimization(sgl::vk::Renderer* parentRenderer) : parentRender
         tfSizeIdx = int(std::find(tfSizes.begin(), tfSizes.end(), 64) - tfSizes.begin());
     }
 
+//#ifdef CUDA_ENABLED
+//    if (device->getDeviceDriverId() == VK_DRIVER_ID_NVIDIA_PROPRIETARY
+//            && sgl::vk::getIsCudaDeviceApiFunctionTableInitialized()) {
+//        settings.useCuda = true;
+//        settings.useSparseSolve = true;
+//    }
+//#endif
+
     worker = new TFOptimizationWorker(parentRenderer);
 }
 
@@ -111,29 +119,44 @@ void TFOptimization::renderGuiDialog() {
                     ImGui::SliderFloat("beta2", &settings.beta2, 0.0f, 1.0f);
                 }
             } else {
-                int backendIdx = settings.useCuda ? 1 : 0;
                 auto* device = parentRenderer->getDevice();
                 int numBackends = 1;
-#ifdef CUDA_ENABLED
-                if (device->getDeviceDriverId() == VK_DRIVER_ID_NVIDIA_PROPRIETARY
-                        && sgl::vk::getIsCudaDeviceApiFunctionTableInitialized()) {
+                if (device->getPhysicalDeviceShaderAtomicFloatFeatures().shaderBufferFloat32AtomicAdd) {
                     numBackends++;
-                }
+#ifdef CUDA_ENABLED
+                    if (device->getDeviceDriverId() == VK_DRIVER_ID_NVIDIA_PROPRIETARY
+                            && sgl::vk::getIsCudaDeviceApiFunctionTableInitialized()) {
+                        numBackends++;
+                    }
 #endif
-                if (ImGui::Combo("Backend", &backendIdx, OLS_BACKEND_NAMES, numBackends)) {
-                    settings.useCuda = backendIdx == 1;
                 }
-                if (settings.useCuda) {
+                ImGui::Combo("Backend", (int*)&settings.backend, OLS_BACKEND_NAMES, numBackends);
+                if (settings.optimizerMethod == TFOptimizerMethod::OLS
+                        && settings.backend != OLSBackend::VULKAN) {
+                    ImGui::Checkbox("Use Sparse Solve Step", &settings.useSparseSolve);
+                }
+                if (settings.backend == OLSBackend::CUDA && !settings.useSparseSolve) {
                     ImGui::Combo(
                             "Solver", (int*)&settings.cudaSolverType,
                             CUDA_SOLVER_TYPE_NAMES, IM_ARRAYSIZE(CUDA_SOLVER_TYPE_NAMES));
-                } else {
-                    ImGui::Combo(
-                            "Solver", (int*)&settings.eigenSolverType,
-                            EIGEN_SOLVER_TYPE_NAMES, IM_ARRAYSIZE(EIGEN_SOLVER_TYPE_NAMES));
                 }
-                ImGui::Checkbox("Use Relaxation", &settings.useRelaxation);
-                ImGui::SliderFloat("Relaxation Lambda", &settings.relaxationLambda, 0.0f, 10.0f);
+                if (settings.backend != OLSBackend::CUDA) {
+                    if (settings.backend == OLSBackend::CPU && settings.useSparseSolve && !settings.useNormalEquations) {
+                        ImGui::Combo(
+                                "Solver", (int*)&settings.eigenSparseSolverType,
+                                EIGEN_SPARSE_SOLVER_TYPE_NAMES, IM_ARRAYSIZE(EIGEN_SPARSE_SOLVER_TYPE_NAMES));
+                    } else {
+                        ImGui::Combo(
+                                "Solver", (int*)&settings.eigenSolverType,
+                                EIGEN_SOLVER_TYPE_NAMES, IM_ARRAYSIZE(EIGEN_SOLVER_TYPE_NAMES));
+                    }
+                }
+                if (!settings.useSparseSolve || settings.backend == OLSBackend::CPU) {
+                    ImGui::Checkbox("Use Normal Equations", &settings.useNormalEquations);
+                    if (settings.useNormalEquations) {
+                        ImGui::SliderFloat("Relaxation Lambda", &settings.relaxationLambda, 0.0f, 10.0f);
+                    }
+                }
             }
         }
 
@@ -201,6 +224,7 @@ void TFOptimization::renderGuiDialog() {
         int varIdx = settings.fieldIdxOpt;
         tfWidget.setTransferFunction(
                 varIdx, opacityPoints, colorPoints, sgl::ColorSpace::COLOR_SPACE_SRGB);
+        needsReRender = true;
     }
 }
 

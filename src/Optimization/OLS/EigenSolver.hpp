@@ -30,6 +30,7 @@
 #define SH_AUG_EIGENSOLVER_HPP
 
 #include <Eigen/Core>
+#include <Eigen/SparseCore>
 #include "PrecisionDefines.hpp"
 #include "../OptDefines.hpp"
 
@@ -40,13 +41,55 @@
  * - https://eigen.tuxfamily.org/dox/group__TutorialLinearAlgebra.html
  * @param eigenSolverType The type of solver to use.
  * @param useRelaxation Whether to use relaxation/a regularizer.
- * @param lambdaL The relaxation factor. A value of 10 is recommended.
+ * @param lambdaL The relaxation/regularization factor.
  * @param A The system matrix A.
  * @param b The right-hand side vector.
  * @param x The left-hand side vector to solve for (output).
  */
-void solveSystemOfLinearEquationsEigen(
+void solveLeastSquaresEigenDense(
         EigenSolverType eigenSolverType, bool useRelaxation, const Real lambdaL,
         const Eigen::MatrixXr& A, const Eigen::MatrixXr& b, Eigen::MatrixXr& x);
+
+/**
+ * Solves A*x = b for the vector x for a symmetric matrix A.
+ * This solver uses the library Eigen. For more details see:
+ * - https://eigen.tuxfamily.org/dox/group__LeastSquares.html
+ * - https://eigen.tuxfamily.org/dox/group__TutorialLinearAlgebra.html
+ * @param eigenSolverType The type of solver to use.
+ * @param lambdaL The relaxation/regularization factor.
+ * @param A The system matrix A.
+ * @param b The right-hand side vector.
+ * @param x The left-hand side vector to solve for (output).
+ */
+void solveLinearSystemEigenSymmetric(
+        EigenSolverType eigenSolverType, const Real lambdaL,
+        const Eigen::MatrixXr& A, const Eigen::MatrixXr& b, Eigen::MatrixXr& x);
+
+/**
+ * Solves A*x = b for the vector x.
+ * This solver uses the library Eigen. For more details see:
+ * - https://eigen.tuxfamily.org/dox/group__TopicSparseSystems.html
+ * @param solverType The type of solver to use.
+ * @param A The system matrix A.
+ * @param b The right-hand side vector.
+ * @param x The left-hand side vector to solve for (output).
+ */
+void solveLeastSquaresEigenSparse(
+        EigenSparseSolverType solverType,
+        const Eigen::SparseMatrixXr& A, const Eigen::MatrixXr& b, Eigen::MatrixXr& x);
+
+/**
+ * Solves A*x = b for the vector x using the normal equations, i.e., A^T A x = A^T b.
+ * This solver uses the library Eigen. For more details see:
+ * - https://eigen.tuxfamily.org/dox/group__TutorialSparse.html
+ * @param eigenSolverType The type of solver to use on A^T A.
+ * @param lambdaL The relaxation/regularization factor.
+ * @param A The system matrix A.
+ * @param b The right-hand side vector.
+ * @param x The left-hand side vector to solve for (output).
+ */
+void solveLeastSquaresEigenSparseNormalEquations(
+        EigenSolverType eigenSolverType, const Real lambdaL,
+        const Eigen::SparseMatrixXr& A, const Eigen::MatrixXr& b, Eigen::MatrixXr& x);
 
 #endif //SH_AUG_EIGENSOLVER_HPP

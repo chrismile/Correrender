@@ -191,6 +191,7 @@ int main(int argc, char *argv[]) {
 #endif
         //optionalDeviceExtensions.push_back(VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME);
     }
+    optionalDeviceExtensions.push_back(VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME);
 
     sgl::vk::Instance* instance = sgl::AppSettings::get()->getVulkanInstance();
     if (isHeadlessMode) {
@@ -230,11 +231,11 @@ int main(int argc, char *argv[]) {
     sgl::OffscreenContext* offscreenContext = nullptr;
     if (!isHeadlessMode) {
 #ifdef SUPPORT_OPENGL
-        /*offscreenContext = sgl::createOffscreenContext(device, false);
-        if (offscreenContext && offscreenContext->getIsInitialized()) {
-            //offscreenContext->makeCurrent(); //< This is called by createOffscreenContext to check interop extensions.
-            sgl::AppSettings::get()->setOffscreenContext(offscreenContext);
-        }*/
+        //offscreenContext = sgl::createOffscreenContext(device, false);
+        //if (offscreenContext && offscreenContext->getIsInitialized()) {
+        //    //offscreenContext->makeCurrent(); //< This is called by createOffscreenContext to check interop extensions.
+        //    sgl::AppSettings::get()->setOffscreenContext(offscreenContext);
+        //}
 #endif
         sgl::vk::Swapchain* swapchain = new sgl::vk::Swapchain(device);
         swapchain->create(window);

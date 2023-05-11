@@ -29,6 +29,13 @@
 #ifndef SH_AUG_DEFINES_HPP
 #define SH_AUG_DEFINES_HPP
 
+#define SPARSE_ROW_MAJOR
+#ifdef SPARSE_ROW_MAJOR
+#define SparseMatrixXr SparseMatrixRowXr
+#else
+#define SparseMatrixXr SparseMatrixColXr
+#endif
+
 /**
  * The floating point type used for the simulation can be changed at compile time.
  */
@@ -57,12 +64,17 @@ constexpr Real REAL_EPSILON = 1e-8;//std::numeric_limits<Real>::epsilon();
 #define cusolverDnRpotrf cusolverDnDpotrf
 #define cusolverDnRpotrs cusolverDnDpotrs
 
+// Sparse QR decomposition
+#define cusolverSpRcsrlsqvqrHost cusolverSpDcsrlsqvqrHost
+
 #ifdef EIGEN_CORE_H
 namespace Eigen {
 typedef Vector3d Vector3r;
 typedef MatrixXd MatrixXr;
 typedef RowVectorXd RowVectorXr;
 typedef VectorXd VectorXr;
+typedef SparseMatrix<double, Eigen::ColMajor> SparseMatrixColXr;
+typedef SparseMatrix<double, Eigen::RowMajor> SparseMatrixRowXr;
 }
 #endif
 
@@ -90,12 +102,17 @@ constexpr Real REAL_EPSILON = 1e-3f;//std::numeric_limits<Real>::epsilon();
 #define cusolverDnRpotrf cusolverDnSpotrf
 #define cusolverDnRpotrs cusolverDnSpotrs
 
+// Sparse QR decomposition
+#define cusolverSpRcsrlsqvqrHost cusolverSpScsrlsqvqrHost
+
 #ifdef EIGEN_CORE_H
 namespace Eigen {
 typedef Vector3f Vector3r;
 typedef MatrixXf MatrixXr;
 typedef RowVectorXf RowVectorXr;
 typedef VectorXf VectorXr;
+typedef SparseMatrix<float, Eigen::ColMajor> SparseMatrixColXr;
+typedef SparseMatrix<float, Eigen::RowMajor> SparseMatrixRowXr;
 }
 #endif
 

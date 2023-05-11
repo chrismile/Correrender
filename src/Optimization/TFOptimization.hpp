@@ -54,16 +54,18 @@ public:
     explicit TFOptimization(sgl::vk::Renderer* parentRenderer);
     ~TFOptimization();
     void setVolumeData(VolumeData* _volumeData, bool isNewData);
-    void onFieldRemoved(int fieldIdx);
+    //void onFieldRemoved(int fieldIdx);
     void openDialog();
     void renderGuiDialog();
+
+    inline bool getNeedsReRender() { bool tmp = needsReRender; needsReRender = false; return tmp; }
 
 private:
     sgl::vk::Renderer* parentRenderer = nullptr;
     VolumeData* volumeData = nullptr;
     TFOptimizationWorker* worker = nullptr;
 
-    void startOptimization();
+    bool needsReRender = false;
     bool isOptimizationSettingsDialogOpen = false;
     bool isOptimizationProgressDialogOpen = false;
 
@@ -82,7 +84,7 @@ class TFOptimizer;
 
 class TFOptimizationWorker {
 public:
-    TFOptimizationWorker(sgl::vk::Renderer* parentRenderer);
+    explicit TFOptimizationWorker(sgl::vk::Renderer* parentRenderer);
     ~TFOptimizationWorker();
 
     /**
