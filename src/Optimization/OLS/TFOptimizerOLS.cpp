@@ -101,7 +101,7 @@ void TFOptimizerOLS::TFOptimizerOLS::onRequestQueued(VolumeData* volumeData) {
         sgl::vk::Device* device = renderer->getDevice();
         if (!cache->lhsBuffer || cache->cachedTfSize != settings.tfSize) {
             cache->lhsBuffer = std::make_shared<sgl::vk::Buffer>(
-                    device, sizeof(glm::vec4) * settings.tfSize,
+                    device, sizeof(glm::vec4) * sizeof(glm::vec4) * settings.tfSize * settings.tfSize,
                     VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                     VMA_MEMORY_USAGE_GPU_ONLY);
             cache->rhsBuffer = std::make_shared<sgl::vk::Buffer>(
@@ -109,7 +109,7 @@ void TFOptimizerOLS::TFOptimizerOLS::onRequestQueued(VolumeData* volumeData) {
                     VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                     VMA_MEMORY_USAGE_GPU_ONLY);
             cache->lhsStagingBuffer = std::make_shared<sgl::vk::Buffer>(
-                    device, sizeof(glm::vec4) * settings.tfSize,
+                    device, sizeof(glm::vec4) * sizeof(glm::vec4) * settings.tfSize * settings.tfSize,
                     VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                     VMA_MEMORY_USAGE_GPU_TO_CPU);
             cache->rhsStagingBuffer = std::make_shared<sgl::vk::Buffer>(
@@ -162,13 +162,15 @@ void TFOptimizerOLS::TFOptimizerOLS::onRequestQueued(VolumeData* volumeData) {
                 VK_ACCESS_NONE_KHR, VK_ACCESS_TRANSFER_READ_BIT,
                 device->getGraphicsQueueIndex(),
                 device->getComputeQueueIndex());
-        fieldEntryOpt->getVulkanImage()->insertMemoryBarrier(
-                commandBufferGraphics,
-                layoutOldOpt, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                VK_ACCESS_NONE_KHR, VK_ACCESS_TRANSFER_READ_BIT,
-                device->getGraphicsQueueIndex(),
-                device->getComputeQueueIndex());
+        if (settings.fieldIdxGT != settings.fieldIdxOpt) {
+            fieldEntryOpt->getVulkanImage()->insertMemoryBarrier(
+                    commandBufferGraphics,
+                    layoutOldOpt, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                    VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                    VK_ACCESS_NONE_KHR, VK_ACCESS_TRANSFER_READ_BIT,
+                    device->getGraphicsQueueIndex(),
+                    device->getComputeQueueIndex());
+        }
         device->endSingleTimeCommands(commandBufferGraphics, device->getGraphicsQueueIndex());
 
         auto commandBufferCompute = device->beginSingleTimeCommands(device->getComputeQueueIndex());
@@ -179,13 +181,15 @@ void TFOptimizerOLS::TFOptimizerOLS::onRequestQueued(VolumeData* volumeData) {
                 VK_ACCESS_NONE_KHR, VK_ACCESS_TRANSFER_READ_BIT,
                 device->getGraphicsQueueIndex(),
                 device->getComputeQueueIndex());
-        fieldEntryOpt->getVulkanImage()->insertMemoryBarrier(
-                commandBufferCompute,
-                layoutOldOpt, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                VK_ACCESS_NONE_KHR, VK_ACCESS_TRANSFER_READ_BIT,
-                device->getGraphicsQueueIndex(),
-                device->getComputeQueueIndex());
+        if (settings.fieldIdxGT != settings.fieldIdxOpt) {
+            fieldEntryOpt->getVulkanImage()->insertMemoryBarrier(
+                    commandBufferCompute,
+                    layoutOldOpt, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                    VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                    VK_ACCESS_NONE_KHR, VK_ACCESS_TRANSFER_READ_BIT,
+                    device->getGraphicsQueueIndex(),
+                    device->getComputeQueueIndex());
+        }
         cache->inputImageGT->getImage()->insertMemoryBarrier(
                 commandBufferCompute,
                 VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
@@ -207,13 +211,15 @@ void TFOptimizerOLS::TFOptimizerOLS::onRequestQueued(VolumeData* volumeData) {
                 VK_ACCESS_TRANSFER_READ_BIT, VK_ACCESS_NONE_KHR,
                 device->getComputeQueueIndex(),
                 device->getGraphicsQueueIndex());
-        fieldEntryOpt->getVulkanImage()->insertMemoryBarrier(
-                commandBufferCompute,
-                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, layoutOldOpt,
-                VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                VK_ACCESS_TRANSFER_READ_BIT, VK_ACCESS_NONE_KHR,
-                device->getComputeQueueIndex(),
-                device->getGraphicsQueueIndex());
+        if (settings.fieldIdxGT != settings.fieldIdxOpt) {
+            fieldEntryOpt->getVulkanImage()->insertMemoryBarrier(
+                    commandBufferCompute,
+                    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, layoutOldOpt,
+                    VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                    VK_ACCESS_TRANSFER_READ_BIT, VK_ACCESS_NONE_KHR,
+                    device->getComputeQueueIndex(),
+                    device->getGraphicsQueueIndex());
+        }
         cache->inputImageGT->getImage()->insertMemoryBarrier(
                 commandBufferCompute,
                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL,
@@ -234,13 +240,15 @@ void TFOptimizerOLS::TFOptimizerOLS::onRequestQueued(VolumeData* volumeData) {
                 VK_ACCESS_TRANSFER_READ_BIT, VK_ACCESS_NONE_KHR,
                 device->getComputeQueueIndex(),
                 device->getGraphicsQueueIndex());
-        fieldEntryOpt->getVulkanImage()->insertMemoryBarrier(
-                commandBufferGraphics,
-                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, layoutOldOpt,
-                VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                VK_ACCESS_TRANSFER_READ_BIT, VK_ACCESS_NONE_KHR,
-                device->getComputeQueueIndex(),
-                device->getGraphicsQueueIndex());
+        if (settings.fieldIdxGT != settings.fieldIdxOpt) {
+            fieldEntryOpt->getVulkanImage()->insertMemoryBarrier(
+                    commandBufferGraphics,
+                    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, layoutOldOpt,
+                    VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                    VK_ACCESS_TRANSFER_READ_BIT, VK_ACCESS_NONE_KHR,
+                    device->getComputeQueueIndex(),
+                    device->getGraphicsQueueIndex());
+        }
         device->endSingleTimeCommands(commandBufferGraphics, device->getGraphicsQueueIndex());
     } else {
         cache->inputImageGT = {};
@@ -272,7 +280,7 @@ void TFOptimizerOLS::TFOptimizerOLS::onRequestQueued(VolumeData* volumeData) {
     if (settings.useSparseSolve && settings.backend == OLSBackend::CPU) {
         cache->b = Eigen::VectorXr(numVoxels * 4);
     }
-    if (settings.useSparseSolve || settings.backend == OLSBackend::VULKAN) {
+    if (!settings.useSparseSolve && settings.backend != OLSBackend::VULKAN) {
         if (cache->cachedTfSize != settings.tfSize || cache->cachedNumVoxels != numVoxels || cache->cachedUseSparseSolve) {
             cache->A = Eigen::MatrixXr(numVoxels * 4, settings.tfSize * 4);
         }
@@ -565,6 +573,37 @@ void TFOptimizerOLS::runOptimization(bool shallStop, bool& hasStopped) {
         cache->lhsStagingBuffer->unmapMemory();
         cache->rhsStagingBuffer->unmapMemory();
 
+        uint32_t numi = std::min(cache->cachedTfSize * 4u, 32u);
+        uint32_t numj = std::min(cache->cachedTfSize * 4u, 32u);
+        std::cout << "lhs:" << std::endl;
+        for (uint32_t i = 0; i < numi; i++) {
+            for (uint32_t j = 0; j < numj; j++) {
+                std::cout << lhs(i, j);
+                if (j != numj - 1) {
+                    std::cout << ", ";
+                } else if (uint32_t(cache->cachedTfSize) * 4u > numj) {
+                    std::cout << ", ...";
+                }
+            }
+            if (i != numi - 1) {
+                std::cout << std::endl;
+            } else if (uint32_t(cache->cachedTfSize) * 4u > numi) {
+                std::cout << std::endl << "..." << std::endl;
+            }
+        }
+        std::cout << std::endl << std::endl;
+
+        std::cout << "rhs:" << std::endl;
+        for (uint32_t i = 0; i < numi; i++) {
+            std::cout << rhs(i);
+            if (i != numi - 1) {
+                std::cout << std::endl;
+            } else if (uint32_t(cache->cachedTfSize) * 4u > numi) {
+                std::cout << std::endl << "..." << std::endl;
+            }
+        }
+        std::cout << std::endl << std::endl;
+
         solveLinearSystemEigenSymmetric(
                 settings.eigenSolverType, settings.relaxationLambda, lhs, rhs, cache->x);
         auto endSolve = std::chrono::system_clock::now();
@@ -630,7 +669,7 @@ void TFOptimizerOLS::runOptimization(bool shallStop, bool& hasStopped) {
 
     // Debugging.
     uint32_t numi = std::min(cache->cachedNumVoxels * 4u, 32u);
-    uint32_t numj = std::min(cache->cachedTfSize * 4u, 20u);
+    uint32_t numj = std::min(cache->cachedTfSize * 4u, 32u);
     if (!settings.useSparseSolve && settings.backend != OLSBackend::VULKAN) {
         std::cout << "A:" << std::endl;
         for (uint32_t i = 0; i < numi; i++) {

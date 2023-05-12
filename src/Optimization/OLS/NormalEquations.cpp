@@ -37,9 +37,9 @@
 
 NormalEquationsComputePass::NormalEquationsComputePass(sgl::vk::Renderer* renderer) : ComputePass(renderer) {
     if (!renderer->getDevice()->getPhysicalDeviceShaderAtomicFloatFeatures().shaderBufferFloat32AtomicAdd) {
-        sgl::Logfile::get()->throwError(
-                "Error in NormalEquationsComputePass::NormalEquationsComputePass: "
-                "32-bit float atomics are not supported!");
+        sgl::Logfile::get()->writeWarning(
+                "Warning in NormalEquationsComputePass::NormalEquationsComputePass: "
+                "32-bit float atomics are not supported. Falling back to spinning updates.");
     }
     uniformBuffer = std::make_shared<sgl::vk::Buffer>(
             device, sizeof(UniformData),
@@ -122,6 +122,9 @@ void NormalEquationsComputePass::loadShader() {
     preprocessorDefines.insert(std::make_pair("BLOCK_SIZE_X", std::to_string(computeBlockSizeX)));
     preprocessorDefines.insert(std::make_pair("BLOCK_SIZE_Y", std::to_string(computeBlockSizeY)));
     preprocessorDefines.insert(std::make_pair("BLOCK_SIZE_Z", std::to_string(computeBlockSizeZ)));
+    if (renderer->getDevice()->getPhysicalDeviceShaderAtomicFloatFeatures().shaderBufferFloat32AtomicAdd) {
+        preprocessorDefines.insert(std::make_pair("SUPPORT_BUFFER_FLOAT_ATOMIC_ADD", ""));
+    }
     shaderStages = sgl::vk::ShaderManager->getShaderStages({ "NormalEquations.Compute" }, preprocessorDefines);
 }
 
@@ -147,7 +150,7 @@ void NormalEquationsComputePass::_render() {
             VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
     auto Nj = float(uniformData.tfNumEntries / 4u - 1u);
-    renderer->pushConstants(computeData->getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, 0, &Nj);
+    renderer->pushConstants(computeData->getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, 0, Nj);
 
     renderer->dispatch(
             computeData,
@@ -189,8 +192,8 @@ void NormalEquationsCopySymmetricPass::createComputeData(
 void NormalEquationsCopySymmetricPass::_render() {
     uint32_t workSize = (tfNumEntries * tfNumEntries - tfNumEntries) / 2;
     renderer->pushConstants(
-            computeData->getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, 0, &tfNumEntries);
+            computeData->getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, 0, tfNumEntries);
     renderer->pushConstants(
-            computeData->getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, sizeof(uint32_t), &workSize);
-    renderer->dispatch(computeData, sgl::uiceil(tfNumEntries, computeBlockSize), 1, 1);
+            computeData->getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, sizeof(uint32_t), workSize);
+    renderer->dispatch(computeData, sgl::uiceil(workSize, computeBlockSize), 1, 1);
 }

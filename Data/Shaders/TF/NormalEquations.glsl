@@ -31,6 +31,7 @@
 #version 450 core
 
 #extension GL_EXT_shader_atomic_float : require
+//#extension GL_EXT_debug_printf : enable
 
 layout(local_size_x = BLOCK_SIZE_X, local_size_y = BLOCK_SIZE_Y, local_size_z = BLOCK_SIZE_Z) in;
 //layout(local_size_x = BLOCK_SIZE) in;
@@ -48,12 +49,48 @@ layout (binding = 1, INPUT_IMAGE_0_FORMAT) uniform readonly image3D inputImageGT
 layout (binding = 2, INPUT_IMAGE_1_FORMAT) uniform readonly image3D inputImageOpt;
 
 layout(binding = 3) coherent buffer LhsBuffer {
+#ifdef SUPPORT_BUFFER_FLOAT_ATOMIC_ADD
     float lhs[];
+#else
+    uint lhs[];
+#endif
 };
 
+void atomicAddLhs(uint idx, float value) {
+#ifdef SUPPORT_BUFFER_FLOAT_ATOMIC_ADD
+    atomicAdd(lhs[idx], value);
+#else
+    uint oldValue = lhs[idx];
+    uint expectedValue, newValue;
+    do {
+        expectedValue = oldValue;
+        newValue = floatBitsToUint(uintBitsToFloat(oldValue) + value);
+        oldValue = atomicCompSwap(lhs[idx], expectedValue, newValue);
+    } while (oldValue != expectedValue);
+#endif
+}
+
 layout(binding = 4) coherent buffer RhsBuffer {
+#ifdef SUPPORT_BUFFER_FLOAT_ATOMIC_ADD
     float rhs[];
+#else
+    uint rhs[];
+#endif
 };
+
+void atomicAddRhs(uint idx, float value) {
+#ifdef SUPPORT_BUFFER_FLOAT_ATOMIC_ADD
+    atomicAdd(rhs[idx], value);
+#else
+    uint oldValue = rhs[idx];
+    uint expectedValue, newValue;
+    do {
+        expectedValue = oldValue;
+        newValue = floatBitsToUint(uintBitsToFloat(oldValue) + value);
+        oldValue = atomicCompSwap(rhs[idx], expectedValue, newValue);
+    } while (oldValue != expectedValue);
+#endif
+}
 
 layout(binding = 5) readonly buffer TransferFunctionGTBuffer {
     vec4 tfGT[];
@@ -64,6 +101,9 @@ layout(binding = 5) readonly buffer TransferFunctionGTBuffer {
 
 void main() {
     ivec3 currentPointIdx = ivec3(gl_GlobalInvocationID.xyz);
+    if (currentPointIdx.x >= xs || currentPointIdx.y >= ys || currentPointIdx.z >= zs) {
+        return;
+    }
     float scalarGT = imageLoad(inputImageGT, currentPointIdx).x;
     float scalarOpt = imageLoad(inputImageOpt, currentPointIdx).x;
     if (isnan(scalarGT) || isnan(scalarOpt)) {
@@ -84,18 +124,21 @@ void main() {
     float tOpt0 = clamp(floor(tOpt * Nj), 0.0f, Nj);
     float tOpt1 = clamp(ceil(tOpt * Nj), 0.0f, Nj);
     float fOpt = tOpt * Nj - tOpt0;
-    int jOpt0 = int(tOpt0);
-    int jOpt1 = int(tOpt1);
+    uint jOpt0 = uint(tOpt0);
+    uint jOpt1 = uint(tOpt1);
+    if (jOpt0 == jOpt1) {
+        fOpt = 1.0;
+    }
     for (int c = 0; c < 4; c++) {
         uint i = jOpt0 * 4 + c;
-        atomicAdd(rhs[i], fOpt * colorGT[c]);
-        atomicAdd(lhs[IDXM(i, i)], fOpt * fOpt);
+        atomicAddRhs(i, fOpt * colorGT[c]);
+        atomicAddLhs(IDXM(i, i), fOpt * fOpt);
         if (jOpt0 != jOpt1) {
             uint j = jOpt1 * 4 + c;
             float fOpt1 = 1.0f - fOpt;
-            atomicAdd(rhs[j], fOpt1 * colorGT[c]);
-            atomicAdd(lhs[IDXM(i, j)], fOpt * fOpt1);
-            atomicAdd(lhs[IDXM(j, j)], fOpt1 * fOpt1);
+            atomicAddRhs(j, fOpt1 * colorGT[c]);
+            atomicAddLhs(IDXM(i, j), fOpt * fOpt1);
+            atomicAddLhs(IDXM(j, j), fOpt1 * fOpt1);
         }
     }
 }

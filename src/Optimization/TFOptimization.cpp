@@ -57,10 +57,13 @@ TFOptimization::TFOptimization(sgl::vk::Renderer* parentRenderer) : parentRender
         tfSizeIdx = int(std::find(tfSizes.begin(), tfSizes.end(), 64) - tfSizes.begin());
     }
 
+    if (!device->getPhysicalDeviceShaderAtomicFloatFeatures().shaderBufferFloat32AtomicAdd) {
+        settings.backend = OLSBackend::CPU;
+    }
 //#ifdef CUDA_ENABLED
 //    if (device->getDeviceDriverId() == VK_DRIVER_ID_NVIDIA_PROPRIETARY
 //            && sgl::vk::getIsCudaDeviceApiFunctionTableInitialized()) {
-//        settings.useCuda = true;
+//        settings.backend = OLSBackend::CUDA;
 //        settings.useSparseSolve = true;
 //    }
 //#endif
@@ -120,16 +123,13 @@ void TFOptimization::renderGuiDialog() {
                 }
             } else {
                 auto* device = parentRenderer->getDevice();
-                int numBackends = 1;
-                if (device->getPhysicalDeviceShaderAtomicFloatFeatures().shaderBufferFloat32AtomicAdd) {
-                    numBackends++;
+                int numBackends = 2;
 #ifdef CUDA_ENABLED
-                    if (device->getDeviceDriverId() == VK_DRIVER_ID_NVIDIA_PROPRIETARY
-                            && sgl::vk::getIsCudaDeviceApiFunctionTableInitialized()) {
-                        numBackends++;
-                    }
-#endif
+                if (device->getDeviceDriverId() == VK_DRIVER_ID_NVIDIA_PROPRIETARY
+                        && sgl::vk::getIsCudaDeviceApiFunctionTableInitialized()) {
+                    numBackends++;
                 }
+#endif
                 ImGui::Combo("Backend", (int*)&settings.backend, OLS_BACKEND_NAMES, numBackends);
                 if (settings.optimizerMethod == TFOptimizerMethod::OLS
                         && settings.backend != OLSBackend::VULKAN) {
@@ -151,7 +151,7 @@ void TFOptimization::renderGuiDialog() {
                                 EIGEN_SOLVER_TYPE_NAMES, IM_ARRAYSIZE(EIGEN_SOLVER_TYPE_NAMES));
                     }
                 }
-                if (!settings.useSparseSolve || settings.backend == OLSBackend::CPU) {
+                if (!settings.useSparseSolve || settings.backend != OLSBackend::CUDA) {
                     ImGui::Checkbox("Use Normal Equations", &settings.useNormalEquations);
                     if (settings.useNormalEquations) {
                         ImGui::SliderFloat("Relaxation Lambda", &settings.relaxationLambda, 0.0f, 10.0f);
