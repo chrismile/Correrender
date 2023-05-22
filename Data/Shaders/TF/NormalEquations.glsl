@@ -45,8 +45,8 @@ layout(push_constant) uniform PushConstants {
     float Nj;
 };
 
-layout (binding = 1, INPUT_IMAGE_0_FORMAT) uniform readonly image3D inputImageGT;
-layout (binding = 2, INPUT_IMAGE_1_FORMAT) uniform readonly image3D inputImageOpt;
+layout(binding = 1, INPUT_IMAGE_0_FORMAT) uniform readonly image3D inputImageGT;
+layout(binding = 2, INPUT_IMAGE_1_FORMAT) uniform readonly image3D inputImageOpt;
 
 layout(binding = 3) coherent buffer LhsBuffer {
 #ifdef SUPPORT_BUFFER_FLOAT_ATOMIC_ADD

@@ -26,43 +26,24 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
--- Compute
+#ifndef CORRERENDER_COPYFIELDIMAGES_HPP
+#define CORRERENDER_COPYFIELDIMAGES_HPP
 
-#version 450 core
+namespace sgl { namespace vk {
+class Device;
+class Image;
+class ImageView;
+}}
 
-layout(local_size_x = BLOCK_SIZE) in;
+/**
+ * Copies the content of the two field images to another set of field images.
+ * This is necessary, as the computations for transfer function optimization may run in a separate thread.
+ */
+void copyFieldImages(
+        sgl::vk::Device* device, uint32_t xs, uint32_t ys, uint32_t zs,
+        const sgl::vk::ImagePtr& fieldImageGT, const sgl::vk::ImagePtr& fieldImageOpt,
+        sgl::vk::ImageViewPtr& inputImageGT, sgl::vk::ImageViewPtr& inputImageOpt,
+        VkFormat& cachedFormatGT, VkFormat& cachedFormatOpt,
+        uint32_t fieldIdxGT, uint32_t fieldIdxOpt);
 
-layout(binding = 0) uniform SmoothingPriorSettingsBuffer {
-    float lambda; ///< Smoothing rate.
-    uint R; ///< Number of TF entries in the value axis.
-};
-
-layout(binding = 1) readonly buffer TfOptBuffer {
-    float tfOpt[NUM_TF_ENTRIES];
-};
-
-layout(binding = 2) buffer TfOptGradientBuffer {
-    float g[NUM_TF_ENTRIES];
-};
-
-#define IDXTF(c, r) ((c) + (r) * 4u)
-
-void main() {
-    if (gl_GlobalInvocationID.x >= NUM_TF_ENTRIES) {
-        return;
-    }
-    uint c = gl_GlobalInvocationID.x % 4u;
-    uint r = gl_GlobalInvocationID.x / 4u;
-
-    float gradVal = 0.0;
-    float centerVal = tfOpt[IDXTF(c, r)];
-    if (r > 0) {
-        gradVal += centerVal - tfOpt[IDXTF(c, r - 1)];
-    }
-    if (r < R - 1) {
-        gradVal += centerVal - tfOpt[IDXTF(c, r + 1)];
-    }
-
-    gradVal /= 2.0 * (R - 1);
-    g[gl_GlobalInvocationID.x] += lambda * gradVal;
-}
+#endif //CORRERENDER_COPYFIELDIMAGES_HPP

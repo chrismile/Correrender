@@ -27,7 +27,6 @@
  */
 
 #include <Utils/AppSettings.hpp>
-#include <Graphics/Scene/Camera.hpp>
 #include <Graphics/Vulkan/Render/Renderer.hpp>
 #include <ImGui/imgui.h>
 #include <ImGui/imgui_stdlib.h>
@@ -35,9 +34,10 @@
 
 #include "Volume/VolumeData.hpp"
 #include "TFOptimizer.hpp"
-#include "Optimization/DiffDVR/TFOptimizerDiffDvr.hpp"
 #include "Optimization/OLS/TFOptimizerOLS.hpp"
 #include "Optimization/OLS/CudaSolver.hpp"
+#include "Optimization/GD/TFOptimizerGD.hpp"
+#include "Optimization/DiffDVR/TFOptimizerDiffDvr.hpp"
 #include "TFOptimization.hpp"
 
 TFOptimization::TFOptimization(sgl::vk::Renderer* parentRenderer) : parentRenderer(parentRenderer) {
@@ -111,10 +111,13 @@ void TFOptimization::renderGuiDialog() {
         if (ImGui::CollapsingHeader(
                 "Optimizer Settings", nullptr, ImGuiTreeNodeFlags_DefaultOpen)) {
             if (settings.optimizerMethod == TFOptimizerMethod::DIFF_DVR
-                    || settings.optimizerMethod == TFOptimizerMethod::OLS_GRAD) {
+                    || settings.optimizerMethod == TFOptimizerMethod::GD) {
                 ImGui::Combo(
                         "Optimizer", (int*)&settings.optimizerType,
                         OPTIMIZER_TYPE_NAMES, IM_ARRAYSIZE(OPTIMIZER_TYPE_NAMES));
+                ImGui::Combo(
+                        "Loss", (int*)&settings.lossType,
+                        LOSS_TYPE_NAMES, IM_ARRAYSIZE(LOSS_TYPE_NAMES));
                 ImGui::SliderInt("Epochs", &settings.maxNumEpochs, 1, 1000);
                 ImGui::SliderFloat("alpha", &settings.learningRate, 0.0f, 1.0f);
                 if (settings.optimizerType == OptimizerType::ADAM) {
@@ -186,12 +189,13 @@ void TFOptimization::renderGuiDialog() {
         if (ImGui::BeginPopupModal(
                 "Optimization Progress", &isOptimizationProgressDialogOpen, ImGuiWindowFlags_AlwaysAutoResize)) {
             int maxNumEpochs = settings.optimizerMethod == TFOptimizerMethod::OLS ? 1 : settings.maxNumEpochs;
-            ImGui::Text("Progress: Epoch %d of %d...", 1, maxNumEpochs);
+            float progress = worker->getProgress();
+            ImGui::Text("Progress: Epoch %d of %d...", int(std::round(progress * float(maxNumEpochs))), maxNumEpochs);
             ImGui::ProgressSpinner(
                     "##progress-spinner-tfopt", -1.0f, -1.0f, 4.0f,
                     ImVec4(0.1f, 0.5f, 1.0f, 1.0f));
             ImGui::SameLine();
-            ImGui::ProgressBar(worker->getProgress(), ImVec2(300, 0));
+            ImGui::ProgressBar(progress, ImVec2(300, 0));
             ImGui::SameLine();
             if (ImGui::Button("Cancel", ImVec2(120, 0))) {
                 worker->stop();
@@ -287,8 +291,11 @@ void TFOptimizationWorker::queueRequest(const TFOptimizationWorkerSettings& newS
     {
         std::lock_guard<std::mutex> lock(requestMutex);
         if (!tfOptimizer || optimizerMethod != newSettings.optimizerMethod) {
+            optimizerMethod = newSettings.optimizerMethod;
             if (optimizerMethod == TFOptimizerMethod::OLS) {
                 tfOptimizer = std::make_shared<TFOptimizerOLS>(renderer, parentRenderer, supportsAsyncCompute);
+            } else if (optimizerMethod == TFOptimizerMethod::GD) {
+                tfOptimizer = std::make_shared<TFOptimizerGD>(renderer, parentRenderer, supportsAsyncCompute);
             } else if (optimizerMethod == TFOptimizerMethod::DIFF_DVR) {
                 tfOptimizer = std::make_shared<TFOptimizerDiffDvr>(renderer, parentRenderer, supportsAsyncCompute);
             } else {

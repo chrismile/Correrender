@@ -38,9 +38,9 @@ public:
     explicit OptimizerPass(sgl::vk::Renderer* renderer);
     void setOptimizerType(OptimizerType _optimizerType);
     void setBuffers(
-            const sgl::vk::BufferPtr& _transferFunctionBuffer,
-            const sgl::vk::BufferPtr& _transferFunctionGradientBuffer);
-    void setSettings(float alpha, float beta1, float beta2, float epsilon);
+            const sgl::vk::BufferPtr& _tfOptBuffer,
+            const sgl::vk::BufferPtr& _tfOptGradientBuffer);
+    void setSettings(LossType _lossType, uint32_t _numTfEntries, float alpha, float beta1, float beta2, float epsilon);
     void setEpochIndex(int epochIdx);
 
 protected:
@@ -57,11 +57,13 @@ private:
         float beta2; ///< Second moment update rate.
         float epsilon; ///< Small epsilon value used to avoid division by zero.
     };
-    float t = 0.0f; ///< Time step.
+    LossType lossType = LossType::L2;
+    uint32_t numTfEntries = 0;
+    float t = 1.0f; ///< Time step.
     UniformData uniformData{};
     sgl::vk::BufferPtr uniformBuffer;
 
-    sgl::vk::BufferPtr transferFunctionBuffer, transferFunctionGradientBuffer;
+    sgl::vk::BufferPtr tfOptBuffer, tfOptGradientBuffer;
     sgl::vk::BufferPtr firstMomentEstimateBuffer, secondMomentEstimateBuffer;
 };
 

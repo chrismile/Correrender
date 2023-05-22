@@ -31,11 +31,11 @@
 
 enum class TFOptimizerMethod {
     OLS, //< Ordinary least squares.
-    OLS_GRAD, //< Gradient descent used for solving the ordinary least squares problem.
+    GD, //< Gradient descent used for solving the ordinary least squares problem.
     DIFF_DVR //< Differentiable volume rendering.
 };
 const char* const TF_OPTIMIZER_METHOD_NAMES[] = {
-        "Ordinary Least Squares (OLS)", "Gradient Descent (OLS)", "Differentiable Volume Rendering"
+        "Ordinary Least Squares (OLS)", "Gradient Descent", "Differentiable Volume Rendering"
 };
 
 /// For more details see: https://eigen.tuxfamily.org/dox/group__TutorialLinearAlgebra.html
@@ -102,6 +102,7 @@ struct TFOptimizationWorkerSettings {
 
     // For DiffDVR and OLS_GRAD.
     OptimizerType optimizerType = OptimizerType::ADAM;
+    LossType lossType = LossType::L2;
     int maxNumEpochs = 200;
     // SGD & Adam.
     float learningRate = 0.4f;

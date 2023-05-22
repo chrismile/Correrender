@@ -104,7 +104,7 @@ public:
      */
     bool getReply(TFOptimizationWorkerReply& reply);
     /// Returns the result buffer belonging to the last reply.
-    const std::vector<glm::vec4>& getTFArrayOpt() const;
+    [[nodiscard]] const std::vector<glm::vec4>& getTFArrayOpt() const;
 
 protected:
     void mainLoop();

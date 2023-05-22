@@ -36,6 +36,8 @@
 
 #version 450 core
 
+#extension GL_EXT_debug_printf : enable
+
 layout(local_size_x = BLOCK_SIZE) in;
 
 layout(binding = 0) uniform OptimizerSettingsBuffer {
@@ -49,19 +51,19 @@ layout(push_constant) uniform PushConstants {
     float t; ///< Time step.
 };
 
-layout(binding = 1, std430) buffer TransferFunctionBuffer {
-    float tfEntries[NUM_TF_ENTRIES];
+layout(binding = 1, std430) buffer TfOptBuffer {
+    float tfOpt[NUM_TF_ENTRIES];
 };
 
-layout(binding = 2, std430) readonly buffer TransferFunctionGradientBuffer {
+layout(binding = 2, std430) readonly buffer TfOptGradientBuffer {
     float g[NUM_TF_ENTRIES];
 };
 
-layout(binding = 3, std430) readonly buffer FirstMomentEstimateBuffer {
+layout(binding = 3, std430) buffer FirstMomentEstimateBuffer {
     float m[NUM_TF_ENTRIES];
 };
 
-layout(binding = 4, std430) readonly buffer SecondMomentEstimateBuffer {
+layout(binding = 4, std430) buffer SecondMomentEstimateBuffer {
     float v[NUM_TF_ENTRIES];
 };
 
@@ -83,5 +85,8 @@ void main() {
     float vht = vt / (1.0 - pow(beta2, t));
 
     // Update the parameters.
-    tfEntries[globalThreadIdx] -= alpha * mht / (sqrt(vht) + epsilon);
+    //if (globalThreadIdx == 0) {
+    //    debugPrintfEXT("%f, %f, %f, %f, %f, %f, %f, %f", tfOpt[globalThreadIdx], alpha, beta1, beta2, gt, mht, vht, epsilon);
+    //}
+    tfOpt[globalThreadIdx] -= alpha * mht / (sqrt(vht) + epsilon);
 }

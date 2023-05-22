@@ -34,6 +34,7 @@
 #endif
 
 #include "Volume/VolumeData.hpp"
+#include "../CopyFieldImages.hpp"
 #include "NormalEquations.hpp"
 #include "TFOptimizerOLS.hpp"
 
@@ -79,6 +80,8 @@ TFOptimizerOLS::TFOptimizerOLS(
 }
 
 TFOptimizerOLS::~TFOptimizerOLS() {
+    normalEquationsComputePass = {};
+    normalEquationsCopySymmetricPass = {};
     delete cache;
 }
 
@@ -126,130 +129,15 @@ void TFOptimizerOLS::TFOptimizerOLS::onRequestQueued(VolumeData* volumeData) {
 
         auto fieldEntryGT = volumeData->getFieldEntryDevice(FieldType::SCALAR, fieldNames.at(settings.fieldIdxGT));
         auto fieldEntryOpt = volumeData->getFieldEntryDevice(FieldType::SCALAR, fieldNames.at(settings.fieldIdxOpt));
-        auto formatGT = fieldEntryGT->getVulkanImage()->getImageSettings().format;
-        auto formatOpt = fieldEntryOpt->getVulkanImage()->getImageSettings().format;
-        auto xs = uint32_t(volumeData->getGridSizeX());
-        auto ys = uint32_t(volumeData->getGridSizeY());
-        auto zs = uint32_t(volumeData->getGridSizeZ());
-        if (!cache->inputImageGT || formatGT != cache->cachedFormatGT || formatOpt != cache->cachedFormatOpt
-                || cache->inputImageGT->getImage()->getImageSettings().width != xs
-                || cache->inputImageGT->getImage()->getImageSettings().height != ys
-                || cache->inputImageGT->getImage()->getImageSettings().depth != zs) {
-            sgl::vk::ImageSettings imageSettings;
-            imageSettings.width = xs;
-            imageSettings.height = ys;
-            imageSettings.depth = zs;
-            imageSettings.imageType = VK_IMAGE_TYPE_3D;
-            imageSettings.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
-            imageSettings.format = formatGT;
-            cache->inputImageGT = std::make_shared<sgl::vk::ImageView>(
-                    std::make_shared<sgl::vk::Image>(device, imageSettings), VK_IMAGE_VIEW_TYPE_3D);
-            imageSettings.format = formatOpt;
-            cache->inputImageOpt = std::make_shared<sgl::vk::ImageView>(
-                    std::make_shared<sgl::vk::Image>(device, imageSettings), VK_IMAGE_VIEW_TYPE_3D);
-            cache->cachedFormatGT = formatGT;
-            cache->cachedFormatOpt = formatOpt;
-        }
-        auto layoutOldGT = fieldEntryGT->getVulkanImage()->getVkImageLayout();
-        auto layoutOldOpt = fieldEntryOpt->getVulkanImage()->getVkImageLayout();
-        parentRenderer->getDevice()->waitIdle();
-
-        auto commandBufferGraphics = device->beginSingleTimeCommands(device->getGraphicsQueueIndex());
-        fieldEntryGT->getVulkanImage()->insertMemoryBarrier(
-                commandBufferGraphics,
-                layoutOldGT, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                VK_ACCESS_NONE_KHR, VK_ACCESS_TRANSFER_READ_BIT,
-                device->getGraphicsQueueIndex(),
-                device->getComputeQueueIndex());
-        if (settings.fieldIdxGT != settings.fieldIdxOpt) {
-            fieldEntryOpt->getVulkanImage()->insertMemoryBarrier(
-                    commandBufferGraphics,
-                    layoutOldOpt, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                    VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                    VK_ACCESS_NONE_KHR, VK_ACCESS_TRANSFER_READ_BIT,
-                    device->getGraphicsQueueIndex(),
-                    device->getComputeQueueIndex());
-        }
-        device->endSingleTimeCommands(commandBufferGraphics, device->getGraphicsQueueIndex());
-
-        auto commandBufferCompute = device->beginSingleTimeCommands(device->getComputeQueueIndex());
-        fieldEntryGT->getVulkanImage()->insertMemoryBarrier(
-                commandBufferCompute,
-                layoutOldGT, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                VK_ACCESS_NONE_KHR, VK_ACCESS_TRANSFER_READ_BIT,
-                device->getGraphicsQueueIndex(),
-                device->getComputeQueueIndex());
-        if (settings.fieldIdxGT != settings.fieldIdxOpt) {
-            fieldEntryOpt->getVulkanImage()->insertMemoryBarrier(
-                    commandBufferCompute,
-                    layoutOldOpt, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                    VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                    VK_ACCESS_NONE_KHR, VK_ACCESS_TRANSFER_READ_BIT,
-                    device->getGraphicsQueueIndex(),
-                    device->getComputeQueueIndex());
-        }
-        cache->inputImageGT->getImage()->insertMemoryBarrier(
-                commandBufferCompute,
-                VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                VK_ACCESS_NONE_KHR, VK_ACCESS_TRANSFER_WRITE_BIT);
-        cache->inputImageOpt->getImage()->insertMemoryBarrier(
-                commandBufferCompute,
-                VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                VK_ACCESS_NONE_KHR, VK_ACCESS_TRANSFER_WRITE_BIT);
-        fieldEntryGT->getVulkanImage()->copyToImage(
-                cache->inputImageGT->getImage(), VK_IMAGE_ASPECT_COLOR_BIT, commandBufferCompute);
-        fieldEntryOpt->getVulkanImage()->copyToImage(
-                cache->inputImageOpt->getImage(), VK_IMAGE_ASPECT_COLOR_BIT, commandBufferCompute);
-        fieldEntryGT->getVulkanImage()->insertMemoryBarrier(
-                commandBufferCompute,
-                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, layoutOldGT,
-                VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                VK_ACCESS_TRANSFER_READ_BIT, VK_ACCESS_NONE_KHR,
-                device->getComputeQueueIndex(),
-                device->getGraphicsQueueIndex());
-        if (settings.fieldIdxGT != settings.fieldIdxOpt) {
-            fieldEntryOpt->getVulkanImage()->insertMemoryBarrier(
-                    commandBufferCompute,
-                    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, layoutOldOpt,
-                    VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                    VK_ACCESS_TRANSFER_READ_BIT, VK_ACCESS_NONE_KHR,
-                    device->getComputeQueueIndex(),
-                    device->getGraphicsQueueIndex());
-        }
-        cache->inputImageGT->getImage()->insertMemoryBarrier(
-                commandBufferCompute,
-                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL,
-                VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
-        cache->inputImageOpt->getImage()->insertMemoryBarrier(
-                commandBufferCompute,
-                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL,
-                VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
-        device->endSingleTimeCommands(commandBufferCompute, device->getComputeQueueIndex());
-
-        commandBufferGraphics = device->beginSingleTimeCommands(device->getGraphicsQueueIndex());
-        fieldEntryGT->getVulkanImage()->insertMemoryBarrier(
-                commandBufferGraphics,
-                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, layoutOldGT,
-                VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                VK_ACCESS_TRANSFER_READ_BIT, VK_ACCESS_NONE_KHR,
-                device->getComputeQueueIndex(),
-                device->getGraphicsQueueIndex());
-        if (settings.fieldIdxGT != settings.fieldIdxOpt) {
-            fieldEntryOpt->getVulkanImage()->insertMemoryBarrier(
-                    commandBufferGraphics,
-                    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, layoutOldOpt,
-                    VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                    VK_ACCESS_TRANSFER_READ_BIT, VK_ACCESS_NONE_KHR,
-                    device->getComputeQueueIndex(),
-                    device->getGraphicsQueueIndex());
-        }
-        device->endSingleTimeCommands(commandBufferGraphics, device->getGraphicsQueueIndex());
+        copyFieldImages(
+                parentRenderer->getDevice(),
+                uint32_t(volumeData->getGridSizeX()),
+                uint32_t(volumeData->getGridSizeY()),
+                uint32_t(volumeData->getGridSizeZ()),
+                fieldEntryGT->getVulkanImage(), fieldEntryOpt->getVulkanImage(),
+                cache->inputImageGT, cache->inputImageOpt,
+                cache->cachedFormatGT, cache->cachedFormatOpt,
+                settings.fieldIdxGT, settings.fieldIdxOpt);
     } else {
         cache->inputImageGT = {};
         cache->inputImageOpt = {};

@@ -57,23 +57,27 @@ layout(binding = 1) readonly buffer BatchSettingsBuffer {
 
 layout(binding = 2) uniform sampler3D scalarField;
 
-layout(binding = 3, std430) readonly buffer TransferFunctionBuffer {
-    float tfEntries[NUM_TF_ENTRIES];
+layout(binding = 3, std430) readonly buffer TfGTBuffer {
+    float tfGT[];
 };
 
-layout(binding = 4, std430) readonly buffer FinalColorsBuffer {
+layout(binding = 4, std430) readonly buffer TfOptBuffer {
+    float tfOpt[];
+};
+
+layout(binding = 5, std430) readonly buffer FinalColorsBuffer {
     vec4 finalColors[];
 };
 
-layout(binding = 5, std430) readonly buffer TerminationIndexBuffer {
+layout(binding = 6, std430) readonly buffer TerminationIndexBuffer {
     uint terminationIndices[];
 };
 
-layout(binding = 6, std430) readonly buffer TransferFunctionGradientBuffer {
+layout(binding = 7, std430) readonly buffer TfOptGradientBuffer {
 #ifdef SUPPORT_BUFFER_FLOAT_ATOMIC_ADD
-    float g[NUM_TF_ENTRIES];
+    float g[];
 #else
-    uint g[NUM_TF_ENTRIES];
+    uint g[];
 #endif
 };
 

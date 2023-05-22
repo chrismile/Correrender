@@ -26,43 +26,40 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
--- Compute
+#ifndef CORRERENDER_GRADIENTPASS_HPP
+#define CORRERENDER_GRADIENTPASS_HPP
 
-#version 450 core
+#include <Graphics/Vulkan/Render/Passes/Pass.hpp>
 
-layout(local_size_x = BLOCK_SIZE) in;
+#include "Optimization/OptDefines.hpp"
 
-layout(binding = 0) uniform SmoothingPriorSettingsBuffer {
-    float lambda; ///< Smoothing rate.
-    uint R; ///< Number of TF entries in the value axis.
+class GradientPass : public sgl::vk::ComputePass {
+public:
+    explicit GradientPass(sgl::vk::Renderer* renderer);
+    void setInputImages(
+            const sgl::vk::ImageViewPtr& _inputImageGT,
+            const sgl::vk::ImageViewPtr& _inputImageOpt);
+    void setBuffers(
+            uint32_t _tfSize,
+            const sgl::vk::BufferPtr& _settingsBuffer,
+            const sgl::vk::BufferPtr& _tfGTBuffer,
+            const sgl::vk::BufferPtr& _tfOptBuffer,
+            const sgl::vk::BufferPtr& _tfOptGradientBuffer);
+    void setSettings(LossType _lossType);
+
+protected:
+    void loadShader() override;
+    void createComputeData(sgl::vk::Renderer* renderer, sgl::vk::ComputePipelinePtr& computePipeline) override;
+    void _render() override;
+
+private:
+    uint32_t tfSize = 0;
+    const uint32_t computeBlockSizeX = 8, computeBlockSizeY = 8, computeBlockSizeZ = 4;
+    LossType lossType = LossType::L2;
+    sgl::vk::BufferPtr uniformBuffer;
+    sgl::vk::ImageViewPtr inputImageGT, inputImageOpt;
+    sgl::vk::BufferPtr tfGTBuffer, tfOptBuffer, tfOptGradientBuffer;
+    sgl::vk::BufferPtr firstMomentEstimateBuffer, secondMomentEstimateBuffer;
 };
 
-layout(binding = 1) readonly buffer TfOptBuffer {
-    float tfOpt[NUM_TF_ENTRIES];
-};
-
-layout(binding = 2) buffer TfOptGradientBuffer {
-    float g[NUM_TF_ENTRIES];
-};
-
-#define IDXTF(c, r) ((c) + (r) * 4u)
-
-void main() {
-    if (gl_GlobalInvocationID.x >= NUM_TF_ENTRIES) {
-        return;
-    }
-    uint c = gl_GlobalInvocationID.x % 4u;
-    uint r = gl_GlobalInvocationID.x / 4u;
-
-    float gradVal = 0.0;
-    float centerVal = tfOpt[IDXTF(c, r)];
-    if (r > 0) {
-        gradVal += centerVal - tfOpt[IDXTF(c, r - 1)];
-    }
-    if (r < R - 1) {
-        gradVal += centerVal - tfOpt[IDXTF(c, r + 1)];
-    }
-
-    gradVal /= 2.0 * (R - 1);
-    g[gl_GlobalInvocationID.x] += lambda * gradVal;
-}
+#endif //CORRERENDER_GRADIENTPASS_HPP

@@ -40,28 +40,28 @@ OptimizerPass::OptimizerPass(sgl::vk::Renderer* renderer) : ComputePass(renderer
 }
 
 void OptimizerPass::setBuffers(
-        const sgl::vk::BufferPtr& _transferFunctionBuffer,
-        const sgl::vk::BufferPtr& _transferFunctionGradientBuffer) {
-    if (transferFunctionBuffer != _transferFunctionBuffer) {
-        transferFunctionBuffer = _transferFunctionBuffer;
+        const sgl::vk::BufferPtr& _tfOptBuffer,
+        const sgl::vk::BufferPtr& _tfOptGradientBuffer) {
+    if (tfOptBuffer != _tfOptBuffer) {
+        tfOptBuffer = _tfOptBuffer;
         if (computeData) {
-            computeData->setStaticBuffer(transferFunctionBuffer, "TransferFunctionBuffer");
+            computeData->setStaticBuffer(tfOptBuffer, "TfOptBuffer");
         }
     }
-    if (transferFunctionGradientBuffer != _transferFunctionGradientBuffer) {
-        transferFunctionGradientBuffer = _transferFunctionGradientBuffer;
+    if (tfOptGradientBuffer != _tfOptGradientBuffer) {
+        tfOptGradientBuffer = _tfOptGradientBuffer;
         if (computeData) {
-            computeData->setStaticBuffer(transferFunctionGradientBuffer, "TransferFunctionGradientBuffer");
+            computeData->setStaticBuffer(tfOptGradientBuffer, "TfOptGradientBuffer");
         }
     }
     if (!firstMomentEstimateBuffer
-            || firstMomentEstimateBuffer->getSizeInBytes() != _transferFunctionGradientBuffer->getSizeInBytes()) {
+            || firstMomentEstimateBuffer->getSizeInBytes() != tfOptGradientBuffer->getSizeInBytes()) {
         firstMomentEstimateBuffer = std::make_shared<sgl::vk::Buffer>(
-                device, _transferFunctionGradientBuffer->getSizeInBytes(),
+                device, tfOptGradientBuffer->getSizeInBytes(),
                 VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                 VMA_MEMORY_USAGE_GPU_ONLY);
         secondMomentEstimateBuffer = std::make_shared<sgl::vk::Buffer>(
-                device, _transferFunctionGradientBuffer->getSizeInBytes(),
+                device, tfOptGradientBuffer->getSizeInBytes(),
                 VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                 VMA_MEMORY_USAGE_GPU_ONLY);
         setDataDirty();
@@ -75,32 +75,50 @@ void OptimizerPass::setOptimizerType(OptimizerType _optimizerType) {
     }
 }
 
-void OptimizerPass::setSettings(float alpha, float beta1, float beta2, float epsilon) {
+void OptimizerPass::setSettings(
+        LossType _lossType, uint32_t _numTfEntries, float alpha, float beta1, float beta2, float epsilon) {
+    if (lossType != _lossType) {
+        lossType = _lossType;
+        setShaderDirty();
+    }
+    if (numTfEntries != _numTfEntries) {
+        numTfEntries = _numTfEntries;
+        setShaderDirty();
+    }
     if (uniformData.alpha != alpha || uniformData.beta1 != beta1 || uniformData.beta2 != beta2
             || uniformData.epsilon != epsilon) {
         uniformData.alpha = alpha;
         uniformData.beta1 = beta1;
         uniformData.beta2 = beta2;
         uniformData.epsilon = epsilon;
+    }
+}
+
+void OptimizerPass::setEpochIndex(int epochIdx) {
+    if (epochIdx == 0) {
+        if (optimizerType == OptimizerType::ADAM) {
+            firstMomentEstimateBuffer->fill(0, renderer->getVkCommandBuffer());
+            secondMomentEstimateBuffer->fill(0, renderer->getVkCommandBuffer());
+        }
         uniformBuffer->updateData(
                 sizeof(UniformData), &uniformData, renderer->getVkCommandBuffer());
         renderer->insertMemoryBarrier(
                 VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_UNIFORM_READ_BIT,
                 VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
     }
-}
-
-void OptimizerPass::setEpochIndex(int epochIdx) {
-    if (epochIdx == 0) {
-        transferFunctionBuffer->fill(0, renderer->getVkCommandBuffer());
-    }
-    t = float(epochIdx);
+    t = float(epochIdx + 1);
 }
 
 void OptimizerPass::loadShader() {
     sgl::vk::ShaderManager->invalidateShaderCache();
     std::map<std::string, std::string> preprocessorDefines;
     preprocessorDefines.insert(std::make_pair("BLOCK_SIZE", std::to_string(computeBlockSize)));
+    preprocessorDefines.insert(std::make_pair("NUM_TF_ENTRIES", std::to_string(numTfEntries)));
+    if (lossType == LossType::L1) {
+        preprocessorDefines.insert(std::make_pair("L1_LOSS", ""));
+    } else if (lossType == LossType::L2) {
+        preprocessorDefines.insert(std::make_pair("L2_LOSS", ""));
+    }
     std::string shaderName;
     if (optimizerType == OptimizerType::SGD) {
         shaderName = "SGD.Compute";
@@ -114,8 +132,8 @@ void OptimizerPass::createComputeData(
         sgl::vk::Renderer* renderer, sgl::vk::ComputePipelinePtr& computePipeline) {
     computeData = std::make_shared<sgl::vk::ComputeData>(renderer, computePipeline);
     computeData->setStaticBuffer(uniformBuffer, "OptimizerSettingsBuffer");
-    computeData->setStaticBuffer(transferFunctionBuffer, "TransferFunctionBuffer");
-    computeData->setStaticBuffer(transferFunctionGradientBuffer, "TransferFunctionGradientBuffer");
+    computeData->setStaticBuffer(tfOptBuffer, "TfOptBuffer");
+    computeData->setStaticBuffer(tfOptGradientBuffer, "TfOptGradientBuffer");
     if (optimizerType == OptimizerType::ADAM) {
         computeData->setStaticBuffer(firstMomentEstimateBuffer, "FirstMomentEstimateBuffer");
         computeData->setStaticBuffer(secondMomentEstimateBuffer, "SecondMomentEstimateBuffer");
@@ -126,6 +144,6 @@ void OptimizerPass::_render() {
     if (optimizerType == OptimizerType::ADAM) {
         renderer->pushConstants(getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, 0, t);
     }
-    auto tfSize = uint32_t(transferFunctionBuffer->getSizeInBytes() / 4);
+    auto tfSize = uint32_t(tfOptBuffer->getSizeInBytes() / 4);
     renderer->dispatch(computeData, sgl::uiceil(tfSize, computeBlockSize), 1, 1);
 }

@@ -54,8 +54,8 @@ layout(binding = 1) readonly buffer BatchSettingsBuffer {
 
 layout(binding = 2) uniform sampler3D scalarField;
 
-layout(binding = 3, std430) readonly buffer TransferFunctionBuffer {
-    float tfEntries[NUM_TF_ENTRIES];
+layout(binding = 3, std430) readonly buffer TfOptBuffer {
+    float tfOpt[];
 };
 
 layout(binding = 4, std430) writeonly buffer FinalColorsBuffer {

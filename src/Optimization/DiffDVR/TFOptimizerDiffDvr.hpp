@@ -72,10 +72,9 @@ private:
         float attenuationCoefficient;
         glm::vec3 maxBoundingBox;
         float stepSize;
+        float minGT, maxGT, minOpt, maxOpt;
     };
 
-    void recreateCache(
-            VkFormat formatGT, VkFormat formatOpt, uint32_t xs, uint32_t ys, uint32_t zs);
     uint32_t cachedBatchSize = 0;
     uint32_t cachedViewportWidth = 0;
     uint32_t cachedViewportHeight = 0;
@@ -88,10 +87,10 @@ private:
     sgl::vk::BufferPtr gtFinalColorsBuffer;
     sgl::vk::BufferPtr finalColorsBuffer;
     sgl::vk::BufferPtr terminationIndexBuffer;
-    sgl::vk::BufferPtr transferFunctionGTBuffer;
-    sgl::vk::BufferPtr transferFunctionBuffer;
-    sgl::vk::BufferPtr transferFunctionDownloadStagingBuffer;
-    sgl::vk::BufferPtr transferFunctionGradientBuffer;
+    sgl::vk::BufferPtr tfGTBuffer;
+    sgl::vk::BufferPtr tfOptBuffer;
+    sgl::vk::BufferPtr tfDownloadStagingBuffer;
+    sgl::vk::BufferPtr tfOptGradientBuffer;
     sgl::vk::ImageViewPtr imageViewFieldGT, imageViewFieldOpt;
 
     // For Adam.

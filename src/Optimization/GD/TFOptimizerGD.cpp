@@ -26,51 +26,38 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <random>
-
 #include <Math/Math.hpp>
 #include <Utils/AppSettings.hpp>
 #include <Graphics/Vulkan/Render/Renderer.hpp>
 
 #include "Volume/VolumeData.hpp"
-#include "Optimization/DiffDVR/SmoothingPriorLossPass.hpp"
-#include "Optimization/GD/OptimizerPass.hpp"
 #include "../CopyFieldImages.hpp"
-#include "TFOptimizerDiffDvr.hpp"
+#include "GradientPass.hpp"
+#include "OptimizerPass.hpp"
+#include "TFOptimizerGD.hpp"
 
-TFOptimizerDiffDvr::TFOptimizerDiffDvr(
+TFOptimizerGD::TFOptimizerGD(
         sgl::vk::Renderer* renderer, sgl::vk::Renderer* parentRenderer, bool supportsAsyncCompute)
         : TFOptimizer(renderer, parentRenderer, supportsAsyncCompute) {
-    // TODO
-    //gtForwardPass = std::make_shared<ForwardPass>(renderer);
-    //forwardPass = std::make_shared<ForwardPass>(renderer);
-    //lossPass = std::make_shared<LossPass>(renderer);
-    //adjointPass = std::make_shared<AdjointPass>(renderer);
-    smoothingPriorLossPass = std::make_shared<SmoothingPriorLossPass>(renderer);
+    settingsBuffer = std::make_shared<sgl::vk::Buffer>(
+            renderer->getDevice(), sizeof(UniformSettings),
+            VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+            VMA_MEMORY_USAGE_GPU_ONLY);
+
+    gradientPass = std::make_shared<GradientPass>(renderer);
     optimizerPass = std::make_shared<OptimizerPass>(renderer);
 }
 
-TFOptimizerDiffDvr::~TFOptimizerDiffDvr() {
-    gtForwardPass = {};
-    forwardPass = {};
-    lossPass = {};
-    adjointPass = {};
-    smoothingPriorLossPass = {};
-    optimizerPass = {};
+TFOptimizerGD::~TFOptimizerGD() {
+    if (renderer) {
+        gradientPass = {};
+        optimizerPass = {};
+    }
 }
 
-void TFOptimizerDiffDvr::onRequestQueued(VolumeData* volumeData) {
+void TFOptimizerGD::onRequestQueued(VolumeData* volumeData) {
     maxNumEpochs = settings.maxNumEpochs;
     currentEpoch = 0;
-    sgl::AABB3 aabb = volumeData->getBoundingBoxRendering();
-    float voxelSizeX = aabb.getDimensions().x / float(volumeData->getGridSizeX());
-    float voxelSizeY = aabb.getDimensions().y / float(volumeData->getGridSizeY());
-    float voxelSizeZ = aabb.getDimensions().z / float(volumeData->getGridSizeZ());
-    float voxelSize = std::min(voxelSizeX, std::min(voxelSizeY, voxelSizeZ));
-    dvrSettings.minBoundingBox = aabb.min;
-    dvrSettings.maxBoundingBox = aabb.max;
-    dvrSettings.stepSize = voxelSize * settings.stepSize;
-    dvrSettings.attenuationCoefficient = settings.attenuationCoefficient;
 
     auto fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
     auto& tfWindow = volumeData->getMultiVarTransferFunctionWindow();
@@ -80,44 +67,22 @@ void TFOptimizerDiffDvr::onRequestQueued(VolumeData* volumeData) {
     auto fieldEntryOpt = volumeData->getFieldEntryDevice(FieldType::SCALAR, fieldNameOpt);
     auto minMaxGT = tfWindow.getSelectedRangePair(settings.fieldIdxGT);
     auto minMaxOpt = tfWindow.getSelectedRangePair(settings.fieldIdxOpt);
-    dvrSettings.minGT = minMaxGT.first;
-    dvrSettings.maxGT = minMaxGT.second;
-    dvrSettings.minOpt = minMaxOpt.first;
-    dvrSettings.maxOpt = minMaxOpt.second;
+    uniformSettings.minGT = minMaxGT.first;
+    uniformSettings.maxGT = minMaxGT.second;
+    uniformSettings.minOpt = minMaxOpt.first;
+    uniformSettings.maxOpt = minMaxOpt.second;
+    uniformSettings.xs = uint32_t(volumeData->getGridSizeX());
+    uniformSettings.ys = uint32_t(volumeData->getGridSizeY());
+    uniformSettings.zs = uint32_t(volumeData->getGridSizeZ());
+    uniformSettings.tfNumEntries = settings.tfSize * 4u;
 
     sgl::vk::Device* device = sgl::AppSettings::get()->getPrimaryDevice();
-    uint32_t totalSize = batchSize * viewportHeight * viewportWidth;
-    uint32_t cachedTotalSize = cachedBatchSize * cachedViewportHeight * cachedViewportWidth;
 
+    gradientPass->setSettings(settings.lossType);
     optimizerPass->setOptimizerType(settings.optimizerType);
     optimizerPass->setSettings(
             settings.lossType, settings.tfSize * 4u,
             settings.learningRate, settings.beta1, settings.beta2, settings.epsilon);
-
-    dvrSettingsBuffer = std::make_shared<sgl::vk::Buffer>(
-            device, sizeof(DvrSettingsBufferTf),
-            VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-            VMA_MEMORY_USAGE_GPU_ONLY);
-    if (cachedBatchSize != batchSize) {
-        batchSettingsBuffer = std::make_shared<sgl::vk::Buffer>(
-                device, sizeof(glm::mat4) * batchSize,
-                VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                VMA_MEMORY_USAGE_GPU_ONLY);
-    }
-
-    if (cachedTotalSize != totalSize) {
-        finalColorsBuffer = std::make_shared<sgl::vk::Buffer>(
-                device, sizeof(glm::vec4) * totalSize,
-                VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                VMA_MEMORY_USAGE_GPU_ONLY);
-        gtFinalColorsBuffer = std::make_shared<sgl::vk::Buffer>(
-                device, sizeof(glm::vec4) * totalSize,
-                VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                VMA_MEMORY_USAGE_GPU_ONLY);
-        terminationIndexBuffer = std::make_shared<sgl::vk::Buffer>(
-                device, sizeof(int32_t) * totalSize,
-                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
-    }
 
     if (cachedTfSize != settings.tfSize) {
         tfGTBuffer = std::make_shared<sgl::vk::Buffer>(
@@ -136,12 +101,11 @@ void TFOptimizerDiffDvr::onRequestQueued(VolumeData* volumeData) {
                 device, sizeof(glm::vec4) * settings.tfSize,
                 VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                 VMA_MEMORY_USAGE_GPU_ONLY);
+        gradientPass->setBuffers(
+                settings.tfSize, settingsBuffer, tfGTBuffer, tfOptBuffer, tfOptGradientBuffer);
         optimizerPass->setBuffers(tfOptBuffer, tfOptGradientBuffer);
     }
 
-    cachedBatchSize = batchSize;
-    cachedViewportWidth = viewportWidth;
-    cachedViewportHeight = viewportHeight;
     cachedTfSize = settings.tfSize;
 
     std::vector<glm::vec4> tfGT = volumeData->getMultiVarTransferFunctionWindow().getTransferFunctionMap_sRGBDownscaled(
@@ -161,13 +125,15 @@ void TFOptimizerDiffDvr::onRequestQueued(VolumeData* volumeData) {
             imageViewFieldGT, imageViewFieldOpt,
             cachedFormatGT, cachedFormatOpt,
             settings.fieldIdxGT, settings.fieldIdxOpt);
+
+    gradientPass->setInputImages(imageViewFieldGT, imageViewFieldOpt);
 }
 
-float TFOptimizerDiffDvr::getProgress() {
+float TFOptimizerGD::getProgress() {
     return float(currentEpoch) / float(maxNumEpochs);
 }
 
-void TFOptimizerDiffDvr::runOptimization(bool shallStop, bool& hasStopped) {
+void TFOptimizerGD::runOptimization(bool shallStop, bool& hasStopped) {
     if (currentEpoch == maxNumEpochs) {
         return;
     }
@@ -183,7 +149,7 @@ void TFOptimizerDiffDvr::runOptimization(bool shallStop, bool& hasStopped) {
         renderer->beginCommandBuffer();
 
         if (currentEpoch == 0) {
-            dvrSettingsBuffer->updateData(sizeof(DvrSettingsBufferTf), &dvrSettings, renderer->getVkCommandBuffer());
+            settingsBuffer->updateData(sizeof(UniformSettings), &uniformSettings, renderer->getVkCommandBuffer());
             renderer->insertMemoryBarrier(
                     VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_UNIFORM_READ_BIT,
                     VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
@@ -215,74 +181,20 @@ void TFOptimizerDiffDvr::runOptimization(bool shallStop, bool& hasStopped) {
         fence->wait();
         fence->reset();
 
+        std::cout << "x:" << std::endl;
         auto* tfData = reinterpret_cast<glm::vec4*>(tfDownloadStagingBuffer->mapMemory());
         for (uint32_t i = 0; i < settings.tfSize; i++) {
+            std::cout << tfData[i][0] << ", " << tfData[i][1] << ", " << tfData[i][2] << ", " << tfData[i][3] << std::endl;
             tfArrayOpt.at(i) = glm::clamp(tfData[i], 0.0f, 1.0f);
         }
         tfDownloadStagingBuffer->unmapMemory();
+        std::cout << std::endl << std::endl;
     }
 }
 
-void TFOptimizerDiffDvr::sampleCameraPoses() {
-    const glm::vec3 globalUp(0.0f, 1.0f, 0.0f);
-    std::random_device rd;
-    std::mt19937 generator(rd());
-    std::uniform_real_distribution<float> dist(0, 1);
-    for (uint32_t batchIdx = 0; batchIdx < batchSize; batchIdx++) {
-        float theta = sgl::TWO_PI * dist(generator);
-        float phi = std::acos(1.0f - 2.0f * dist(generator));
-        glm::vec3 cameraPosition(std::sin(phi) * std::cos(theta), std::sin(phi) * std::sin(theta), std::cos(phi));
-        glm::vec3 cameraForward = -glm::normalize(cameraPosition);
-        glm::vec3 cameraRight = glm::normalize(glm::cross(globalUp, cameraForward));
-        glm::vec3 cameraUp = glm::normalize(glm::cross(cameraForward, cameraRight));
-        glm::mat4 rotationMatrix;
-        for (int i = 0; i < 4; i++) {
-            rotationMatrix[i][0] = i < 3 ? cameraRight[0] : 0.0f;
-            rotationMatrix[i][1] = i < 3 ? cameraUp[0] : 0.0f;
-            rotationMatrix[i][2] = i < 3 ? cameraForward[0] : 0.0f;
-            rotationMatrix[i][3] = i < 3 ? 0.0f : 1.0f;
-        }
-        glm::mat4 viewMatrix = rotationMatrix * sgl::matrixTranslation(-cameraPosition);
-        glm::mat4 inverseViewMatrix = glm::inverse(viewMatrix);
-        batchSettingsArray.at(batchIdx) = inverseViewMatrix;
-    }
-    batchSettingsBuffer->updateData(
-            sizeof(glm::mat4) * batchSize, batchSettingsArray.data(), renderer->getVkCommandBuffer());
-}
-
-void TFOptimizerDiffDvr::runEpoch() {
-    // Randomly sample camera poses.
-    sampleCameraPoses();
-
-    // Run the forward passes.
-    //gtForwardPass->render();
-    //forwardPass->render();
-    renderer->insertMemoryBarrier(
-            VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
-            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-
-    // Compute the image loss.
-    //lossPass->render();
-    renderer->insertMemoryBarrier(
-            VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
-            VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-
-    // Clear the gradients.
-    tfOptGradientBuffer->fill(0, renderer->getVkCommandBuffer());
-    renderer->insertBufferMemoryBarrier(
-            VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
-            VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-            tfOptGradientBuffer);
-
-    // Compute the gradients wrt. the transfer function entries for the image loss.
-    //adjointPass->render();
-    renderer->insertBufferMemoryBarrier(
-            VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
-            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-            tfOptGradientBuffer);
-
-    // Compute the gradients wrt. the transfer function entries for the smoothing prior loss.
-    smoothingPriorLossPass->render();
+void TFOptimizerGD::runEpoch() {
+    // Compute the gradients wrt. the transfer function entries.
+    gradientPass->render();
     renderer->insertMemoryBarrier(
             VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
             VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
