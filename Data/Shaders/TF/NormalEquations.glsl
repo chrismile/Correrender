@@ -127,18 +127,18 @@ void main() {
     uint jOpt0 = uint(tOpt0);
     uint jOpt1 = uint(tOpt1);
     if (jOpt0 == jOpt1) {
-        fOpt = 1.0;
+        //fOpt = 1.0;
     }
     for (int c = 0; c < 4; c++) {
         uint i = jOpt0 * 4 + c;
-        atomicAddRhs(i, fOpt * colorGT[c]);
-        atomicAddLhs(IDXM(i, i), fOpt * fOpt);
+        float fOpt0 = 1.0f - fOpt;
+        atomicAddRhs(i, fOpt0 * colorGT[c]);
+        atomicAddLhs(IDXM(i, i), fOpt0 * fOpt0);
         if (jOpt0 != jOpt1) {
             uint j = jOpt1 * 4 + c;
-            float fOpt1 = 1.0f - fOpt;
-            atomicAddRhs(j, fOpt1 * colorGT[c]);
-            atomicAddLhs(IDXM(i, j), fOpt * fOpt1);
-            atomicAddLhs(IDXM(j, j), fOpt1 * fOpt1);
+            atomicAddRhs(j, fOpt * colorGT[c]);
+            atomicAddLhs(IDXM(i, j), fOpt0 * fOpt);
+            atomicAddLhs(IDXM(j, j), fOpt * fOpt);
         }
     }
 }

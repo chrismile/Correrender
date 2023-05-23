@@ -31,7 +31,7 @@
 #version 450 core
 
 #extension GL_EXT_shader_atomic_float : require
-#extension GL_EXT_debug_printf : enable
+//#extension GL_EXT_debug_printf : enable
 
 layout(local_size_x = BLOCK_SIZE_X, local_size_y = BLOCK_SIZE_Y, local_size_z = BLOCK_SIZE_Z) in;
 
@@ -112,24 +112,24 @@ void main() {
 
     const float invN = 1.0 / float(xs * ys * zs);
 #if defined(L1_LOSS)
-    vec4 dColorOpt = (invN * 2.0) * vec4(greaterThanEqual(colorDiff)) - vec4(1.0);
+    vec4 dColorOpt = invN * (2.0 * vec4(greaterThanEqual(colorDiff, vec4(0.0))) - vec4(1.0));
 #elif defined(L2_LOSS)
     vec4 dColorOpt = (invN * 2.0) * colorDiff;
 #endif
 
-    if (currentPointIdx.x == 20 && currentPointIdx.y == 20 && currentPointIdx.z == 10) {
-        debugPrintfEXT("%f", colorDiff.x);
-    }
+    //if (currentPointIdx.x == 1 && currentPointIdx.y == 1 && currentPointIdx.z == 1) {
+    //    debugPrintfEXT("%f, %f, %u, %u", colorDiff.y, tOpt, jOpt0, jOpt1);
+    //}
 
     if (jOpt0 == jOpt1) {
-        fOpt = 1.0;
+        //fOpt = 1.0;
     }
     for (int c = 0; c < 4; c++) {
         uint i = jOpt0 * 4 + c;
-        atomicAddGrad(i, fOpt * dColorOpt[c]);
+        atomicAddGrad(i, (1.0 - fOpt) * dColorOpt[c]);
         if (jOpt0 != jOpt1) {
             uint j = jOpt1 * 4 + c;
-            float fOpt1 = 1.0f - fOpt;
+            float fOpt1 = fOpt;
             atomicAddGrad(j, fOpt1 * dColorOpt[c]);
         }
     }
@@ -165,7 +165,7 @@ void main() {
     for (uint workIdx = gl_GlobalInvocationID.x; workIdx < workSizeLinear; workIdx += workStep) {
         vec4 colorDiff = finalColors[workIdx] - gtFinalColors[workIdx];
 #if defined(L1_LOSS)
-        adjointColors[workIdx] = (invN * 2.0) * vec4(greaterThanEqual(colorDiff)) - vec4(1.0);
+        adjointColors[workIdx] = (invN * 2.0) * vec4(greaterThanEqual(colorDiff, vec4(0.0))) - vec4(1.0);
 #elif defined(L2_LOSS)
         adjointColors[workIdx] = (invN * 2.0) * colorDiff;
 #endif

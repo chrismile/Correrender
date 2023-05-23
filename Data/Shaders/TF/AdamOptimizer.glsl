@@ -36,7 +36,7 @@
 
 #version 450 core
 
-#extension GL_EXT_debug_printf : enable
+//#extension GL_EXT_debug_printf : enable
 
 layout(local_size_x = BLOCK_SIZE) in;
 
@@ -85,7 +85,7 @@ void main() {
     float vht = vt / (1.0 - pow(beta2, t));
 
     // Update the parameters.
-    //if (globalThreadIdx == 0) {
+    //if (globalThreadIdx == NUM_TF_ENTRIES / 2) {
     //    debugPrintfEXT("%f, %f, %f, %f, %f, %f, %f, %f", tfOpt[globalThreadIdx], alpha, beta1, beta2, gt, mht, vht, epsilon);
     //}
     tfOpt[globalThreadIdx] -= alpha * mht / (sqrt(vht) + epsilon);

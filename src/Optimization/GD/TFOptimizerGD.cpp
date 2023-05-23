@@ -138,6 +138,8 @@ void TFOptimizerGD::runOptimization(bool shallStop, bool& hasStopped) {
         return;
     }
 
+    gradientPass->setShaderDirty();
+
     // TODO: Add support for double buffering?
     for (; currentEpoch < maxNumEpochs; currentEpoch++) {
         if (shallStop) {

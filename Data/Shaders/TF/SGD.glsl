@@ -57,5 +57,8 @@ void main() {
     }
 
     // Update the parameters.
+    //if (globalThreadIdx == 5) {
+    //    debugPrintfEXT("g: %f, %f", tfOpt[globalThreadIdx], g[globalThreadIdx]);
+    //}
     tfOpt[globalThreadIdx] -= alpha * g[globalThreadIdx];
 }
