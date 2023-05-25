@@ -38,10 +38,11 @@ layout(binding = 0) uniform DvrSettingsBuffer {
     float attenuationCoefficient;
     vec3 maxBoundingBox;
     float stepSize;
+    uint imageWidth, imageHeight, batchSize;
 };
 
 layout(push_constant) uniform PushConstants {
-    vec2 minMaxFieldValues;
+    float minFieldValue, maxFieldValue, Nj;
 };
 
 struct BatchSettings {
@@ -54,22 +55,27 @@ layout(binding = 1) readonly buffer BatchSettingsBuffer {
 
 layout(binding = 2) uniform sampler3D scalarField;
 
-layout(binding = 3, std430) readonly buffer TfOptBuffer {
-    float tfOpt[];
+layout(binding = 3, std430) readonly buffer TfBuffer {
+    vec4 tf[];
 };
 
 layout(binding = 4, std430) writeonly buffer FinalColorsBuffer {
     vec4 finalColors[];
 };
 
+#ifdef FORWARD_PASS_OPT
 layout(binding = 5, std430) writeonly buffer TerminationIndexBuffer {
     int terminationIndices[];
 };
+#endif
+
+#include "RayIntersectionTests.glsl"
+#include "Blending.glsl"
 
 void renderForward(uint workIdx, uint x, uint y, uint b) {
-    mat4 inverseViewMatrix = batchSettingsArray[b];
-    vec3 rayOrigin = (inverseViewMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
-    vec2 fragNdc = 2.0 * ((vec2(gl_GlobalInvocationID.xy) + vec2(0.5)) / vec2(outputImageSize)) - 1.0;
+    mat4 inverseViewMatrix = batchSettingsArray[b].inverseViewMatrix;
+    vec3 rayOrigin = inverseViewMatrix[3].xyz;
+    vec2 fragNdc = 2.0 * ((vec2(gl_GlobalInvocationID.xy) + vec2(0.5)) / vec2(imageWidth, imageHeight)) - 1.0;
     vec3 rayTarget = (inverseProjectionMatrix * vec4(fragNdc.xy, 1.0, 1.0)).xyz;
     vec3 normalizedTarget = normalize(rayTarget.xyz);
     vec3 rayDirection = (inverseViewMatrix * vec4(normalizedTarget, 0.0)).xyz;
@@ -80,45 +86,54 @@ void renderForward(uint workIdx, uint x, uint y, uint b) {
     float tNear, tFar;
     if (rayBoxIntersectionRayCoords(rayOrigin, rayDirection, minBoundingBox, maxBoundingBox, tNear, tFar)) {
         vec3 entrancePoint = rayOrigin + rayDirection * tNear;
-        vec3 exitPoint = rayOrigin + rayDirection * tFar;
-        float volumeDepth = length(exitPoint - entrancePoint);
-
-        vec3 currentPoint = entrancePoint;
         if (tNear < 0) {
             entrancePoint = rayOrigin;
         }
+        vec3 exitPoint = rayOrigin + rayDirection * tFar;
+
+        float volumeDepth = length(exitPoint - entrancePoint);
+        vec3 currentPoint = entrancePoint;
 
         while (length(currentPoint - entrancePoint) < volumeDepth) {
             vec3 texCoords = (currentPoint - minBoundingBox) / (maxBoundingBox - minBoundingBox);
 
             float scalarValue = texture(scalarField, texCoords).r;
-            // TODO
-            vec4 volumeColor = transferFunction(scalarValue, fieldIndex);
-            float alpha = 1 - exp(-volumeColor.a * stepSize * attenuationCoefficient);
+            scalarValue = (scalarValue - minFieldValue) / (maxFieldValue - minFieldValue);
+
+            // Query the transfer function.
+            float t0 = clamp(floor(scalarValue * Nj), 0.0f, Nj);
+            float t1 = clamp(ceil(scalarValue * Nj), 0.0f, Nj);
+            float f = scalarValue * Nj - t0;
+            uint j0 = uint(t0);
+            uint j1 = uint(t1);
+            vec4 c0 = tf[j0];
+            vec4 c1 = tf[j1];
+            vec4 volumeColor = mix(c0, c1, f);
+
+            float alpha = 1.0 - exp(-volumeColor.a * stepSize * attenuationCoefficient);
             vec4 color = vec4(volumeColor.rgb, alpha);
 
+            terminationIndex++;
             if (blend(color, outputColor)) {
                 break;
             }
             currentPoint = entrancePoint + rayDirection * (float(terminationIndex) * stepSize);
-            terminationIndex++;
         }
-
-        vec4 backgroundColor = imageLoad(outputImage, imageCoords);
-        blend(backgroundColor, outputColor);
     }
 
     finalColors[workIdx] = outputColor;
+#ifdef FORWARD_PASS_OPT
     terminationIndices[workIdx] = terminationIndex;
+#endif
 }
 
 void main() {
     const uint workSizeLinear = imageWidth * imageHeight * batchSize;
     const uint workStep = gl_WorkGroupSize.x * gl_NumWorkGroups.x;
     for (uint workIdx = gl_GlobalInvocationID.x; workIdx < workSizeLinear; workIdx += workStep) {
-        int x = workIdx % imageWidth;
-        int y = (workIdx / imageWidth) % imageHeight;
-        int b = workIdx / (imageWidth * imageHeight);
+        uint x = workIdx % imageWidth;
+        uint y = (workIdx / imageWidth) % imageHeight;
+        uint b = workIdx / (imageWidth * imageHeight);
         renderForward(workIdx, x, y, b);
     }
 }

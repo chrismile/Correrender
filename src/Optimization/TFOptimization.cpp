@@ -133,7 +133,11 @@ void TFOptimization::renderGuiDialog() {
                     numBackends++;
                 }
 #endif
-                ImGui::Combo("Backend", (int*)&settings.backend, OLS_BACKEND_NAMES, numBackends);
+                if (ImGui::Combo("Backend", (int*)&settings.backend, OLS_BACKEND_NAMES, numBackends)) {
+                    if (settings.backend == OLSBackend::VULKAN) {
+                        settings.useNormalEquations = true;
+                    }
+                }
                 if (settings.optimizerMethod == TFOptimizerMethod::OLS
                         && settings.backend != OLSBackend::VULKAN) {
                     ImGui::Checkbox("Use Sparse Solve Step", &settings.useSparseSolve);
@@ -154,8 +158,10 @@ void TFOptimization::renderGuiDialog() {
                                 EIGEN_SOLVER_TYPE_NAMES, IM_ARRAYSIZE(EIGEN_SOLVER_TYPE_NAMES));
                     }
                 }
-                if (!settings.useSparseSolve || settings.backend != OLSBackend::CUDA) {
-                    ImGui::Checkbox("Use Normal Equations", &settings.useNormalEquations);
+                if (!settings.useSparseSolve || settings.backend == OLSBackend::CPU) {
+                    if (settings.backend != OLSBackend::VULKAN) {
+                        ImGui::Checkbox("Use Normal Equations", &settings.useNormalEquations);
+                    }
                     if (settings.useNormalEquations) {
                         ImGui::SliderFloat("Relaxation Lambda", &settings.relaxationLambda, 0.0f, 10.0f);
                     }
@@ -165,10 +171,19 @@ void TFOptimization::renderGuiDialog() {
 
         if (settings.optimizerMethod == TFOptimizerMethod::DIFF_DVR && ImGui::CollapsingHeader(
                 "DVR Settings", nullptr, ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::SliderIntPowerOfTwo(
+                    "Image Width", (int*)&settings.imageWidth, 16, 4096);
+            ImGui::SliderIntPowerOfTwo(
+                    "Image Height", (int*)&settings.imageHeight, 16, 4096);
+            ImGui::SliderIntPowerOfTwo(
+                    "Batch Size", (int*)&settings.batchSize, 1, 64);
             ImGui::SliderFloat(
                     "Step Size", &settings.stepSize, 0.01f, 1.0f);
             ImGui::SliderFloat(
                     "Attenuation", &settings.attenuationCoefficient, 0.0f, 500.0f);
+            ImGui::SliderFloat(
+                    "Smoothing Factor", &settings.lambdaSmoothingPrior, 0.0f, 10.0f);
+            ImGui::Checkbox("Adjoint Delayed", &settings.adjointDelayed);
         }
 
         if (ImGui::Button("OK", ImVec2(120, 0))) {

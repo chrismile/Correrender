@@ -37,7 +37,7 @@ void copyFieldImages(
         const sgl::vk::ImagePtr& fieldImageGT, const sgl::vk::ImagePtr& fieldImageOpt,
         sgl::vk::ImageViewPtr& inputImageGT, sgl::vk::ImageViewPtr& inputImageOpt,
         VkFormat& cachedFormatGT, VkFormat& cachedFormatOpt,
-        uint32_t fieldIdxGT, uint32_t fieldIdxOpt) {
+        uint32_t fieldIdxGT, uint32_t fieldIdxOpt, bool isSampled) {
     auto formatGT = fieldImageGT->getImageSettings().format;
     auto formatOpt = fieldImageOpt->getImageSettings().format;
     if (!inputImageGT || formatGT != cachedFormatGT || formatOpt != cachedFormatOpt
@@ -49,7 +49,11 @@ void copyFieldImages(
         imageSettings.height = ys;
         imageSettings.depth = zs;
         imageSettings.imageType = VK_IMAGE_TYPE_3D;
-        imageSettings.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
+        if (isSampled) {
+            imageSettings.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        } else {
+            imageSettings.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
+        }
         imageSettings.format = formatGT;
         inputImageGT = std::make_shared<sgl::vk::ImageView>(
                 std::make_shared<sgl::vk::Image>(device, imageSettings), VK_IMAGE_VIEW_TYPE_3D);
@@ -130,14 +134,15 @@ void copyFieldImages(
                 device->getComputeQueueIndex(),
                 device->getGraphicsQueueIndex());
     }
+    VkImageLayout finalLayout = isSampled ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_GENERAL;
     inputImageGT->getImage()->insertMemoryBarrier(
             commandBufferCompute,
-            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL,
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, finalLayout,
             VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
             VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
     inputImageOpt->getImage()->insertMemoryBarrier(
             commandBufferCompute,
-            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL,
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, finalLayout,
             VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
             VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
     device->endSingleTimeCommands(commandBufferCompute, device->getComputeQueueIndex());

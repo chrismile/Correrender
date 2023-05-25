@@ -31,13 +31,12 @@
 #include <Graphics/Vulkan/Render/ComputePipeline.hpp>
 
 #include "Volume/Cache/DeviceCacheEntry.hpp"
-#include "DvrAdjointPass.hpp"
+#include "DvrForwardPass.hpp"
 
-DvrAdjointPass::DvrAdjointPass(sgl::vk::Renderer* renderer) : ComputePass(renderer) {
-    computeBlockSize = renderer->getDevice()->getPhysicalDeviceSubgroupProperties().subgroupSize;
+DvrForwardPass::DvrForwardPass(sgl::vk::Renderer* renderer) : ComputePass(renderer) {
 }
 
-void DvrAdjointPass::setScalarFieldTexture(const sgl::vk::TexturePtr& _scalarFieldTexture) {
+void DvrForwardPass::setScalarFieldTexture(const sgl::vk::TexturePtr& _scalarFieldTexture) {
     if (scalarFieldTexture != _scalarFieldTexture) {
         scalarFieldTexture = _scalarFieldTexture;
         if (computeData) {
@@ -46,14 +45,12 @@ void DvrAdjointPass::setScalarFieldTexture(const sgl::vk::TexturePtr& _scalarFie
     }
 }
 
-void DvrAdjointPass::setBuffers(
+void DvrForwardPass::setBuffers(
         const sgl::vk::BufferPtr& _dvrSettingsBuffer,
         const sgl::vk::BufferPtr& _batchSettingsBuffer,
         const sgl::vk::BufferPtr& _tfBuffer,
         const sgl::vk::BufferPtr& _finalColorsBuffer,
-        const sgl::vk::BufferPtr& _terminationIndexBuffer,
-        const sgl::vk::BufferPtr& _adjointColorsBuffer,
-        const sgl::vk::BufferPtr& _tfOptGradientBuffer) {
+        const sgl::vk::BufferPtr& _terminationIndexBuffer) {
     if (dvrSettingsBuffer != _dvrSettingsBuffer) {
         dvrSettingsBuffer = _dvrSettingsBuffer;
         if (computeData) {
@@ -69,13 +66,13 @@ void DvrAdjointPass::setBuffers(
     if (tfBuffer != _tfBuffer) {
         tfBuffer = _tfBuffer;
         if (computeData) {
-            computeData->setStaticBuffer(tfBuffer, "TfOptBuffer");
+            computeData->setStaticBuffer(tfBuffer, "TfBuffer");
         }
     }
     if (finalColorsBuffer != _finalColorsBuffer) {
         finalColorsBuffer = _finalColorsBuffer;
         if (computeData) {
-            computeData->setStaticBuffer(finalColorsBuffer, "FinalColorsOptBuffer");
+            computeData->setStaticBuffer(finalColorsBuffer, "FinalColorsBuffer");
         }
     }
     if (terminationIndexBuffer != _terminationIndexBuffer) {
@@ -84,70 +81,53 @@ void DvrAdjointPass::setBuffers(
             computeData->setStaticBuffer(terminationIndexBuffer, "TerminationIndexBuffer");
         }
     }
-    if (adjointColorsBuffer != _adjointColorsBuffer) {
-        adjointColorsBuffer = _adjointColorsBuffer;
-        if (computeData) {
-            computeData->setStaticBuffer(adjointColorsBuffer, "AdjointColorsBuffer");
-        }
-    }
-    if (tfOptGradientBuffer != _tfOptGradientBuffer) {
-        tfOptGradientBuffer = _tfOptGradientBuffer;
-        if (computeData) {
-            computeData->setStaticBuffer(tfOptGradientBuffer, "TfOptGradientBuffer");
-        }
-    }
 }
 
-void DvrAdjointPass::setSettings(
-        float _minFieldValue, float _maxFieldValue, uint32_t _tfSize,
-        uint32_t _imageWidth, uint32_t _imageHeight, uint32_t _batchSize, bool _adjointDelayed) {
+void DvrForwardPass::setSettings(
+        bool _isForwardPassOpt, float _minFieldValue, float _maxFieldValue, uint32_t _tfSize,
+        uint32_t _imageWidth, uint32_t _imageHeight, uint32_t _batchSize) {
+    if (isForwardPassOpt != _isForwardPassOpt) {
+        isForwardPassOpt = _isForwardPassOpt;
+        setShaderDirty();
+    }
     if (minFieldValue != _minFieldValue || maxFieldValue != _maxFieldValue) {
         minFieldValue = _minFieldValue;
         maxFieldValue = _maxFieldValue;
     }
     if (tfSize != _tfSize) {
         tfSize = _tfSize;
-        setShaderDirty();
     }
     if (imageWidth != _imageWidth || imageHeight != _imageHeight || batchSize != _batchSize) {
         imageWidth = _imageWidth;
         imageHeight = _imageHeight;
         batchSize = _batchSize;
     }
-    if (adjointDelayed != _adjointDelayed) {
-        adjointDelayed = _adjointDelayed;
-        setShaderDirty();
-    }
 }
 
-void DvrAdjointPass::loadShader() {
+void DvrForwardPass::loadShader() {
     sgl::vk::ShaderManager->invalidateShaderCache();
     std::map<std::string, std::string> preprocessorDefines;
     preprocessorDefines.insert(std::make_pair("BLOCK_SIZE", std::to_string(computeBlockSize)));
-    preprocessorDefines.insert(std::make_pair("NUM_TF_ENTRIES", std::to_string(tfSize * 4u)));
-    if (adjointDelayed) {
-        preprocessorDefines.insert(std::make_pair("ADJOINT_DELAYED", ""));
+    if (isForwardPassOpt) {
+        preprocessorDefines.insert(std::make_pair("FORWARD_PASS_OPT", ""));
     }
-    if (renderer->getDevice()->getPhysicalDeviceShaderAtomicFloatFeatures().shaderBufferFloat32AtomicAdd) {
-        preprocessorDefines.insert(std::make_pair("SUPPORT_BUFFER_FLOAT_ATOMIC_ADD", ""));
-    }
-    shaderStages = sgl::vk::ShaderManager->getShaderStages({ "DvrAdjoint.Compute" }, preprocessorDefines);
+    shaderStages = sgl::vk::ShaderManager->getShaderStages({ "DvrForward.Compute" }, preprocessorDefines);
 }
 
-void DvrAdjointPass::createComputeData(
+void DvrForwardPass::createComputeData(
         sgl::vk::Renderer* renderer, sgl::vk::ComputePipelinePtr& computePipeline) {
     computeData = std::make_shared<sgl::vk::ComputeData>(renderer, computePipeline);
     computeData->setStaticBuffer(dvrSettingsBuffer, "DvrSettingsBuffer");
     computeData->setStaticBuffer(batchSettingsBuffer, "BatchSettingsBuffer");
     computeData->setStaticTexture(scalarFieldTexture, "scalarField");
-    computeData->setStaticBuffer(tfBuffer, "TfOptBuffer");
-    computeData->setStaticBuffer(finalColorsBuffer, "FinalColorsOptBuffer");
-    computeData->setStaticBuffer(terminationIndexBuffer, "TerminationIndexBuffer");
-    computeData->setStaticBuffer(adjointColorsBuffer, "AdjointColorsBuffer");
-    computeData->setStaticBuffer(tfOptGradientBuffer, "TfOptGradientBuffer");
+    computeData->setStaticBuffer(tfBuffer, "TfBuffer");
+    computeData->setStaticBuffer(finalColorsBuffer, "FinalColorsBuffer");
+    if (isForwardPassOpt) {
+        computeData->setStaticBuffer(terminationIndexBuffer, "TerminationIndexBuffer");
+    }
 }
 
-void DvrAdjointPass::_render() {
+void DvrForwardPass::_render() {
     glm::vec3 pushConstants;
     pushConstants[0] = minFieldValue;
     pushConstants[1] = maxFieldValue;

@@ -33,7 +33,10 @@
 #include <Graphics/Vulkan/Render/Renderer.hpp>
 
 #include "Volume/VolumeData.hpp"
+#include "Optimization/DiffDVR/DvrForwardPass.hpp"
+#include "Optimization/DiffDVR/DvrAdjointPass.hpp"
 #include "Optimization/DiffDVR/SmoothingPriorLossPass.hpp"
+#include "Optimization/DiffDVR/LossPass.hpp"
 #include "Optimization/GD/OptimizerPass.hpp"
 #include "../CopyFieldImages.hpp"
 #include "TFOptimizerDiffDvr.hpp"
@@ -41,20 +44,19 @@
 TFOptimizerDiffDvr::TFOptimizerDiffDvr(
         sgl::vk::Renderer* renderer, sgl::vk::Renderer* parentRenderer, bool supportsAsyncCompute)
         : TFOptimizer(renderer, parentRenderer, supportsAsyncCompute) {
-    // TODO
-    //gtForwardPass = std::make_shared<ForwardPass>(renderer);
-    //forwardPass = std::make_shared<ForwardPass>(renderer);
-    //lossPass = std::make_shared<LossPass>(renderer);
-    //adjointPass = std::make_shared<AdjointPass>(renderer);
+    forwardGTPass = std::make_shared<DvrForwardPass>(renderer);
+    forwardOptPass = std::make_shared<DvrForwardPass>(renderer);
+    adjointPass = std::make_shared<DvrAdjointPass>(renderer);
+    lossPass = std::make_shared<LossPass>(renderer);
     smoothingPriorLossPass = std::make_shared<SmoothingPriorLossPass>(renderer);
     optimizerPass = std::make_shared<OptimizerPass>(renderer);
 }
 
 TFOptimizerDiffDvr::~TFOptimizerDiffDvr() {
-    gtForwardPass = {};
-    forwardPass = {};
-    lossPass = {};
+    forwardGTPass = {};
+    forwardOptPass = {};
     adjointPass = {};
+    lossPass = {};
     smoothingPriorLossPass = {};
     optimizerPass = {};
 }
@@ -71,6 +73,9 @@ void TFOptimizerDiffDvr::onRequestQueued(VolumeData* volumeData) {
     dvrSettings.maxBoundingBox = aabb.max;
     dvrSettings.stepSize = voxelSize * settings.stepSize;
     dvrSettings.attenuationCoefficient = settings.attenuationCoefficient;
+    dvrSettings.imageWidth = settings.imageWidth;
+    dvrSettings.imageHeight = settings.imageHeight;
+    dvrSettings.batchSize = settings.batchSize;
 
     auto fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
     auto& tfWindow = volumeData->getMultiVarTransferFunctionWindow();
@@ -80,15 +85,26 @@ void TFOptimizerDiffDvr::onRequestQueued(VolumeData* volumeData) {
     auto fieldEntryOpt = volumeData->getFieldEntryDevice(FieldType::SCALAR, fieldNameOpt);
     auto minMaxGT = tfWindow.getSelectedRangePair(settings.fieldIdxGT);
     auto minMaxOpt = tfWindow.getSelectedRangePair(settings.fieldIdxOpt);
-    dvrSettings.minGT = minMaxGT.first;
-    dvrSettings.maxGT = minMaxGT.second;
-    dvrSettings.minOpt = minMaxOpt.first;
-    dvrSettings.maxOpt = minMaxOpt.second;
 
     sgl::vk::Device* device = sgl::AppSettings::get()->getPrimaryDevice();
+    viewportWidth = settings.imageWidth;
+    viewportHeight = settings.imageHeight;
+    batchSize = settings.batchSize;
     uint32_t totalSize = batchSize * viewportHeight * viewportWidth;
     uint32_t cachedTotalSize = cachedBatchSize * cachedViewportHeight * cachedViewportWidth;
+    batchSettingsArray.resize(settings.batchSize);
 
+    forwardGTPass->setSettings(
+            false, minMaxGT.first, minMaxGT.second, settings.tfSize,
+            settings.imageWidth, settings.imageHeight, settings.batchSize);
+    forwardOptPass->setSettings(
+            true, minMaxOpt.first, minMaxOpt.second, settings.tfSize,
+            settings.imageWidth, settings.imageHeight, settings.batchSize);
+    adjointPass->setSettings(
+            minMaxOpt.first, minMaxOpt.second, settings.tfSize,
+            settings.imageWidth, settings.imageHeight, settings.batchSize, settings.adjointDelayed);
+    smoothingPriorLossPass->setSettings(settings.lambdaSmoothingPrior, settings.tfSize);
+    lossPass->setSettings(settings.lossType, settings.imageWidth, settings.imageHeight, settings.batchSize);
     optimizerPass->setOptimizerType(settings.optimizerType);
     optimizerPass->setSettings(
             settings.lossType, settings.tfSize * 4u,
@@ -106,17 +122,22 @@ void TFOptimizerDiffDvr::onRequestQueued(VolumeData* volumeData) {
     }
 
     if (cachedTotalSize != totalSize) {
-        finalColorsBuffer = std::make_shared<sgl::vk::Buffer>(
+        finalColorsGTBuffer = std::make_shared<sgl::vk::Buffer>(
                 device, sizeof(glm::vec4) * totalSize,
                 VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                 VMA_MEMORY_USAGE_GPU_ONLY);
-        gtFinalColorsBuffer = std::make_shared<sgl::vk::Buffer>(
+        finalColorsOptBuffer = std::make_shared<sgl::vk::Buffer>(
+                device, sizeof(glm::vec4) * totalSize,
+                VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                VMA_MEMORY_USAGE_GPU_ONLY);
+        adjointColorsBuffer = std::make_shared<sgl::vk::Buffer>(
                 device, sizeof(glm::vec4) * totalSize,
                 VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                 VMA_MEMORY_USAGE_GPU_ONLY);
         terminationIndexBuffer = std::make_shared<sgl::vk::Buffer>(
                 device, sizeof(int32_t) * totalSize,
                 VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+        lossPass->setBuffers(finalColorsGTBuffer, finalColorsOptBuffer, adjointColorsBuffer);
     }
 
     if (cachedTfSize != settings.tfSize) {
@@ -136,7 +157,18 @@ void TFOptimizerDiffDvr::onRequestQueued(VolumeData* volumeData) {
                 device, sizeof(glm::vec4) * settings.tfSize,
                 VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                 VMA_MEMORY_USAGE_GPU_ONLY);
+        smoothingPriorLossPass->setBuffers(tfOptBuffer, tfOptGradientBuffer);
         optimizerPass->setBuffers(tfOptBuffer, tfOptGradientBuffer);
+    }
+
+    if (cachedTotalSize != totalSize || cachedTfSize != settings.tfSize) {
+        forwardGTPass->setBuffers(
+                dvrSettingsBuffer, batchSettingsBuffer, tfGTBuffer, finalColorsGTBuffer, {});
+        forwardOptPass->setBuffers(
+                dvrSettingsBuffer, batchSettingsBuffer, tfOptBuffer, finalColorsOptBuffer, terminationIndexBuffer);
+        adjointPass->setBuffers(
+                dvrSettingsBuffer, batchSettingsBuffer, tfOptBuffer, finalColorsOptBuffer, terminationIndexBuffer,
+                adjointColorsBuffer, tfOptGradientBuffer);
     }
 
     cachedBatchSize = batchSize;
@@ -152,6 +184,12 @@ void TFOptimizerDiffDvr::onRequestQueued(VolumeData* volumeData) {
             settings.fieldIdxOpt, int(settings.tfSize));
     tfOptBuffer->uploadData(sizeof(glm::vec4) * tfOpt.size(), tfOpt.data());
 
+    sgl::vk::ImageSamplerPtr cachedSampler;
+    sgl::vk::ImageViewPtr cachedImageViewGT = imageViewFieldGT;
+    sgl::vk::ImageViewPtr cachedImageViewOpt = imageViewFieldOpt;
+    if (textureFieldGT) {
+        cachedSampler = textureFieldGT->getImageSampler();
+    }
     copyFieldImages(
             parentRenderer->getDevice(),
             uint32_t(volumeData->getGridSizeX()),
@@ -160,7 +198,17 @@ void TFOptimizerDiffDvr::onRequestQueued(VolumeData* volumeData) {
             fieldEntryGT->getVulkanImage(), fieldEntryOpt->getVulkanImage(),
             imageViewFieldGT, imageViewFieldOpt,
             cachedFormatGT, cachedFormatOpt,
-            settings.fieldIdxGT, settings.fieldIdxOpt);
+            settings.fieldIdxGT, settings.fieldIdxOpt, true);
+
+    auto sampler = volumeData->getImageSampler();
+    if (cachedSampler != sampler || cachedImageViewGT != imageViewFieldGT || cachedImageViewOpt != imageViewFieldOpt) {
+        textureFieldGT = std::make_shared<sgl::vk::Texture>(imageViewFieldGT, sampler);
+        textureFieldOpt = std::make_shared<sgl::vk::Texture>(imageViewFieldOpt, sampler);
+    }
+
+    forwardGTPass->setScalarFieldTexture(textureFieldGT);
+    forwardOptPass->setScalarFieldTexture(textureFieldOpt);
+    adjointPass->setScalarFieldTexture(textureFieldOpt);
 }
 
 float TFOptimizerDiffDvr::getProgress() {
@@ -184,6 +232,8 @@ void TFOptimizerDiffDvr::runOptimization(bool shallStop, bool& hasStopped) {
 
         if (currentEpoch == 0) {
             dvrSettingsBuffer->updateData(sizeof(DvrSettingsBufferTf), &dvrSettings, renderer->getVkCommandBuffer());
+            smoothingPriorLossPass->updateUniformBuffer();
+            lossPass->updateUniformBuffer();
             renderer->insertMemoryBarrier(
                     VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_UNIFORM_READ_BIT,
                     VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
@@ -255,14 +305,14 @@ void TFOptimizerDiffDvr::runEpoch() {
     sampleCameraPoses();
 
     // Run the forward passes.
-    //gtForwardPass->render();
-    //forwardPass->render();
+    forwardGTPass->render();
+    forwardOptPass->render();
     renderer->insertMemoryBarrier(
             VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
     // Compute the image loss.
-    //lossPass->render();
+    lossPass->render();
     renderer->insertMemoryBarrier(
             VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
             VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
@@ -274,19 +324,20 @@ void TFOptimizerDiffDvr::runEpoch() {
             VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
             tfOptGradientBuffer);
 
-    // Compute the gradients wrt. the transfer function entries for the image loss.
-    //adjointPass->render();
-    renderer->insertBufferMemoryBarrier(
-            VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
-            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-            tfOptGradientBuffer);
-
     // Compute the gradients wrt. the transfer function entries for the smoothing prior loss.
+    // This will also clear/overwrite the adjoint colors buffer.
     smoothingPriorLossPass->render();
     renderer->insertMemoryBarrier(
             VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
             VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+
+    // Compute the gradients wrt. the transfer function entries for the image loss.
+    adjointPass->render();
+    renderer->insertBufferMemoryBarrier(
+            VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            tfOptGradientBuffer);
 
     // Run the optimizer.
     optimizerPass->setEpochIndex(currentEpoch);

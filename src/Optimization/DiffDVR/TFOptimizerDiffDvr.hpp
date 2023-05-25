@@ -40,9 +40,9 @@
 
 #include "../TFOptimizer.hpp"
 
-class ForwardPass;
+class DvrForwardPass;
+class DvrAdjointPass;
 class LossPass;
-class AdjointPass;
 class SmoothingPriorLossPass;
 class OptimizerPass;
 
@@ -72,7 +72,7 @@ private:
         float attenuationCoefficient;
         glm::vec3 maxBoundingBox;
         float stepSize;
-        float minGT, maxGT, minOpt, maxOpt;
+        uint32_t imageWidth, imageHeight, batchSize;
     };
 
     uint32_t cachedBatchSize = 0;
@@ -84,24 +84,22 @@ private:
     std::vector<glm::mat4> batchSettingsArray;
     sgl::vk::BufferPtr batchSettingsBuffer;
     sgl::vk::BufferPtr dvrSettingsBuffer;
-    sgl::vk::BufferPtr gtFinalColorsBuffer;
-    sgl::vk::BufferPtr finalColorsBuffer;
+    sgl::vk::BufferPtr finalColorsGTBuffer, finalColorsOptBuffer, adjointColorsBuffer;
     sgl::vk::BufferPtr terminationIndexBuffer;
-    sgl::vk::BufferPtr tfGTBuffer;
-    sgl::vk::BufferPtr tfOptBuffer;
-    sgl::vk::BufferPtr tfDownloadStagingBuffer;
+    sgl::vk::BufferPtr tfGTBuffer, tfOptBuffer, tfDownloadStagingBuffer;
     sgl::vk::BufferPtr tfOptGradientBuffer;
     sgl::vk::ImageViewPtr imageViewFieldGT, imageViewFieldOpt;
+    sgl::vk::TexturePtr textureFieldGT, textureFieldOpt;
 
     // For Adam.
     sgl::vk::BufferPtr firstMomentEstimateBuffer;
     sgl::vk::BufferPtr secondMomentEstimateBuffer;
 
     // Compute passes.
-    std::shared_ptr<ForwardPass> gtForwardPass;
-    std::shared_ptr<ForwardPass> forwardPass;
+    std::shared_ptr<DvrForwardPass> forwardGTPass;
+    std::shared_ptr<DvrForwardPass> forwardOptPass;
+    std::shared_ptr<DvrAdjointPass> adjointPass;
     std::shared_ptr<LossPass> lossPass;
-    std::shared_ptr<AdjointPass> adjointPass;
     std::shared_ptr<SmoothingPriorLossPass> smoothingPriorLossPass;
     std::shared_ptr<OptimizerPass> optimizerPass;
 };

@@ -33,22 +33,22 @@
 layout(local_size_x = BLOCK_SIZE) in;
 
 layout(binding = 0) uniform SmoothingPriorSettingsBuffer {
+    uint tfSize;
     float lambda; ///< Smoothing rate.
-    uint R; ///< Number of TF entries in the value axis.
 };
 
 layout(binding = 1) readonly buffer TfOptBuffer {
-    float tfOpt[NUM_TF_ENTRIES];
+    float tfOpt[];
 };
 
 layout(binding = 2) buffer TfOptGradientBuffer {
-    float g[NUM_TF_ENTRIES];
+    float g[];
 };
 
 #define IDXTF(c, r) ((c) + (r) * 4u)
 
 void main() {
-    if (gl_GlobalInvocationID.x >= NUM_TF_ENTRIES) {
+    if (gl_GlobalInvocationID.x >= tfSize * 4u) {
         return;
     }
     uint c = gl_GlobalInvocationID.x % 4u;
@@ -56,13 +56,13 @@ void main() {
 
     float gradVal = 0.0;
     float centerVal = tfOpt[IDXTF(c, r)];
-    if (r > 0) {
+    if (r > 0u) {
         gradVal += centerVal - tfOpt[IDXTF(c, r - 1)];
     }
-    if (r < R - 1) {
+    if (r < tfSize - 1u) {
         gradVal += centerVal - tfOpt[IDXTF(c, r + 1)];
     }
 
-    gradVal /= 2.0 * (R - 1);
+    gradVal /= 2.0 * (tfSize - 1u);
     g[gl_GlobalInvocationID.x] += lambda * gradVal;
 }

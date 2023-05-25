@@ -26,39 +26,40 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-/*
- * Stochastic gradient descent optimizer.
- */
+#ifndef CORRERENDER_LOSSPASS_HPP
+#define CORRERENDER_LOSSPASS_HPP
 
--- Compute
+#include <Graphics/Vulkan/Render/Passes/Pass.hpp>
 
-#version 450 core
+#include "Optimization/OptDefines.hpp"
 
-//#extension GL_EXT_debug_printf : enable
+class LossPass : public sgl::vk::ComputePass {
+public:
+    explicit LossPass(sgl::vk::Renderer* renderer);
+    void setBuffers(
+            const sgl::vk::BufferPtr& _finalColorsGTBuffer,
+            const sgl::vk::BufferPtr& _finalColorsOptBuffer,
+            const sgl::vk::BufferPtr& _adjointColorsBuffer);
+    void setSettings(LossType _lossType, uint32_t imageWidth, uint32_t imageHeight, uint32_t batchSize);
+    void updateUniformBuffer();
 
-layout(local_size_x = BLOCK_SIZE) in;
+protected:
+    void loadShader() override;
+    void createComputeData(sgl::vk::Renderer* renderer, sgl::vk::ComputePipelinePtr& computePipeline) override;
+    void _render() override;
 
-layout(binding = 0) uniform OptimizerSettingsBuffer {
-    float alpha; ///< Learning rate.
+private:
+    LossType lossType = LossType::L2;
+    const uint32_t computeBlockSize = 256;
+
+    struct UniformData {
+        uint32_t imageWidth, imageHeight, batchSize;
+    };
+    UniformData uniformData{};
+    sgl::vk::BufferPtr uniformBuffer;
+    bool isUniformBufferDirty = true;
+
+    sgl::vk::BufferPtr finalColorsGTBuffer, finalColorsOptBuffer, adjointColorsBuffer;
 };
 
-layout(binding = 1, std430) buffer TfOptBuffer {
-    float tfOpt[NUM_TF_ENTRIES];
-};
-
-layout(binding = 2, std430) readonly buffer TfOptGradientBuffer {
-    float g[NUM_TF_ENTRIES];
-};
-
-void main() {
-    uint globalThreadIdx = gl_GlobalInvocationID.x;
-    if (globalThreadIdx >= NUM_TF_ENTRIES) {
-        return;
-    }
-
-    // Update the parameters.
-    //if (globalThreadIdx == 5) {
-    //    debugPrintfEXT("g: %f, %f", tfOpt[globalThreadIdx], g[globalThreadIdx]);
-    //}
-    tfOpt[globalThreadIdx] -= alpha * g[globalThreadIdx];
-}
+#endif //CORRERENDER_LOSSPASS_HPP

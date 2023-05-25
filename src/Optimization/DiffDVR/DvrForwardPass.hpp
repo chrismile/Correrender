@@ -26,28 +26,26 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef CORRERENDER_DVRADJOINTPASS_HPP
-#define CORRERENDER_DVRADJOINTPASS_HPP
+#ifndef CORRERENDER_DVRFORWARDPASS_HPP
+#define CORRERENDER_DVRFORWARDPASS_HPP
 
 #include <Graphics/Vulkan/Render/Passes/Pass.hpp>
 
 #include "Optimization/OptDefines.hpp"
 
-class DvrAdjointPass : public sgl::vk::ComputePass {
+class DvrForwardPass : public sgl::vk::ComputePass {
 public:
-    explicit DvrAdjointPass(sgl::vk::Renderer* renderer);
+    explicit DvrForwardPass(sgl::vk::Renderer* renderer);
     void setScalarFieldTexture(const sgl::vk::TexturePtr& _scalarFieldTexture);
     void setBuffers(
             const sgl::vk::BufferPtr& _dvrSettingsBuffer,
             const sgl::vk::BufferPtr& _batchSettingsBuffer,
             const sgl::vk::BufferPtr& _tfBuffer,
             const sgl::vk::BufferPtr& _finalColorsBuffer,
-            const sgl::vk::BufferPtr& _terminationIndexBuffer,
-            const sgl::vk::BufferPtr& _adjointColorsBuffer,
-            const sgl::vk::BufferPtr& _tfOptGradientBuffer);
+            const sgl::vk::BufferPtr& _terminationIndexBuffer);
     void setSettings(
-            float _minFieldValue, float _maxFieldValue, uint32_t _tfSize,
-            uint32_t _imageWidth, uint32_t _imageHeight, uint32_t _batchSize, bool _adjointDelayed);
+            bool _isForwardPassOpt, float _minFieldValue, float _maxFieldValue, uint32_t _tfSize,
+            uint32_t _imageWidth, uint32_t _imageHeight, uint32_t _batchSize);
 
 protected:
     void loadShader() override;
@@ -55,16 +53,15 @@ protected:
     void _render() override;
 
 private:
-    uint32_t computeBlockSize = 256;
+    const uint32_t computeBlockSize = 256;
+    bool isForwardPassOpt = false;
     uint32_t tfSize = 0;
     float minFieldValue, maxFieldValue;
     uint32_t imageWidth, imageHeight, batchSize;
-    bool adjointDelayed = true;
 
     sgl::vk::TexturePtr scalarFieldTexture;
     sgl::vk::BufferPtr dvrSettingsBuffer, batchSettingsBuffer;
     sgl::vk::BufferPtr tfBuffer, finalColorsBuffer, terminationIndexBuffer;
-    sgl::vk::BufferPtr adjointColorsBuffer, tfOptGradientBuffer;
 };
 
-#endif //CORRERENDER_DVRADJOINTPASS_HPP
+#endif //CORRERENDER_DVRFORWARDPASS_HPP

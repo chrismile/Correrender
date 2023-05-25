@@ -44,6 +44,6 @@ void copyFieldImages(
         const sgl::vk::ImagePtr& fieldImageGT, const sgl::vk::ImagePtr& fieldImageOpt,
         sgl::vk::ImageViewPtr& inputImageGT, sgl::vk::ImageViewPtr& inputImageOpt,
         VkFormat& cachedFormatGT, VkFormat& cachedFormatOpt,
-        uint32_t fieldIdxGT, uint32_t fieldIdxOpt);
+        uint32_t fieldIdxGT, uint32_t fieldIdxOpt, bool isSampled);
 
 #endif //CORRERENDER_COPYFIELDIMAGES_HPP

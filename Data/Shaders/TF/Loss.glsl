@@ -146,12 +146,12 @@ layout(binding = 0) uniform UniformBuffer {
     uint imageWidth, imageHeight, batchSize;
 };
 
-layout(binding = 1, std430) readonly buffer GTFinalColorsBuffer {
-    vec4 gtFinalColors[];
+layout(binding = 1, std430) readonly buffer FinalColorsGTBuffer {
+    vec4 finalColorsGT[];
 };
 
-layout(binding = 2, std430) readonly buffer FinalColorsBuffer {
-    vec4 finalColors[];
+layout(binding = 2, std430) readonly buffer FinalColorsOptBuffer {
+    vec4 finalColorsOpt[];
 };
 
 layout(binding = 3, std430) writeonly buffer AdjointColorsBuffer {
@@ -163,7 +163,7 @@ void main() {
     const float invN = 1.0 / float(workSizeLinear);
     const uint workStep = gl_WorkGroupSize.x * gl_NumWorkGroups.x;
     for (uint workIdx = gl_GlobalInvocationID.x; workIdx < workSizeLinear; workIdx += workStep) {
-        vec4 colorDiff = finalColors[workIdx] - gtFinalColors[workIdx];
+        vec4 colorDiff = finalColorsOpt[workIdx] - finalColorsGT[workIdx];
 #if defined(L1_LOSS)
         adjointColors[workIdx] = (invN * 2.0) * vec4(greaterThanEqual(colorDiff, vec4(0.0))) - vec4(1.0);
 #elif defined(L2_LOSS)

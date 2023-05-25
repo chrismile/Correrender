@@ -137,7 +137,7 @@ void TFOptimizerOLS::TFOptimizerOLS::onRequestQueued(VolumeData* volumeData) {
                 fieldEntryGT->getVulkanImage(), fieldEntryOpt->getVulkanImage(),
                 cache->inputImageGT, cache->inputImageOpt,
                 cache->cachedFormatGT, cache->cachedFormatOpt,
-                settings.fieldIdxGT, settings.fieldIdxOpt);
+                settings.fieldIdxGT, settings.fieldIdxOpt, false);
     } else {
         cache->inputImageGT = {};
         cache->inputImageOpt = {};

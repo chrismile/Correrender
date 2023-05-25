@@ -124,7 +124,7 @@ void TFOptimizerGD::onRequestQueued(VolumeData* volumeData) {
             fieldEntryGT->getVulkanImage(), fieldEntryOpt->getVulkanImage(),
             imageViewFieldGT, imageViewFieldOpt,
             cachedFormatGT, cachedFormatOpt,
-            settings.fieldIdxGT, settings.fieldIdxOpt);
+            settings.fieldIdxGT, settings.fieldIdxOpt, false);
 
     gradientPass->setInputImages(imageViewFieldGT, imageViewFieldOpt);
 }

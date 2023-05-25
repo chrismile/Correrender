@@ -253,7 +253,6 @@ void solveLeastSquaresCudaDense(
             }
 
             // Solve R*l = Q^T*I (i.e., l = R \ Q^T*I).
-            cublasStrsm_v2;
             cudaErrorCheck(cublasRtrsm(
                     cublasHandle, CUBLAS_SIDE_LEFT, CUBLAS_FILL_MODE_UPPER, CUBLAS_OP_N, CUBLAS_DIAG_NON_UNIT,
                     lhsN, 1, &one, dLhs, ldLhs, dRhs, ldRhs));

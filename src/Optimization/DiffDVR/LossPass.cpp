@@ -30,41 +30,55 @@
 #include <Graphics/Vulkan/Render/Renderer.hpp>
 #include <Graphics/Vulkan/Render/ComputePipeline.hpp>
 
-#include "SmoothingPriorLossPass.hpp"
+#include "Volume/Cache/DeviceCacheEntry.hpp"
+#include "LossPass.hpp"
 
-SmoothingPriorLossPass::SmoothingPriorLossPass(sgl::vk::Renderer* renderer) : ComputePass(renderer) {
+LossPass::LossPass(sgl::vk::Renderer* renderer) : ComputePass(renderer) {
     uniformBuffer = std::make_shared<sgl::vk::Buffer>(
             device, sizeof(UniformData),
             VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
             VMA_MEMORY_USAGE_GPU_ONLY);
 }
 
-void SmoothingPriorLossPass::setBuffers(
-        const sgl::vk::BufferPtr& _tfOptBuffer,
-        const sgl::vk::BufferPtr& _tfOptGradientBuffer) {
-    if (tfOptBuffer != _tfOptBuffer) {
-        tfOptBuffer = _tfOptBuffer;
+void LossPass::setBuffers(
+        const sgl::vk::BufferPtr& _finalColorsGTBuffer,
+        const sgl::vk::BufferPtr& _finalColorsOptBuffer,
+        const sgl::vk::BufferPtr& _adjointColorsBuffer) {
+    if (finalColorsGTBuffer != _finalColorsGTBuffer) {
+        finalColorsGTBuffer = _finalColorsGTBuffer;
         if (computeData) {
-            computeData->setStaticBuffer(tfOptBuffer, "TfOptBuffer");
+            computeData->setStaticBuffer(finalColorsGTBuffer, "FinalColorsGTBuffer");
         }
     }
-    if (tfOptGradientBuffer != _tfOptGradientBuffer) {
-        tfOptGradientBuffer = _tfOptGradientBuffer;
+    if (finalColorsOptBuffer != _finalColorsOptBuffer) {
+        finalColorsOptBuffer = _finalColorsOptBuffer;
         if (computeData) {
-            computeData->setStaticBuffer(tfOptGradientBuffer, "TfOptGradientBuffer");
+            computeData->setStaticBuffer(finalColorsOptBuffer, "FinalColorsOptBuffer");
+        }
+    }
+    if (adjointColorsBuffer != _adjointColorsBuffer) {
+        adjointColorsBuffer = _adjointColorsBuffer;
+        if (computeData) {
+            computeData->setStaticBuffer(adjointColorsBuffer, "AdjointColorsBuffer");
         }
     }
 }
 
-void SmoothingPriorLossPass::setSettings(float lambda, uint32_t tfSize) {
-    if (uniformData.lambda != lambda || uniformData.tfSize != tfSize) {
-        uniformData.lambda = lambda;
-        uniformData.tfSize = tfSize;
+void LossPass::setSettings(LossType _lossType, uint32_t imageWidth, uint32_t imageHeight, uint32_t batchSize) {
+    if (lossType != _lossType) {
+        lossType = _lossType;
+        setShaderDirty();
+    }
+    if (imageWidth != uniformData.imageWidth || imageHeight != uniformData.imageHeight
+            || batchSize != uniformData.batchSize) {
+        uniformData.imageWidth = imageWidth;
+        uniformData.imageHeight = imageHeight;
+        uniformData.batchSize = batchSize;
         isUniformBufferDirty = true;
     }
 }
 
-void SmoothingPriorLossPass::updateUniformBuffer() {
+void LossPass::updateUniformBuffer() {
     if (isUniformBufferDirty) {
         isUniformBufferDirty = false;
         uniformBuffer->updateData(
@@ -75,22 +89,31 @@ void SmoothingPriorLossPass::updateUniformBuffer() {
     }
 }
 
-void SmoothingPriorLossPass::loadShader() {
+void LossPass::loadShader() {
     sgl::vk::ShaderManager->invalidateShaderCache();
     std::map<std::string, std::string> preprocessorDefines;
     preprocessorDefines.insert(std::make_pair("BLOCK_SIZE", std::to_string(computeBlockSize)));
-    shaderStages = sgl::vk::ShaderManager->getShaderStages({ "SmoothingPrior.Compute" }, preprocessorDefines);
+    if (lossType == LossType::L1) {
+        preprocessorDefines.insert(std::make_pair("L1_LOSS", ""));
+    } else if (lossType == LossType::L2) {
+        preprocessorDefines.insert(std::make_pair("L2_LOSS", ""));
+    }
+    if (renderer->getDevice()->getPhysicalDeviceShaderAtomicFloatFeatures().shaderBufferFloat32AtomicAdd) {
+        preprocessorDefines.insert(std::make_pair("SUPPORT_BUFFER_FLOAT_ATOMIC_ADD", ""));
+    }
+    shaderStages = sgl::vk::ShaderManager->getShaderStages({ "Loss.Compute.Image" }, preprocessorDefines);
 }
 
-void SmoothingPriorLossPass::createComputeData(
+void LossPass::createComputeData(
         sgl::vk::Renderer* renderer, sgl::vk::ComputePipelinePtr& computePipeline) {
     computeData = std::make_shared<sgl::vk::ComputeData>(renderer, computePipeline);
-    computeData->setStaticBuffer(uniformBuffer, "SmoothingPriorSettingsBuffer");
-    computeData->setStaticBuffer(tfOptBuffer, "TfOptBuffer");
-    computeData->setStaticBuffer(tfOptGradientBuffer, "TfOptGradientBuffer");
+    computeData->setStaticBuffer(uniformBuffer, "UniformBuffer");
+    computeData->setStaticBuffer(finalColorsGTBuffer, "FinalColorsGTBuffer");
+    computeData->setStaticBuffer(finalColorsOptBuffer, "FinalColorsOptBuffer");
+    computeData->setStaticBuffer(adjointColorsBuffer, "AdjointColorsBuffer");
 }
 
-void SmoothingPriorLossPass::_render() {
-    auto tfNumEntries = uint32_t(tfOptBuffer->getSizeInBytes() / 4);
-    renderer->dispatch(computeData, sgl::uiceil(tfNumEntries, computeBlockSize), 1, 1);
+void LossPass::_render() {
+    uint32_t workSize = uniformData.imageWidth * uniformData.imageHeight * uniformData.batchSize;
+    renderer->dispatch(computeData, sgl::uiceil(workSize, computeBlockSize), 1, 1);
 }

@@ -26,15 +26,53 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+-- Compute.SGD
+
+#version 450 core
+
+/*
+ * Stochastic gradient descent optimizer.
+ */
+
+//#extension GL_EXT_debug_printf : enable
+
+layout(local_size_x = BLOCK_SIZE) in;
+
+layout(binding = 0) uniform OptimizerSettingsBuffer {
+    float alpha; ///< Learning rate.
+};
+
+layout(binding = 1, std430) buffer TfOptBuffer {
+    float tfOpt[NUM_TF_ENTRIES];
+};
+
+layout(binding = 2, std430) readonly buffer TfOptGradientBuffer {
+    float g[NUM_TF_ENTRIES];
+};
+
+void main() {
+    uint globalThreadIdx = gl_GlobalInvocationID.x;
+    if (globalThreadIdx >= NUM_TF_ENTRIES) {
+        return;
+    }
+
+    // Update the parameters.
+    //if (globalThreadIdx == 5) {
+    //    debugPrintfEXT("g: %f, %f", tfOpt[globalThreadIdx], g[globalThreadIdx]);
+    //}
+    tfOpt[globalThreadIdx] -= alpha * g[globalThreadIdx];
+}
+
+
+-- Compute.Adam
+
+#version 450 core
+
 /*
  * Implementation of the optimizer introduced in:
  * Adam: A Method for Stochastic Optimization. Diederik P. Kingma, Jimmy Ba (2015).
  * https://arxiv.org/abs/1412.6980
  */
-
--- Compute
-
-#version 450 core
 
 //#extension GL_EXT_debug_printf : enable
 

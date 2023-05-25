@@ -35,9 +35,10 @@ class SmoothingPriorLossPass: public sgl::vk::ComputePass {
 public:
     explicit SmoothingPriorLossPass(sgl::vk::Renderer* renderer);
     void setBuffers(
-            const sgl::vk::BufferPtr& _transferFunctionBuffer,
-            const sgl::vk::BufferPtr& _transferFunctionGradientBuffer);
-    void setSettings(float lambda, uint32_t R);
+            const sgl::vk::BufferPtr& _tfOptBuffer,
+            const sgl::vk::BufferPtr& _tfOptGradientBuffer);
+    void setSettings(float lambda, uint32_t tfSize);
+    void updateUniformBuffer();
 
 protected:
     void loadShader() override;
@@ -47,13 +48,14 @@ protected:
 private:
     const uint32_t computeBlockSize = 64;
     struct UniformData {
+        uint32_t tfSize;
         float lambda; ///< Smoothing rate.
-        uint32_t R; ///< Number of TF entries in the value axis.
     };
     UniformData uniformData{};
     sgl::vk::BufferPtr uniformBuffer;
+    bool isUniformBufferDirty = true;
 
-    sgl::vk::BufferPtr transferFunctionBuffer, transferFunctionGradientBuffer;
+    sgl::vk::BufferPtr tfOptBuffer, tfOptGradientBuffer;
 };
 
 #endif //CORRERENDER_SMOOTHINGPRIORLOSSPASS_HPP

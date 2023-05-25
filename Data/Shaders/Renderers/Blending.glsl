@@ -48,7 +48,7 @@ bool blend(in vec4 colorSrc, inout vec4 colorDst) {
 bool blendPremul(in vec4 colorSrc, inout vec4 colorDst) {
     colorDst.rgb = colorDst.rgb + (1.0 - colorDst.a) * colorSrc.rgb;
     colorDst.a = colorDst.a + (1.0 - colorDst.a) * colorSrc.a;
-    return colorDst.a >= 0.99;
+    return colorDst.a > 0.99;
 }
 
 #endif

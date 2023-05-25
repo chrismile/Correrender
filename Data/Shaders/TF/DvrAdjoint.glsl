@@ -41,10 +41,11 @@ layout(binding = 0) uniform DvrSettingsBuffer {
     float attenuationCoefficient;
     vec3 maxBoundingBox;
     float stepSize;
+    uint imageWidth, imageHeight, batchSize;
 };
 
 layout(push_constant) uniform PushConstants {
-    vec2 minMaxFieldValues;
+    float minFieldValue, maxFieldValue, Nj;
 };
 
 struct BatchSettings {
@@ -57,29 +58,31 @@ layout(binding = 1) readonly buffer BatchSettingsBuffer {
 
 layout(binding = 2) uniform sampler3D scalarField;
 
-layout(binding = 3, std430) readonly buffer TfGTBuffer {
-    float tfGT[];
-};
-
-layout(binding = 4, std430) readonly buffer TfOptBuffer {
+layout(binding = 3, std430) readonly buffer TfOptBuffer {
     float tfOpt[];
 };
 
-layout(binding = 5, std430) readonly buffer FinalColorsBuffer {
-    vec4 finalColors[];
+layout(binding = 4, std430) readonly buffer FinalColorsOptBuffer {
+    vec4 finalColorsOpt[];
 };
 
-layout(binding = 6, std430) readonly buffer TerminationIndexBuffer {
-    uint terminationIndices[];
+layout(binding = 5, std430) readonly buffer TerminationIndexBuffer {
+    int terminationIndices[];
 };
 
-layout(binding = 7, std430) readonly buffer TfOptGradientBuffer {
+layout(binding = 6, std430) readonly buffer AdjointColorsBuffer {
+    vec4 adjointColors[];
+};
+
+layout(binding = 7, std430) buffer TfOptGradientBuffer {
 #ifdef SUPPORT_BUFFER_FLOAT_ATOMIC_ADD
     float g[];
 #else
     uint g[];
 #endif
 };
+
+shared float sharedMemory[NUM_TF_ENTRIES * BLOCK_SIZE];
 
 void atomicAddGradient(uint tfEntryIdx, float value) {
 #ifdef SUPPORT_BUFFER_FLOAT_ATOMIC_ADD
@@ -95,10 +98,12 @@ void atomicAddGradient(uint tfEntryIdx, float value) {
 #endif
 }
 
+#include "RayIntersectionTests.glsl"
+
 void renderAdjoint(uint workIdx, uint x, uint y, uint b, uint threadSharedMemoryOffset) {
-    mat4 inverseViewMatrix = batchSettingsArray[b];
-    vec3 rayOrigin = (inverseViewMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
-    vec2 fragNdc = 2.0 * ((vec2(gl_GlobalInvocationID.xy) + vec2(0.5)) / vec2(outputImageSize)) - 1.0;
+    mat4 inverseViewMatrix = batchSettingsArray[b].inverseViewMatrix;
+    vec3 rayOrigin = inverseViewMatrix[3].xyz;
+    vec2 fragNdc = 2.0 * ((vec2(gl_GlobalInvocationID.xy) + vec2(0.5)) / vec2(imageWidth, imageHeight)) - 1.0;
     vec3 rayTarget = (inverseProjectionMatrix * vec4(fragNdc.xy, 1.0, 1.0)).xyz;
     vec3 normalizedTarget = normalize(rayTarget.xyz);
     vec3 rayDirection = (inverseViewMatrix * vec4(normalizedTarget, 0.0)).xyz;
@@ -107,15 +112,80 @@ void renderAdjoint(uint workIdx, uint x, uint y, uint b, uint threadSharedMemory
     if (rayBoxIntersectionRayCoords(rayOrigin, rayDirection, minBoundingBox, maxBoundingBox, tNear, tFar)) {
         vec3 entrancePoint = rayOrigin + rayDirection * tNear;
         vec3 exitPoint = rayOrigin + rayDirection * tFar;
+        vec3 currentPoint;
 
+        vec4 colorCurr = finalColorsOpt[workIdx];
+        vec4 colorCurrAdjoint = adjointColors[workIdx];
         int terminationIndexMax = terminationIndices[workIdx] - 1;
         for (int terminationIndex = terminationIndexMax; terminationIndex >= 0; terminationIndex--) {
-            ;
+            currentPoint = entrancePoint + rayDirection * (float(terminationIndex) * stepSize);
+            vec3 texCoords = (currentPoint - minBoundingBox) / (maxBoundingBox - minBoundingBox);
+
+            float scalarValue = texture(scalarField, texCoords).r;
+            scalarValue = (scalarValue - minFieldValue) / (maxFieldValue - minFieldValue);
+
+            // Query the transfer function.
+            float t0 = clamp(floor(scalarValue * Nj), 0.0f, Nj);
+            float t1 = clamp(ceil(scalarValue * Nj), 0.0f, Nj);
+            float f = scalarValue * Nj - t0;
+            uint j0 = uint(t0) * 4u;
+            uint j1 = uint(t1) * 4u;
+            vec4 c0 = vec4(tfOpt[j0], tfOpt[j0 + 1], tfOpt[j0 + 2], tfOpt[j0 + 3]);
+            vec4 c1 = vec4(tfOpt[j0], tfOpt[j0 + 1], tfOpt[j0 + 2], tfOpt[j0 + 3]);
+            vec4 volumeColor = mix(c0, c1, f);
+
+            // Use Beer-Lambert law for computing the blending alpha.
+            float attStepSize = stepSize * attenuationCoefficient;
+            float alphaVolume = 1 - exp(-volumeColor.a * attStepSize);
+            vec4 colorVolume = vec4(volumeColor.rgb * alphaVolume, alphaVolume);
+
+            // Inversion trick from "Differentiable Direct Volume Rendering", Weiß et al. 2021.
+            float alphaIn = (alphaVolume - colorCurr.a) / (alphaVolume - 1.0);
+            vec3 colorIn = colorCurr.rgb - (1.0 - alphaIn) * colorVolume.rgb;
+
+            // Compute the for the volume color/alpha.
+            vec4 colorVolumeAdjoint;
+            colorVolumeAdjoint.rgb = alphaVolume * (1.0 - alphaIn) * colorCurrAdjoint.rgb;
+            float alphaAdjoint = colorCurrAdjoint.a * (1.0 - alphaIn);
+            colorVolumeAdjoint.a = alphaAdjoint * attStepSize * exp(-volumeColor.a * attStepSize);
+
+            // Backpropagation for the accumulated color.
+            // colorCurrAdjoint.rgb stays the same (see paper cited above, Chat^(i) = Chat^(i+1)).
+            float alphaNewAdjoint = colorCurrAdjoint.a * (1.0 - alphaVolume) - dot(colorCurrAdjoint.rgb, colorVolume.rgb);
+            colorCurrAdjoint.a = alphaNewAdjoint;
+            colorCurr = vec4(colorIn, alphaIn);
+
+            // Compute adjoint for the transfer function entries.
+            //float fAdjoint = dot(colorVolumeAdjoint, c1 - c0);
+            vec4 c0adj = (1.0 - f) * colorVolumeAdjoint;
+            vec4 c1adj = f * colorVolumeAdjoint;
+
+#ifdef ADJOINT_DELAYED
+            sharedMemory[threadSharedMemoryOffset + j0] += c0adj.r;
+            sharedMemory[threadSharedMemoryOffset + j0 + 1] += c0adj.g;
+            sharedMemory[threadSharedMemoryOffset + j0 + 2] += c0adj.b;
+            sharedMemory[threadSharedMemoryOffset + j0 + 3] += c0adj.a;
+            if (j0 != j1) {
+                sharedMemory[threadSharedMemoryOffset + j1] += c1adj.r;
+                sharedMemory[threadSharedMemoryOffset + j1 + 1] += c1adj.g;
+                sharedMemory[threadSharedMemoryOffset + j1 + 2] += c1adj.b;
+                sharedMemory[threadSharedMemoryOffset + j1 + 3] += c1adj.a;
+            }
+#else
+            atomicAddGradient(j0, c0adj.r);
+            atomicAddGradient(j0 + 1, c0adj.g);
+            atomicAddGradient(j0 + 2, c0adj.b);
+            atomicAddGradient(j0 + 3, c0adj.a);
+            if (j0 != j1) {
+                atomicAddGradient(j1, c1adj.r);
+                atomicAddGradient(j1 + 1, c1adj.g);
+                atomicAddGradient(j1 + 2, c1adj.b);
+                atomicAddGradient(j1 + 3, c1adj.a);
+            }
+#endif
         }
     }
 }
-
-shared float sharedMemory[NUM_TF_ENTRIES * BLOCK_SIZE];
 
 void main() {
     uint threadSharedMemoryOffset = gl_LocalInvocationID.x * NUM_TF_ENTRIES;
@@ -129,9 +199,9 @@ void main() {
     const uint workSizeLinear = imageWidth * imageHeight * batchSize;
     const uint workStep = gl_WorkGroupSize.x * gl_NumWorkGroups.x;
     for (uint workIdx = gl_GlobalInvocationID.x; workIdx < workSizeLinear; workIdx += workStep) {
-        int x = workIdx % imageWidth;
-        int y = (workIdx / imageWidth) % imageHeight;
-        int b = workIdx / (imageWidth * imageHeight);
+        uint x = workIdx % imageWidth;
+        uint y = (workIdx / imageWidth) % imageHeight;
+        uint b = workIdx / (imageWidth * imageHeight);
         renderAdjoint(workIdx, x, y, b, threadSharedMemoryOffset);
     }
 

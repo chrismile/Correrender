@@ -121,9 +121,9 @@ void OptimizerPass::loadShader() {
     }
     std::string shaderName;
     if (optimizerType == OptimizerType::SGD) {
-        shaderName = "SGD.Compute";
+        shaderName = "Optimizer.Compute.SGD";
     } else if (optimizerType == OptimizerType::ADAM) {
-        shaderName = "AdamOptimizer.Compute";
+        shaderName = "Optimizer.Compute.Adam";
     }
     shaderStages = sgl::vk::ShaderManager->getShaderStages({ shaderName }, preprocessorDefines);
 }
