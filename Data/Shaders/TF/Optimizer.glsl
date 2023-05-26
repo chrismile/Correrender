@@ -34,7 +34,7 @@
  * Stochastic gradient descent optimizer.
  */
 
-//#extension GL_EXT_debug_printf : enable
+#extension GL_EXT_debug_printf : enable
 
 layout(local_size_x = BLOCK_SIZE) in;
 
@@ -57,9 +57,9 @@ void main() {
     }
 
     // Update the parameters.
-    //if (globalThreadIdx == 5) {
-    //    debugPrintfEXT("g: %f, %f", tfOpt[globalThreadIdx], g[globalThreadIdx]);
-    //}
+    if (globalThreadIdx == 0) {
+        debugPrintfEXT("g: %f, %f", tfOpt[globalThreadIdx], g[globalThreadIdx]);
+    }
     tfOpt[globalThreadIdx] -= alpha * g[globalThreadIdx];
 }
 

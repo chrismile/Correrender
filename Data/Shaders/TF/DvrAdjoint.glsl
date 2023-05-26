@@ -33,6 +33,8 @@
 #extension GL_EXT_shader_atomic_float : require
 #extension GL_KHR_shader_subgroup_arithmetic : enable
 
+#extension GL_EXT_debug_printf : enable
+
 layout(local_size_x = BLOCK_SIZE) in;
 
 layout(binding = 0) uniform DvrSettingsBuffer {
@@ -103,7 +105,7 @@ void atomicAddGradient(uint tfEntryIdx, float value) {
 void renderAdjoint(uint workIdx, uint x, uint y, uint b, uint threadSharedMemoryOffset) {
     mat4 inverseViewMatrix = batchSettingsArray[b].inverseViewMatrix;
     vec3 rayOrigin = inverseViewMatrix[3].xyz;
-    vec2 fragNdc = 2.0 * ((vec2(gl_GlobalInvocationID.xy) + vec2(0.5)) / vec2(imageWidth, imageHeight)) - 1.0;
+    vec2 fragNdc = 2.0 * ((vec2(x, y) + vec2(0.5)) / vec2(imageWidth, imageHeight)) - 1.0;
     vec3 rayTarget = (inverseProjectionMatrix * vec4(fragNdc.xy, 1.0, 1.0)).xyz;
     vec3 normalizedTarget = normalize(rayTarget.xyz);
     vec3 rayDirection = (inverseViewMatrix * vec4(normalizedTarget, 0.0)).xyz;
@@ -117,6 +119,9 @@ void renderAdjoint(uint workIdx, uint x, uint y, uint b, uint threadSharedMemory
         vec4 colorCurr = finalColorsOpt[workIdx];
         vec4 colorCurrAdjoint = adjointColors[workIdx];
         int terminationIndexMax = terminationIndices[workIdx] - 1;
+        //if (x == 256 && y == 256) {
+        //    debugPrintfEXT("a: %u", terminationIndexMax);
+        //}
         for (int terminationIndex = terminationIndexMax; terminationIndex >= 0; terminationIndex--) {
             currentPoint = entrancePoint + rayDirection * (float(terminationIndex) * stepSize);
             vec3 texCoords = (currentPoint - minBoundingBox) / (maxBoundingBox - minBoundingBox);

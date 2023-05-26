@@ -30,6 +30,8 @@
 
 #version 450 core
 
+//#extension GL_EXT_debug_printf : enable
+
 layout(local_size_x = BLOCK_SIZE) in;
 
 layout(binding = 0) uniform DvrSettingsBuffer {
@@ -75,7 +77,7 @@ layout(binding = 5, std430) writeonly buffer TerminationIndexBuffer {
 void renderForward(uint workIdx, uint x, uint y, uint b) {
     mat4 inverseViewMatrix = batchSettingsArray[b].inverseViewMatrix;
     vec3 rayOrigin = inverseViewMatrix[3].xyz;
-    vec2 fragNdc = 2.0 * ((vec2(gl_GlobalInvocationID.xy) + vec2(0.5)) / vec2(imageWidth, imageHeight)) - 1.0;
+    vec2 fragNdc = 2.0 * ((vec2(x, y) + vec2(0.5)) / vec2(imageWidth, imageHeight)) - 1.0;
     vec3 rayTarget = (inverseProjectionMatrix * vec4(fragNdc.xy, 1.0, 1.0)).xyz;
     vec3 normalizedTarget = normalize(rayTarget.xyz);
     vec3 rayDirection = (inverseViewMatrix * vec4(normalizedTarget, 0.0)).xyz;
@@ -120,6 +122,14 @@ void renderForward(uint workIdx, uint x, uint y, uint b) {
             currentPoint = entrancePoint + rayDirection * (float(terminationIndex) * stepSize);
         }
     }
+    //if (x == 256 && y == 256) {
+        //debugPrintfEXT("a: %f", attenuationCoefficient);
+        //debugPrintfEXT("t256 %f, %f, o %f, %f, %f, d %f, %f, %f", tNear, tFar, rayOrigin.x, rayOrigin.y, rayOrigin.z, rayDirection.x, rayDirection.y, rayDirection.z);
+        //debugPrintfEXT("%f %f %f", rayTarget[0], rayTarget[1], rayTarget[2]);
+        //for (int i = 0; i < 4; i++) {
+        //    debugPrintfEXT("%f %f %f %f", inverseViewMatrix[i][0], inverseViewMatrix[i][1], inverseViewMatrix[i][2], inverseViewMatrix[i][3]);
+        //}
+    //}
 
     finalColors[workIdx] = outputColor;
 #ifdef FORWARD_PASS_OPT

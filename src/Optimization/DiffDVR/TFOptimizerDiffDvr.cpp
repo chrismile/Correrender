@@ -30,6 +30,7 @@
 
 #include <Math/Math.hpp>
 #include <Utils/AppSettings.hpp>
+#include <Graphics/Texture/Bitmap.hpp>
 #include <Graphics/Vulkan/Render/Renderer.hpp>
 
 #include "Volume/VolumeData.hpp"
@@ -44,6 +45,11 @@
 TFOptimizerDiffDvr::TFOptimizerDiffDvr(
         sgl::vk::Renderer* renderer, sgl::vk::Renderer* parentRenderer, bool supportsAsyncCompute)
         : TFOptimizer(renderer, parentRenderer, supportsAsyncCompute) {
+    dvrSettingsBuffer = std::make_shared<sgl::vk::Buffer>(
+            renderer->getDevice(), sizeof(DvrSettingsBufferTf),
+            VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+            VMA_MEMORY_USAGE_GPU_ONLY);
+
     forwardGTPass = std::make_shared<DvrForwardPass>(renderer);
     forwardOptPass = std::make_shared<DvrForwardPass>(renderer);
     adjointPass = std::make_shared<DvrAdjointPass>(renderer);
@@ -76,6 +82,10 @@ void TFOptimizerDiffDvr::onRequestQueued(VolumeData* volumeData) {
     dvrSettings.imageWidth = settings.imageWidth;
     dvrSettings.imageHeight = settings.imageHeight;
     dvrSettings.batchSize = settings.batchSize;
+    float fovy = std::atan(1.0f / 2.0f) * 2.0f;
+    float aspect = float(settings.imageWidth) / float(settings.imageHeight);
+    glm::mat4 projectionMatrix = glm::perspectiveRH_ZO(fovy, aspect, 0.001f, 100.0f);
+    dvrSettings.inverseProjectionMatrix = glm::inverse(projectionMatrix);
 
     auto fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
     auto& tfWindow = volumeData->getMultiVarTransferFunctionWindow();
@@ -110,10 +120,6 @@ void TFOptimizerDiffDvr::onRequestQueued(VolumeData* volumeData) {
             settings.lossType, settings.tfSize * 4u,
             settings.learningRate, settings.beta1, settings.beta2, settings.epsilon);
 
-    dvrSettingsBuffer = std::make_shared<sgl::vk::Buffer>(
-            device, sizeof(DvrSettingsBufferTf),
-            VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-            VMA_MEMORY_USAGE_GPU_ONLY);
     if (cachedBatchSize != batchSize) {
         batchSettingsBuffer = std::make_shared<sgl::vk::Buffer>(
                 device, sizeof(glm::mat4) * batchSize,
@@ -282,27 +288,47 @@ void TFOptimizerDiffDvr::sampleCameraPoses() {
         float theta = sgl::TWO_PI * dist(generator);
         float phi = std::acos(1.0f - 2.0f * dist(generator));
         glm::vec3 cameraPosition(std::sin(phi) * std::cos(theta), std::sin(phi) * std::sin(theta), std::cos(phi));
-        glm::vec3 cameraForward = -glm::normalize(cameraPosition);
+        glm::vec3 cameraForward = glm::normalize(cameraPosition);
         glm::vec3 cameraRight = glm::normalize(glm::cross(globalUp, cameraForward));
         glm::vec3 cameraUp = glm::normalize(glm::cross(cameraForward, cameraRight));
         glm::mat4 rotationMatrix;
         for (int i = 0; i < 4; i++) {
-            rotationMatrix[i][0] = i < 3 ? cameraRight[0] : 0.0f;
-            rotationMatrix[i][1] = i < 3 ? cameraUp[0] : 0.0f;
-            rotationMatrix[i][2] = i < 3 ? cameraForward[0] : 0.0f;
-            rotationMatrix[i][3] = i < 3 ? 0.0f : 1.0f;
+            rotationMatrix[0][i] = i < 3 ? cameraRight[i] : 0.0f;
+            rotationMatrix[1][i] = i < 3 ? cameraUp[i] : 0.0f;
+            rotationMatrix[2][i] = i < 3 ? cameraForward[i] : 0.0f;
+            rotationMatrix[3][i] = i < 3 ? 0.0f : 1.0f;
         }
-        glm::mat4 viewMatrix = rotationMatrix * sgl::matrixTranslation(-cameraPosition);
-        glm::mat4 inverseViewMatrix = glm::inverse(viewMatrix);
+        glm::mat4 inverseViewMatrix = sgl::matrixTranslation(cameraPosition) * rotationMatrix;
         batchSettingsArray.at(batchIdx) = inverseViewMatrix;
     }
     batchSettingsBuffer->updateData(
             sizeof(glm::mat4) * batchSize, batchSettingsArray.data(), renderer->getVkCommandBuffer());
+
+    /*auto inverseProjectionMatrix = dvrSettings.inverseProjectionMatrix;
+    auto inverseViewMatrix = batchSettingsArray.front();
+    uint32_t imageWidth = settings.imageWidth;
+    uint32_t imageHeight = settings.imageHeight;
+    glm::uvec2 gl_GlobalInvocationID(settings.imageWidth / 2, settings.imageHeight / 2);
+    glm::vec3 rayOrigin = inverseViewMatrix[3];
+    glm::vec2 fragNdc = 2.0f * ((glm::vec2(gl_GlobalInvocationID) + glm::vec2(0.5f)) / glm::vec2(imageWidth, imageHeight)) - 1.0f;
+    glm::vec3 rayTarget = (inverseProjectionMatrix * glm::vec4(fragNdc, 1.0, 1.0));
+    glm::vec3 normalizedTarget = normalize(rayTarget);
+    glm::vec3 rayDirection = (inverseViewMatrix * glm::vec4(normalizedTarget, 0.0));
+    std::cout << "o: " << rayOrigin.x << ", " << rayOrigin.y << ", " << rayOrigin.z << std::endl;
+    std::cout << "d: " << rayDirection.x << ", " << rayDirection.y << ", " << rayDirection.z << std::endl;
+    std::cout << "m: " << rayTarget[0] << " " << rayTarget[1] << " " << rayTarget[2] << std::endl;*/
+    //for (int i = 0; i < 4; i++) {
+    //    std::cout << "m: " << inverseViewMatrix[i][0] << " " << inverseViewMatrix[i][1] << " "
+    //            << inverseViewMatrix[i][2] << " " << inverseViewMatrix[i][3] << std::endl;
+    //}
 }
 
 void TFOptimizerDiffDvr::runEpoch() {
     // Randomly sample camera poses.
     sampleCameraPoses();
+    renderer->insertMemoryBarrier(
+            VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+            VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
     // Run the forward passes.
     forwardGTPass->render();
@@ -310,6 +336,34 @@ void TFOptimizerDiffDvr::runEpoch() {
     renderer->insertMemoryBarrier(
             VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+
+    /*bool debugOutput = true;
+    if (currentEpoch == 0 && debugOutput) {
+        uint32_t imageSize = sizeof(glm::vec4) * viewportHeight * viewportWidth;
+        auto finalColorsStagingBuffer = std::make_shared<sgl::vk::Buffer>(
+                renderer->getDevice(), imageSize,
+                VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_TO_CPU);
+        finalColorsGTBuffer->copyDataTo(finalColorsStagingBuffer, 0, 0, imageSize, renderer->getVkCommandBuffer());
+
+        renderer->endCommandBuffer();
+        renderer->submitToQueue({}, {}, fence, VK_PIPELINE_STAGE_TRANSFER_BIT);
+        renderer->resetCustomCommandBuffer();
+        fence->wait();
+        fence->reset();
+
+        renderer->setCustomCommandBuffer(commandBuffer, false);
+        renderer->beginCommandBuffer();
+
+        int numEntries = 4 * int(viewportHeight * viewportWidth);
+        auto* colorData = reinterpret_cast<float*>(finalColorsStagingBuffer->mapMemory());
+        sgl::BitmapPtr bitmap(new sgl::Bitmap(int(viewportWidth), int(viewportHeight)));
+        uint8_t* pixelData = bitmap->getPixels();
+        for (int i = 0; i < numEntries; i++) {
+            pixelData[i] = uint8_t(std::clamp(std::round(colorData[i] * 255.0f), 0.0f, 255.0f));
+        }
+        bitmap->savePNG("Test.png");
+        finalColorsStagingBuffer->unmapMemory();
+    }*/
 
     // Compute the image loss.
     lossPass->render();

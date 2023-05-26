@@ -115,7 +115,7 @@ struct TFOptimizationWorkerSettings {
     uint32_t imageHeight = 512;
     uint32_t batchSize = 8;
     float stepSize = 0.2f;
-    float attenuationCoefficient = 100.0f;
+    float attenuationCoefficient = 10.0f;
     float lambdaSmoothingPrior = 0.4f;
     bool adjointDelayed = true;
 };
