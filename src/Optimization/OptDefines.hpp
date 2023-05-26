@@ -64,6 +64,13 @@ const char* const CUDA_SOLVER_TYPE_NAMES[] = {
         "LU", "LU_PIVOT", "QR", "CHOL"
 };
 
+enum class CudaSparseSolverType {
+    LEAST_SQUARES_CG, CUSOLVER_QR
+};
+const char* const CUDA_SPARSE_SOLVER_TYPE_NAMES[] = {
+        "Least Squares CG", "cuSOLVER QR"
+};
+
 // For gradient descent.
 enum class OptimizerType {
     SGD, ADAM
@@ -95,6 +102,7 @@ struct TFOptimizationWorkerSettings {
     EigenSolverType eigenSolverType = EigenSolverType::HouseholderQR;
     EigenSparseSolverType eigenSparseSolverType = EigenSparseSolverType::LEAST_SQUARES_CG_PRECONDITIONED;
     CudaSolverType cudaSolverType = CudaSolverType::QR;
+    CudaSparseSolverType cudaSparseSolverType = CudaSparseSolverType::LEAST_SQUARES_CG;
     OLSBackend backend = OLSBackend::VULKAN;
     bool useSparseSolve = true;
     bool useNormalEquations = true;

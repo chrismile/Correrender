@@ -520,10 +520,17 @@ void TFOptimizerOLS::runOptimization(bool shallStop, bool& hasStopped) {
         if (settings.useSparseSolve) {
 #ifdef CUDA_ENABLED
             if (settings.backend == OLSBackend::CUDA) {
-                solveLeastSquaresCudaSparse(
-                        int(numMatrixRows), int(tfNumEntries), int(cache->csrVals.size()),
-                        cache->csrVals.data(), cache->csrRowPtr.data(), cache->csrColInd.data(),
-                        cache->bSparse.data(), cache->x);
+                if (settings.cudaSparseSolverType == CudaSparseSolverType::LEAST_SQUARES_CG) {
+                    solveLeastSquaresCudaSparse(
+                            int(numMatrixRows), int(tfNumEntries), int(cache->csrVals.size()),
+                            cache->csrVals.data(), cache->csrRowPtr.data(), cache->csrColInd.data(),
+                            cache->bSparse.data(), cache->x);
+                } else if (settings.cudaSparseSolverType == CudaSparseSolverType::CUSOLVER_QR) {
+                    solveLeastSquaresCudaSparse(
+                            int(numMatrixRows), int(tfNumEntries), int(cache->csrVals.size()),
+                            cache->csrVals.data(), cache->csrRowPtr.data(), cache->csrColInd.data(),
+                            cache->bSparse.data(), cache->x);
+                }
             } else {
 #endif
                 if (settings.useNormalEquations) {

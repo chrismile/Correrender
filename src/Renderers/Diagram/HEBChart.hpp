@@ -353,7 +353,7 @@ private:
             std::shared_ptr<HEBChartFieldCache>& fieldCache, bool isFirstBatch);
 
     void createBatchCacheData(uint32_t& batchSizeSamplesMax);
-    SamplingMethodType samplingMethodType = SamplingMethodType::MEAN;
+    SamplingMethodType samplingMethodType = SamplingMethodType::QUASIRANDOM_PLASTIC;
     int numSamples = 100;
     int numInitSamples = 20;
     int numBOIterations = 100;

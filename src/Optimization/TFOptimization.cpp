@@ -142,6 +142,11 @@ void TFOptimization::renderGuiDialog() {
                         && settings.backend != OLSBackend::VULKAN) {
                     ImGui::Checkbox("Use Sparse Solve Step", &settings.useSparseSolve);
                 }
+                if (settings.backend == OLSBackend::CUDA && settings.useSparseSolve) {
+                    ImGui::Combo(
+                            "Solver", (int*)&settings.cudaSparseSolverType,
+                            CUDA_SPARSE_SOLVER_TYPE_NAMES, IM_ARRAYSIZE(CUDA_SPARSE_SOLVER_TYPE_NAMES));
+                }
                 if (settings.backend == OLSBackend::CUDA && !settings.useSparseSolve) {
                     ImGui::Combo(
                             "Solver", (int*)&settings.cudaSolverType,
@@ -180,7 +185,7 @@ void TFOptimization::renderGuiDialog() {
             ImGui::SliderFloat(
                     "Step Size", &settings.stepSize, 0.01f, 1.0f);
             ImGui::SliderFloat(
-                    "Attenuation", &settings.attenuationCoefficient, 0.0f, 500.0f);
+                    "Attenuation", &settings.attenuationCoefficient, 0.0f, 200.0f);
             ImGui::SliderFloat(
                     "Smoothing Factor", &settings.lambdaSmoothingPrior, 0.0f, 10.0f);
             ImGui::Checkbox("Adjoint Delayed", &settings.adjointDelayed);

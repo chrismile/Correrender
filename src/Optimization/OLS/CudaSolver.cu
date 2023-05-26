@@ -33,6 +33,7 @@
 #include <Graphics/Vulkan/Utils/InteropCuda.hpp>
 
 #include "CudaHelpers.cuh"
+//#include "cgls.cuh"
 #include "CudaSolver.hpp"
 
 static bool useCustomCudaStream = false;
@@ -345,4 +346,11 @@ void solveLeastSquaresCudaSparse(
             Real(1e-5f), &rank, x.data(), p, &minNorm));
     cudaErrorCheck(cusparseDestroyMatDescr(matDesc));
     delete[] p;
+
+    // TODO
+    bool quiet = false; // TODO: Turn off if it works.
+    float tol = 1e-6f;
+    int maxit = 100;
+    float s = 0.0f;
+    //cgls::Solve<Real, cgls::CSR>(csrVals, csrRowPtr, csrColInd, m, n, nnz, b, x, s, tol, maxit, quiet);
 }
