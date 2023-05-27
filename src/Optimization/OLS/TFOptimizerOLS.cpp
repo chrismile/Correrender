@@ -451,7 +451,7 @@ void TFOptimizerOLS::runOptimization(bool shallStop, bool& hasStopped) {
         }
         for (uint32_t i = 0; i < tfNumEntries; i++) {
             for (uint32_t j = 0; j < tfNumEntries; j++) {
-                rhs(i, j) = Real(lhsData[i + j * tfNumEntries]);
+                rhs(i, j) = Real(rhsData[i + j * tfNumEntries]);
             }
         }
 #else
@@ -520,17 +520,11 @@ void TFOptimizerOLS::runOptimization(bool shallStop, bool& hasStopped) {
         if (settings.useSparseSolve) {
 #ifdef CUDA_ENABLED
             if (settings.backend == OLSBackend::CUDA) {
-                if (settings.cudaSparseSolverType == CudaSparseSolverType::LEAST_SQUARES_CG) {
-                    solveLeastSquaresCudaSparse(
-                            int(numMatrixRows), int(tfNumEntries), int(cache->csrVals.size()),
-                            cache->csrVals.data(), cache->csrRowPtr.data(), cache->csrColInd.data(),
-                            cache->bSparse.data(), cache->x);
-                } else if (settings.cudaSparseSolverType == CudaSparseSolverType::CUSOLVER_QR) {
-                    solveLeastSquaresCudaSparse(
-                            int(numMatrixRows), int(tfNumEntries), int(cache->csrVals.size()),
-                            cache->csrVals.data(), cache->csrRowPtr.data(), cache->csrColInd.data(),
-                            cache->bSparse.data(), cache->x);
-                }
+                solveLeastSquaresCudaSparse(
+                        settings.cudaSparseSolverType, settings.relaxationLambda,
+                        int(cache->csrRowPtr.size() - 1), int(tfNumEntries), int(cache->csrVals.size()),
+                        cache->csrVals.data(), cache->csrRowPtr.data(), cache->csrColInd.data(),
+                        cache->bSparse.data(), cache->x);
             } else {
 #endif
                 if (settings.useNormalEquations) {
@@ -539,7 +533,8 @@ void TFOptimizerOLS::runOptimization(bool shallStop, bool& hasStopped) {
                             cache->sparseA, cache->b, cache->x);
                 } else {
                     solveLeastSquaresEigenSparse(
-                            settings.eigenSparseSolverType, cache->sparseA, cache->b, cache->x);
+                            settings.eigenSparseSolverType, Real(settings.relaxationLambda),
+                            cache->sparseA, cache->b, cache->x);
                 }
 #ifdef CUDA_ENABLED
             }

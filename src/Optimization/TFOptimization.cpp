@@ -163,13 +163,21 @@ void TFOptimization::renderGuiDialog() {
                                 EIGEN_SOLVER_TYPE_NAMES, IM_ARRAYSIZE(EIGEN_SOLVER_TYPE_NAMES));
                     }
                 }
-                if (!settings.useSparseSolve || settings.backend == OLSBackend::CPU) {
-                    if (settings.backend != OLSBackend::VULKAN) {
-                        ImGui::Checkbox("Use Normal Equations", &settings.useNormalEquations);
-                    }
-                    if (settings.useNormalEquations) {
-                        ImGui::SliderFloat("Relaxation Lambda", &settings.relaxationLambda, 0.0f, 10.0f);
-                    }
+                if (settings.backend != OLSBackend::VULKAN
+                        && (!settings.useSparseSolve || settings.backend == OLSBackend::CPU)) {
+                    ImGui::Checkbox("Use Normal Equations", &settings.useNormalEquations);
+                }
+                bool supportsRelaxation = false;
+                if (settings.backend == OLSBackend::CPU) {
+                    supportsRelaxation = settings.useNormalEquations;
+                } else if (settings.backend == OLSBackend::CUDA) {
+                    supportsRelaxation = !settings.useSparseSolve || (settings.useSparseSolve
+                            && settings.cudaSparseSolverType == CudaSparseSolverType::CGLS);
+                } else if (settings.backend == OLSBackend::VULKAN) {
+                    supportsRelaxation = true;
+                }
+                if (supportsRelaxation) {
+                    ImGui::SliderFloat("Relaxation Lambda", &settings.relaxationLambda, 0.0f, 10.0f);
                 }
             }
         }

@@ -34,6 +34,8 @@
 
 #include <Utils/File/Logfile.hpp>
 
+#include "lsqr.hpp"
+#include "cgls.hpp"
 #include "EigenSolver.hpp"
 
 void solveLeastSquaresEigenDense(
@@ -166,7 +168,7 @@ void solveLinearSystemEigenSymmetric(
 }
 
 void solveLeastSquaresEigenSparse(
-        EigenSparseSolverType solverType,
+        EigenSparseSolverType solverType, const Real lambdaL,
         const Eigen::SparseMatrixXr& A, const Eigen::MatrixXr& b, Eigen::MatrixXr& x) {
     if (solverType == EigenSparseSolverType::QR) {
         //Eigen::SparseQR<Eigen::SparseMatrixXr, Eigen::COLAMDOrdering<int>> sparseQr;
@@ -196,7 +198,7 @@ void solveLeastSquaresEigenSparse(
         }
         std::cout << "CG solver iterations: " << cgSolver.iterations() << std::endl;
         std::cout << "CG solver error: " << cgSolver.error() << std::endl;
-    } else {
+    } else if (solverType == EigenSparseSolverType::LEAST_SQUARES_CG_PRECONDITIONED) {
         Eigen::LeastSquaresConjugateGradient<Eigen::SparseMatrixXr, Eigen::LeastSquareDiagonalPreconditioner<Real>> cgSolver;
         cgSolver.compute(A);
         if (cgSolver.info() != Eigen::Success) {
@@ -210,6 +212,14 @@ void solveLeastSquaresEigenSparse(
         }
         std::cout << "CG solver iterations: " << cgSolver.iterations() << std::endl;
         std::cout << "CG solver error: " << cgSolver.error() << std::endl;
+    } else if (solverType == EigenSparseSolverType::LSQR) {
+        solveLeastSquaresEigenLSQR(A, b, x, 100);
+    } else if (solverType == EigenSparseSolverType::CGLS) {
+        bool quiet = false;
+        float tol = 1e-6f;
+        int maxit = 100;
+        float s = lambdaL;
+        solveLeastSquaresEigenCGLS(A, b, x, s, tol, maxit, quiet);
     }
 }
 

@@ -70,12 +70,13 @@ void solveLinearSystemEigenSymmetric(
  * This solver uses the library Eigen. For more details see:
  * - https://eigen.tuxfamily.org/dox/group__TopicSparseSystems.html
  * @param solverType The type of solver to use.
+ * @param lambdaL The relaxation/regularization factor (only for CGLS).
  * @param A The system matrix A.
  * @param b The right-hand side vector.
  * @param x The left-hand side vector to solve for (output).
  */
 void solveLeastSquaresEigenSparse(
-        EigenSparseSolverType solverType,
+        EigenSparseSolverType solverType, const Real lambdaL,
         const Eigen::SparseMatrixXr& A, const Eigen::MatrixXr& b, Eigen::MatrixXr& x);
 
 /**

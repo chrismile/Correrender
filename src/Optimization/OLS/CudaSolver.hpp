@@ -74,6 +74,7 @@ void solveLeastSquaresCudaDense(
  * @param x The solution of the least squares problem.
  */
 void solveLeastSquaresCudaSparse(
+        CudaSparseSolverType cudaSparseSolverType, const Real lambdaL,
         int m, int n, int nnz, const Real* csrVals, const int* csrRowPtr, const int* csrColInd,
         const Real* b, Eigen::MatrixXr& x);
 

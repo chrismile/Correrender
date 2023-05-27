@@ -50,10 +50,10 @@ const char* const EIGEN_SOLVER_TYPE_NAMES[] = {
 
 /// For more details see: https://eigen.tuxfamily.org/dox/group__TutorialLinearAlgebra.html
 enum class EigenSparseSolverType {
-    QR, LEAST_SQUARES_CG, LEAST_SQUARES_CG_PRECONDITIONED
+    QR, LEAST_SQUARES_CG, LEAST_SQUARES_CG_PRECONDITIONED, LSQR, CGLS
 };
 const char* const EIGEN_SPARSE_SOLVER_TYPE_NAMES[] = {
-        "QR", "Least Squares CG", "Least Squares CG Preconditioned"
+        "QR", "Least Squares CG", "Least Squares CG Preconditioned", "LSQR", "CGLS"
 };
 
 /// For more details see: https://eigen.tuxfamily.org/dox/group__TutorialLinearAlgebra.html
@@ -65,10 +65,10 @@ const char* const CUDA_SOLVER_TYPE_NAMES[] = {
 };
 
 enum class CudaSparseSolverType {
-    LEAST_SQUARES_CG, CUSOLVER_QR
+    LSQR, CGLS, CUSOLVER_QR
 };
 const char* const CUDA_SPARSE_SOLVER_TYPE_NAMES[] = {
-        "Least Squares CG", "cuSOLVER QR"
+        "LSQR", "CGLS", "cuSOLVER QR"
 };
 
 // For gradient descent.
@@ -102,7 +102,7 @@ struct TFOptimizationWorkerSettings {
     EigenSolverType eigenSolverType = EigenSolverType::HouseholderQR;
     EigenSparseSolverType eigenSparseSolverType = EigenSparseSolverType::LEAST_SQUARES_CG_PRECONDITIONED;
     CudaSolverType cudaSolverType = CudaSolverType::QR;
-    CudaSparseSolverType cudaSparseSolverType = CudaSparseSolverType::LEAST_SQUARES_CG;
+    CudaSparseSolverType cudaSparseSolverType = CudaSparseSolverType::CGLS;
     OLSBackend backend = OLSBackend::VULKAN;
     bool useSparseSolve = true;
     bool useNormalEquations = true;
