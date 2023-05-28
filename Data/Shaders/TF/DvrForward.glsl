@@ -100,7 +100,11 @@ void renderForward(uint workIdx, uint x, uint y, uint b) {
             vec3 texCoords = (currentPoint - minBoundingBox) / (maxBoundingBox - minBoundingBox);
 
             float scalarValue = texture(scalarField, texCoords).r;
+            bool isValueNan = isnan(scalarValue);
             scalarValue = (scalarValue - minFieldValue) / (maxFieldValue - minFieldValue);
+            if (isValueNan) {
+                scalarValue = 0.0;
+            }
 
             // Query the transfer function.
             float t0 = clamp(floor(scalarValue * Nj), 0.0f, Nj);
@@ -111,6 +115,9 @@ void renderForward(uint workIdx, uint x, uint y, uint b) {
             vec4 c0 = tf[j0];
             vec4 c1 = tf[j1];
             vec4 volumeColor = mix(c0, c1, f);
+            if (isValueNan) {
+                volumeColor = vec4(0.0);
+            }
 
             float alpha = 1.0 - exp(-volumeColor.a * stepSize * attenuationCoefficient);
             vec4 color = vec4(volumeColor.rgb, alpha);

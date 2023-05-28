@@ -40,7 +40,7 @@ public:
     TFOptimizerOLS(sgl::vk::Renderer* renderer, sgl::vk::Renderer* parentRenderer, bool supportsAsyncCompute);
     ~TFOptimizerOLS() override;
     void onRequestQueued(VolumeData* volumeData) override;
-    void runOptimization(bool shallStop, bool& hasStopped) override;
+    void runOptimization(bool& shallStop, bool& hasStopped) override;
     float getProgress() override;
 
 private:

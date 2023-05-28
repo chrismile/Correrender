@@ -133,7 +133,7 @@ float TFOptimizerGD::getProgress() {
     return float(currentEpoch) / float(maxNumEpochs);
 }
 
-void TFOptimizerGD::runOptimization(bool shallStop, bool& hasStopped) {
+void TFOptimizerGD::runOptimization(bool& shallStop, bool& hasStopped) {
     if (currentEpoch == maxNumEpochs) {
         return;
     }

@@ -165,7 +165,7 @@ void main() {
     for (uint workIdx = gl_GlobalInvocationID.x; workIdx < workSizeLinear; workIdx += workStep) {
         vec4 colorDiff = finalColorsOpt[workIdx] - finalColorsGT[workIdx];
 #if defined(L1_LOSS)
-        adjointColors[workIdx] = (invN * 2.0) * vec4(greaterThanEqual(colorDiff, vec4(0.0))) - vec4(1.0);
+        adjointColors[workIdx] = invN * (2.0 * vec4(greaterThanEqual(colorDiff, vec4(0.0))) - vec4(1.0));
 #elif defined(L2_LOSS)
         adjointColors[workIdx] = (invN * 2.0) * colorDiff;
 #endif

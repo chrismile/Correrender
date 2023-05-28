@@ -50,7 +50,7 @@ public:
     [[nodiscard]] inline const std::vector<glm::vec4>& getTFArrayOpt() const { return tfArrayOpt; }
     inline void setSettings(const TFOptimizationWorkerSettings& newSettings) { settings = newSettings; }
     virtual void onRequestQueued(VolumeData* volumeData)=0;
-    virtual void runOptimization(bool shallStop, bool& hasStopped)=0;
+    virtual void runOptimization(bool& shallStop, bool& hasStopped)=0;
     virtual float getProgress()=0;
     virtual int getCurrentIterationIndex() { return 0; }
     virtual int getMaxNumIterations() { return 0; }

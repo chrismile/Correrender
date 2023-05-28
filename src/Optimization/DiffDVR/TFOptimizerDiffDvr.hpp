@@ -51,7 +51,7 @@ public:
     TFOptimizerDiffDvr(sgl::vk::Renderer* renderer, sgl::vk::Renderer* parentRenderer, bool supportsAsyncCompute);
     ~TFOptimizerDiffDvr() override;
     void onRequestQueued(VolumeData* volumeData) override;
-    void runOptimization(bool shallStop, bool& hasStopped) override;
+    void runOptimization(bool& shallStop, bool& hasStopped) override;
     float getProgress() override;
     int getCurrentIterationIndex() override { return currentEpoch; }
     int getMaxNumIterations() override { return maxNumEpochs; }

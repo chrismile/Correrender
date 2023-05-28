@@ -399,7 +399,7 @@ void TFOptimizerOLS::buildSystemSparse() {
     }
 }
 
-void TFOptimizerOLS::runOptimization(bool shallStop, bool& hasStopped) {
+void TFOptimizerOLS::runOptimization(bool& shallStop, bool& hasStopped) {
     uint32_t tfNumEntries = cache->cachedTfSize * 4;
     uint32_t numMatrixRows = cache->cachedNumVoxels * 4;
 

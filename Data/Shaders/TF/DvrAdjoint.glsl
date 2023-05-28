@@ -127,7 +127,11 @@ void renderAdjoint(uint workIdx, uint x, uint y, uint b, uint threadSharedMemory
             vec3 texCoords = (currentPoint - minBoundingBox) / (maxBoundingBox - minBoundingBox);
 
             float scalarValue = texture(scalarField, texCoords).r;
+            bool isValueNan = isnan(scalarValue);
             scalarValue = (scalarValue - minFieldValue) / (maxFieldValue - minFieldValue);
+            if (isValueNan) {
+                scalarValue = 0.0;
+            }
 
             // Query the transfer function.
             float t0 = clamp(floor(scalarValue * Nj), 0.0f, Nj);
@@ -138,10 +142,14 @@ void renderAdjoint(uint workIdx, uint x, uint y, uint b, uint threadSharedMemory
             vec4 c0 = vec4(tfOpt[j0], tfOpt[j0 + 1], tfOpt[j0 + 2], tfOpt[j0 + 3]);
             vec4 c1 = vec4(tfOpt[j0], tfOpt[j0 + 1], tfOpt[j0 + 2], tfOpt[j0 + 3]);
             vec4 volumeColor = mix(c0, c1, f);
+            if (isValueNan) {
+                volumeColor = vec4(0.0);
+            }
 
             // Use Beer-Lambert law for computing the blending alpha.
             float attStepSize = stepSize * attenuationCoefficient;
-            float alphaVolume = 1 - exp(-volumeColor.a * attStepSize);
+            float alphaVolume = 1.0 - exp(-volumeColor.a * attStepSize);
+            //alphaVolume = clamp(alphaVolume, 1e-6, 0.9999);
             vec4 colorVolume = vec4(volumeColor.rgb * alphaVolume, alphaVolume);
 
             // Inversion trick from "Differentiable Direct Volume Rendering", Weiß et al. 2021.
@@ -151,7 +159,7 @@ void renderAdjoint(uint workIdx, uint x, uint y, uint b, uint threadSharedMemory
             // Compute the for the volume color/alpha.
             vec4 colorVolumeAdjoint;
             colorVolumeAdjoint.rgb = alphaVolume * (1.0 - alphaIn) * colorCurrAdjoint.rgb;
-            float alphaAdjoint = colorCurrAdjoint.a * (1.0 - alphaIn);
+            float alphaAdjoint = colorCurrAdjoint.a * (1.0 - alphaIn) + dot(colorCurrAdjoint.rgb, volumeColor.rgb - volumeColor.rgb * alphaIn);
             colorVolumeAdjoint.a = alphaAdjoint * attStepSize * exp(-volumeColor.a * attStepSize);
 
             // Backpropagation for the accumulated color.
@@ -164,6 +172,10 @@ void renderAdjoint(uint workIdx, uint x, uint y, uint b, uint threadSharedMemory
             //float fAdjoint = dot(colorVolumeAdjoint, c1 - c0);
             vec4 c0adj = (1.0 - f) * colorVolumeAdjoint;
             vec4 c1adj = f * colorVolumeAdjoint;
+            if (isValueNan) {
+                c0adj = vec4(0.0);
+                c1adj = vec4(0.0);
+            }
 
 #ifdef ADJOINT_DELAYED
             sharedMemory[threadSharedMemoryOffset + j0] += c0adj.r;

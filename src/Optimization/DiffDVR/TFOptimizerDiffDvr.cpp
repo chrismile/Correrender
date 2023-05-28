@@ -26,6 +26,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <memory>
 #include <random>
 
 #include <Math/Math.hpp>
@@ -161,7 +162,7 @@ void TFOptimizerDiffDvr::onRequestQueued(VolumeData* volumeData) {
                 VMA_MEMORY_USAGE_GPU_TO_CPU);
         tfOptGradientBuffer = std::make_shared<sgl::vk::Buffer>(
                 device, sizeof(glm::vec4) * settings.tfSize,
-                VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, // TODO: Remove VK_BUFFER_USAGE_TRANSFER_SRC_BIT
                 VMA_MEMORY_USAGE_GPU_ONLY);
         smoothingPriorLossPass->setBuffers(tfOptBuffer, tfOptGradientBuffer);
         optimizerPass->setBuffers(tfOptBuffer, tfOptGradientBuffer);
@@ -221,7 +222,7 @@ float TFOptimizerDiffDvr::getProgress() {
     return float(currentEpoch) / float(maxNumEpochs);
 }
 
-void TFOptimizerDiffDvr::runOptimization(bool shallStop, bool& hasStopped) {
+void TFOptimizerDiffDvr::runOptimization(bool& shallStop, bool& hasStopped) {
     if (currentEpoch == maxNumEpochs) {
         return;
     }
@@ -337,34 +338,6 @@ void TFOptimizerDiffDvr::runEpoch() {
             VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
-    /*bool debugOutput = true;
-    if (currentEpoch == 0 && debugOutput) {
-        uint32_t imageSize = sizeof(glm::vec4) * viewportHeight * viewportWidth;
-        auto finalColorsStagingBuffer = std::make_shared<sgl::vk::Buffer>(
-                renderer->getDevice(), imageSize,
-                VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_TO_CPU);
-        finalColorsGTBuffer->copyDataTo(finalColorsStagingBuffer, 0, 0, imageSize, renderer->getVkCommandBuffer());
-
-        renderer->endCommandBuffer();
-        renderer->submitToQueue({}, {}, fence, VK_PIPELINE_STAGE_TRANSFER_BIT);
-        renderer->resetCustomCommandBuffer();
-        fence->wait();
-        fence->reset();
-
-        renderer->setCustomCommandBuffer(commandBuffer, false);
-        renderer->beginCommandBuffer();
-
-        int numEntries = 4 * int(viewportHeight * viewportWidth);
-        auto* colorData = reinterpret_cast<float*>(finalColorsStagingBuffer->mapMemory());
-        sgl::BitmapPtr bitmap(new sgl::Bitmap(int(viewportWidth), int(viewportHeight)));
-        uint8_t* pixelData = bitmap->getPixels();
-        for (int i = 0; i < numEntries; i++) {
-            pixelData[i] = uint8_t(std::clamp(std::round(colorData[i] * 255.0f), 0.0f, 255.0f));
-        }
-        bitmap->savePNG("Test.png");
-        finalColorsStagingBuffer->unmapMemory();
-    }*/
-
     // Compute the image loss.
     lossPass->render();
     renderer->insertMemoryBarrier(
@@ -392,6 +365,76 @@ void TFOptimizerDiffDvr::runEpoch() {
             VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
             tfOptGradientBuffer);
+
+
+    /*bool debugOutput = true;
+    if (debugOutput) {
+        auto gradientsStagingBuffer = std::make_shared<sgl::vk::Buffer>(
+                renderer->getDevice(), tfOptGradientBuffer->getSizeInBytes(),
+                VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_TO_CPU);
+        tfOptGradientBuffer->copyDataTo(
+                gradientsStagingBuffer, 0, 0, sizeof(glm::vec4) * settings.tfSize, renderer->getVkCommandBuffer());
+
+        uint32_t imageSize = sizeof(glm::vec4) * viewportHeight * viewportWidth;
+        auto finalColorsGTStagingBuffer = std::make_shared<sgl::vk::Buffer>(
+                renderer->getDevice(), imageSize,
+                VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_TO_CPU);
+        auto finalColorsOptStagingBuffer = std::make_shared<sgl::vk::Buffer>(
+                renderer->getDevice(), imageSize,
+                VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_TO_CPU);
+        finalColorsGTBuffer->copyDataTo(finalColorsGTStagingBuffer, 0, 0, imageSize, renderer->getVkCommandBuffer());
+        finalColorsOptBuffer->copyDataTo(finalColorsOptStagingBuffer, 0, 0, imageSize, renderer->getVkCommandBuffer());
+        tfOptBuffer->copyDataTo(tfDownloadStagingBuffer, commandBuffer);
+
+        renderer->endCommandBuffer();
+        renderer->submitToQueue({}, {}, fence, VK_PIPELINE_STAGE_TRANSFER_BIT);
+        renderer->resetCustomCommandBuffer();
+        fence->wait();
+        fence->reset();
+
+        renderer->setCustomCommandBuffer(commandBuffer, false);
+        renderer->beginCommandBuffer();
+
+        bool isNan = false;
+        auto* grads = reinterpret_cast<float*>(gradientsStagingBuffer->mapMemory());
+        for (int i = 0; i < 4 * int(settings.tfSize); i++) {
+            float val = grads[i];
+            if (std::isnan(val) || std::isinf(val)) {
+                isNan = true;
+            }
+        }
+        gradientsStagingBuffer->unmapMemory();
+
+        if (isNan) {
+            currentEpoch = maxNumEpochs - 1;
+
+            int numEntries = 4 * int(viewportHeight * viewportWidth);
+            auto* colorData = reinterpret_cast<float*>(finalColorsGTStagingBuffer->mapMemory());
+            sgl::BitmapPtr bitmap(new sgl::Bitmap(int(viewportWidth), int(viewportHeight)));
+            uint8_t* pixelData = bitmap->getPixels();
+            for (int i = 0; i < numEntries; i++) {
+                pixelData[i] = uint8_t(std::clamp(std::round(colorData[i] * 255.0f), 0.0f, 255.0f));
+            }
+            bitmap->savePNG("TestGT.png");
+            finalColorsGTStagingBuffer->unmapMemory();
+
+            colorData = reinterpret_cast<float*>(finalColorsOptStagingBuffer->mapMemory());
+            for (int i = 0; i < numEntries; i++) {
+                pixelData[i] = uint8_t(std::clamp(std::round(colorData[i] * 255.0f), 0.0f, 255.0f));
+            }
+            bitmap->savePNG("TestOpt.png");
+            finalColorsOptStagingBuffer->unmapMemory();
+
+            auto* tfData = reinterpret_cast<float*>(tfDownloadStagingBuffer->mapMemory());
+            for (uint32_t i = 0; i < 4u * settings.tfSize; i++) {
+                std::cout << tfData[i] << " ";
+            }
+            std::cout << std::endl;
+            tfDownloadStagingBuffer->unmapMemory();
+
+            return;
+        }
+    }*/
 
     // Run the optimizer.
     optimizerPass->setEpochIndex(currentEpoch);
