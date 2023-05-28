@@ -78,6 +78,7 @@
 #include "Calculators/BinaryOperatorCalculator.hpp"
 #include "Calculators/NoiseReductionCalculator.hpp"
 #include "Calculators/EnsembleVarianceCalculator.hpp"
+#include "Calculators/ResidualColorCalculator.hpp"
 #include "Calculators/CorrelationCalculator.hpp"
 #ifdef SUPPORT_PYTORCH
 #include "Calculators/PyTorchCorrelationCalculator.hpp"
@@ -180,6 +181,8 @@ VolumeData::VolumeData(sgl::vk::Renderer* renderer) : renderer(renderer), multiV
             "Noise Reduction", [renderer]() { return new NoiseReductionCalculator(renderer); });
     factoriesCalculator.emplace_back(
             "Ensemble Variance", [renderer]() { return new EnsembleVarianceCalculator(renderer); });
+    factoriesCalculator.emplace_back(
+            "Residual Color Calculator", [renderer]() { return new ResidualColorCalculator(renderer); });
     factoriesCalculator.emplace_back(
             "Correlation Calculator", [renderer]() { return new CorrelationCalculator(renderer); });
 #ifdef SUPPORT_PYTORCH
@@ -1477,6 +1480,17 @@ void VolumeData::releaseTf(Renderer* renderer, int varIdx) {
     }
 }
 
+void VolumeData::acquireTf(Calculator* renderer, int varIdx) {
+    if (!multiVarTransferFunctionWindow.getIsSelectedRangeFixed(varIdx)) {
+        multiVarTransferFunctionWindow.loadAttributeDataIfEmpty(varIdx);
+    }
+    // Only load the TF on calling acquireTf for now.
+}
+
+void VolumeData::releaseTf(Calculator* renderer, int varIdx) {
+    // Only load the TF on calling acquireTf for now.
+}
+
 bool VolumeData::getIsTransferFunctionVisible(uint32_t viewIdx, uint32_t varIdx) {
     auto iterRange = transferFunctionToRendererMap.equal_range(int(varIdx));
     auto it = iterRange.first;
@@ -1650,6 +1664,19 @@ std::vector<std::shared_ptr<ICorrelationCalculator>> VolumeData::getCorrelationC
 
 void VolumeData::onTransferFunctionMapRebuilt() {
     recomputeColorLegend();
+    for (auto& calculator : calculators) {
+        if (calculator->getUseTransferFunction()) {
+            auto fieldCount = int(typeToFieldNamesMap[FieldType::SCALAR].size());
+            for (int varIdx = 0; varIdx < fieldCount; varIdx++) {
+                if (calculator->getUsesScalarFieldIdx(varIdx)
+                        && multiVarTransferFunctionWindow.getIsVariableDirty(varIdx)) {
+                    calculator->setIsDirty();
+                    break;
+                }
+            }
+        }
+    }
+    multiVarTransferFunctionWindow.resetDirty();
 }
 
 void VolumeData::recomputeColorLegend() {

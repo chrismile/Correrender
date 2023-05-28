@@ -222,6 +222,8 @@ public:
     /// Keep track of transfer function use in renderers to display overlays in renderer.
     void acquireTf(Renderer* renderer, int varIdx);
     void releaseTf(Renderer* renderer, int varIdx);
+    void acquireTf(Calculator* renderer, int varIdx);
+    void releaseTf(Calculator* renderer, int varIdx);
     void onTransferFunctionMapRebuilt();
     void acquireScalarField(Renderer* renderer, int varIdx);
     void releaseScalarField(Renderer* renderer, int varIdx);

@@ -56,7 +56,7 @@ typedef std::shared_ptr<DeviceCacheEntryType> DeviceCacheEntry;
 
 enum class CalculatorType : uint32_t {
     VELOCITY, VECTOR_MAGNITUDE, VORTICITY, HELICITY,
-    BINARY_OPERATOR, NOISE_REDUCTION, ENSEMBLE_VARIANCE,
+    BINARY_OPERATOR, NOISE_REDUCTION, ENSEMBLE_VARIANCE, RESIDUAL_COLOR,
     CORRELATION, TORCH, TINY_CUDA_NN, QUICK_MLP
 };
 const CalculatorType firstCorrelationCalculatorType = CalculatorType::CORRELATION;
@@ -77,6 +77,8 @@ public:
     inline void setCalculatorId(size_t _calculatorId) { calculatorId = _calculatorId; }
     [[nodiscard]] inline size_t getCalculatorId() const { return calculatorId; }
     [[nodiscard]] virtual bool getComputesCorrelation() const { return false; }
+    [[nodiscard]] virtual bool getUseTransferFunction() const { return false; }
+    [[nodiscard]] virtual bool getUsesScalarFieldIdx(int fieldIdx) const { return false; }
     [[nodiscard]] virtual CalculatorType getCalculatorType() const = 0;
     virtual void setViewManager(ViewManager* _viewManager) {}
     virtual void setVolumeData(VolumeData* _volumeData, bool isNewData);
