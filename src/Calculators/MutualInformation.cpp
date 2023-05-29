@@ -251,6 +251,98 @@ Real averageDigamma(
     return meanDigammaValue;
 }
 
+template<class Real, bool includeCenter = true>
+Real averageDigammaParallel(
+        const float* values, int es, const std::vector<Real>& distanceVec, bool isRef,
+        KraskovEstimatorCache<Real>& cache) {
+#ifdef KRASKOV_USE_RANDOM_NOISE
+    sgl::XorshiftRandomGenerator gen(isRef ? 617406168ul : 864730169ul);
+    cache.baseArray.resize(es);
+#endif
+    Real factor = Real(1) / Real(es);
+    cache.sortedArray.resize(es);
+    for (int e = 0; e < es; e++) {
+#ifdef KRASKOV_USE_RANDOM_NOISE
+        cache.sortedArray.at(e) = values[e] + gen.getRandomFloatBetween(0.0f, 1.0f) * default_epsilon<Real>::noise;
+        cache.baseArray.at(e) = cache.sortedArray.at(e);
+#else
+        cache.sortedArray.at(e) = values[e];
+#endif
+    }
+    std::sort(cache.sortedArray.begin(), cache.sortedArray.end());
+
+
+#ifdef USE_TBB
+    auto meanDigammaValue = tbb::parallel_reduce(
+            tbb::blocked_range<int>(0, es), T(0),
+            [&](tbb::blocked_range<int> const& r, T meanDigammaValue) {
+                for (auto e = r.begin(); e != r.end(); e++) {
+#else
+    Real meanDigammaValue = 0;
+#if _OPENMP >= 201107
+#pragma omp parallel for shared(cache, distanceVec, factor, es) \
+    reduction(+: meanDigammaValue) default(none)
+#endif
+    for (int e = 0; e < es; e++) {
+#endif
+#ifdef KRASKOV_USE_RANDOM_NOISE
+        Real currentValue = cache.baseArray[e];
+#else
+        Real currentValue = values[e];
+#endif
+        Real kthDist;
+        if constexpr(includeCenter) {
+            kthDist = distanceVec[e] - default_epsilon<Real>::value;
+        } else {
+            kthDist = distanceVec[e] + default_epsilon<Real>::value;
+        }
+        Real searchValueLower = currentValue - kthDist;
+        Real searchValueUpper = currentValue + kthDist;
+        int lower = 0;
+        int upper = es;
+        int middle = 0;
+        // Binary search.
+        while (lower < upper) {
+            middle = (lower + upper) / 2;
+            Real middleValue = cache.sortedArray[middle];
+            if (middleValue < searchValueLower) {
+                lower = middle + 1;
+            } else {
+                upper = middle;
+            }
+        }
+
+        int startRange = upper;
+        lower = startRange;
+        upper = es;
+
+        // Binary search.
+        while (lower < upper) {
+            middle = (lower + upper) / 2;
+            Real middleValue = cache.sortedArray[middle];
+            if (middleValue < searchValueUpper) {
+                lower = middle + 1;
+            } else {
+                upper = middle;
+            }
+        }
+        int endRange = upper - 1;
+
+        int numPoints = std::max(endRange + 1 - startRange, 1);
+        if constexpr(includeCenter) {
+            meanDigammaValue += factor * Real(boost::math::digamma(numPoints)); // nx/y + 1
+        } else {
+            meanDigammaValue += factor * Real(boost::math::digamma(numPoints - 1)); // nx/y
+        }
+    }
+#ifdef USE_TBB
+                return meanDigammaValue;
+            }, std::plus<>);
+#endif
+
+    return meanDigammaValue;
+}
+
 /*template<class Real>
 void findKNearestNeighborDistances1D(
         int es, const std::vector<Real>& valueArray, const std::vector<Real>& sortedArray, std::vector<Real>& distanceVec) {
@@ -427,3 +519,83 @@ float computeMutualInformationKraskov2<double>(
 float computeMaximumMutualInformationKraskov(int k, int es) {
     return float(boost::math::digamma(es) - boost::math::digamma(k));
 }
+
+
+/**
+ * For more details, please refer to:
+ * - https://journals.aps.org/pre/abstract/10.1103/PhysRevE.69.066138
+ * - https://github.com/gregversteeg/NPEET/blob/master/npeet/entropy_estimators.py
+ */
+template<class Real>
+float computeMutualInformationKraskovParallel(
+        const float* referenceValues, const float* queryValues, int k, int es, KraskovEstimatorCache<Real>& cache) {
+    //const int base = 2;
+    cache.points.clear();
+    cache.pointsCopy.clear();
+    cache.kdTree2d.clear();
+    cache.kthNeighborDistances.clear();
+    cache.nearestNeighborDistances.clear();
+
+#ifdef KRASKOV_USE_RANDOM_NOISE
+    sgl::XorshiftRandomGenerator genRef(617406168ul);
+    sgl::XorshiftRandomGenerator genQuery(864730169ul);
+#endif
+
+    cache.points.reserve(es);
+    cache.pointsCopy.reserve(es);
+    for (int e = 0; e < es; e++) {
+#ifdef KRASKOV_USE_RANDOM_NOISE
+        cache.points.emplace_back(
+                referenceValues[e] + genRef.getRandomFloatBetween(0.0f, 1.0f) * default_epsilon<Real>::noise,
+                queryValues[e] + genQuery.getRandomFloatBetween(0.0f, 1.0f) * default_epsilon<Real>::noise);
+#else
+        cache.points.emplace_back(referenceValues[e], queryValues[e]);
+#endif
+        cache.pointsCopy.push_back(cache.points.back());
+    }
+    cache.kdTree2d.buildInplace(cache.pointsCopy);
+
+    cache.kthNeighborDistances.resize(es);
+#ifdef USE_TBB
+    tbb::parallel_for(tbb::blocked_range<int>(0, es), [&](auto const& r) {
+        std::vector<Real> nearestNeighborDistances;
+        nearestNeighborDistances.reserve(k + 1);
+        for (auto e = r.begin(); e != r.end(); e++) {
+#else
+#if _OPENMP >= 201107
+    #pragma omp parallel shared(cache, k, es) default(none)
+    {
+#endif
+        std::vector<Real> nearestNeighborDistances;
+        nearestNeighborDistances.reserve(k + 1);
+#if _OPENMP >= 201107
+        #pragma omp for
+#endif
+        for (int e = 0; e < es; e++) {
+#endif
+            nearestNeighborDistances.clear();
+            cache.kdTree2d.findKNearestNeighbors(cache.points.at(e), k + 1, nearestNeighborDistances);
+            cache.kthNeighborDistances.at(e) = nearestNeighborDistances.back();
+        }
+#ifdef USE_TBB
+        });
+#elif _OPENMP >= 201107
+    }
+#endif
+
+    auto a = averageDigammaParallel<Real>(referenceValues, es, cache.kthNeighborDistances, true, cache);
+    auto b = averageDigammaParallel<Real>(queryValues, es, cache.kthNeighborDistances, false, cache);
+    auto c = Real(boost::math::digamma(k));
+    auto d = Real(boost::math::digamma(es));
+
+    //Real mi = (-a - b + c + d) / Real(std::log(base));
+    Real mi = -a - b + c + d;
+    return std::max(float(mi), 0.0f);
+}
+
+template
+float computeMutualInformationKraskovParallel<float>(
+        const float* referenceValues, const float* queryValues, int k, int es, KraskovEstimatorCache<float>& cache);
+template
+float computeMutualInformationKraskovParallel<double>(
+        const float* referenceValues, const float* queryValues, int k, int es, KraskovEstimatorCache<double>& cache);

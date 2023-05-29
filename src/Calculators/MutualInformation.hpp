@@ -84,4 +84,14 @@ float computeMutualInformationKraskov2<double>(
 
 float computeMaximumMutualInformationKraskov(int k, int es);
 
+template<class Real>
+float computeMutualInformationKraskovParallel(
+        const float* referenceValues, const float* queryValues, int k, int es, KraskovEstimatorCache<Real>& cache);
+extern template
+float computeMutualInformationKraskovParallel<float>(
+        const float* referenceValues, const float* queryValues, int k, int es, KraskovEstimatorCache<float>& cache);
+extern template
+float computeMutualInformationKraskovParallel<double>(
+        const float* referenceValues, const float* queryValues, int k, int es, KraskovEstimatorCache<double>& cache);
+
 #endif //CORRERENDER_MUTUALINFORMATION_HPP

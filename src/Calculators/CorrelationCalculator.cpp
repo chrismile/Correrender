@@ -732,9 +732,12 @@ void CorrelationCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float
             std::vector<std::pair<float, float>> jointArray;
             std::vector<float> ordinalRankArray;
             std::vector<float> y;
+            std::vector<float> sortArray;
+            std::vector<std::pair<int, int>> stack;
             jointArray.reserve(cs);
             ordinalRankArray.reserve(cs);
             y.reserve(cs);
+            sortArray.reserve(cs);
 #if _OPENMP >= 200805
             #pragma omp for
 #endif
@@ -758,8 +761,8 @@ void CorrelationCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float
                     continue;
                 }
 
-                float pearsonCorrelation = computeKendall(
-                        referenceValues, gridPointValues, cs, jointArray, ordinalRankArray, y);
+                float pearsonCorrelation = computeKendall<int32_t>(
+                        referenceValues, gridPointValues, cs, jointArray, ordinalRankArray, y, sortArray, stack);
                 buffer[gridPointIdx] = pearsonCorrelation;
             }
             delete[] gridPointValues;

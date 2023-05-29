@@ -72,14 +72,35 @@ extern template
 float computePearson2<double>(
         const float* referenceValues, const float* queryValues, int es);
 
+template<class T>
+float computePearsonParallel(
+        const float* referenceValues, const float* queryValues, int es);
+extern template
+float computePearsonParallel<float>(
+        const float* referenceValues, const float* queryValues, int es);
+extern template
+float computePearsonParallel<double>(
+        const float* referenceValues, const float* queryValues, int es);
+
 void computeRanks(const float* values, float* ranks, std::vector<std::pair<float, int>>& ordinalRankArray, int es);
 
 int computeTiesB(const float* values, std::vector<float>& ordinalRankArray, int es);
 
+template<class IntType>
 float computeKendall(
         const float* referenceValues, const float* queryValues, int es,
         std::vector<std::pair<float, float>>& jointArray, std::vector<float>& ordinalRankArray,
-        std::vector<float>& y);
+        std::vector<float>& y, std::vector<float>& sortArray, std::vector<std::pair<int, int>>& stack);
+extern template
+float computeKendall<int32_t>(
+        const float* referenceValues, const float* queryValues, int es,
+        std::vector<std::pair<float, float>>& jointArray, std::vector<float>& ordinalRankArray,
+        std::vector<float>& y, std::vector<float>& sortArray, std::vector<std::pair<int, int>>& stack);
+extern template
+float computeKendall<int64_t>(
+        const float* referenceValues, const float* queryValues, int es,
+        std::vector<std::pair<float, float>>& jointArray, std::vector<float>& ordinalRankArray,
+        std::vector<float>& y, std::vector<float>& sortArray, std::vector<std::pair<int, int>>& stack);
 
 // O(n^2) implementation.
 float computeKendallSlow(const float* referenceValues, const float* queryValues, int es);

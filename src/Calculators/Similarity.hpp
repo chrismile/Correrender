@@ -26,47 +26,24 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef CORRERENDER_CORRELATIONDEFINES_HPP
-#define CORRERENDER_CORRELATIONDEFINES_HPP
+#ifndef CORRERENDER_SIMILARITY_HPP
+#define CORRERENDER_SIMILARITY_HPP
 
-const char* const CORRELATION_MODE_NAMES[2] = {
-        "Ensemble", "Time"
-};
+#include "Calculators/CorrelationDefines.hpp"
 
-enum class CorrelationDataMode {
-    IMAGE_3D_ARRAY, BUFFER_ARRAY
-};
-const char* const DATA_MODE_NAMES[] = { "Image 3D Array", "Buffer Array" };
+class VolumeData;
 
-enum class CorrelationMeasureType {
-    PEARSON, SPEARMAN, KENDALL, MUTUAL_INFORMATION_BINNED, MUTUAL_INFORMATION_KRASKOV
-};
-const char* const CORRELATION_MEASURE_TYPE_NAMES[] = {
-        "Pearson", "Spearman", "Kendall", "Mutual Information (Binned)", "Mutual Information (Kraskov)"
-};
+template<class T>
+float computeFieldSimilarity(
+        VolumeData* volumeData, int similarityFieldIdx0, int similarityFieldIdx1, CorrelationMeasureType cmt,
+        float& maxCorrelationValue);
+extern template
+float computeFieldSimilarity<float>(
+        VolumeData* volumeData, int similarityFieldIdx0, int similarityFieldIdx1, CorrelationMeasureType cmt,
+        float& maxCorrelationValue);
+extern template
+float computeFieldSimilarity<double>(
+        VolumeData* volumeData, int similarityFieldIdx0, int similarityFieldIdx1, CorrelationMeasureType cmt,
+        float& maxCorrelationValue);
 
-const char* const FIELD_ACCURACY_NAMES[] = {
-        "Float (32-bit)", "Double (64-bit)"
-};
-
-enum class NetworkType {
-    /*
-     * Network based on the paper "Mutual Information Neural Estimation", Belghazi et al. 2018.
-     * For more details see: https://arxiv.org/abs/1801.04062
-     * This network takes as an input a scalar value and positions. It consists of one encoder and one decoder network.
-     */
-    MINE,
-    /*
-     * Scene representation network consisting of an encoder and decoder stage.
-     */
-    SRN_MINE,
-    /*
-     * Scene representation network. This network takes as an input positions and outputs the correlation value.
-     */
-    SRN
-};
-const char* const NETWORK_TYPE_SHORT_NAMES[] = {
-        "MINE", "SRN_MINE", "SRN"
-};
-
-#endif //CORRERENDER_CORRELATIONDEFINES_HPP
+#endif //CORRERENDER_SIMILARITY_HPP

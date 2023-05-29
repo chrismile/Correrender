@@ -73,6 +73,7 @@
 #include <ImGui/Widgets/ColorLegendWidget.hpp>
 
 #include "Volume/VolumeData.hpp"
+#include "Calculators/Similarity.hpp"
 #include "Renderers/DvrRenderer.hpp"
 #include "Renderers/IsoSurfaceRayCastingRenderer.hpp"
 #include "Renderers/IsoSurfaceRasterizer.hpp"
@@ -1429,6 +1430,8 @@ void MainApp::openExportFieldFileDialog() {
 
 void MainApp::renderGuiMenuBar() {
     bool openExportFieldDialog = false;
+    bool openFieldSimilarityDialog = false;
+    bool openFieldSimilarityResultDialog = false;
     bool openOptimizeTFDialog = false;
     if (ImGui::BeginMainMenuBar()) {
         if (ImGui::BeginMenu("File")) {
@@ -1532,6 +1535,9 @@ void MainApp::renderGuiMenuBar() {
             if (volumeData && ImGui::MenuItem("Export Field...")) {
                 openExportFieldDialog = true;
             }
+            if (volumeData && ImGui::MenuItem("Compute Field Similarity...")) {
+                openFieldSimilarityDialog = true;
+            }
             if (volumeData && ImGui::MenuItem("Optimize Transfer Function...")) {
                 openOptimizeTFDialog = true;
             }
@@ -1586,6 +1592,68 @@ void MainApp::renderGuiMenuBar() {
         if (ImGui::Button("Cancel", ImVec2(120, 0))) {
             ImGui::CloseCurrentPopup();
         }
+        ImGui::EndPopup();
+    }
+
+    if (openFieldSimilarityDialog) {
+        ImGui::OpenPopup("Compute Field Similarity");
+    }
+    if (ImGui::BeginPopupModal("Compute Field Similarity", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        auto fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
+        similarityFieldIdx0 = std::min(similarityFieldIdx0, int(fieldNames.size()) - 1);
+        similarityFieldIdx1 = std::min(similarityFieldIdx1, int(fieldNames.size()) - 1);
+        ImGui::Combo(
+                "Field #1", &similarityFieldIdx0,
+                fieldNames.data(), int(fieldNames.size()));
+        ImGui::Combo(
+                "Field #2", &similarityFieldIdx1,
+                fieldNames.data(), int(fieldNames.size()));
+        ImGui::Combo(
+                "Correlation Measure", (int*)&correlationMeasureFieldSimilarity,
+                CORRELATION_MEASURE_TYPE_NAMES, IM_ARRAYSIZE(CORRELATION_MEASURE_TYPE_NAMES));
+        ImGui::Combo("Accuracy", (int*)&useFieldAccuracyDouble, FIELD_ACCURACY_NAMES, 2);
+        if (ImGui::Button("OK", ImVec2(120, 0))) {
+            ImGui::CloseCurrentPopup();
+            openFieldSimilarityResultDialog = true;
+        }
+        ImGui::SetItemDefaultFocus();
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel", ImVec2(120, 0))) {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+    if (openFieldSimilarityResultDialog) {
+        ImGui::OpenPopup("Field Similarity Result");
+        if (useFieldAccuracyDouble) {
+            similarityMetricNumber = computeFieldSimilarity<double>(
+                    volumeData.get(), similarityFieldIdx0, similarityFieldIdx1, correlationMeasureFieldSimilarity,
+                    maxCorrelationValue);
+        } else {
+            similarityMetricNumber = computeFieldSimilarity<float>(
+                    volumeData.get(), similarityFieldIdx0, similarityFieldIdx1, correlationMeasureFieldSimilarity,
+                    maxCorrelationValue);
+        }
+    }
+    if (ImGui::BeginPopupModal("Field Similarity Result", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        auto fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
+        std::string resultText0 =
+                std::string("Similarity Measure: ")
+                + CORRELATION_MEASURE_TYPE_NAMES[int(correlationMeasureFieldSimilarity)];
+        std::string resultText1 =
+                "Fields: " + sgl::toString(fieldNames.at(similarityFieldIdx0)) + ", "
+                + sgl::toString(fieldNames.at(similarityFieldIdx1));
+        std::string resultText2 = "Value: " + sgl::toString(similarityMetricNumber);
+        if (correlationMeasureFieldSimilarity == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV) {
+            resultText2 += " (max: " + sgl::toString(maxCorrelationValue) + ")";
+        }
+        ImGui::TextUnformatted(resultText0.c_str());
+        ImGui::TextUnformatted(resultText1.c_str());
+        ImGui::TextUnformatted(resultText2.c_str());
+        if (ImGui::Button("Close", ImVec2(120, 0))) {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SetItemDefaultFocus();
         ImGui::EndPopup();
     }
 
@@ -2012,6 +2080,8 @@ void MainApp::loadVolumeDataSet(const std::vector<std::string>& fileNames) {
         reRender = true;
         boundingBox = volumeData->getBoundingBoxRendering();
         selectedFieldIndexExport = 0;
+        similarityFieldIdx0 = 0;
+        similarityFieldIdx1 = 0;
 
         std::string meshDescriptorName = fileNames.front();
         if (fileNames.size() > 1) {

@@ -213,11 +213,14 @@ struct KendallFunctor{
     mutable std::vector<std::pair<float, float>> jointArray;
     mutable std::vector<float> ordinalRankArray;
     mutable std::vector<float> y;
+    mutable std::vector<float> sortArray;
+    mutable std::vector<std::pair<int, int>> stack;
     float operator()(float* a, float* b, int num_members) const {
         jointArray.reserve(num_members);
         ordinalRankArray.reserve(num_members);
         y.reserve(num_members);
-        return computeKendall(a, b, num_members, jointArray, ordinalRankArray, y);
+        sortArray.reserve(num_members);
+        return computeKendall<int32_t>(a, b, num_members, jointArray, ordinalRankArray, y, sortArray, stack);
     }
 };
 struct MutualBinnedFunctor{

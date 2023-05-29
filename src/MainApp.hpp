@@ -45,6 +45,7 @@
 
 #include "Utils/InternalState.hpp"
 #include "Loaders/DataSetList.hpp"
+#include "Calculators/CorrelationDefines.hpp"
 #include "Renderers/SceneData.hpp"
 
 #ifdef USE_PYTHON
@@ -144,6 +145,11 @@ private:
     void openExportFieldFileDialog();
     int selectedFieldIndexExport = 0;
     std::string exportFieldFileDialogDirectory;
+    CorrelationMeasureType correlationMeasureFieldSimilarity = CorrelationMeasureType::PEARSON;
+    int useFieldAccuracyDouble = 1;
+    int similarityFieldIdx0 = 0, similarityFieldIdx1 = 0;
+    float similarityMetricNumber = 0.0f;
+    float maxCorrelationValue = 0.0f;
     TFOptimization* tfOptimization = nullptr;
 
     // For making performance measurements.

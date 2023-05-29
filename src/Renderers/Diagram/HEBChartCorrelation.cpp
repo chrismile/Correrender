@@ -363,20 +363,23 @@ void HEBChart::computeCorrelations(
     if (cmt == CorrelationMeasureType::SPEARMAN)                  \
     {                                                             \
         ordinalRankArraySpearman.reserve(cs);                     \
-        referenceRanks.reserve(cs);                               \
-        gridPointRanks.reserve(cs);                               \
+        referenceRanks.resize(cs);                                \
+        gridPointRanks.resize(cs);                                \
     }                                                             \
                                                                   \
     std::vector<std::pair<float, float>> jointArray;              \
     std::vector<float> ordinalRankArray;                          \
     std::vector<std::pair<float, int>> ordinalRankArrayRef;       \
     std::vector<float> y;                                         \
+    std::vector<float> sortArray;                                 \
+    std::vector<std::pair<int, int>> stack;                       \
     if (cmt == CorrelationMeasureType::KENDALL)                   \
     {                                                             \
         jointArray.reserve(cs);                                   \
         ordinalRankArray.reserve(cs);                             \
         ordinalRankArrayRef.reserve(cs);                          \
         y.reserve(cs);                                            \
+        sortArray.reserve(cs);                                    \
     }                                                             \
                                                                   \
     std::vector<double> histogram0;                               \
@@ -505,8 +508,8 @@ void HEBChart::computeCorrelationsMean(
                             computeRanks(Y.data(), gridPointRanks.data(), ordinalRankArraySpearman, cs);
                             correlationValue = computePearson2<float>(referenceRanks.data(), gridPointRanks.data(), cs);
                         } else if (cmt == CorrelationMeasureType::KENDALL) {
-                            correlationValue = computeKendall(
-                                X.data(), Y.data(), cs, jointArray, ordinalRankArray, y);
+                            correlationValue = computeKendall<int32_t>(
+                                X.data(), Y.data(), cs, jointArray, ordinalRankArray, y, sortArray, stack);
                         } else if (cmt == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
                             correlationValue = computeMutualInformationBinned<double>(
                                 X.data(), Y.data(), numBins, cs, histogram0.data(), histogram1.data(), histogram2d.data());
@@ -667,12 +670,12 @@ void HEBChart::correlationSamplingExecuteCpuDefault(HEBChartFieldData* fieldData
                     if (cmt == CorrelationMeasureType::PEARSON) {
                         correlationValue = computePearson2<float>(X.data(), Y.data(), cs);
                     } else if (cmt == CorrelationMeasureType::SPEARMAN) {
-                        computeRanks(Y.data(), referenceRanks.data(), ordinalRankArrayRef, cs);
+                        computeRanks(X.data(), referenceRanks.data(), ordinalRankArrayRef, cs);
                         computeRanks(Y.data(), gridPointRanks.data(), ordinalRankArraySpearman, cs);
                         correlationValue = computePearson2<float>(referenceRanks.data(), gridPointRanks.data(), cs);
                     } else if (cmt == CorrelationMeasureType::KENDALL) {
-                        correlationValue = computeKendall(
-                            X.data(), Y.data(), cs, jointArray, ordinalRankArray, y);
+                        correlationValue = computeKendall<int32_t>(
+                            X.data(), Y.data(), cs, jointArray, ordinalRankArray, y, sortArray, stack);
                     } else if (cmt == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
                         for (int c = 0; c < cs; c++) {
                             X[c] = (X[c] - minFieldVal) / (maxFieldVal - minFieldVal);
