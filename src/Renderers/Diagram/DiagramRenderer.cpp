@@ -1085,6 +1085,7 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
             downscalingFactorZ = downscalingFactorX;
             parentDiagram->setDownscalingFactors(downscalingFactorX, downscalingFactorY, downscalingFactorZ);
             cellDistanceRange = cellDistanceRangeTotal = parentDiagram->getCellDistanceRangeTotal();
+            parentDiagram->setCellDistanceRange(cellDistanceRange);
             resetSelections();
             reRender = true;
             reRenderTriggeredByDiagram = true;
@@ -1122,6 +1123,7 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         if (downscalingChanged == ImGui::EditMode::INPUT_FINISHED) {
             parentDiagram->setDownscalingFactors(downscalingFactorX, downscalingFactorY, downscalingFactorZ);
             cellDistanceRange = cellDistanceRangeTotal = parentDiagram->getCellDistanceRangeTotal();
+            parentDiagram->setCellDistanceRange(cellDistanceRange);
             resetSelections();
             reRender = true;
             reRenderTriggeredByDiagram = true;
