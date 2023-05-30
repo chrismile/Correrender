@@ -175,10 +175,9 @@ MainApp::MainApp()
 #endif
 
     viewManager = new ViewManager(&clearColor, rendererVk);
-
-#ifdef USE_PYTHON
     sgl::ColorLegendWidget::setFontScaleStandard(1.0f);
 
+#ifdef USE_PYTHON
     /*replayWidget.setLoadLineDataCallback([this](const std::string& datasetName) {
         int i;
         int oldSelectedDataSetIndex = selectedDataSetIndex;

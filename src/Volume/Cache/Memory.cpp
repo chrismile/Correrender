@@ -30,6 +30,7 @@
 
 // See: https://stackoverflow.com/questions/2513505/how-to-get-available-memory-c-g
 #if defined(_WIN32)
+
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
@@ -44,23 +45,74 @@ size_t getAvailableSystemMemoryBytes() {
     MEMORYSTATUSEX status;
     status.dwLength = sizeof(status);
     GlobalMemoryStatusEx(&status);
-    return status.ullTotalPhys - status.ullAvailPhys;
+    return status.ullAvailPhys;
 }
+size_t getTotalSystemMemoryBytes() {
+    MEMORYSTATUSEX status;
+    status.dwLength = sizeof(status);
+    GlobalMemoryStatusEx(&status);
+    return status.ullTotalPhys;
+}
+
 #elif defined(__linux__)
+
+#include <Utils/StringUtils.hpp>
+#include <cstdio>
 #include <unistd.h>
+
 size_t getUsedSystemMemoryBytes() {
     size_t totalNumPages = sysconf(_SC_PHYS_PAGES);
     size_t availablePages = sysconf(_SC_AVPHYS_PAGES);
     size_t pageSizeBytes = sysconf(_SC_PAGE_SIZE);
     return (totalNumPages - availablePages) * pageSizeBytes;
 }
+
+/*
+ * sysconf only provides a rough estimate of "available" pages.
+ * /proc/meminfo has multiple entries (system memory usually equals RAM):
+ * - MemTotal, the total size of system memory in kB.
+ * - MemFree, the amount of free physical system memory in kB.
+ * - MemAvailable, the amount of system memory applications still can use in kB.
+ * - Cached, the amount of system memory used for caching, but most of it being freeable, in kB.
+ * It is recommended to use the value of MemAvailable for estimating how much memory applications on the system can
+ * still allocate, as easily freeable cached memory, among others, is contained in it.
+ *
+ * For more info, please refer to:
+ * https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=34e431b0ae398fc54ea69ff85ec700722c9da773
+ */
+#ifdef USE_SYSCONF
 size_t getAvailableSystemMemoryBytes() {
-    size_t totalNumPages = sysconf(_SC_PHYS_PAGES);
     size_t availablePages = sysconf(_SC_AVPHYS_PAGES);
     size_t pageSizeBytes = sysconf(_SC_PAGE_SIZE);
-    return (totalNumPages - availablePages) * pageSizeBytes;
+    return availablePages * pageSizeBytes;
 }
 #else
+size_t getAvailableSystemMemoryBytes() {
+    size_t freeMemoryBytes = 0;
+    FILE* f = fopen("/proc/meminfo", "r");
+    char line[256];
+    while (fgets(line, sizeof(line), f)) {
+        std::string lineString(line);
+        if (sgl::startsWith(lineString, "MemAvailable:")) {
+            std::vector<std::string> parts;
+            sgl::splitStringWhitespace(lineString, parts);
+            freeMemoryBytes = sgl::fromString<size_t>(parts.at(1)) * size_t(1024);
+            break;
+        }
+    }
+    fclose(f);
+    return freeMemoryBytes;
+}
+#endif
+
+size_t getTotalSystemMemoryBytes() {
+    size_t totalNumPages = sysconf(_SC_PHYS_PAGES);
+    size_t pageSizeBytes = sysconf(_SC_PAGE_SIZE);
+    return totalNumPages * pageSizeBytes;
+}
+
+#else
+
 size_t getUsedSystemMemoryBytes() {
     return 0;
 }
@@ -68,4 +120,10 @@ size_t getAvailableSystemMemoryBytes() {
     // Assume 4GiB free on other systems.
     return size_t(1024 * 1024 * 1024) * size_t(4);
 }
+
+size_t getTotalSystemMemoryBytes() {
+    // Assume 4GiB free on other systems.
+    return size_t(1024 * 1024 * 1024) * size_t(4);
+}
+
 #endif

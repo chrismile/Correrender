@@ -898,7 +898,6 @@ void HEBChart::renderBaseNanoVG() {
         for (int i = 0; i < numFields; i++) {
             currentCircleColor = circleStrokeColorNvg;
             int fieldIdx = i;
-            int ip = i;
             bool isSelectedRing = false;
             if (separateColorVarianceAndCorrelation && getIsGrayscaleColorMap(colorMapVariance) && numFieldsSize > 1
                     && selectedLineIdx >= 0 && limitedFieldIdx < 0) {
@@ -913,6 +912,7 @@ void HEBChart::renderBaseNanoVG() {
                     fieldIdx++;
                 }
             }
+            int ip = fieldIdx;
             auto* fieldData = fieldDataArray.at(fieldIdx).get();
             if (limitedFieldIdx >= 0) {
                 if (limitedFieldIdx != fieldData->selectedFieldIdx) {
@@ -1253,7 +1253,6 @@ void HEBChart::renderBaseSkia() {
         for (int i = 0; i < numFields; i++) {
             currentCircleColor = circleStrokeColor;
             int fieldIdx = i;
-            int ip = i;
             bool isSelectedRing = false;
             if (separateColorVarianceAndCorrelation && getIsGrayscaleColorMap(colorMapVariance) && numFieldsSize > 1
                     && selectedLineIdx >= 0 && limitedFieldIdx < 0) {
@@ -1266,6 +1265,7 @@ void HEBChart::renderBaseSkia() {
                     fieldIdx++;
                 }
             }
+            int ip = fieldIdx;
             auto* fieldData = fieldDataArray.at(fieldIdx).get();
             if (limitedFieldIdx >= 0) {
                 if (limitedFieldIdx != fieldData->selectedFieldIdx) {
@@ -1612,7 +1612,6 @@ void HEBChart::renderBaseVkvg() {
         for (int i = 0; i < numFields; i++) {
             currentCircleColor = circleStrokeColor;
             int fieldIdx = i;
-            int ip = i;
             bool isSelectedRing = false;
             if (separateColorVarianceAndCorrelation && getIsGrayscaleColorMap(colorMapVariance) && numFieldsSize > 1
                     && selectedLineIdx >= 0 && limitedFieldIdx < 0) {
@@ -1625,6 +1624,7 @@ void HEBChart::renderBaseVkvg() {
                     fieldIdx++;
                 }
             }
+            int ip = fieldIdx;
             auto* fieldData = fieldDataArray.at(fieldIdx).get();
             if (limitedFieldIdx >= 0) {
                 if (limitedFieldIdx != fieldData->selectedFieldIdx) {
