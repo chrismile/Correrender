@@ -41,11 +41,21 @@ const char* const TF_OPTIMIZER_METHOD_NAMES[] = {
 /// For more details see: https://eigen.tuxfamily.org/dox/group__TutorialLinearAlgebra.html
 enum class EigenSolverType {
     PartialPivLU, FullPivLU, HouseholderQR, ColPivHouseholderQR, FullPivHouseholderQR,
-    CompleteOrthogonalDecomposition, LLT, LDLT, BDCSVD, JacobiSVD
+    CompleteOrthogonalDecomposition, LLT, LDLT, BDCSVD, JacobiSVD,
+#ifdef SUPPORT_OSQP
+    OSQP, // Uses OSQP, https://github.com/osqp/osqp
+#endif
+    QUADPROGPP, // Uses QuadProg++, https://github.com/osqp/osqp
+    EIGEN_QP // Uses Eigen-QP, https://github.com/jarredbarber/eigen-QP/blob/master/eigen-qp.hpp
 };
 const char* const EIGEN_SOLVER_TYPE_NAMES[] = {
         "PartialPivLU", "FullPivLU", "HouseholderQR", "ColPivHouseholderQR", "FullPivHouseholderQR",
-        "CompleteOrthogonalDecomposition", "LLT", "LDLT", "BDCSVD", "JacobiSVD"
+        "CompleteOrthogonalDecomposition", "LLT", "LDLT", "BDCSVD", "JacobiSVD",
+#ifdef SUPPORT_OSQP
+        "Quadratic Programming (OSQP)",
+#endif
+        "Quadratic Programming (QuadProg++)",
+        "Quadratic Programming (Eigen-QP)"
 };
 
 /// For more details see: https://eigen.tuxfamily.org/dox/group__TutorialLinearAlgebra.html

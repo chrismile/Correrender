@@ -37,6 +37,10 @@ build_dir_debug=".build_debug"
 build_dir_release=".build_release"
 destination_dir="Shipping"
 build_with_zarr_support=true
+build_with_skia_support=true
+skia_link_dynamically=true
+build_with_vkvg_support=true
+build_with_osqp_support=true
 
 # Process command line arguments.
 custom_glslang=false
@@ -216,8 +220,7 @@ if $build_with_zarr_support; then
         git clone https://github.com/xtensor-stack/xtl.git xtl-src
         mkdir -p xtl-src/build
         pushd xtl-src/build >/dev/null
-        cmake -G "MSYS Makefiles" \
-        -DCMAKE_INSTALL_PREFIX="${PROJECTPATH}/third_party/xtl" ..
+        cmake -G "MSYS Makefiles" -DCMAKE_INSTALL_PREFIX="${PROJECTPATH}/third_party/xtl" ..
         make install
         popd >/dev/null
     fi
@@ -232,8 +235,7 @@ if $build_with_zarr_support; then
         git clone https://github.com/xtensor-stack/xtensor.git xtensor-src
         mkdir -p xtensor-src/build
         pushd xtensor-src/build >/dev/null
-        cmake -G "MSYS Makefiles" \
-        -Dxtl_DIR="${PROJECTPATH}/third_party/xtl/share/cmake/xtl" \
+        cmake -G "MSYS Makefiles" -Dxtl_DIR="${PROJECTPATH}/third_party/xtl/share/cmake/xtl" \
         -DCMAKE_INSTALL_PREFIX="${PROJECTPATH}/third_party/xtensor" ..
         make install
         popd >/dev/null
@@ -249,8 +251,7 @@ if $build_with_zarr_support; then
         git clone https://github.com/xtensor-stack/xsimd.git xsimd-src
         mkdir -p xsimd-src/build
         pushd xsimd-src/build >/dev/null
-        cmake -G "MSYS Makefiles" \
-        -Dxtl_DIR="${PROJECTPATH}/third_party/xtl/share/cmake/xtl" \
+        cmake -G "MSYS Makefiles" -Dxtl_DIR="${PROJECTPATH}/third_party/xtl/share/cmake/xtl" \
         -DENABLE_XTL_COMPLEX=ON \
         -DCMAKE_INSTALL_PREFIX="${PROJECTPATH}/third_party/xsimd" ..
         make install
@@ -276,8 +277,7 @@ if $build_with_zarr_support; then
         sed -i '/^SET(Boost_NO_SYSTEM_PATHS ON)$/s/^/#/' z5-src/CMakeLists.txt
         mkdir -p z5-src/build
         pushd z5-src/build >/dev/null
-        cmake -G "MSYS Makefiles"\
-        -Dxtl_DIR="${PROJECTPATH}/third_party/xtl/share/cmake/xtl" \
+        cmake -G "MSYS Makefiles" -Dxtl_DIR="${PROJECTPATH}/third_party/xtl/share/cmake/xtl" \
         -Dxtensor_DIR="${xtensor_CMAKE_DIR}" \
         -Dxsimd_DIR="${PROJECTPATH}/third_party/xsimd/lib/cmake/xsimd" \
         -DBUILD_Z5PY=OFF -DWITH_ZLIB=ON -DWITH_LZ4=ON -DWITH_BLOSC=ON \
@@ -289,6 +289,46 @@ if $build_with_zarr_support; then
     -Dxtensor_DIR="${xtensor_CMAKE_DIR}" \
     -Dxsimd_DIR="${PROJECTPATH}/third_party/xsimd/lib/cmake/xsimd" \
     -Dz5_DIR="${PROJECTPATH}/third_party/z5/lib/cmake/z5")
+fi
+
+if $build_with_vkvg_support; then
+    if [ ! -d "./vkvg" ]; then
+        echo "------------------------"
+        echo "    downloading VKVG    "
+        echo "------------------------"
+        if [ -d "./vkvg-src" ]; then
+            rm -rf "./vkvg-src"
+        fi
+        git clone --recursive https://github.com/jpbruyere/vkvg.git vkvg-src
+        mkdir -p vkvg-src/build
+        pushd vkvg-src/build >/dev/null
+        cmake .. -G "MSYS Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="${PROJECTPATH}/third_party/vkvg" \
+        -DVKVG_ENABLE_VK_SCALAR_BLOCK_LAYOUT=ON -DVKVG_ENABLE_VK_TIMELINE_SEMAPHORE=ON \
+        -DVKVG_USE_FONTCONFIG=OFF -DVKVG_USE_HARFBUZZ=OFF -DVKVG_BUILD_TESTS=OFF
+        make -j $(nproc)
+        make install
+        popd >/dev/null
+    fi
+    params+=(-Dvkvg_DIR="${PROJECTPATH}/third_party/vkvg")
+fi
+
+if $build_with_osqp_support; then
+    if [ ! -d "./osqp" ]; then
+        echo "------------------------"
+        echo "    downloading OSQP    "
+        echo "------------------------"
+        if [ -d "./osqp-src" ]; then
+            rm -rf "./osqp-src"
+        fi
+        git clone https://github.com/osqp/osqp osqp-src
+        mkdir -p osqp-src/build
+        pushd osqp-src/build >/dev/null
+        cmake .. -G "MSYS Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="${PROJECTPATH}/third_party/osqp"
+        make -j $(nproc)
+        make install
+        popd >/dev/null
+    fi
+    params+=(-Dosqp_DIR="${PROJECTPATH}/third_party/osqp/lib/cmake/osqp")
 fi
 
 if [ ! -d "${PROJECTPATH}/third_party/limbo" ]; then

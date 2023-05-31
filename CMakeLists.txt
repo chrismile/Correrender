@@ -229,6 +229,8 @@ if (NOT vkvg_FOUND)
     list(REMOVE_ITEM SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/Renderers/Diagram/VectorBackendVkvg.cpp)
 endif()
 
+find_package(osqp)
+
 
 if(WIN32)
     add_executable(Correrender WIN32 ${SOURCES} ${CUDA_SOURCES} ${CMAKE_CURRENT_SOURCE_DIR}/CMake/winres.rc)
@@ -475,6 +477,11 @@ endif()
 if (vkvg_FOUND)
     target_link_libraries(Correrender PRIVATE vkvg::vkvg)
     target_compile_definitions(Correrender PRIVATE SUPPORT_VKVG)
+endif()
+
+if (osqp_FOUND)
+    target_link_libraries(Correrender PRIVATE osqp::osqpstatic) # osqp::osqp
+    target_compile_definitions(Correrender PRIVATE SUPPORT_OSQP)
 endif()
 
 # For testing purposes.

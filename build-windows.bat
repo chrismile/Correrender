@@ -33,6 +33,7 @@ set build_dir=".build"
 set destination_dir="Shipping"
 set build_with_cuda_support=true
 set build_with_zarr_support=true
+set build_with_osqp_support=true
 
 :: Leave empty to let cmake try to find the correct paths
 set optix_install_dir=""
@@ -284,6 +285,26 @@ if %build_with_cuda_support% == true (
         git clone https://github.com/chrismile/quick-mlp.git quick-mlp --recurse-submodules
     )
 )
+
+if %build_with_osqp_support% == true (
+    if not exist ".\osqp" (
+        echo ------------------------
+        echo    downloading OSQP
+        echo ------------------------
+        :: Make sure we have no leftovers from a failed build attempt.
+        if exist ".\osqp-src" (
+            rmdir /s /q ".\osqp-src"
+        )
+        git clone https://github.com/osqp/osqp osqp-src
+        if not exist .\osqp-src\build\ mkdir .\osqp-src\build\
+        pushd "osqp-src\build"
+        cmake %cmake_generator% -DCMAKE_TOOLCHAIN_FILE="%~dp0/third_party/vcpkg/scripts/buildsystems/vcpkg.cmake" ^
+        -DCMAKE_INSTALL_PREFIX="%~dp0/third_party/osqp" ..
+        cmake --build . --config Release --target install || exit /b 1
+        popd
+    )
+)
+set cmake_args=%cmake_args% -Dosqp_DIR="third_party/osqp/lib/cmake/osqp"
 
 if not exist ".\limbo" (
     echo ------------------------

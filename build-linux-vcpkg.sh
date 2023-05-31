@@ -46,6 +46,7 @@ build_with_cuda_support=true
 build_with_skia_support=true
 skia_link_dynamically=true
 build_with_vkvg_support=true
+build_with_osqp_support=true
 
 # Process command line arguments.
 custom_glslang=false
@@ -525,6 +526,25 @@ if $build_with_vkvg_support; then
         params+=(-Dvkvg_DIR="${PROJECTPATH}/third_party/vkvg")
         popd >/dev/null
     fi
+fi
+
+if $build_with_osqp_support; then
+    if [ ! -d "./osqp" ]; then
+        echo "------------------------"
+        echo "    downloading OSQP    "
+        echo "------------------------"
+        if [ -d "./osqp-src" ]; then
+            rm -rf "./osqp-src"
+        fi
+        git clone https://github.com/osqp/osqp osqp-src
+        mkdir -p osqp-src/build
+        pushd osqp-src/build >/dev/null
+        cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="${PROJECTPATH}/third_party/osqp"
+        make -j $(nproc)
+        make install
+        popd >/dev/null
+    fi
+    params+=(-Dosqp_DIR="${PROJECTPATH}/third_party/osqp/lib/cmake/osqp")
 fi
 
 if [ ! -d "${PROJECTPATH}/third_party/limbo" ]; then
