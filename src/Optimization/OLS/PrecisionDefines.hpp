@@ -67,6 +67,9 @@ constexpr Real REAL_EPSILON = 1e-8;//std::numeric_limits<Real>::epsilon();
 // Sparse QR decomposition
 #define cusolverSpRcsrlsqvqrHost cusolverSpDcsrlsqvqrHost
 
+// Other sparse matrix functions
+#define cusparseRcsrgemm2 cusparseDcsrgemm2
+
 #ifdef EIGEN_CORE_H
 namespace Eigen {
 typedef Vector3d Vector3r;
@@ -104,6 +107,9 @@ constexpr Real REAL_EPSILON = 1e-3f;//std::numeric_limits<Real>::epsilon();
 
 // Sparse QR decomposition
 #define cusolverSpRcsrlsqvqrHost cusolverSpScsrlsqvqrHost
+
+// Other sparse matrix functions
+#define cusparseRcsrgemm2 cusparseScsrgemm2
 
 #ifdef EIGEN_CORE_H
 namespace Eigen {

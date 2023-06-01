@@ -36,6 +36,7 @@
 #include "CudaSubroutines.cuh"
 #include "lsqr.cuh"
 #include "cgls.cuh"
+#include "EigenSolver.hpp"
 #include "CudaSolver.hpp"
 
 static bool useCustomCudaStream = false;
@@ -391,4 +392,181 @@ void solveLeastSquaresCudaSparse(
         cudaErrorCheck(cudaFree(dcsrRowPtr));
         cudaErrorCheck(cudaFree(dcsrColInd));
     }
+}
+
+void solveLeastSquaresCudaSparseNormalEquations(
+        CudaSparseSolverType cudaSparseSolverType, EigenSolverType eigenSolverType, const Real lambdaL,
+        int m, int n, int nnz, const Real* csrVals, const int* csrRowPtr, const int* csrColInd,
+        const Real* b, Eigen::MatrixXr& x) {
+    Real* db = nullptr, *dlhs = nullptr, *drhs = nullptr;
+    Real* dcsrVals = nullptr, *dcscVals = nullptr, *dcsrValsATA = nullptr;
+    int* dcsrRowPtr = nullptr, *dcsrColInd = nullptr, *dcscColPtr = nullptr, *dcscRowInd = nullptr;
+    int* dcsrRowPtrATA = nullptr, *dcsrColIndATA = nullptr;
+    cudaErrorCheck(cudaMalloc((void**)&db, sizeof(Real) * m));
+    cudaErrorCheck(cudaMalloc((void**)&dlhs, sizeof(Real) * n * n));
+    cudaErrorCheck(cudaMalloc((void**)&drhs, sizeof(Real) * n));
+    cudaErrorCheck(cudaMalloc((void**)&dcsrVals, sizeof(Real) * nnz));
+    cudaErrorCheck(cudaMalloc((void**)&dcsrRowPtr, sizeof(int) * (m + 1)));
+    cudaErrorCheck(cudaMalloc((void**)&dcsrColInd, sizeof(int) * nnz));
+    cudaErrorCheck(cudaMalloc((void**)&dcscVals, sizeof(Real) * nnz));
+    cudaErrorCheck(cudaMalloc((void**)&dcscColPtr, sizeof(int) * (n + 1)));
+    cudaErrorCheck(cudaMalloc((void**)&dcscRowInd, sizeof(int) * nnz));
+    cudaErrorCheck(cudaMalloc((void**)&dcsrRowPtrATA, sizeof(int) * (n + 1)));
+    cudaErrorCheck(cudaMemcpy(db, b, sizeof(Real) * m, cudaMemcpyHostToDevice));
+    cudaErrorCheck(cudaMemcpy(dcsrVals, csrVals, sizeof(Real) * nnz, cudaMemcpyHostToDevice));
+    cudaErrorCheck(cudaMemcpy(dcsrRowPtr, csrRowPtr, sizeof(int) * (m + 1), cudaMemcpyHostToDevice));
+    cudaErrorCheck(cudaMemcpy(dcsrColInd, csrColInd, sizeof(int) * nnz, cudaMemcpyHostToDevice));
+    Eigen::MatrixXr lhs = Eigen::MatrixXr(n, n);
+    Eigen::MatrixXr rhs = Eigen::VectorXr(n);
+
+    AuxBuffer auxBuffer;
+
+    cudaDataType dataType;
+    if constexpr(std::is_same<Real, double>::value) {
+        dataType = CUDA_R_64F;
+    } else if constexpr(std::is_same<Real, float>::value) {
+        dataType = CUDA_R_32F;
+    }
+
+    size_t bufferSize = 0;
+    cudaErrorCheck(cusparseCsr2cscEx2_bufferSize(
+            cusparseHandle, m, n, nnz,
+            dcsrVals, dcsrRowPtr, dcsrColInd,
+            dcscVals, dcscColPtr, dcscRowInd,
+            dataType, CUSPARSE_ACTION_NUMERIC, CUSPARSE_INDEX_BASE_ZERO,
+            CUSPARSE_CSR2CSC_ALG1, // CUSPARSE_CSR2CSC_ALG2
+            &bufferSize));
+    auxBuffer.reserve(bufferSize);
+    cudaErrorCheck(cusparseCsr2cscEx2(
+            cusparseHandle, m, n, nnz,
+            dcsrVals, dcsrRowPtr, dcsrColInd,
+            dcscVals, dcscColPtr, dcscRowInd,
+            dataType, CUSPARSE_ACTION_NUMERIC, CUSPARSE_INDEX_BASE_ZERO,
+            CUSPARSE_CSR2CSC_ALG1, // CUSPARSE_CSR2CSC_ALG2
+            auxBuffer.getPointer()));
+
+    cusparseSpMatDescr_t matDescrA{}, matDescrAT{};
+    cudaErrorCheck(cusparseCreateCsr(
+            &matDescrA, m, n, nnz,
+            (void*)dcsrRowPtr, (void*)dcsrColInd, (void*)dcsrVals,
+            CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I, CUSPARSE_INDEX_BASE_ZERO, dataType));
+    cudaErrorCheck(cusparseCreateCsr(
+            &matDescrAT, n, m, nnz,
+            (void*)dcscColPtr, (void*)dcscRowInd, (void*)dcscVals,
+            CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I, CUSPARSE_INDEX_BASE_ZERO, dataType));
+
+    // Compute A^T b.
+    auto alpha = Real(1);
+    auto beta = Real(0);
+    DnVector bvec(db, m);
+    DnVector rhsvec(drhs, n);
+    cudaErrorCheck(cusparseSpMV_bufferSize(
+            cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE,
+            &alpha, matDescrAT, bvec.getCusparseDnVecDescr(),
+            &beta, rhsvec.getCusparseDnVecDescr(), dataType,
+            CUSPARSE_SPMV_ALG_DEFAULT, &bufferSize));
+    auxBuffer.reserve(bufferSize);
+    cudaErrorCheck(cusparseSpMV(
+            cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE,
+            &alpha, matDescrAT, bvec.getCusparseDnVecDescr(),
+            &beta, rhsvec.getCusparseDnVecDescr(), dataType,
+            CUSPARSE_SPMV_ALG_DEFAULT, auxBuffer.getPointer()));
+    cudaErrorCheck(cudaMemcpy(rhs.data(), drhs, sizeof(Real) * n, cudaMemcpyDeviceToHost));
+
+    // Compute A^T A.
+#if CUDART_VERSION >= 12000
+    cusparseSpGEMMAlg_t spGemmAlg = CUSPARSE_SPGEMM_ALG3;
+#else
+    cusparseSpGEMMAlg_t spGemmAlg = CUSPARSE_SPGEMM_DEFAULT;
+#endif
+    cusparseSpMatDescr_t matDescrATA{};
+    cudaErrorCheck(cusparseCreateCsr(
+            &matDescrATA, n, n, 0, nullptr, nullptr, nullptr,
+            CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I, CUSPARSE_INDEX_BASE_ZERO, dataType));
+    cusparseSpGEMMDescr_t spGemmDesc;
+    cudaErrorCheck(cusparseSpGEMM_createDescr(&spGemmDesc));
+    void* dBuffer1 = nullptr, *dBuffer2 = nullptr, *dBuffer3 = nullptr;
+    size_t bufferSize1 = 0, bufferSize2 = 0, bufferSize3 = 0;
+    int64_t numProducts, numRowsATA, numColsATA, nnzATA;
+    const float chunkFraction = 0.2;
+
+    cudaErrorCheck(cusparseSpGEMM_workEstimation(
+            cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, CUSPARSE_OPERATION_NON_TRANSPOSE,
+            &alpha, matDescrAT, matDescrA, &beta, matDescrATA, dataType, spGemmAlg,
+            spGemmDesc, &bufferSize1, nullptr));
+    cudaErrorCheck(cudaMalloc((void**) &dBuffer1, bufferSize1));
+    cudaErrorCheck(cusparseSpGEMM_workEstimation(
+            cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, CUSPARSE_OPERATION_NON_TRANSPOSE,
+            &alpha, matDescrAT, matDescrA, &beta, matDescrATA, dataType, spGemmAlg,
+            spGemmDesc, &bufferSize1, dBuffer1));
+
+#if CUDART_VERSION >= 12000
+    cudaErrorCheck(cusparseSpGEMM_getNumProducts(spGemmDesc, &numProducts));
+    cudaErrorCheck(cusparseSpGEMM_estimateMemory(
+            cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, CUSPARSE_OPERATION_NON_TRANSPOSE,
+            &alpha, matDescrAT, matDescrA, &beta, matDescrATA, dataType, spGemmAlg,
+            spGemmDesc, chunkFraction, &bufferSize3, nullptr, nullptr));
+    cudaErrorCheck(cudaMalloc((void**)&dBuffer3, bufferSize3));
+    cudaErrorCheck(cusparseSpGEMM_estimateMemory(
+            cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, CUSPARSE_OPERATION_NON_TRANSPOSE,
+            &alpha, matDescrAT, matDescrA, &beta, matDescrATA, dataType, spGemmAlg,
+            spGemmDesc, chunkFraction, &bufferSize3, dBuffer3, &bufferSize2));
+    cudaErrorCheck(cudaFree(dBuffer3));
+#else
+    cudaErrorCheck(cusparseSpGEMM_compute(
+            cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, CUSPARSE_OPERATION_NON_TRANSPOSE,
+            &alpha, matDescrAT, matDescrA, &beta, matDescrATA,
+            dataType, spGemmAlg, spGemmDesc, &bufferSize2, nullptr));
+#endif
+
+    cudaErrorCheck(cudaMalloc((void**)&dBuffer2, bufferSize2));
+
+    cudaErrorCheck(cusparseSpGEMM_compute(
+            cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, CUSPARSE_OPERATION_NON_TRANSPOSE,
+            &alpha, matDescrAT, matDescrA, &beta, matDescrATA,
+            dataType, spGemmAlg, spGemmDesc, &bufferSize2, dBuffer2));
+    cudaErrorCheck(cusparseSpMatGetSize(matDescrATA, &numRowsATA, &numColsATA, &nnzATA));
+    cudaErrorCheck(cudaMalloc((void**)&dcsrColIndATA, nnzATA * sizeof(int)));
+    cudaErrorCheck(cudaMalloc((void**)&dcsrValsATA, nnzATA * sizeof(Real)));
+
+    cudaErrorCheck(cusparseCsrSetPointers(matDescrATA, dcsrRowPtrATA, dcsrColIndATA, dcsrValsATA));
+    cudaErrorCheck(cusparseSpGEMM_copy(
+            cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE, CUSPARSE_OPERATION_NON_TRANSPOSE,
+            &alpha, matDescrAT, matDescrA, &beta, matDescrATA,
+            dataType, spGemmAlg, spGemmDesc));
+    cudaErrorCheck(cusparseSpGEMM_destroyDescr(spGemmDesc));
+    cudaErrorCheck(cudaFree(dBuffer1));
+    cudaErrorCheck(cudaFree(dBuffer2));
+
+    // Convert A^T A to a sparse matrix and download it.
+    cusparseDnMatDescr_t matDescrATADense{};
+    cudaErrorCheck(cusparseCreateDnMat(
+            &matDescrATADense, n, n, n, dlhs, dataType, CUSPARSE_ORDER_COL));
+    cudaErrorCheck(cusparseSparseToDense_bufferSize(
+            cusparseHandle, matDescrATA, matDescrATADense,
+            CUSPARSE_SPARSETODENSE_ALG_DEFAULT, &bufferSize));
+    auxBuffer.reserve(bufferSize);
+    cudaErrorCheck(cusparseSparseToDense(
+            cusparseHandle, matDescrATA, matDescrATADense,
+            CUSPARSE_SPARSETODENSE_ALG_DEFAULT, auxBuffer.getPointer()));
+    cudaErrorCheck(cudaMemcpy(lhs.data(), dlhs, sizeof(Real) * n * n, cudaMemcpyDeviceToHost));
+
+    cudaErrorCheck(cusparseDestroyDnMat(matDescrATADense));
+    cudaErrorCheck(cusparseDestroySpMat(matDescrA));
+    cudaErrorCheck(cusparseDestroySpMat(matDescrAT));
+    cudaErrorCheck(cusparseDestroySpMat(matDescrATA));
+    cudaErrorCheck(cudaFree(db));
+    cudaErrorCheck(cudaFree(drhs));
+    cudaErrorCheck(cudaFree(dlhs));
+    cudaErrorCheck(cudaFree(dcsrVals));
+    cudaErrorCheck(cudaFree(dcsrRowPtr));
+    cudaErrorCheck(cudaFree(dcsrColInd));
+    cudaErrorCheck(cudaFree(dcscVals));
+    cudaErrorCheck(cudaFree(dcscColPtr));
+    cudaErrorCheck(cudaFree(dcscRowInd));
+    cudaErrorCheck(cudaFree(dcsrValsATA));
+    cudaErrorCheck(cudaFree(dcsrRowPtrATA));
+    cudaErrorCheck(cudaFree(dcsrColIndATA));
+
+    solveLinearSystemEigenSymmetric(eigenSolverType, lambdaL, lhs, rhs, x);
 }

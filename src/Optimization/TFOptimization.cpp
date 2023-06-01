@@ -142,7 +142,7 @@ void TFOptimization::renderGuiDialog() {
                         && settings.backend != OLSBackend::VULKAN) {
                     ImGui::Checkbox("Use Sparse Solve Step", &settings.useSparseSolve);
                 }
-                if (settings.backend == OLSBackend::CUDA && settings.useSparseSolve) {
+                if (settings.backend == OLSBackend::CUDA && settings.useSparseSolve && !settings.useNormalEquations) {
                     ImGui::Combo(
                             "Solver", (int*)&settings.cudaSparseSolverType,
                             CUDA_SPARSE_SOLVER_TYPE_NAMES, IM_ARRAYSIZE(CUDA_SPARSE_SOLVER_TYPE_NAMES));
@@ -152,7 +152,8 @@ void TFOptimization::renderGuiDialog() {
                             "Solver", (int*)&settings.cudaSolverType,
                             CUDA_SOLVER_TYPE_NAMES, IM_ARRAYSIZE(CUDA_SOLVER_TYPE_NAMES));
                 }
-                if (settings.backend != OLSBackend::CUDA) {
+                if (settings.backend != OLSBackend::CUDA || (settings.backend == OLSBackend::CUDA
+                        && settings.useSparseSolve && settings.useNormalEquations)) {
                     if (settings.backend == OLSBackend::CPU && settings.useSparseSolve && !settings.useNormalEquations) {
                         ImGui::Combo(
                                 "Solver", (int*)&settings.eigenSparseSolverType,
@@ -163,8 +164,7 @@ void TFOptimization::renderGuiDialog() {
                                 EIGEN_SOLVER_TYPE_NAMES, IM_ARRAYSIZE(EIGEN_SOLVER_TYPE_NAMES));
                     }
                 }
-                if (settings.backend != OLSBackend::VULKAN
-                        && (!settings.useSparseSolve || settings.backend == OLSBackend::CPU)) {
+                if (settings.backend != OLSBackend::VULKAN) {
                     ImGui::Checkbox("Use Normal Equations", &settings.useNormalEquations);
                 }
                 bool supportsRelaxation = false;

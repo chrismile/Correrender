@@ -227,6 +227,17 @@ void solveQuadprogBoxConstrainedOSQP(const Eigen::MatrixXr& lhs, const Eigen::Ma
 }
 #endif
 
+#define TEST_CONDITION_NUMBER
+
+#ifdef TEST_CONDITION_NUMBER
+void printConditionNumber(const std::string& outputPrefix, const Eigen::MatrixXr& M) {
+    Eigen::JacobiSVD<Eigen::MatrixXr> svd(M);
+    const auto& singularValues = svd.singularValues();
+    Real cond = singularValues(0) / singularValues(singularValues.size() - 1);
+    std::cout << outputPrefix << cond << std::endl;
+}
+#endif
+
 void solveLeastSquaresEigenDense(
         EigenSolverType eigenSolverType, bool useRelaxation, const Real lambdaL,
         const Eigen::MatrixXr& A, const Eigen::MatrixXr& b, Eigen::MatrixXr& x) {
@@ -240,6 +251,10 @@ void solveLeastSquaresEigenDense(
             lhs += lambdaL * M_I;
         }
         Eigen::MatrixXr rhs = A_T * b;
+
+#ifdef TEST_CONDITION_NUMBER
+        printConditionNumber("Condition number A^T A: ", lhs);
+#endif
 
         switch(eigenSolverType) {
             case EigenSolverType::PartialPivLU:
@@ -285,6 +300,9 @@ void solveLeastSquaresEigenDense(
                 break;
         }
     } else {
+#ifdef TEST_CONDITION_NUMBER
+        printConditionNumber("Condition number A: ", A);
+#endif
         switch(eigenSolverType) {
             case EigenSolverType::PartialPivLU:
                 x = A.partialPivLu().solve(b);
@@ -351,6 +369,10 @@ void solveLinearSystemEigenSymmetric(
         lhs += lambdaL * M_I;
     }
     Eigen::MatrixXr rhs = A_T * b;
+
+#ifdef TEST_CONDITION_NUMBER
+    printConditionNumber("Condition number A^T A: ", lhs);
+#endif
 
     switch(eigenSolverType) {
         case EigenSolverType::PartialPivLU:
@@ -464,7 +486,9 @@ void solveLeastSquaresEigenSparseNormalEquations(
         Eigen::MatrixXr M_I = Eigen::MatrixXr::Identity(c, c);
         lhs += lambdaL * M_I;
     }
-    x = lhs.householderQr().solve(rhs);
+#ifdef TEST_CONDITION_NUMBER
+    printConditionNumber("Condition number A^T A: ", lhs);
+#endif
     switch(eigenSolverType) {
         case EigenSolverType::PartialPivLU:
             x = lhs.partialPivLu().solve(rhs);

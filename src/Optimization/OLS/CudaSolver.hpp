@@ -63,7 +63,6 @@ void solveLeastSquaresCudaDense(
 /**
  * Solves A*x = b for the vector x in the least squares sense.
  * This solver uses the libraries cuSPARSE and cuSOLVER.
- * NOTE: It seems like the cuSOLVER solver is broken. Do not use this function.
  * @param m The number of rows of the matrix.
  * @param n The number of columns of the matrix.
  * @param nnz The number of non-zero values.
@@ -75,6 +74,23 @@ void solveLeastSquaresCudaDense(
  */
 void solveLeastSquaresCudaSparse(
         CudaSparseSolverType cudaSparseSolverType, const Real lambdaL,
+        int m, int n, int nnz, const Real* csrVals, const int* csrRowPtr, const int* csrColInd,
+        const Real* b, Eigen::MatrixXr& x);
+
+/**
+ * Solves A*x = b for the vector x using the normal equations, i.e., A^T A x = A^T b.
+ * This solver uses the libraries cuSPARSE and cuSOLVER.
+ * @param m The number of rows of the matrix.
+ * @param n The number of columns of the matrix.
+ * @param nnz The number of non-zero values.
+ * @param csrVals The list of non-zero matrix values (CSR format).
+ * @param csrRowPtr The row pointers of the matrix data (CSR format).
+ * @param csrColInd The column indices of the values in csrVals (CSR format).
+ * @param b The right-hand side vector.
+ * @param x The solution of the least squares problem.
+ */
+void solveLeastSquaresCudaSparseNormalEquations(
+        CudaSparseSolverType cudaSparseSolverType, EigenSolverType eigenSolverType, const Real lambdaL,
         int m, int n, int nnz, const Real* csrVals, const int* csrRowPtr, const int* csrColInd,
         const Real* b, Eigen::MatrixXr& x);
 
