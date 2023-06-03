@@ -104,6 +104,17 @@ CUtexObject DeviceCacheEntryType::getCudaTexture() {
     return cudaTexture->getCudaTextureObject();
 }
 
+sgl::vk::TextureCudaExternalMemoryVkPtr DeviceCacheEntryType::getTextureCudaExternalMemory() {
+    if (!cudaTexture) {
+        sgl::vk::TextureCudaExternalMemorySettings texCudaSettings{};
+        //texCudaSettings.useNormalizedCoordinates = true;
+        texCudaSettings.useNormalizedCoordinates = false;
+        cudaTexture = std::make_shared<sgl::vk::TextureCudaExternalMemoryVk>(
+                vulkanImage, vulkanSampler->getImageSamplerSettings(), VK_IMAGE_VIEW_TYPE_3D, texCudaSettings);
+    }
+    return cudaTexture;
+}
+
 const sgl::vk::ImageCudaExternalMemoryVkPtr& DeviceCacheEntryType::getImageCudaExternalMemory() {
     if (!cudaTexture) {
         sgl::vk::TextureCudaExternalMemorySettings texCudaSettings{};

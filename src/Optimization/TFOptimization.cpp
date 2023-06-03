@@ -71,6 +71,10 @@ TFOptimization::TFOptimization(sgl::vk::Renderer* parentRenderer) : parentRender
     worker = new TFOptimizationWorker(parentRenderer);
 }
 
+void TFOptimization::initialize() {
+    worker->initialize();
+}
+
 TFOptimization::~TFOptimization() {
     worker->join();
     delete worker;
@@ -83,6 +87,12 @@ void TFOptimization::setVolumeData(VolumeData* _volumeData, bool isNewData) {
         settings.fieldIdxOpt = 0;
     }
 }
+
+#ifdef CUDA_ENABLED
+void TFOptimization::setCudaContext(CUcontext context) {
+    worker->setCudaContext(context);
+}
+#endif
 
 void TFOptimization::openDialog() {
     ImGui::OpenPopup("Optimize Transfer Function");
@@ -141,6 +151,9 @@ void TFOptimization::renderGuiDialog() {
                 if (settings.optimizerMethod == TFOptimizerMethod::OLS
                         && settings.backend != OLSBackend::VULKAN) {
                     ImGui::Checkbox("Use Sparse Solve Step", &settings.useSparseSolve);
+                }
+                if (settings.backend == OLSBackend::CUDA && settings.useSparseSolve) {
+                    ImGui::Checkbox("GPU Matrix Setup", &settings.useCudaMatrixSetup);
                 }
                 if (settings.backend == OLSBackend::CUDA && settings.useSparseSolve && !settings.useNormalEquations) {
                     ImGui::Combo(
@@ -265,6 +278,10 @@ void TFOptimization::renderGuiDialog() {
 TFOptimizationWorker::TFOptimizationWorker(sgl::vk::Renderer* parentRenderer) : parentRenderer(parentRenderer) {
     sgl::vk::Device* device = sgl::AppSettings::get()->getPrimaryDevice();
     renderer = new sgl::vk::Renderer(device, 100);
+}
+
+void TFOptimizationWorker::initialize() {
+    sgl::vk::Device* device = sgl::AppSettings::get()->getPrimaryDevice();
     if (device->getGraphicsQueue() == device->getComputeQueue()) {
         supportsAsyncCompute = false;
     }
@@ -274,8 +291,8 @@ TFOptimizationWorker::TFOptimizationWorker(sgl::vk::Renderer* parentRenderer) : 
     }
 #ifdef CUDA_ENABLED
     else if (device->getDeviceDriverId() == VK_DRIVER_ID_NVIDIA_PROPRIETARY
-            && sgl::vk::getIsCudaDeviceApiFunctionTableInitialized()) {
-        cudaInit();
+             && sgl::vk::getIsCudaDeviceApiFunctionTableInitialized()) {
+        cudaInit(true, cudaContext);
     }
 #endif
 }
@@ -295,6 +312,12 @@ TFOptimizationWorker::~TFOptimizationWorker() {
         renderer = nullptr;
     }
 }
+
+#ifdef CUDA_ENABLED
+void TFOptimizationWorker::setCudaContext(CUcontext context) {
+    cudaContext = context;
+}
+#endif
 
 void TFOptimizationWorker::join() {
     if (supportsAsyncCompute && !programIsFinished) {
@@ -387,7 +410,7 @@ void TFOptimizationWorker::mainLoop() {
     sgl::vk::Device* device = sgl::AppSettings::get()->getPrimaryDevice();
     if (device->getDeviceDriverId() == VK_DRIVER_ID_NVIDIA_PROPRIETARY
             && sgl::vk::getIsCudaDeviceApiFunctionTableInitialized()) {
-        cudaInit();
+        cudaInit(false, cudaContext);
     }
 #endif
 

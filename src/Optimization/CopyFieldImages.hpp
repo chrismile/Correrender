@@ -32,8 +32,23 @@
 namespace sgl { namespace vk {
 class Device;
 class Image;
+typedef std::shared_ptr<Image> ImagePtr;
 class ImageView;
+typedef std::shared_ptr<ImageView> ImageViewPtr;
+#ifdef CUDA_ENABLED
+class TextureCudaExternalMemoryVk;
+typedef std::shared_ptr<TextureCudaExternalMemoryVk> TextureCudaExternalMemoryVkPtr;
+#endif
 }}
+
+struct CopyFieldImageDestinationData {
+    sgl::vk::ImageViewPtr* inputImageGT;
+    sgl::vk::ImageViewPtr* inputImageOpt;
+#ifdef CUDA_ENABLED
+    sgl::vk::TextureCudaExternalMemoryVkPtr* cudaInputImageGT;
+    sgl::vk::TextureCudaExternalMemoryVkPtr* cudaInputImageOpt;
+#endif
+};
 
 /**
  * Copies the content of the two field images to another set of field images.
@@ -42,8 +57,7 @@ class ImageView;
 void copyFieldImages(
         sgl::vk::Device* device, uint32_t xs, uint32_t ys, uint32_t zs,
         const sgl::vk::ImagePtr& fieldImageGT, const sgl::vk::ImagePtr& fieldImageOpt,
-        sgl::vk::ImageViewPtr& inputImageGT, sgl::vk::ImageViewPtr& inputImageOpt,
-        VkFormat& cachedFormatGT, VkFormat& cachedFormatOpt,
-        uint32_t fieldIdxGT, uint32_t fieldIdxOpt, bool isSampled);
+        CopyFieldImageDestinationData& copyFieldImageDestinationData,
+        uint32_t fieldIdxGT, uint32_t fieldIdxOpt, bool isSampled, bool exportMemory);
 
 #endif //CORRERENDER_COPYFIELDIMAGES_HPP

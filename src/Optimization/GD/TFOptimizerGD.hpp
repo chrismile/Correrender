@@ -54,7 +54,6 @@ private:
     };
 
     uint32_t cachedTfSize = 0;
-    VkFormat cachedFormatGT{}, cachedFormatOpt{};
     UniformSettings uniformSettings{};
     sgl::vk::BufferPtr settingsBuffer;
     sgl::vk::BufferPtr tfGTBuffer;

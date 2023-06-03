@@ -31,13 +31,16 @@
 
 #include <Eigen/Core>
 #include <Eigen/SparseCore>
+
+#include <Graphics/Vulkan/Utils/InteropCuda.hpp>
+
 #include "PrecisionDefines.hpp"
 #include "../OptDefines.hpp"
 
 /**
  * Initializes CUDA, cuBLAS and cuSOLVE for use in @see solveLeastSquaresCudaDense.
  */
-void cudaInit(void* cudaStream = nullptr);
+void cudaInit(bool isMainThread, CUcontext cudaContext = nullptr, void* cudaStream = nullptr);
 
 /**
  * Releases CUDA, cuBLAS and cuSOLVE.
@@ -73,9 +76,9 @@ void solveLeastSquaresCudaDense(
  * @param x The solution of the least squares problem.
  */
 void solveLeastSquaresCudaSparse(
-        CudaSparseSolverType cudaSparseSolverType, const Real lambdaL,
-        int m, int n, int nnz, const Real* csrVals, const int* csrRowPtr, const int* csrColInd,
-        const Real* b, Eigen::MatrixXr& x);
+        CudaSparseSolverType cudaSparseSolverType, bool isDevicePtr, Real lambdaL,
+        int m, int n, int nnz, Real* csrVals, int* csrRowPtr, int* csrColInd,
+        Real* b, Eigen::MatrixXr& x);
 
 /**
  * Solves A*x = b for the vector x using the normal equations, i.e., A^T A x = A^T b.
@@ -90,8 +93,15 @@ void solveLeastSquaresCudaSparse(
  * @param x The solution of the least squares problem.
  */
 void solveLeastSquaresCudaSparseNormalEquations(
-        CudaSparseSolverType cudaSparseSolverType, EigenSolverType eigenSolverType, const Real lambdaL,
-        int m, int n, int nnz, const Real* csrVals, const int* csrRowPtr, const int* csrColInd,
-        const Real* b, Eigen::MatrixXr& x);
+        CudaSparseSolverType cudaSparseSolverType, EigenSolverType eigenSolverType, bool isDevicePtr, Real lambdaL,
+        int m, int n, int nnz, Real* csrVals, int* csrRowPtr, int* csrColInd,
+        Real* b, Eigen::MatrixXr& x);
+
+void createSystemMatrixCudaSparse(
+        int xs, int ys, int zs, int tfSize, float minGT, float maxGT, float minOpt, float maxOpt,
+        CUtexObject scalarFieldGT, CUtexObject scalarFieldOpt, const Real* tfGT,
+        int& numRows, int& nnz, Real*& csrVals, int*& csrRowPtr, int*& csrColInd, Real*& b);
+
+void freeSystemMatrixCudaSparse(Real* csrVals, int* csrRowPtr, int* csrColInd, Real* b);
 
 #endif //SH_AUG_CUDASOLVER_HPP

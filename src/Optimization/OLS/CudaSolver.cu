@@ -30,6 +30,7 @@
 #include <cusolverDn.h>
 #include <cusolverSp.h>
 
+#include <Math/Math.hpp>
 #include <Graphics/Vulkan/Utils/InteropCuda.hpp>
 
 #include "CudaHelpers.cuh"
@@ -38,8 +39,11 @@
 #include "cgls.cuh"
 #include "EigenSolver.hpp"
 #include "CudaSolver.hpp"
+#include "CSR/PrefixSumScan.cuh"
+#include "CSR/BuildMatrix.cuh"
 
 static bool useCustomCudaStream = false;
+static bool useCustomCudaContext = false;
 static CUcontext cuContext = nullptr;
 static CUstream cuStream = nullptr;
 static cudaStream_t stream = nullptr;
@@ -48,20 +52,28 @@ static cusparseHandle_t cusparseHandle = nullptr;
 static cusolverDnHandle_t cusolverHandle = nullptr;
 static cusolverSpHandle_t cusolverSpHandle = nullptr;
 
-void cudaInit(void* cudaStream) {
-    // Initialize cuBLAS and cuSOLVER.
+void cudaInit(bool isMainThread, CUcontext cudaContext, void* cudaStream) {
+    if (cudaContext) {
+        cuContext = cudaContext;
+        if (!isMainThread) {
+            cuCtxSetCurrent(cudaContext);
+        }
+        useCustomCudaContext = true;
+    } else {
+        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuCtxCreate(
+                &cuContext, CU_CTX_SCHED_AUTO, 0), "Error in cuCtxCreate: ");
+    }
     if (cudaStream) {
         stream = cudaStream_t(cudaStream);
         useCustomCudaStream = true;
     } else {
         //cudaErrorCheck(cudaStreamCreate(&stream));
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuCtxCreate(
-                &cuContext, CU_CTX_SCHED_AUTO, 0), "Error in cuCtxCreate: ");
         sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamCreate(
                 &cuStream, 0), "Error in cuStreamCreate: ");
         stream = cuStream;
     }
 
+    // Initialize cuBLAS and cuSOLVER.
     cudaErrorCheck(cublasCreate(&cublasHandle));
     cudaErrorCheck(cusparseCreate(&cusparseHandle));
     cudaErrorCheck(cusolverDnCreate(&cusolverHandle));
@@ -96,6 +108,8 @@ void cudaRelease() {
             //cudaErrorCheck(cudaStreamDestroy(stream));
             sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamDestroy(
                     cuStream), "Error in cuStreamDestroy: ");
+        }
+        if (!useCustomCudaContext) {
             sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuCtxDestroy(
                     cuContext), "Error in cuCtxDestroy: ");
         }
@@ -345,9 +359,9 @@ void solveLeastSquaresCudaDense(
 }
 
 void solveLeastSquaresCudaSparse(
-        CudaSparseSolverType cudaSparseSolverType, const Real lambdaL,
-        int m, int n, int nnz, const Real* csrVals, const int* csrRowPtr, const int* csrColInd,
-        const Real* b, Eigen::MatrixXr& x) {
+        CudaSparseSolverType cudaSparseSolverType, bool isDevicePtr, Real lambdaL,
+        int m, int n, int nnz, Real* csrVals, int* csrRowPtr, int* csrColInd,
+        Real* b, Eigen::MatrixXr& x) {
     if (cudaSparseSolverType == CudaSparseSolverType::CUSOLVER_QR) {
         auto* p = new int[n];
         x = Eigen::MatrixXr(n, 1);
@@ -355,10 +369,30 @@ void solveLeastSquaresCudaSparse(
         auto minNorm = Real(0);
         cusparseMatDescr_t matDesc{};
         cudaErrorCheck(cusparseCreateMatDescr(&matDesc));
+        if (isDevicePtr) {
+            auto* hcsrVals = new Real[nnz];
+            auto* hcsrRowPtr = new int[nnz];
+            auto* hcsrColInd = new int[nnz];
+            auto* hb = new Real[nnz];
+            cudaErrorCheck(cudaMemcpy(hcsrVals, csrVals, sizeof(Real) * nnz, cudaMemcpyDeviceToHost));
+            cudaErrorCheck(cudaMemcpy(hcsrRowPtr, csrRowPtr, sizeof(int) * (m + 1), cudaMemcpyDeviceToHost));
+            cudaErrorCheck(cudaMemcpy(hcsrColInd, csrColInd, sizeof(int) * nnz, cudaMemcpyDeviceToHost));
+            cudaErrorCheck(cudaMemcpy(hb, b, sizeof(Real) * m, cudaMemcpyDeviceToHost));
+            csrVals = hcsrVals;
+            csrRowPtr = hcsrRowPtr;
+            csrColInd = hcsrColInd;
+            b = hb;
+        }
         cudaErrorCheck(cusolverSpRcsrlsqvqrHost(
                 cusolverSpHandle, m, n, nnz, matDesc, csrVals, csrRowPtr, csrColInd, b,
                 Real(1e-5f), &rank, x.data(), p, &minNorm));
         cudaErrorCheck(cusparseDestroyMatDescr(matDesc));
+        if (isDevicePtr) {
+            delete[] csrVals;
+            delete[] csrRowPtr;
+            delete[] csrColInd;
+            delete[] b;
+        }
         delete[] p;
     } else {
         bool quiet = false;
@@ -368,15 +402,22 @@ void solveLeastSquaresCudaSparse(
         Real* dx = nullptr, *db = nullptr, *dcsrVals = nullptr;
         int* dcsrRowPtr = nullptr, *dcsrColInd = nullptr;
         cudaErrorCheck(cudaMalloc((void**)&dx, sizeof(Real) * n));
-        cudaErrorCheck(cudaMalloc((void**)&db, sizeof(Real) * m));
-        cudaErrorCheck(cudaMalloc((void**)&dcsrVals, sizeof(Real) * nnz));
-        cudaErrorCheck(cudaMalloc((void**)&dcsrRowPtr, sizeof(int) * (m + 1)));
-        cudaErrorCheck(cudaMalloc((void**)&dcsrColInd, sizeof(int) * nnz));
+        if (isDevicePtr) {
+            db = b;
+            dcsrVals = csrVals;
+            dcsrRowPtr = csrRowPtr;
+            dcsrColInd = csrColInd;
+        } else {
+            cudaErrorCheck(cudaMalloc((void**)&db, sizeof(Real) * m));
+            cudaErrorCheck(cudaMalloc((void**)&dcsrVals, sizeof(Real) * nnz));
+            cudaErrorCheck(cudaMalloc((void**)&dcsrRowPtr, sizeof(int) * (m + 1)));
+            cudaErrorCheck(cudaMalloc((void**)&dcsrColInd, sizeof(int) * nnz));
+            cudaErrorCheck(cudaMemcpy(db, b, sizeof(Real) * m, cudaMemcpyHostToDevice));
+            cudaErrorCheck(cudaMemcpy(dcsrVals, csrVals, sizeof(Real) * nnz, cudaMemcpyHostToDevice));
+            cudaErrorCheck(cudaMemcpy(dcsrRowPtr, csrRowPtr, sizeof(int) * (m + 1), cudaMemcpyHostToDevice));
+            cudaErrorCheck(cudaMemcpy(dcsrColInd, csrColInd, sizeof(int) * nnz, cudaMemcpyHostToDevice));
+        }
         cudaErrorCheck(cudaMemset(dx, 0, sizeof(Real) * n));
-        cudaErrorCheck(cudaMemcpy(db, b, sizeof(Real) * m, cudaMemcpyHostToDevice));
-        cudaErrorCheck(cudaMemcpy(dcsrVals, csrVals, sizeof(Real) * nnz, cudaMemcpyHostToDevice));
-        cudaErrorCheck(cudaMemcpy(dcsrRowPtr, csrRowPtr, sizeof(int) * (m + 1), cudaMemcpyHostToDevice));
-        cudaErrorCheck(cudaMemcpy(dcsrColInd, csrColInd, sizeof(int) * nnz, cudaMemcpyHostToDevice));
         if (cudaSparseSolverType == CudaSparseSolverType::LSQR) {
             solveLeastSquaresCudaLSQR<Real>(
                     stream, cublasHandle, cusparseHandle, dcsrRowPtr, dcsrColInd, dcsrVals, m, n, nnz, db, dx, maxit);
@@ -387,35 +428,44 @@ void solveLeastSquaresCudaSparse(
         }
         cudaErrorCheck(cudaMemcpy(x.data(), dx, sizeof(Real) * n, cudaMemcpyDeviceToHost));
         cudaErrorCheck(cudaFree(dx));
-        cudaErrorCheck(cudaFree(db));
-        cudaErrorCheck(cudaFree(dcsrVals));
-        cudaErrorCheck(cudaFree(dcsrRowPtr));
-        cudaErrorCheck(cudaFree(dcsrColInd));
+        if (!isDevicePtr) {
+            cudaErrorCheck(cudaFree(db));
+            cudaErrorCheck(cudaFree(dcsrVals));
+            cudaErrorCheck(cudaFree(dcsrRowPtr));
+            cudaErrorCheck(cudaFree(dcsrColInd));
+        }
     }
 }
 
 void solveLeastSquaresCudaSparseNormalEquations(
-        CudaSparseSolverType cudaSparseSolverType, EigenSolverType eigenSolverType, const Real lambdaL,
-        int m, int n, int nnz, const Real* csrVals, const int* csrRowPtr, const int* csrColInd,
-        const Real* b, Eigen::MatrixXr& x) {
+        CudaSparseSolverType cudaSparseSolverType, EigenSolverType eigenSolverType, bool isDevicePtr, Real lambdaL,
+        int m, int n, int nnz, Real* csrVals, int* csrRowPtr, int* csrColInd,
+        Real* b, Eigen::MatrixXr& x) {
     Real* db = nullptr, *dlhs = nullptr, *drhs = nullptr;
     Real* dcsrVals = nullptr, *dcscVals = nullptr, *dcsrValsATA = nullptr;
     int* dcsrRowPtr = nullptr, *dcsrColInd = nullptr, *dcscColPtr = nullptr, *dcscRowInd = nullptr;
     int* dcsrRowPtrATA = nullptr, *dcsrColIndATA = nullptr;
-    cudaErrorCheck(cudaMalloc((void**)&db, sizeof(Real) * m));
+    if (isDevicePtr) {
+        db = b;
+        dcsrVals = csrVals;
+        dcsrRowPtr = csrRowPtr;
+        dcsrColInd = csrColInd;
+    } else {
+        cudaErrorCheck(cudaMalloc((void**)&db, sizeof(Real) * m));
+        cudaErrorCheck(cudaMalloc((void**)&dcsrVals, sizeof(Real) * nnz));
+        cudaErrorCheck(cudaMalloc((void**)&dcsrRowPtr, sizeof(int) * (m + 1)));
+        cudaErrorCheck(cudaMalloc((void**)&dcsrColInd, sizeof(int) * nnz));
+        cudaErrorCheck(cudaMemcpy(db, b, sizeof(Real) * m, cudaMemcpyHostToDevice));
+        cudaErrorCheck(cudaMemcpy(dcsrVals, csrVals, sizeof(Real) * nnz, cudaMemcpyHostToDevice));
+        cudaErrorCheck(cudaMemcpy(dcsrRowPtr, csrRowPtr, sizeof(int) * (m + 1), cudaMemcpyHostToDevice));
+        cudaErrorCheck(cudaMemcpy(dcsrColInd, csrColInd, sizeof(int) * nnz, cudaMemcpyHostToDevice));
+    }
     cudaErrorCheck(cudaMalloc((void**)&dlhs, sizeof(Real) * n * n));
     cudaErrorCheck(cudaMalloc((void**)&drhs, sizeof(Real) * n));
-    cudaErrorCheck(cudaMalloc((void**)&dcsrVals, sizeof(Real) * nnz));
-    cudaErrorCheck(cudaMalloc((void**)&dcsrRowPtr, sizeof(int) * (m + 1)));
-    cudaErrorCheck(cudaMalloc((void**)&dcsrColInd, sizeof(int) * nnz));
     cudaErrorCheck(cudaMalloc((void**)&dcscVals, sizeof(Real) * nnz));
     cudaErrorCheck(cudaMalloc((void**)&dcscColPtr, sizeof(int) * (n + 1)));
     cudaErrorCheck(cudaMalloc((void**)&dcscRowInd, sizeof(int) * nnz));
     cudaErrorCheck(cudaMalloc((void**)&dcsrRowPtrATA, sizeof(int) * (n + 1)));
-    cudaErrorCheck(cudaMemcpy(db, b, sizeof(Real) * m, cudaMemcpyHostToDevice));
-    cudaErrorCheck(cudaMemcpy(dcsrVals, csrVals, sizeof(Real) * nnz, cudaMemcpyHostToDevice));
-    cudaErrorCheck(cudaMemcpy(dcsrRowPtr, csrRowPtr, sizeof(int) * (m + 1), cudaMemcpyHostToDevice));
-    cudaErrorCheck(cudaMemcpy(dcsrColInd, csrColInd, sizeof(int) * nnz, cudaMemcpyHostToDevice));
     Eigen::MatrixXr lhs = Eigen::MatrixXr(n, n);
     Eigen::MatrixXr rhs = Eigen::VectorXr(n);
 
@@ -436,6 +486,7 @@ void solveLeastSquaresCudaSparseNormalEquations(
             dataType, CUSPARSE_ACTION_NUMERIC, CUSPARSE_INDEX_BASE_ZERO,
             CUSPARSE_CSR2CSC_ALG1, // CUSPARSE_CSR2CSC_ALG2
             &bufferSize));
+    cudaErrorCheck(cudaStreamSynchronize(stream));
     auxBuffer.reserve(bufferSize);
     cudaErrorCheck(cusparseCsr2cscEx2(
             cusparseHandle, m, n, nnz,
@@ -465,6 +516,7 @@ void solveLeastSquaresCudaSparseNormalEquations(
             &alpha, matDescrAT, bvec.getCusparseDnVecDescr(),
             &beta, rhsvec.getCusparseDnVecDescr(), dataType,
             CUSPARSE_SPMV_ALG_DEFAULT, &bufferSize));
+    cudaErrorCheck(cudaStreamSynchronize(stream));
     auxBuffer.reserve(bufferSize);
     cudaErrorCheck(cusparseSpMV(
             cusparseHandle, CUSPARSE_OPERATION_NON_TRANSPOSE,
@@ -545,6 +597,7 @@ void solveLeastSquaresCudaSparseNormalEquations(
     cudaErrorCheck(cusparseSparseToDense_bufferSize(
             cusparseHandle, matDescrATA, matDescrATADense,
             CUSPARSE_SPARSETODENSE_ALG_DEFAULT, &bufferSize));
+    cudaErrorCheck(cudaStreamSynchronize(stream));
     auxBuffer.reserve(bufferSize);
     cudaErrorCheck(cusparseSparseToDense(
             cusparseHandle, matDescrATA, matDescrATADense,
@@ -555,12 +608,14 @@ void solveLeastSquaresCudaSparseNormalEquations(
     cudaErrorCheck(cusparseDestroySpMat(matDescrA));
     cudaErrorCheck(cusparseDestroySpMat(matDescrAT));
     cudaErrorCheck(cusparseDestroySpMat(matDescrATA));
-    cudaErrorCheck(cudaFree(db));
+    if (!isDevicePtr) {
+        cudaErrorCheck(cudaFree(db));
+        cudaErrorCheck(cudaFree(dcsrVals));
+        cudaErrorCheck(cudaFree(dcsrRowPtr));
+        cudaErrorCheck(cudaFree(dcsrColInd));
+    }
     cudaErrorCheck(cudaFree(drhs));
     cudaErrorCheck(cudaFree(dlhs));
-    cudaErrorCheck(cudaFree(dcsrVals));
-    cudaErrorCheck(cudaFree(dcsrRowPtr));
-    cudaErrorCheck(cudaFree(dcsrColInd));
     cudaErrorCheck(cudaFree(dcscVals));
     cudaErrorCheck(cudaFree(dcscColPtr));
     cudaErrorCheck(cudaFree(dcscRowInd));
@@ -569,4 +624,84 @@ void solveLeastSquaresCudaSparseNormalEquations(
     cudaErrorCheck(cudaFree(dcsrColIndATA));
 
     solveLinearSystemEigenSymmetric(eigenSolverType, lambdaL, lhs, rhs, x);
+}
+
+
+
+void createSystemMatrixCudaSparse(
+        int xs, int ys, int zs, int tfSize, float minGT, float maxGT, float minOpt, float maxOpt,
+        CUtexObject scalarFieldGT, CUtexObject scalarFieldOpt, const float* tfGT,
+        int& numRows, int& nnz, Real*& csrVals, int*& csrRowPtr, int*& csrColInd, Real*& b) {
+    const int numVoxels = xs * ys * zs;
+    const int m = numVoxels * 4;
+    const int n = tfSize * 4;
+    const auto Nj = float(tfSize - 1);
+    float* dtfGT = nullptr;
+    cudaErrorCheck(cudaMalloc((void**)&dtfGT, sizeof(float4) * tfSize));
+    cudaErrorCheck(cudaMemcpy(dtfGT, tfGT, sizeof(float4) * tfSize, cudaMemcpyHostToDevice));
+
+    const uint32_t blockSize1D = 256;
+    const dim3 blockSize3D = dim3(8, 8, 4);
+    const dim3 gridSize3D = dim3(
+            sgl::uiceil(uint32_t(xs), blockSize3D.x),
+            sgl::uiceil(uint32_t(ys), blockSize3D.y),
+            sgl::uiceil(uint32_t(zs), blockSize3D.z));
+
+    // In the first step, scan which rows contain how many non-zero values.
+    int* rowsHasNonZero = nullptr, *rowsNumNonZero = nullptr;
+    int* rowsHasNonZeroPrefixSum = nullptr, *rowsNumNonZeroPrefixSum = nullptr;
+    cudaErrorCheck(cudaMalloc((void**)&rowsHasNonZero, sizeof(int) * numVoxels));
+    cudaErrorCheck(cudaMalloc((void**)&rowsNumNonZero, sizeof(int) * numVoxels));
+    cudaErrorCheck(cudaMalloc((void**)&rowsHasNonZeroPrefixSum, sizeof(int) * (numVoxels + 1)));
+    cudaErrorCheck(cudaMalloc((void**)&rowsNumNonZeroPrefixSum, sizeof(int) * (numVoxels + 1)));
+    float* dtestData = nullptr;
+    cudaErrorCheck(cudaMalloc((void**)&dtestData, sizeof(float) * numVoxels));
+    computeNnzKernel<<<gridSize3D, blockSize3D, 0, stream>>>(
+            xs, ys, zs, Nj, minGT, maxGT, minOpt, maxOpt,
+            scalarFieldGT, scalarFieldOpt, dtestData,
+            rowsHasNonZero, rowsNumNonZero);
+
+    // Next, use a parallel prefix scan to assign for each thread an index where to write to.
+    std::vector<int*> bufferCache;
+    allocateParallelPrefixSumScanBufferCache(numVoxels, bufferCache);
+    parallelPrefixSumScan(stream, numVoxels, rowsHasNonZero, rowsHasNonZeroPrefixSum, bufferCache);
+    cudaErrorCheck(cudaMemcpyAsync(
+            &numRows, rowsHasNonZeroPrefixSum + numVoxels, sizeof(int), cudaMemcpyDeviceToHost, stream));
+    cudaErrorCheck(cudaStreamSynchronize(stream));
+    parallelPrefixSumScan(stream, numVoxels, rowsNumNonZero, rowsNumNonZeroPrefixSum, bufferCache);
+    cudaErrorCheck(cudaMemcpyAsync(
+            &nnz, rowsNumNonZeroPrefixSum + numVoxels, sizeof(int), cudaMemcpyDeviceToHost, stream));
+    cudaErrorCheck(cudaStreamSynchronize(stream));
+    freeParallelPrefixSumScanBufferCache(bufferCache);
+    numRows *= 4;
+    nnz *= 4;
+
+    // Allocate the memory for the matrix and the vector.
+    cudaErrorCheck(cudaMalloc((void**)&b, sizeof(float4) * numVoxels));
+    cudaErrorCheck(cudaMalloc((void**)&csrVals, sizeof(Real) * nnz));
+    cudaErrorCheck(cudaMalloc((void**)&csrRowPtr, sizeof(float4) * (numRows + 1)));
+    cudaErrorCheck(cudaMalloc((void**)&csrColInd, sizeof(int) * nnz));
+
+    // Write the non-zero values to the correct position.
+    writeCsrKernel<<<gridSize3D, blockSize3D, 0, stream>>>(
+            xs, ys, zs, Nj, minGT, maxGT, minOpt, maxOpt,
+            reinterpret_cast<const float4*>(dtfGT), scalarFieldGT, scalarFieldOpt,
+            rowsHasNonZero, rowsHasNonZeroPrefixSum,
+            rowsNumNonZero, rowsNumNonZeroPrefixSum,
+            nnz, csrVals, csrRowPtr, csrColInd,
+            reinterpret_cast<float4*>(b));
+    writeFinalCsrRowPtr<<<1, 1, 0, stream>>>(nnz, numRows, csrRowPtr);
+
+    cudaErrorCheck(cudaFree(rowsHasNonZero));
+    cudaErrorCheck(cudaFree(rowsNumNonZero));
+    cudaErrorCheck(cudaFree(rowsHasNonZeroPrefixSum));
+    cudaErrorCheck(cudaFree(rowsNumNonZeroPrefixSum));
+    cudaErrorCheck(cudaFree(dtfGT));
+}
+
+void freeSystemMatrixCudaSparse(Real* csrVals, int* csrRowPtr, int* csrColInd, Real* b) {
+    cudaErrorCheck(cudaFree(csrVals));
+    cudaErrorCheck(cudaFree(csrRowPtr));
+    cudaErrorCheck(cudaFree(csrColInd));
+    cudaErrorCheck(cudaFree(b));
 }

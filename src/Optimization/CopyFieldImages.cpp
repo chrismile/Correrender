@@ -29,18 +29,28 @@
 #include <Graphics/Vulkan/Utils/Device.hpp>
 #include <Graphics/Vulkan/Image/Image.hpp>
 #include <Graphics/Vulkan/Render/Renderer.hpp>
+#ifdef CUDA_ENABLED
+#include <Graphics/Vulkan/Utils/InteropCuda.hpp>
+#endif
 
 #include "CopyFieldImages.hpp"
 
 void copyFieldImages(
         sgl::vk::Device* device, uint32_t xs, uint32_t ys, uint32_t zs,
         const sgl::vk::ImagePtr& fieldImageGT, const sgl::vk::ImagePtr& fieldImageOpt,
-        sgl::vk::ImageViewPtr& inputImageGT, sgl::vk::ImageViewPtr& inputImageOpt,
-        VkFormat& cachedFormatGT, VkFormat& cachedFormatOpt,
-        uint32_t fieldIdxGT, uint32_t fieldIdxOpt, bool isSampled) {
+        CopyFieldImageDestinationData& copyFieldImageDestinationData,
+        uint32_t fieldIdxGT, uint32_t fieldIdxOpt, bool isSampled, bool exportMemory) {
+    sgl::vk::ImageViewPtr& inputImageGT = *copyFieldImageDestinationData.inputImageGT;
+    sgl::vk::ImageViewPtr& inputImageOpt = *copyFieldImageDestinationData.inputImageOpt;
     auto formatGT = fieldImageGT->getImageSettings().format;
     auto formatOpt = fieldImageOpt->getImageSettings().format;
-    if (!inputImageGT || formatGT != cachedFormatGT || formatOpt != cachedFormatOpt
+    if (!inputImageGT || !inputImageGT
+            || inputImageGT->getImage()->getImageSettings().format != formatGT
+            || inputImageOpt->getImage()->getImageSettings().format != formatOpt
+            || inputImageGT->getImage()->getImageSettings().exportMemory != exportMemory
+            || inputImageOpt->getImage()->getImageSettings().exportMemory != exportMemory
+            || ((inputImageGT->getImage()->getImageSettings().usage & VK_IMAGE_USAGE_SAMPLED_BIT) != 0) != isSampled
+            || ((inputImageOpt->getImage()->getImageSettings().usage & VK_IMAGE_USAGE_SAMPLED_BIT) != 0) != isSampled
             || inputImageGT->getImage()->getImageSettings().width != xs
             || inputImageGT->getImage()->getImageSettings().height != ys
             || inputImageGT->getImage()->getImageSettings().depth != zs) {
@@ -54,14 +64,27 @@ void copyFieldImages(
         } else {
             imageSettings.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
         }
+        imageSettings.exportMemory = exportMemory;
+        if (exportMemory) {
+            imageSettings.useDedicatedAllocationForExportedMemory = false;
+        }
         imageSettings.format = formatGT;
         inputImageGT = std::make_shared<sgl::vk::ImageView>(
                 std::make_shared<sgl::vk::Image>(device, imageSettings), VK_IMAGE_VIEW_TYPE_3D);
         imageSettings.format = formatOpt;
         inputImageOpt = std::make_shared<sgl::vk::ImageView>(
                 std::make_shared<sgl::vk::Image>(device, imageSettings), VK_IMAGE_VIEW_TYPE_3D);
-        cachedFormatGT = formatGT;
-        cachedFormatOpt = formatOpt;
+#ifdef CUDA_ENABLED
+        if (exportMemory && copyFieldImageDestinationData.cudaInputImageGT) {
+            sgl::vk::TextureCudaExternalMemorySettings texCudaSettings{};
+            texCudaSettings.useNormalizedCoordinates = false;
+            sgl::vk::ImageSamplerSettings imageSamplerSettings{};
+            *copyFieldImageDestinationData.cudaInputImageGT = std::make_shared<sgl::vk::TextureCudaExternalMemoryVk>(
+                    inputImageGT->getImage(), imageSamplerSettings, VK_IMAGE_VIEW_TYPE_3D, texCudaSettings);
+            *copyFieldImageDestinationData.cudaInputImageOpt = std::make_shared<sgl::vk::TextureCudaExternalMemoryVk>(
+                    inputImageOpt->getImage(), imageSamplerSettings, VK_IMAGE_VIEW_TYPE_3D, texCudaSettings);
+        }
+#endif
     }
 
     auto layoutOldGT = fieldImageGT->getVkImageLayout();

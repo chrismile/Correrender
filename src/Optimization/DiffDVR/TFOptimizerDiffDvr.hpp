@@ -79,7 +79,6 @@ private:
     uint32_t cachedViewportWidth = 0;
     uint32_t cachedViewportHeight = 0;
     uint32_t cachedTfSize = 0;
-    VkFormat cachedFormatGT{}, cachedFormatOpt{};
     DvrSettingsBufferTf dvrSettings{};
     std::vector<glm::mat4> batchSettingsArray;
     sgl::vk::BufferPtr batchSettingsBuffer;

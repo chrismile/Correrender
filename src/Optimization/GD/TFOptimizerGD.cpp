@@ -116,15 +116,17 @@ void TFOptimizerGD::onRequestQueued(VolumeData* volumeData) {
             settings.fieldIdxOpt, int(settings.tfSize));
     tfOptBuffer->uploadData(sizeof(glm::vec4) * tfOpt.size(), tfOpt.data());
 
+    CopyFieldImageDestinationData copyFieldImageDestinationData{};
+    copyFieldImageDestinationData.inputImageGT = &imageViewFieldGT;
+    copyFieldImageDestinationData.inputImageOpt = &imageViewFieldOpt;
     copyFieldImages(
             parentRenderer->getDevice(),
             uint32_t(volumeData->getGridSizeX()),
             uint32_t(volumeData->getGridSizeY()),
             uint32_t(volumeData->getGridSizeZ()),
             fieldEntryGT->getVulkanImage(), fieldEntryOpt->getVulkanImage(),
-            imageViewFieldGT, imageViewFieldOpt,
-            cachedFormatGT, cachedFormatOpt,
-            settings.fieldIdxGT, settings.fieldIdxOpt, false);
+            copyFieldImageDestinationData,
+            settings.fieldIdxGT, settings.fieldIdxOpt, false, false);
 
     gradientPass->setInputImages(imageViewFieldGT, imageViewFieldOpt);
 }

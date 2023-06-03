@@ -52,6 +52,7 @@ const int possibleTfSizes[] = {
 class TFOptimization {
 public:
     explicit TFOptimization(sgl::vk::Renderer* parentRenderer);
+    void initialize();
     ~TFOptimization();
     void setVolumeData(VolumeData* _volumeData, bool isNewData);
     //void onFieldRemoved(int fieldIdx);
@@ -59,6 +60,10 @@ public:
     void renderGuiDialog();
 
     inline bool getNeedsReRender() { bool tmp = needsReRender; needsReRender = false; return tmp; }
+
+#ifdef CUDA_ENABLED
+    void setCudaContext(CUcontext context);
+#endif
 
 private:
     sgl::vk::Renderer* parentRenderer = nullptr;
@@ -85,6 +90,7 @@ class TFOptimizer;
 class TFOptimizationWorker {
 public:
     explicit TFOptimizationWorker(sgl::vk::Renderer* parentRenderer);
+    void initialize();
     ~TFOptimizationWorker();
 
     /**
@@ -105,6 +111,10 @@ public:
     bool getReply(TFOptimizationWorkerReply& reply);
     /// Returns the result buffer belonging to the last reply.
     [[nodiscard]] const std::vector<glm::vec4>& getTFArrayOpt() const;
+
+#ifdef CUDA_ENABLED
+    void setCudaContext(CUcontext context);
+#endif
 
 protected:
     void mainLoop();
@@ -129,6 +139,9 @@ protected:
     sgl::vk::Renderer* parentRenderer = nullptr;
     sgl::vk::Renderer* renderer = nullptr;
 
+#ifdef CUDA_ENABLED
+    CUcontext cudaContext{};
+#endif
 };
 
 #endif //CORRERENDER_TFOPTIMIZATION_HPP

@@ -113,10 +113,11 @@ struct TFOptimizationWorkerSettings {
     EigenSparseSolverType eigenSparseSolverType = EigenSparseSolverType::LEAST_SQUARES_CG_PRECONDITIONED;
     CudaSolverType cudaSolverType = CudaSolverType::QR;
     CudaSparseSolverType cudaSparseSolverType = CudaSparseSolverType::CGLS;
+    bool useCudaMatrixSetup = true; //< Whether to set up the matrix on the GPU when using CUDA.
     OLSBackend backend = OLSBackend::VULKAN;
     bool useSparseSolve = true;
     bool useNormalEquations = true;
-    float relaxationLambda = 1e-3; // Only used when useNormalEquations == true.
+    float relaxationLambda = 1e-3; //< Only used when useNormalEquations == true.
 
     // For DiffDVR and OLS_GRAD.
     OptimizerType optimizerType = OptimizerType::ADAM;

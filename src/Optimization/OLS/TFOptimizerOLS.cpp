@@ -41,6 +41,7 @@
 struct TFOptimizerOLSCache {
     uint32_t cachedTfSize = 0;
     uint32_t cachedNumVoxels = 0;
+    uint32_t cachedXs = 0, cachedYs = 0, cachedZs = 0;
     std::shared_ptr<HostCacheEntryType> fieldEntryGT, fieldEntryOpt;
     std::pair<float, float> minMaxGT, minMaxOpt;
     std::vector<glm::vec4> tfGT;
@@ -62,9 +63,17 @@ struct TFOptimizerOLSCache {
     std::vector<int> csrRowPtr;
     std::vector<int> csrColInd;
     std::vector<Real> bSparse;
+#ifdef CUDA_ENABLED
+    sgl::vk::TextureCudaExternalMemoryVkPtr cudaInputImageGT, cudaInputImageOpt;
+    Real* cudaCsrVals = nullptr;
+    int* cudaCsrRowPtr = nullptr;
+    int* cudaCsrColInd = nullptr;
+    Real* cudaBSparse = nullptr;
+    int cudaNumNnz = 0;
+    int cudaNumRows = 0;
+#endif
 
     // Implicit matrix.
-    VkFormat cachedFormatGT{}, cachedFormatOpt{};
     sgl::vk::ImageViewPtr inputImageGT, inputImageOpt;
     sgl::vk::BufferPtr lhsBuffer, rhsBuffer;
     sgl::vk::BufferPtr lhsStagingBuffer, rhsStagingBuffer;
@@ -129,23 +138,63 @@ void TFOptimizerOLS::TFOptimizerOLS::onRequestQueued(VolumeData* volumeData) {
 
         auto fieldEntryGT = volumeData->getFieldEntryDevice(FieldType::SCALAR, fieldNames.at(settings.fieldIdxGT));
         auto fieldEntryOpt = volumeData->getFieldEntryDevice(FieldType::SCALAR, fieldNames.at(settings.fieldIdxOpt));
+        CopyFieldImageDestinationData copyFieldImageDestinationData{};
+        copyFieldImageDestinationData.inputImageGT = &cache->inputImageGT;
+        copyFieldImageDestinationData.inputImageOpt = &cache->inputImageOpt;
         copyFieldImages(
                 parentRenderer->getDevice(),
                 uint32_t(volumeData->getGridSizeX()),
                 uint32_t(volumeData->getGridSizeY()),
                 uint32_t(volumeData->getGridSizeZ()),
                 fieldEntryGT->getVulkanImage(), fieldEntryOpt->getVulkanImage(),
-                cache->inputImageGT, cache->inputImageOpt,
-                cache->cachedFormatGT, cache->cachedFormatOpt,
-                settings.fieldIdxGT, settings.fieldIdxOpt, false);
+                copyFieldImageDestinationData,
+                settings.fieldIdxGT, settings.fieldIdxOpt, false, false);
     } else {
-        cache->inputImageGT = {};
-        cache->inputImageOpt = {};
         cache->lhsBuffer = {};
         cache->rhsBuffer = {};
         cache->lhsStagingBuffer = {};
         cache->rhsStagingBuffer = {};
         cache->tfGTBuffer = {};
+    }
+
+    if (settings.backend == OLSBackend::CUDA && settings.useCudaMatrixSetup) {
+        auto fieldEntryGT = volumeData->getFieldEntryDevice(FieldType::SCALAR, fieldNames.at(settings.fieldIdxGT));
+        auto fieldEntryOpt = volumeData->getFieldEntryDevice(FieldType::SCALAR, fieldNames.at(settings.fieldIdxOpt));
+        CopyFieldImageDestinationData copyFieldImageDestinationData{};
+        copyFieldImageDestinationData.inputImageGT = &cache->inputImageGT;
+        copyFieldImageDestinationData.inputImageOpt = &cache->inputImageOpt;
+        copyFieldImageDestinationData.cudaInputImageGT = &cache->cudaInputImageGT;
+        copyFieldImageDestinationData.cudaInputImageOpt = &cache->cudaInputImageOpt;
+        copyFieldImages(
+                parentRenderer->getDevice(),
+                uint32_t(volumeData->getGridSizeX()),
+                uint32_t(volumeData->getGridSizeY()),
+                uint32_t(volumeData->getGridSizeZ()),
+                fieldEntryGT->getVulkanImage(), fieldEntryOpt->getVulkanImage(),
+                copyFieldImageDestinationData,
+                settings.fieldIdxGT, settings.fieldIdxOpt, true, true);
+
+        //cache->cudaInputImageGT = fieldEntryGT->getTextureCudaExternalMemory();
+        //cache->cudaInputImageOpt = fieldEntryOpt->getTextureCudaExternalMemory();
+        //auto* device = renderer->getDevice();
+        //auto commandBufferCompute = device->beginSingleTimeCommands(device->getGraphicsQueueIndex());
+        //if (cache->cudaInputImageGT->getVulkanImage()->getVkImageLayout() != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+        //    cache->cudaInputImageGT->getVulkanImage()->transitionImageLayout(
+        //            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, commandBufferCompute);
+        //}
+        //if (cache->cudaInputImageOpt->getVulkanImage()->getVkImageLayout() != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+        //    cache->cudaInputImageOpt->getVulkanImage()->transitionImageLayout(
+        //            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, commandBufferCompute);
+        //}
+        //device->endSingleTimeCommands(commandBufferCompute, device->getGraphicsQueueIndex());
+    } else {
+        cache->cudaInputImageGT = {};
+        cache->cudaInputImageOpt = {};
+    }
+
+    if (settings.backend == OLSBackend::CPU) {
+        cache->inputImageGT = {};
+        cache->inputImageOpt = {};
     }
 
     if (!settings.useSparseSolve || settings.backend != OLSBackend::CUDA) {
@@ -183,6 +232,9 @@ void TFOptimizerOLS::TFOptimizerOLS::onRequestQueued(VolumeData* volumeData) {
 
     cache->cachedTfSize = settings.tfSize;
     cache->cachedNumVoxels = numVoxels;
+    cache->cachedXs = uint32_t(volumeData->getGridSizeX());
+    cache->cachedYs = uint32_t(volumeData->getGridSizeY());
+    cache->cachedZs = uint32_t(volumeData->getGridSizeZ());
     cache->cachedUseSparseSolve = settings.useSparseSolve;
 }
 
@@ -241,16 +293,26 @@ void TFOptimizerOLS::buildSystemDense() {
 }
 
 void TFOptimizerOLS::buildSystemSparse() {
-    uint32_t numMatrixRows = cache->cachedNumVoxels * 4;
-    uint32_t expectedNumNonZero = numMatrixRows * 2;
-    const float* fieldDataGT = cache->fieldEntryGT->data<float>();
-    const float* fieldDataOpt = cache->fieldEntryOpt->data<float>();
     float minGT = cache->minMaxGT.first;
     float maxGT = cache->minMaxGT.second;
     float minOpt = cache->minMaxOpt.first;
     float maxOpt = cache->minMaxOpt.second;
-    auto Nj = float(cache->cachedTfSize - 1);
 
+    if (settings.useCudaMatrixSetup) {
+        createSystemMatrixCudaSparse(
+                int(cache->cachedXs), int(cache->cachedYs), int(cache->cachedZs), int(cache->cachedTfSize),
+                minGT, maxGT, minOpt, maxOpt,
+                cache->cudaInputImageGT->getCudaTextureObject(), cache->cudaInputImageOpt->getCudaTextureObject(),
+                reinterpret_cast<float*>(cache->tfGT.data()), cache->cudaNumRows, cache->cudaNumNnz,
+                cache->cudaCsrVals, cache->cudaCsrRowPtr, cache->cudaCsrColInd, cache->cudaBSparse);
+        return;
+    }
+
+    uint32_t numMatrixRows = cache->cachedNumVoxels * 4;
+    uint32_t expectedNumNonZero = numMatrixRows * 2;
+    auto Nj = float(cache->cachedTfSize - 1);
+    const float* fieldDataGT = cache->fieldEntryGT->data<float>();
+    const float* fieldDataOpt = cache->fieldEntryOpt->data<float>();
     if (settings.backend == OLSBackend::CUDA) {
         cache->csrVals.clear();
         cache->bSparse.clear();
@@ -520,19 +582,44 @@ void TFOptimizerOLS::runOptimization(bool& shallStop, bool& hasStopped) {
         if (settings.useSparseSolve) {
 #ifdef CUDA_ENABLED
             if (settings.backend == OLSBackend::CUDA) {
+                int numRows, nnz;
+                Real* b, *csrVals;
+                int* csrRowPtr, *csrColInd;
+                if (settings.useCudaMatrixSetup) {
+                    numRows = cache->cudaNumRows;
+                    nnz = cache->cudaNumNnz;
+                    b = cache->cudaBSparse;
+                    csrVals = cache->cudaCsrVals;
+                    csrRowPtr = cache->cudaCsrRowPtr;
+                    csrColInd = cache->cudaCsrColInd;
+                } else {
+                    numRows = int(cache->csrRowPtr.size() - 1);
+                    nnz = int(cache->csrVals.size());
+                    b = cache->bSparse.data();
+                    csrVals = cache->csrVals.data();
+                    csrRowPtr = cache->csrRowPtr.data();
+                    csrColInd = cache->csrColInd.data();
+                }
                 if (settings.useNormalEquations) {
                     solveLeastSquaresCudaSparseNormalEquations(
-                            settings.cudaSparseSolverType, settings.eigenSolverType, settings.relaxationLambda,
-                            int(cache->csrRowPtr.size() - 1), int(tfNumEntries), int(cache->csrVals.size()),
-                            cache->csrVals.data(), cache->csrRowPtr.data(), cache->csrColInd.data(),
-                            cache->bSparse.data(), cache->x);
+                            settings.cudaSparseSolverType, settings.eigenSolverType, settings.useNormalEquations,
+                            settings.relaxationLambda,
+                            numRows, int(tfNumEntries), nnz,
+                            csrVals, csrRowPtr, csrColInd, b, cache->x);
                 } else {
                     solveLeastSquaresCudaSparse(
-                            settings.cudaSparseSolverType, settings.relaxationLambda,
-                            int(cache->csrRowPtr.size() - 1), int(tfNumEntries), int(cache->csrVals.size()),
-                            cache->csrVals.data(), cache->csrRowPtr.data(), cache->csrColInd.data(),
-                            cache->bSparse.data(), cache->x);
+                            settings.cudaSparseSolverType, settings.useNormalEquations,
+                            settings.relaxationLambda,
+                            numRows, int(tfNumEntries), nnz,
+                            csrVals, csrRowPtr, csrColInd, b, cache->x);
                 }
+                if (cache->cudaCsrVals) {
+                    freeSystemMatrixCudaSparse(cache->cudaCsrVals, cache->cudaCsrRowPtr, cache->cudaCsrColInd, cache->cudaBSparse);
+                    cache->cudaCsrVals = {};
+                    cache->cudaCsrRowPtr = {};
+                    cache->cudaCsrColInd = {};
+                    cache->cudaBSparse = {};
+                };
             } else {
 #endif
                 if (settings.useNormalEquations) {

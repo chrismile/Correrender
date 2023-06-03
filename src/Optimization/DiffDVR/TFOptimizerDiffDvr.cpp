@@ -197,15 +197,17 @@ void TFOptimizerDiffDvr::onRequestQueued(VolumeData* volumeData) {
     if (textureFieldGT) {
         cachedSampler = textureFieldGT->getImageSampler();
     }
+    CopyFieldImageDestinationData copyFieldImageDestinationData{};
+    copyFieldImageDestinationData.inputImageGT = &imageViewFieldGT;
+    copyFieldImageDestinationData.inputImageOpt = &imageViewFieldOpt;
     copyFieldImages(
             parentRenderer->getDevice(),
             uint32_t(volumeData->getGridSizeX()),
             uint32_t(volumeData->getGridSizeY()),
             uint32_t(volumeData->getGridSizeZ()),
             fieldEntryGT->getVulkanImage(), fieldEntryOpt->getVulkanImage(),
-            imageViewFieldGT, imageViewFieldOpt,
-            cachedFormatGT, cachedFormatOpt,
-            settings.fieldIdxGT, settings.fieldIdxOpt, true);
+            copyFieldImageDestinationData,
+            settings.fieldIdxGT, settings.fieldIdxOpt, true, false);
 
     auto sampler = volumeData->getImageSampler();
     if (cachedSampler != sampler || cachedImageViewGT != imageViewFieldGT || cachedImageViewOpt != imageViewFieldOpt) {

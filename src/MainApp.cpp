@@ -403,6 +403,12 @@ MainApp::MainApp()
     }
 
     tfOptimization = new TFOptimization(rendererVk);
+#ifdef CUDA_ENABLED
+    if (cudaInteropInitialized) {
+        tfOptimization->setCudaContext(cuContext);
+    }
+#endif
+    tfOptimization->initialize();
 
 #ifdef __linux__
     signal(SIGSEGV, signalHandler);

@@ -66,6 +66,7 @@ public:
     const sgl::vk::TexturePtr& getVulkanTexture();
 #ifdef SUPPORT_CUDA_INTEROP
     CUtexObject getCudaTexture();
+    sgl::vk::TextureCudaExternalMemoryVkPtr getTextureCudaExternalMemory();
     const sgl::vk::ImageCudaExternalMemoryVkPtr& getImageCudaExternalMemory();
 #endif
 
