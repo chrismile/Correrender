@@ -230,6 +230,7 @@ void TFOptimizerDiffDvr::runOptimization(bool& shallStop, bool& hasStopped) {
     }
 
     // TODO: Add support for double buffering?
+    auto startSolve = std::chrono::system_clock::now();
     for (; currentEpoch < maxNumEpochs; currentEpoch++) {
         if (shallStop) {
             hasStopped = true;
@@ -279,6 +280,11 @@ void TFOptimizerDiffDvr::runOptimization(bool& shallStop, bool& hasStopped) {
             tfArrayOpt.at(i) = glm::clamp(tfData[i], 0.0f, 1.0f);
         }
         tfDownloadStagingBuffer->unmapMemory();
+
+        if (supportsAsyncCompute) {
+            auto endSolve = std::chrono::system_clock::now();
+            std::cout << "Elapsed time solve: " << std::chrono::duration<double>(endSolve - startSolve).count() << "s" << std::endl;
+        }
     }
 }
 

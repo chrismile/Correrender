@@ -56,6 +56,8 @@ void main() {
     if (!isnan(val0) && !isnan(val1)) {
         vec4 volumeColor0 = transferFunction(val0, fieldIndex0);
         vec4 volumeColor1 = transferFunction(val1, fieldIndex1);
+        volumeColor0.rgb *= volumeColor0.a;
+        volumeColor1.rgb *= volumeColor1.a;
         vec4 vdiff = volumeColor0 - volumeColor1;
         outputValue = length(vdiff);
     }

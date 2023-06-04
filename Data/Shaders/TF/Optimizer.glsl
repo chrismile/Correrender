@@ -57,12 +57,12 @@ void main() {
     }
 
     // Update the parameters.
-    //if (globalThreadIdx == 3) {
-    //    debugPrintfEXT("g: %f, %f", tfOpt[globalThreadIdx], g[globalThreadIdx]);
+    //if (globalThreadIdx >= 252) {
+    //    debugPrintfEXT("g: %u, %f, %f", globalThreadIdx, tfOpt[globalThreadIdx], g[globalThreadIdx]);
     //}
     //debugPrintfEXT("g: %u %f, %f", globalThreadIdx, tfOpt[globalThreadIdx], g[globalThreadIdx]);
-    tfOpt[globalThreadIdx] -= alpha * g[globalThreadIdx];
-    //tfOpt[globalThreadIdx] = clamp(tfOpt[globalThreadIdx] - alpha * g[globalThreadIdx], 0.0, 1.0);
+    //tfOpt[globalThreadIdx] -= alpha * g[globalThreadIdx];
+    tfOpt[globalThreadIdx] = clamp(tfOpt[globalThreadIdx] - alpha * g[globalThreadIdx], 0.0, 1.0);
 }
 
 
@@ -128,6 +128,6 @@ void main() {
     //if (globalThreadIdx == NUM_TF_ENTRIES / 2) {
     //    debugPrintfEXT("%f, %f, %f, %f, %f, %f, %f, %f", tfOpt[globalThreadIdx], alpha, beta1, beta2, gt, mht, vht, epsilon);
     //}
-    tfOpt[globalThreadIdx] -= alpha * mht / (sqrt(vht) + epsilon);
-    //tfOpt[globalThreadIdx] = clamp(tfOpt[globalThreadIdx] -alpha * mht / (sqrt(vht) + epsilon), 0.0, 1.0);
+    //tfOpt[globalThreadIdx] -= alpha * mht / (sqrt(vht) + epsilon);
+    tfOpt[globalThreadIdx] = clamp(tfOpt[globalThreadIdx] - alpha * mht / (sqrt(vht) + epsilon), 0.0, 1.0);
 }

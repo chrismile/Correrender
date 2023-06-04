@@ -143,6 +143,7 @@ void TFOptimizerGD::runOptimization(bool& shallStop, bool& hasStopped) {
     gradientPass->setShaderDirty();
 
     // TODO: Add support for double buffering?
+    auto startSolve = std::chrono::system_clock::now();
     for (; currentEpoch < maxNumEpochs; currentEpoch++) {
         if (shallStop) {
             hasStopped = true;
@@ -185,14 +186,19 @@ void TFOptimizerGD::runOptimization(bool& shallStop, bool& hasStopped) {
         fence->wait();
         fence->reset();
 
-        std::cout << "x:" << std::endl;
+        //std::cout << "x:" << std::endl;
         auto* tfData = reinterpret_cast<glm::vec4*>(tfDownloadStagingBuffer->mapMemory());
         for (uint32_t i = 0; i < settings.tfSize; i++) {
-            std::cout << tfData[i][0] << ", " << tfData[i][1] << ", " << tfData[i][2] << ", " << tfData[i][3] << std::endl;
+            //std::cout << tfData[i][0] << ", " << tfData[i][1] << ", " << tfData[i][2] << ", " << tfData[i][3] << std::endl;
             tfArrayOpt.at(i) = glm::clamp(tfData[i], 0.0f, 1.0f);
         }
         tfDownloadStagingBuffer->unmapMemory();
-        std::cout << std::endl << std::endl;
+        //std::cout << std::endl << std::endl;
+
+        if (supportsAsyncCompute) {
+            auto endSolve = std::chrono::system_clock::now();
+            std::cout << "Elapsed time solve: " << std::chrono::duration<double>(endSolve - startSolve).count() << "s" << std::endl;
+        }
     }
 }
 

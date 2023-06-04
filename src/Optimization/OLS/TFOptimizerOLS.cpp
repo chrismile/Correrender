@@ -298,7 +298,7 @@ void TFOptimizerOLS::buildSystemSparse() {
     float minOpt = cache->minMaxOpt.first;
     float maxOpt = cache->minMaxOpt.second;
 
-    if (settings.useCudaMatrixSetup) {
+    if (settings.backend == OLSBackend::CUDA && settings.useCudaMatrixSetup) {
         createSystemMatrixCudaSparse(
                 int(cache->cachedXs), int(cache->cachedYs), int(cache->cachedZs), int(cache->cachedTfSize),
                 minGT, maxGT, minOpt, maxOpt,
