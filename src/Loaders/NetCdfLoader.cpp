@@ -33,6 +33,7 @@
 
 #include <netcdf.h>
 
+#include <Utils/StringUtils.hpp>
 #include <Utils/File/Logfile.hpp>
 
 #include "Volume/VolumeData.hpp"
@@ -449,10 +450,21 @@ bool NetCdfLoader::setInputFiles(
 bool NetCdfLoader::getFieldEntry(
         VolumeData* volumeData, FieldType fieldType, const std::string& fieldName,
         int timestepIdx, int memberIdx, HostCacheEntryType*& fieldEntry) {
-    auto it = datasetNameMap.find(fieldName);
+    std::string fieldNameLoad = fieldName;
+    if (dataSetInformation.separateFilesPerAttribute) {
+        if (datasetNameMap.size() == 1) {
+            fieldNameLoad = datasetNameMap.begin()->first;
+        } else if (fieldNameLoad.find('_') != std::string::npos && fieldNameLoad.size() > 1) {
+            std::vector<std::string> stringParts;
+            sgl::splitString(fieldNameLoad, '_', stringParts);
+            fieldNameLoad = stringParts.front();
+        }
+    }
+
+    auto it = datasetNameMap.find(fieldNameLoad);
     if (it == datasetNameMap.end()) {
         sgl::Logfile::get()->throwError(
-                "Error in NetCdfLoader::getFieldEntry: Unknown field name \"" + fieldName + "\".");
+                "Error in NetCdfLoader::getFieldEntry: Unknown field name \"" + fieldNameLoad + "\".");
         return false;
     }
 

@@ -640,7 +640,6 @@ void createSystemMatrixCudaSparse(
     cudaErrorCheck(cudaMalloc((void**)&dtfGT, sizeof(float4) * tfSize));
     cudaErrorCheck(cudaMemcpy(dtfGT, tfGT, sizeof(float4) * tfSize, cudaMemcpyHostToDevice));
 
-    const uint32_t blockSize1D = 256;
     const dim3 blockSize3D = dim3(8, 8, 4);
     const dim3 gridSize3D = dim3(
             sgl::uiceil(uint32_t(xs), blockSize3D.x),
