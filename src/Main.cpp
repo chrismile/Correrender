@@ -206,6 +206,9 @@ int main(int argc, char *argv[]) {
     requestedDeviceFeatures.optionalPhysicalDeviceFeatures.fillModeNonSolid = VK_TRUE; // For VKVG (if enabled).
     requestedDeviceFeatures.optionalEnableShaderDrawParametersFeatures = true; // For deferred shading.
     requestedDeviceFeatures.requestedPhysicalDeviceFeatures.fragmentStoresAndAtomics = VK_TRUE;
+    // For transfer function optimization with 64-bit accuracy.
+    requestedDeviceFeatures.optionalPhysicalDeviceFeatures.shaderInt64 = VK_TRUE;
+    requestedDeviceFeatures.optionalPhysicalDeviceFeatures.shaderFloat64 = VK_TRUE;
     // For ensemble combination when using Vulkan-CUDA interop with PyTorch.
     requestedDeviceFeatures.optionalPhysicalDeviceFeatures.shaderSampledImageArrayDynamicIndexing = VK_TRUE;
     requestedDeviceFeatures.optionalPhysicalDeviceFeatures.shaderStorageBufferArrayDynamicIndexing = VK_TRUE;

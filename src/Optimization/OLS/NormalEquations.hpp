@@ -34,6 +34,7 @@
 class NormalEquationsComputePass : public sgl::vk::ComputePass {
 public:
     explicit NormalEquationsComputePass(sgl::vk::Renderer* renderer);
+    void setUseDoublePrecision(bool _useDoublePrecision);
     void setInputImages(
             const sgl::vk::ImageViewPtr& _inputImageGT,
             const sgl::vk::ImageViewPtr& _inputImageOpt);
@@ -57,6 +58,7 @@ private:
     UniformData uniformData{};
     sgl::vk::BufferPtr uniformBuffer;
 
+    bool useDoublePrecision = false;
     sgl::vk::ImageViewPtr inputImageGT, inputImageOpt;
     sgl::vk::BufferPtr lhsBuffer, rhsBuffer;
     sgl::vk::BufferPtr transferFunctionGTBuffer;
@@ -65,6 +67,7 @@ private:
 class NormalEquationsCopySymmetricPass : public sgl::vk::ComputePass {
 public:
     explicit NormalEquationsCopySymmetricPass(sgl::vk::Renderer* renderer);
+    void setUseDoublePrecision(bool _useDoublePrecision);
     void setBuffers(uint32_t _tfNumEntries, const sgl::vk::BufferPtr& _lhsBuffer);
 
 protected:
@@ -74,6 +77,7 @@ protected:
 
 private:
     const uint32_t computeBlockSize = 64;
+    bool useDoublePrecision = false;
     uint32_t tfNumEntries = 0;
     sgl::vk::BufferPtr lhsBuffer;
 };

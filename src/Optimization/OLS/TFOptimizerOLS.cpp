@@ -131,6 +131,9 @@ TFOptimizerOLSTyped<Real>::TFOptimizerOLSTyped(
     cache = new TFOptimizerOLSCacheTyped<Real>;
     normalEquationsComputePass = std::make_shared<NormalEquationsComputePass>(renderer);
     normalEquationsCopySymmetricPass = std::make_shared<NormalEquationsCopySymmetricPass>(renderer);
+    bool useDoublePrecision = std::is_same<Real, double>();
+    normalEquationsComputePass->setUseDoublePrecision(useDoublePrecision);
+    normalEquationsCopySymmetricPass->setUseDoublePrecision(useDoublePrecision);
 }
 
 template<class Real>
@@ -192,19 +195,19 @@ void TFOptimizerOLSTyped<Real>::onRequestQueued(VolumeData* volumeData) {
         sgl::vk::Device* device = renderer->getDevice();
         if (!cache->lhsBuffer || cache->cachedTfSize != settings.tfSize) {
             cache->lhsBuffer = std::make_shared<sgl::vk::Buffer>(
-                    device, sizeof(glm::vec4) * sizeof(glm::vec4) * settings.tfSize * settings.tfSize,
+                    device, 16 * sizeof(Real) * settings.tfSize * settings.tfSize,
                     VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                     VMA_MEMORY_USAGE_GPU_ONLY);
             cache->rhsBuffer = std::make_shared<sgl::vk::Buffer>(
-                    device, sizeof(glm::vec4) * settings.tfSize,
+                    device, 4 * sizeof(Real) * settings.tfSize,
                     VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                     VMA_MEMORY_USAGE_GPU_ONLY);
             cache->lhsStagingBuffer = std::make_shared<sgl::vk::Buffer>(
-                    device, sizeof(glm::vec4) * sizeof(glm::vec4) * settings.tfSize * settings.tfSize,
+                    device, 16 * sizeof(Real) * settings.tfSize * settings.tfSize,
                     VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                     VMA_MEMORY_USAGE_GPU_TO_CPU);
             cache->rhsStagingBuffer = std::make_shared<sgl::vk::Buffer>(
-                    device, sizeof(glm::vec4) * settings.tfSize,
+                    device, 4 * sizeof(Real) * settings.tfSize,
                     VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                     VMA_MEMORY_USAGE_GPU_TO_CPU);
         }
@@ -581,7 +584,7 @@ void TFOptimizerOLSTyped<Real>::runOptimization(bool& shallStop, bool& hasStoppe
         fence->wait();
         fence->reset();
 
-        auto* lhsData = reinterpret_cast<float*>(cache->lhsStagingBuffer->mapMemory());
+        /*auto* lhsData = reinterpret_cast<float*>(cache->lhsStagingBuffer->mapMemory());
         auto* rhsData = reinterpret_cast<float*>(cache->rhsStagingBuffer->mapMemory());
         Eigen::MatrixXr lhs = Eigen::MatrixXr(tfNumEntries, tfNumEntries);
         Eigen::MatrixXr rhs = Eigen::VectorXr(tfNumEntries);
@@ -597,7 +600,13 @@ void TFOptimizerOLSTyped<Real>::runOptimization(bool& shallStop, bool& hasStoppe
         } else {
             memcpy(lhs.data(), lhsData, 4 * tfNumEntries * tfNumEntries);
             memcpy(rhs.data(), rhsData, 4 * tfNumEntries);
-        }
+        }*/
+        auto* lhsData = reinterpret_cast<Real*>(cache->lhsStagingBuffer->mapMemory());
+        auto* rhsData = reinterpret_cast<Real*>(cache->rhsStagingBuffer->mapMemory());
+        Eigen::MatrixXr lhs = Eigen::MatrixXr(tfNumEntries, tfNumEntries);
+        Eigen::MatrixXr rhs = Eigen::VectorXr(tfNumEntries);
+        memcpy(lhs.data(), lhsData, sizeof(Real) * tfNumEntries * tfNumEntries);
+        memcpy(rhs.data(), rhsData, sizeof(Real) * tfNumEntries);
         cache->lhsStagingBuffer->unmapMemory();
         cache->rhsStagingBuffer->unmapMemory();
 

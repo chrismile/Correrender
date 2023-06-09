@@ -47,6 +47,13 @@ NormalEquationsComputePass::NormalEquationsComputePass(sgl::vk::Renderer* render
             VMA_MEMORY_USAGE_GPU_ONLY);
 }
 
+void NormalEquationsComputePass::setUseDoublePrecision(bool _useDoublePrecision) {
+    if (useDoublePrecision != _useDoublePrecision) {
+        useDoublePrecision = _useDoublePrecision;
+        setShaderDirty();
+    }
+}
+
 void NormalEquationsComputePass::setInputImages(
         const sgl::vk::ImageViewPtr& _inputImageGT,
         const sgl::vk::ImageViewPtr& _inputImageOpt) {
@@ -122,8 +129,25 @@ void NormalEquationsComputePass::loadShader() {
     preprocessorDefines.insert(std::make_pair("BLOCK_SIZE_X", std::to_string(computeBlockSizeX)));
     preprocessorDefines.insert(std::make_pair("BLOCK_SIZE_Y", std::to_string(computeBlockSizeY)));
     preprocessorDefines.insert(std::make_pair("BLOCK_SIZE_Z", std::to_string(computeBlockSizeZ)));
-    if (renderer->getDevice()->getPhysicalDeviceShaderAtomicFloatFeatures().shaderBufferFloat32AtomicAdd) {
+    std::string glslExtensionsString;
+    if (useDoublePrecision) {
+        preprocessorDefines.insert(std::make_pair("USE_DOUBLE_PRECISION", ""));
+        if (renderer->getDevice()->getPhysicalDeviceShaderAtomicFloatFeatures().shaderBufferFloat64AtomicAdd) {
+            glslExtensionsString = "GL_EXT_shader_explicit_arithmetic_types_float64";
+        } else {
+            glslExtensionsString = "GL_EXT_shader_explicit_arithmetic_types_int64";
+        }
+    }
+    if ((useDoublePrecision && renderer->getDevice()->getPhysicalDeviceShaderAtomicFloatFeatures().shaderBufferFloat64AtomicAdd)
+            || (!useDoublePrecision && renderer->getDevice()->getPhysicalDeviceShaderAtomicFloatFeatures().shaderBufferFloat32AtomicAdd)) {
+        if (!glslExtensionsString.empty()) {
+            glslExtensionsString += ",";
+        }
+        glslExtensionsString += "GL_EXT_shader_atomic_float";
         preprocessorDefines.insert(std::make_pair("SUPPORT_BUFFER_FLOAT_ATOMIC_ADD", ""));
+    }
+    if (!glslExtensionsString.empty()) {
+        preprocessorDefines.insert(std::make_pair("__extensions", glslExtensionsString));
     }
     shaderStages = sgl::vk::ShaderManager->getShaderStages({ "NormalEquations.Compute" }, preprocessorDefines);
 }
@@ -165,6 +189,13 @@ NormalEquationsCopySymmetricPass::NormalEquationsCopySymmetricPass(sgl::vk::Rend
         : ComputePass(renderer) {
 }
 
+void NormalEquationsCopySymmetricPass::setUseDoublePrecision(bool _useDoublePrecision) {
+    if (useDoublePrecision != _useDoublePrecision) {
+        useDoublePrecision = _useDoublePrecision;
+        setShaderDirty();
+    }
+}
+
 void NormalEquationsCopySymmetricPass::setBuffers(uint32_t _tfNumEntries, const sgl::vk::BufferPtr& _lhsBuffer) {
     tfNumEntries = _tfNumEntries;
     if (lhsBuffer != _lhsBuffer) {
@@ -179,6 +210,14 @@ void NormalEquationsCopySymmetricPass::loadShader() {
     sgl::vk::ShaderManager->invalidateShaderCache();
     std::map<std::string, std::string> preprocessorDefines;
     preprocessorDefines.insert(std::make_pair("BLOCK_SIZE", std::to_string(computeBlockSize)));
+    if (useDoublePrecision) {
+        preprocessorDefines.insert(std::make_pair("USE_DOUBLE_PRECISION", ""));
+        if (renderer->getDevice()->getPhysicalDeviceShaderAtomicFloatFeatures().shaderBufferFloat64AtomicAdd) {
+            preprocessorDefines.insert(std::make_pair("__extensions", "GL_EXT_shader_explicit_arithmetic_types_float64"));
+        } else {
+            preprocessorDefines.insert(std::make_pair("__extensions", "GL_EXT_shader_explicit_arithmetic_types_int64"));
+        }
+    }
     shaderStages = sgl::vk::ShaderManager->getShaderStages(
             { "NormalEquations.ComputeSymmetrization" }, preprocessorDefines);
 }

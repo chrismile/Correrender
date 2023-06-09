@@ -30,9 +30,6 @@
 
 #version 450 core
 
-#extension GL_EXT_shader_atomic_float : require
-//#extension GL_EXT_debug_printf : enable
-
 layout(local_size_x = BLOCK_SIZE_X, local_size_y = BLOCK_SIZE_Y, local_size_z = BLOCK_SIZE_Z) in;
 //layout(local_size_x = BLOCK_SIZE) in;
 
@@ -49,14 +46,43 @@ layout(binding = 1, INPUT_IMAGE_0_FORMAT) uniform readonly image3D inputImageGT;
 layout(binding = 2, INPUT_IMAGE_1_FORMAT) uniform readonly image3D inputImageOpt;
 
 layout(binding = 3) coherent buffer LhsBuffer {
+#ifdef USE_DOUBLE_PRECISION
+
+#ifdef SUPPORT_BUFFER_FLOAT_ATOMIC_ADD
+    double lhs[];
+#else
+    uint64_t lhs[];
+#endif
+
+#else
+
 #ifdef SUPPORT_BUFFER_FLOAT_ATOMIC_ADD
     float lhs[];
 #else
     uint lhs[];
 #endif
+
+#endif
 };
 
 void atomicAddLhs(uint idx, float value) {
+#ifdef USE_DOUBLE_PRECISION
+
+    double valueDouble = double(value);
+#ifdef SUPPORT_BUFFER_FLOAT_ATOMIC_ADD
+    atomicAdd(lhs[idx], valueDouble);
+#else
+    uint64_t oldValue = lhs[idx];
+    uint64_t expectedValue, newValue;
+    do {
+        expectedValue = oldValue;
+        newValue = doubleBitsToUint64(uint64BitsToDouble(oldValue) + valueDouble);
+        oldValue = atomicCompSwap(lhs[idx], expectedValue, newValue);
+    } while (oldValue != expectedValue);
+#endif
+
+#else
+
 #ifdef SUPPORT_BUFFER_FLOAT_ATOMIC_ADD
     atomicAdd(lhs[idx], value);
 #else
@@ -68,17 +94,48 @@ void atomicAddLhs(uint idx, float value) {
         oldValue = atomicCompSwap(lhs[idx], expectedValue, newValue);
     } while (oldValue != expectedValue);
 #endif
+
+#endif
 }
 
 layout(binding = 4) coherent buffer RhsBuffer {
+#ifdef USE_DOUBLE_PRECISION
+
+#ifdef SUPPORT_BUFFER_FLOAT_ATOMIC_ADD
+    double rhs[];
+#else
+    uint64_t rhs[];
+#endif
+
+#else
+
 #ifdef SUPPORT_BUFFER_FLOAT_ATOMIC_ADD
     float rhs[];
 #else
     uint rhs[];
 #endif
+
+#endif
 };
 
 void atomicAddRhs(uint idx, float value) {
+#ifdef USE_DOUBLE_PRECISION
+
+    double valueDouble = double(value);
+#ifdef SUPPORT_BUFFER_FLOAT_ATOMIC_ADD
+    atomicAdd(rhs[idx], valueDouble);
+#else
+    uint64_t oldValue = rhs[idx];
+    uint64_t expectedValue, newValue;
+    do {
+        expectedValue = oldValue;
+        newValue = doubleBitsToUint64(uint64BitsToDouble(oldValue) + valueDouble);
+        oldValue = atomicCompSwap(rhs[idx], expectedValue, newValue);
+    } while (oldValue != expectedValue);
+#endif
+
+#else
+
 #ifdef SUPPORT_BUFFER_FLOAT_ATOMIC_ADD
     atomicAdd(rhs[idx], value);
 #else
@@ -89,6 +146,8 @@ void atomicAddRhs(uint idx, float value) {
         newValue = floatBitsToUint(uintBitsToFloat(oldValue) + value);
         oldValue = atomicCompSwap(rhs[idx], expectedValue, newValue);
     } while (oldValue != expectedValue);
+#endif
+
 #endif
 }
 
@@ -155,7 +214,11 @@ layout(push_constant) uniform PushConstants {
 };
 
 layout(binding = 0) coherent buffer LhsBuffer {
+#ifdef USE_DOUBLE_PRECISION
+    double lhs[];
+#else
     float lhs[];
+#endif
 };
 
 // Fast integer square root, i.e., floor(sqrt(s)), see https://en.wikipedia.org/wiki/Integer_square_root
