@@ -38,6 +38,14 @@ const char* const TF_OPTIMIZER_METHOD_NAMES[] = {
         "Ordinary Least Squares (OLS)", "Gradient Descent", "Differentiable Volume Rendering"
 };
 
+// At the moment only supported in the OLS solver.
+enum class FloatAccuracy {
+    FLOAT, DOUBLE
+};
+const char* const FLOAT_ACCURACY_NAMES[] = {
+        "Float", "Double"
+};
+
 /// For more details see: https://eigen.tuxfamily.org/dox/group__TutorialLinearAlgebra.html
 enum class EigenSolverType {
     PartialPivLU, FullPivLU, HouseholderQR, ColPivHouseholderQR, FullPivHouseholderQR,
@@ -109,6 +117,7 @@ struct TFOptimizationWorkerSettings {
     TFOptimizerMethod optimizerMethod = TFOptimizerMethod::OLS;
 
     // For OLS.
+    FloatAccuracy floatAccuracy = FloatAccuracy::FLOAT;
     EigenSolverType eigenSolverType = EigenSolverType::HouseholderQR;
     EigenSparseSolverType eigenSparseSolverType = EigenSparseSolverType::LEAST_SQUARES_CG_PRECONDITIONED;
     CudaSolverType cudaSolverType = CudaSolverType::QR;

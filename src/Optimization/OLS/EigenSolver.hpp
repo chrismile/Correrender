@@ -46,9 +46,18 @@
  * @param b The right-hand side vector.
  * @param x The left-hand side vector to solve for (output).
  */
+template<class Real>
 void solveLeastSquaresEigenDense(
-        EigenSolverType eigenSolverType, bool useRelaxation, const Real lambdaL,
+        EigenSolverType eigenSolverType, bool useRelaxation, Real lambdaL,
         const Eigen::MatrixXr& A, const Eigen::MatrixXr& b, Eigen::MatrixXr& x);
+extern template
+void solveLeastSquaresEigenDense<float>(
+        EigenSolverType eigenSolverType, bool useRelaxation, float lambdaL,
+        const Eigen::MatrixXf& A, const Eigen::MatrixXf& b, Eigen::MatrixXf& x);
+extern template
+void solveLeastSquaresEigenDense<double>(
+        EigenSolverType eigenSolverType, bool useRelaxation, double lambdaL,
+        const Eigen::MatrixXd& A, const Eigen::MatrixXd& b, Eigen::MatrixXd& x);
 
 /**
  * Solves A*x = b for the vector x for a symmetric matrix A.
@@ -61,9 +70,18 @@ void solveLeastSquaresEigenDense(
  * @param b The right-hand side vector.
  * @param x The left-hand side vector to solve for (output).
  */
+template<class Real>
 void solveLinearSystemEigenSymmetric(
-        EigenSolverType eigenSolverType, const Real lambdaL,
+        EigenSolverType eigenSolverType, Real lambdaL,
         const Eigen::MatrixXr& A, const Eigen::MatrixXr& b, Eigen::MatrixXr& x);
+extern template
+void solveLinearSystemEigenSymmetric<float>(
+        EigenSolverType eigenSolverType, float lambdaL,
+        const Eigen::MatrixXf& A, const Eigen::MatrixXf& b, Eigen::MatrixXf& x);
+extern template
+void solveLinearSystemEigenSymmetric<double>(
+        EigenSolverType eigenSolverType, double lambdaL,
+        const Eigen::MatrixXd& A, const Eigen::MatrixXd& b, Eigen::MatrixXd& x);
 
 /**
  * Solves A*x = b for the vector x.
@@ -75,9 +93,18 @@ void solveLinearSystemEigenSymmetric(
  * @param b The right-hand side vector.
  * @param x The left-hand side vector to solve for (output).
  */
+template<class Real>
 void solveLeastSquaresEigenSparse(
-        EigenSparseSolverType solverType, const Real lambdaL,
+        EigenSparseSolverType solverType, Real lambdaL,
         const Eigen::SparseMatrixXr& A, const Eigen::MatrixXr& b, Eigen::MatrixXr& x);
+extern template
+void solveLeastSquaresEigenSparse<float>(
+        EigenSparseSolverType solverType, float lambdaL,
+        const Eigen::SparseMatrixXf& A, const Eigen::MatrixXf& b, Eigen::MatrixXf& x);
+extern template
+void solveLeastSquaresEigenSparse<double>(
+        EigenSparseSolverType solverType, double lambdaL,
+        const Eigen::SparseMatrixXd& A, const Eigen::MatrixXd& b, Eigen::MatrixXd& x);
 
 /**
  * Solves A*x = b for the vector x using the normal equations, i.e., A^T A x = A^T b.
@@ -89,8 +116,17 @@ void solveLeastSquaresEigenSparse(
  * @param b The right-hand side vector.
  * @param x The left-hand side vector to solve for (output).
  */
+template<class Real>
 void solveLeastSquaresEigenSparseNormalEquations(
-        EigenSolverType eigenSolverType, const Real lambdaL,
+        EigenSolverType eigenSolverType, Real lambdaL,
         const Eigen::SparseMatrixXr& A, const Eigen::MatrixXr& b, Eigen::MatrixXr& x);
+extern template
+void solveLeastSquaresEigenSparseNormalEquations<float>(
+        EigenSolverType eigenSolverType, float lambdaL,
+        const Eigen::SparseMatrixXf& A, const Eigen::MatrixXf& b, Eigen::MatrixXf& x);
+extern template
+void solveLeastSquaresEigenSparseNormalEquations<double>(
+        EigenSolverType eigenSolverType, double lambdaL,
+        const Eigen::SparseMatrixXd& A, const Eigen::MatrixXd& b, Eigen::MatrixXd& x);
 
 #endif //SH_AUG_EIGENSOLVER_HPP

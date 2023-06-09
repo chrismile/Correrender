@@ -38,6 +38,7 @@
  * Christopher C. Paige, Michael A. Saunders. 1982.
  * ACM Transactions on Mathematical Software, Volume 8, Issue 1.
  */
+template<class Real>
 void solveLeastSquaresEigenLSQR(
         const Eigen::SparseMatrixXr& A, const Eigen::MatrixXr& b, Eigen::MatrixXr& x, int maxIter) {
     constexpr auto eps = Real(std::is_same<Real, double>::value ? 1e-17 : 1e-7);

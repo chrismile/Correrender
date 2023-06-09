@@ -59,9 +59,18 @@ void cudaRelease();
  * @param b The right-hand side vector.
  * @param x The solution of the least squares problem.
  */
+template<class Real>
 void solveLeastSquaresCudaDense(
         CudaSolverType cudaSolverType, bool useNormalEquations, const Real lambdaL,
         const Eigen::MatrixXr& A, const Eigen::MatrixXr& b, Eigen::MatrixXr& x);
+extern template
+void solveLeastSquaresCudaDense<float>(
+        CudaSolverType cudaSolverType, bool useNormalEquations, const float lambdaL,
+        const Eigen::MatrixXf& A, const Eigen::MatrixXf& b, Eigen::MatrixXf& x);
+extern template
+void solveLeastSquaresCudaDense<double>(
+        CudaSolverType cudaSolverType, bool useNormalEquations, const double lambdaL,
+        const Eigen::MatrixXd& A, const Eigen::MatrixXd& b, Eigen::MatrixXd& x);
 
 /**
  * Solves A*x = b for the vector x in the least squares sense.
@@ -75,10 +84,21 @@ void solveLeastSquaresCudaDense(
  * @param b The right-hand side vector.
  * @param x The solution of the least squares problem.
  */
+template<class Real>
 void solveLeastSquaresCudaSparse(
         CudaSparseSolverType cudaSparseSolverType, bool isDevicePtr, Real lambdaL,
         int m, int n, int nnz, Real* csrVals, int* csrRowPtr, int* csrColInd,
         Real* b, Eigen::MatrixXr& x);
+extern template
+void solveLeastSquaresCudaSparse<float>(
+        CudaSparseSolverType cudaSparseSolverType, bool isDevicePtr, float lambdaL,
+        int m, int n, int nnz, float * csrVals, int* csrRowPtr, int* csrColInd,
+        float * b, Eigen::MatrixXf& x);
+extern template
+void solveLeastSquaresCudaSparse<double>(
+        CudaSparseSolverType cudaSparseSolverType, bool isDevicePtr, double lambdaL,
+        int m, int n, int nnz, double * csrVals, int* csrRowPtr, int* csrColInd,
+        double* b, Eigen::MatrixXd& x);
 
 /**
  * Solves A*x = b for the vector x using the normal equations, i.e., A^T A x = A^T b.
@@ -92,16 +112,43 @@ void solveLeastSquaresCudaSparse(
  * @param b The right-hand side vector.
  * @param x The solution of the least squares problem.
  */
+template<class Real>
 void solveLeastSquaresCudaSparseNormalEquations(
         CudaSparseSolverType cudaSparseSolverType, EigenSolverType eigenSolverType, bool isDevicePtr, Real lambdaL,
         int m, int n, int nnz, Real* csrVals, int* csrRowPtr, int* csrColInd,
         Real* b, Eigen::MatrixXr& x);
+extern template
+void solveLeastSquaresCudaSparseNormalEquations<float>(
+        CudaSparseSolverType cudaSparseSolverType, EigenSolverType eigenSolverType, bool isDevicePtr, float lambdaL,
+        int m, int n, int nnz, float* csrVals, int* csrRowPtr, int* csrColInd,
+        float* b, Eigen::MatrixXf& x);
+extern template
+void solveLeastSquaresCudaSparseNormalEquations<double>(
+        CudaSparseSolverType cudaSparseSolverType, EigenSolverType eigenSolverType, bool isDevicePtr, double lambdaL,
+        int m, int n, int nnz, double* csrVals, int* csrRowPtr, int* csrColInd,
+        double* b, Eigen::MatrixXd& x);
 
+template<class Real>
 void createSystemMatrixCudaSparse(
         int xs, int ys, int zs, int tfSize, float minGT, float maxGT, float minOpt, float maxOpt,
-        CUtexObject scalarFieldGT, CUtexObject scalarFieldOpt, const Real* tfGT,
+        CUtexObject scalarFieldGT, CUtexObject scalarFieldOpt, const float* tfGT,
         int& numRows, int& nnz, Real*& csrVals, int*& csrRowPtr, int*& csrColInd, Real*& b);
+extern template
+void createSystemMatrixCudaSparse<float>(
+        int xs, int ys, int zs, int tfSize, float minGT, float maxGT, float minOpt, float maxOpt,
+        CUtexObject scalarFieldGT, CUtexObject scalarFieldOpt, const float* tfGT,
+        int& numRows, int& nnz, float*& csrVals, int*& csrRowPtr, int*& csrColInd, float*& b);
+extern template
+void createSystemMatrixCudaSparse<double>(
+        int xs, int ys, int zs, int tfSize, float minGT, float maxGT, float minOpt, float maxOpt,
+        CUtexObject scalarFieldGT, CUtexObject scalarFieldOpt, const float* tfGT,
+        int& numRows, int& nnz, double*& csrVals, int*& csrRowPtr, int*& csrColInd, double*& b);
 
+template<class Real>
 void freeSystemMatrixCudaSparse(Real* csrVals, int* csrRowPtr, int* csrColInd, Real* b);
+extern template
+void freeSystemMatrixCudaSparse<float>(float* csrVals, int* csrRowPtr, int* csrColInd, float* b);
+extern template
+void freeSystemMatrixCudaSparse<double>(double* csrVals, int* csrRowPtr, int* csrColInd, double* b);
 
 #endif //SH_AUG_CUDASOLVER_HPP

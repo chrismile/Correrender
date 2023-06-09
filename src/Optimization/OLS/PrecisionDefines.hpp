@@ -31,9 +31,13 @@
 
 #define SPARSE_ROW_MAJOR
 #ifdef SPARSE_ROW_MAJOR
-#define SparseMatrixXr SparseMatrixRowXr
+#define SparseMatrixXr SparseMatrix<Real, Eigen::RowMajor>
+#define SparseMatrixXf SparseMatrix<float, Eigen::RowMajor>
+#define SparseMatrixXd SparseMatrix<double , Eigen::RowMajor>
 #else
-#define SparseMatrixXr SparseMatrixColXr
+#define SparseMatrixXr SparseMatrix<Real, Eigen::ColMajor>
+#define SparseMatrixXf SparseMatrix<float, Eigen::ColMajor>
+#define SparseMatrixXd SparseMatrix<double, Eigen::ColMajor>
 #endif
 
 /**
@@ -87,38 +91,45 @@ typedef SparseMatrix<double, Eigen::RowMajor> SparseMatrixRowXr;
 
 typedef float Real;
 #define stringToReal std::stod
-constexpr Real REAL_EPSILON = 1e-3f;//std::numeric_limits<Real>::epsilon();
+//constexpr Real REAL_EPSILON = 1e-3f;//std::numeric_limits<Real>::epsilon();
 
 // LU decomposition
-#define cusolverDnRgetrf_bufferSize cusolverDnSgetrf_bufferSize
-#define cusolverDnRgetrf cusolverDnSgetrf
-#define cusolverDnRgetrs cusolverDnSgetrs
+//#define cusolverDnRgetrf_bufferSize cusolverDnSgetrf_bufferSize
+//#define cusolverDnRgetrf cusolverDnSgetrf
+//#define cusolverDnRgetrs cusolverDnSgetrs
 // QR decomposition
-#define cublasRgemm cublasSgemm
-#define cublasRtrsm cublasStrsm
-#define cusolverDnRgeqrf_bufferSize cusolverDnSgeqrf_bufferSize
-#define cusolverDnRormqr_bufferSize cusolverDnSormqr_bufferSize
-#define cusolverDnRgeqrf cusolverDnSgeqrf
-#define cusolverDnRormqr cusolverDnSormqr
+//#define cublasRgemm cublasSgemm
+//#define cublasRtrsm cublasStrsm
+//#define cusolverDnRgeqrf_bufferSize cusolverDnSgeqrf_bufferSize
+//#define cusolverDnRormqr_bufferSize cusolverDnSormqr_bufferSize
+//#define cusolverDnRgeqrf cusolverDnSgeqrf
+//#define cusolverDnRormqr cusolverDnSormqr
 // Cholesky decomposition
-#define cusolverDnRpotrf_bufferSize cusolverDnSpotrf_bufferSize
-#define cusolverDnRpotrf cusolverDnSpotrf
-#define cusolverDnRpotrs cusolverDnSpotrs
+//#define cusolverDnRpotrf_bufferSize cusolverDnSpotrf_bufferSize
+//#define cusolverDnRpotrf cusolverDnSpotrf
+//#define cusolverDnRpotrs cusolverDnSpotrs
 
 // Sparse QR decomposition
-#define cusolverSpRcsrlsqvqrHost cusolverSpScsrlsqvqrHost
+//#define cusolverSpRcsrlsqvqrHost cusolverSpScsrlsqvqrHost
 
 // Other sparse matrix functions
-#define cusparseRcsrgemm2 cusparseScsrgemm2
+//#define cusparseRcsrgemm2 cusparseScsrgemm2
+
+#define Vector3r Matrix<Real, 3, 1>
+#define MatrixXr Matrix<Real, -1, -1>
+#define RowVectorXr Matrix<Real, 1, -1>
+#define VectorXr Matrix<Real, -1, 1>
+#define SparseMatrixColXr SparseMatrix<Real, Eigen::ColMajor>
+#define SparseMatrixRowXr SparseMatrix<Real, Eigen::RowMajor>
 
 #ifdef EIGEN_CORE_H
 namespace Eigen {
-typedef Vector3f Vector3r;
-typedef MatrixXf MatrixXr;
-typedef RowVectorXf RowVectorXr;
-typedef VectorXf VectorXr;
-typedef SparseMatrix<float, Eigen::ColMajor> SparseMatrixColXr;
-typedef SparseMatrix<float, Eigen::RowMajor> SparseMatrixRowXr;
+//typedef Vector3f Vector3r;
+//typedef MatrixXf MatrixXr;
+//typedef RowVectorXf RowVectorXr;
+//typedef VectorXf VectorXr;
+//typedef SparseMatrix<float, Eigen::ColMajor> SparseMatrixColXr;
+//typedef SparseMatrix<float, Eigen::RowMajor> SparseMatrixRowXr;
 }
 #endif
 

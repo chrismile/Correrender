@@ -50,6 +50,22 @@ private:
 
     std::shared_ptr<NormalEquationsComputePass> normalEquationsComputePass;
     std::shared_ptr<NormalEquationsCopySymmetricPass> normalEquationsCopySymmetricPass;
+
+    // Non-templated cache data.
+    uint32_t cachedTfSize = 0;
+    uint32_t cachedNumVoxels = 0;
+    uint32_t cachedXs = 0, cachedYs = 0, cachedZs = 0;
+    std::shared_ptr<HostCacheEntryType> fieldEntryGT, fieldEntryOpt;
+    std::pair<float, float> minMaxGT, minMaxOpt;
+    std::vector<glm::vec4> tfGT;
+    // Implicit matrix.
+    sgl::vk::ImageViewPtr inputImageGT, inputImageOpt;
+    sgl::vk::BufferPtr lhsBuffer, rhsBuffer;
+    sgl::vk::BufferPtr lhsStagingBuffer, rhsStagingBuffer;
+    sgl::vk::BufferPtr tfGTBuffer;
+#ifdef CUDA_ENABLED
+    sgl::vk::TextureCudaExternalMemoryVkPtr cudaInputImageGT, cudaInputImageOpt;
+#endif
 };
 
 #endif //CORRERENDER_TFOPTIMIZEROLS_HPP

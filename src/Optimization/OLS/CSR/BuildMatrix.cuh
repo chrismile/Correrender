@@ -43,7 +43,7 @@ __host__ __device__ inline float4 mix(const float4& v0, const float4&  v1, float
 
 __global__ void computeNnzKernel(
         int xs, int ys, int zs, float Nj, float minGT, float maxGT, float minOpt, float maxOpt,
-        cudaTextureObject_t scalarFieldGT, cudaTextureObject_t scalarFieldOpt, float* testData,
+        cudaTextureObject_t scalarFieldGT, cudaTextureObject_t scalarFieldOpt,
         int* __restrict__ rowsHasNonZero, int* __restrict__ rowsNumNonZero) {
     uint32_t globalThreadIdxX = blockIdx.x * blockDim.x + threadIdx.x;
     uint32_t globalThreadIdxY = blockIdx.y * blockDim.y + threadIdx.y;
@@ -71,12 +71,12 @@ __global__ void computeNnzKernel(
         } else {
             numNonZero = 2;
         }
-        testData[globalThreadIdx] = scalarGT;
     }
     rowsHasNonZero[globalThreadIdx] = hasNonZero;
     rowsNumNonZero[globalThreadIdx] = numNonZero;
 }
 
+template<class Real>
 __global__ void writeCsrKernel(
         int xs, int ys, int zs, float Nj, float minGT, float maxGT, float minOpt, float maxOpt,
         const float4* __restrict__ tfGT, cudaTextureObject_t scalarFieldGT, cudaTextureObject_t scalarFieldOpt,

@@ -36,6 +36,7 @@
 #include "cgls_common.hpp"
 
 // Sparse CGLS (Conjugate Gradient Least Squares).
+template<class Real>
 RetValCGLS solveLeastSquaresEigenCGLS(
         const Eigen::SparseMatrixXr& A, const Eigen::MatrixXr& b, Eigen::MatrixXr& x,
         const double shift, const double tol, const int maxit, bool quiet) {

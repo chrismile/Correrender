@@ -34,6 +34,7 @@
 #include <Graphics/Vulkan/Utils/InteropCuda.hpp>
 
 #include "CudaHelpers.cuh"
+#include "CudaForward.hpp"
 #include "CudaSubroutines.cuh"
 #include "lsqr.cuh"
 #include "cgls.cuh"
@@ -121,6 +122,7 @@ void cudaRelease() {
 
 // https://eigen.tuxfamily.org/dox/TopicCUDA.html
 // https://docs.nvidia.com/cuda/cusolver/index.html#introduction
+template<class Real>
 void solveLeastSquaresCudaDense(
         CudaSolverType cudaSolverType, bool useNormalEquations, const Real lambdaL,
         const Eigen::MatrixXr& A, const Eigen::MatrixXr& b, Eigen::MatrixXr& x) {
@@ -174,12 +176,12 @@ void solveLeastSquaresCudaDense(
         const Real alpha = Real(1.0);
         // Compute: lhs = A^T*A + lambda_l*M_I.
         const Real beta0 = lambdaL;
-        cudaErrorCheck(cublasRgemm(
+        cudaErrorCheck(cublasRgemm<Real>(
                 cublasHandle, CUBLAS_OP_T, CUBLAS_OP_N,
                 N, N, M, &alpha, dA, lda, dA, lda, &beta0, dLhs, ldLhs));
         // Compute: rhs = A^T*b.
         const Real beta1 = Real(0.0);
-        cudaErrorCheck(cublasRgemm(
+        cudaErrorCheck(cublasRgemm<Real>(
                 cublasHandle, CUBLAS_OP_T, CUBLAS_OP_N,
                 N, 1, M, &alpha, dA, lda, db, ldb, &beta1, dRhs, ldRhs));
     }
@@ -197,7 +199,7 @@ void solveLeastSquaresCudaDense(
             bool usePivot = cudaSolverType == CudaSolverType::LU_PIVOT;
 
             // Query working space required by getrf.
-            cudaErrorCheck(cusolverDnRgetrf_bufferSize(
+            cudaErrorCheck(cusolverDnRgetrf_bufferSize<Real>(
                     cusolverHandle, N, N, dLhs, ldLhs, &lwork));
             cudaErrorCheck(cudaMalloc((void**)&dWork, sizeof(Real)*lwork));
 
@@ -208,7 +210,7 @@ void solveLeastSquaresCudaDense(
             }
 
             // LU factorization.
-            cudaErrorCheck(cusolverDnRgetrf(
+            cudaErrorCheck(cusolverDnRgetrf<Real>(
                     cusolverHandle, N, N, dLhs, ldLhs, dWork, dbpiv, dInfo));
             cudaErrorCheck(cudaDeviceSynchronize());
 
@@ -224,7 +226,7 @@ void solveLeastSquaresCudaDense(
             }
 
             // Solve A*l = LU*l = I.
-            cudaErrorCheck(cusolverDnRgetrs(
+            cudaErrorCheck(cusolverDnRgetrs<Real>(
                     cusolverHandle, CUBLAS_OP_N, N, 1, dLhs, ldLhs, dbpiv, dRhs, ldRhs, dInfo));
             cudaErrorCheck(cudaDeviceSynchronize());
             cudaErrorCheck(cudaMemcpy(x.data(), dRhs, sizeof(Real) * N, cudaMemcpyDeviceToHost));
@@ -246,16 +248,16 @@ void solveLeastSquaresCudaDense(
             cudaErrorCheck(cudaMalloc((void**)&dTau, sizeof(Real) * N));
 
             // Query working space required by geqrf and ormqr.
-            cudaErrorCheck(cusolverDnRgeqrf_bufferSize(
+            cudaErrorCheck(cusolverDnRgeqrf_bufferSize<Real>(
                     cusolverHandle, lhsM, lhsN, dLhs, ldLhs, &lwork_geqrf));
-            cudaErrorCheck(cusolverDnRormqr_bufferSize(
+            cudaErrorCheck(cusolverDnRormqr_bufferSize<Real>(
                     cusolverHandle, CUBLAS_SIDE_LEFT, CUBLAS_OP_T,
                     lhsM, 1, lhsN, dLhs, ldLhs, dTau, dRhs, ldRhs, &lwork_ormqr));
             lwork = std::max(lwork_geqrf, lwork_ormqr);
             cudaErrorCheck(cudaMalloc((void**)&dWork, sizeof(Real)*lwork));
 
             // Compute the QR factorization.
-            cudaErrorCheck(cusolverDnRgeqrf(
+            cudaErrorCheck(cusolverDnRgeqrf<Real>(
                     cusolverHandle, lhsM, lhsN, dLhs, ldLhs, dTau, dWork, lwork, dInfo));
             cudaErrorCheck(cudaDeviceSynchronize());
 
@@ -267,7 +269,7 @@ void solveLeastSquaresCudaDense(
             }
 
             // Compute Q^T*I.
-            cudaErrorCheck(cusolverDnRormqr(
+            cudaErrorCheck(cusolverDnRormqr<Real>(
                     cusolverHandle, CUBLAS_SIDE_LEFT, CUBLAS_OP_T,
                     lhsM, 1, lhsN, dLhs, ldLhs, dTau, dRhs, ldRhs, dWork, lwork, dInfo));
             cudaErrorCheck(cudaDeviceSynchronize());
@@ -280,7 +282,7 @@ void solveLeastSquaresCudaDense(
             }
 
             // Solve R*l = Q^T*I (i.e., l = R \ Q^T*I).
-            cudaErrorCheck(cublasRtrsm(
+            cudaErrorCheck(cublasRtrsm<Real>(
                     cublasHandle, CUBLAS_SIDE_LEFT, CUBLAS_FILL_MODE_UPPER, CUBLAS_OP_N, CUBLAS_DIAG_NON_UNIT,
                     lhsN, 1, &one, dLhs, ldLhs, dRhs, ldRhs));
             cudaErrorCheck(cudaDeviceSynchronize());
@@ -298,12 +300,12 @@ void solveLeastSquaresCudaDense(
             const cublasFillMode_t fillMode = CUBLAS_FILL_MODE_LOWER;
 
             // Query working space required by potrf.
-            cudaErrorCheck(cusolverDnRpotrf_bufferSize(
+            cudaErrorCheck(cusolverDnRpotrf_bufferSize<Real>(
                     cusolverHandle, fillMode, N, dLhs, ldLhs, &lwork));
             cudaErrorCheck(cudaMalloc((void**)&dWork, sizeof(Real)*lwork));
 
             // Cholesky factorization.
-            cudaErrorCheck(cusolverDnRpotrf(
+            cudaErrorCheck(cusolverDnRpotrf<Real>(
                     cusolverHandle, fillMode, N, dLhs, ldLhs, dWork, lwork, dInfo));
             cudaErrorCheck(cudaDeviceSynchronize());
 
@@ -315,7 +317,7 @@ void solveLeastSquaresCudaDense(
             }
 
             // Solving step.
-            cudaErrorCheck(cusolverDnRpotrs(
+            cudaErrorCheck(cusolverDnRpotrs<Real>(
                     cusolverHandle, fillMode, N, 1, dLhs, ldLhs, dRhs, ldRhs, dInfo));
             cudaErrorCheck(cudaDeviceSynchronize());
 
@@ -357,7 +359,16 @@ void solveLeastSquaresCudaDense(
         cudaErrorCheck(cudaFree(dx));
     }
 }
+template
+void solveLeastSquaresCudaDense<float>(
+        CudaSolverType cudaSolverType, bool useNormalEquations, const float lambdaL,
+        const Eigen::MatrixXf& A, const Eigen::MatrixXf& b, Eigen::MatrixXf& x);
+template
+void solveLeastSquaresCudaDense<double>(
+        CudaSolverType cudaSolverType, bool useNormalEquations, const double lambdaL,
+        const Eigen::MatrixXd& A, const Eigen::MatrixXd& b, Eigen::MatrixXd& x);
 
+template<class Real>
 void solveLeastSquaresCudaSparse(
         CudaSparseSolverType cudaSparseSolverType, bool isDevicePtr, Real lambdaL,
         int m, int n, int nnz, Real* csrVals, int* csrRowPtr, int* csrColInd,
@@ -383,7 +394,7 @@ void solveLeastSquaresCudaSparse(
             csrColInd = hcsrColInd;
             b = hb;
         }
-        cudaErrorCheck(cusolverSpRcsrlsqvqrHost(
+        cudaErrorCheck(cusolverSpRcsrlsqvqrHost<Real>(
                 cusolverSpHandle, m, n, nnz, matDesc, csrVals, csrRowPtr, csrColInd, b,
                 Real(1e-5f), &rank, x.data(), p, &minNorm));
         cudaErrorCheck(cusparseDestroyMatDescr(matDesc));
@@ -436,7 +447,20 @@ void solveLeastSquaresCudaSparse(
         }
     }
 }
+template
+void solveLeastSquaresCudaSparse<float>(
+        CudaSparseSolverType cudaSparseSolverType, bool isDevicePtr, float lambdaL,
+        int m, int n, int nnz, float * csrVals, int* csrRowPtr, int* csrColInd,
+        float * b, Eigen::MatrixXf& x);
+template
+void solveLeastSquaresCudaSparse<double>(
+        CudaSparseSolverType cudaSparseSolverType, bool isDevicePtr, double lambdaL,
+        int m, int n, int nnz, double * csrVals, int* csrRowPtr, int* csrColInd,
+        double* b, Eigen::MatrixXd& x);
 
+
+
+template<class Real>
 void solveLeastSquaresCudaSparseNormalEquations(
         CudaSparseSolverType cudaSparseSolverType, EigenSolverType eigenSolverType, bool isDevicePtr, Real lambdaL,
         int m, int n, int nnz, Real* csrVals, int* csrRowPtr, int* csrColInd,
@@ -625,9 +649,20 @@ void solveLeastSquaresCudaSparseNormalEquations(
 
     solveLinearSystemEigenSymmetric(eigenSolverType, lambdaL, lhs, rhs, x);
 }
+template
+void solveLeastSquaresCudaSparseNormalEquations<float>(
+        CudaSparseSolverType cudaSparseSolverType, EigenSolverType eigenSolverType, bool isDevicePtr, float lambdaL,
+        int m, int n, int nnz, float* csrVals, int* csrRowPtr, int* csrColInd,
+        float* b, Eigen::MatrixXf& x);
+template
+void solveLeastSquaresCudaSparseNormalEquations<double>(
+        CudaSparseSolverType cudaSparseSolverType, EigenSolverType eigenSolverType, bool isDevicePtr, double lambdaL,
+        int m, int n, int nnz, double* csrVals, int* csrRowPtr, int* csrColInd,
+        double* b, Eigen::MatrixXd& x);
 
 
 
+template<class Real>
 void createSystemMatrixCudaSparse(
         int xs, int ys, int zs, int tfSize, float minGT, float maxGT, float minOpt, float maxOpt,
         CUtexObject scalarFieldGT, CUtexObject scalarFieldOpt, const float* tfGT,
@@ -653,12 +688,9 @@ void createSystemMatrixCudaSparse(
     cudaErrorCheck(cudaMalloc((void**)&rowsNumNonZero, sizeof(int) * numVoxels));
     cudaErrorCheck(cudaMalloc((void**)&rowsHasNonZeroPrefixSum, sizeof(int) * (numVoxels + 1)));
     cudaErrorCheck(cudaMalloc((void**)&rowsNumNonZeroPrefixSum, sizeof(int) * (numVoxels + 1)));
-    float* dtestData = nullptr;
-    cudaErrorCheck(cudaMalloc((void**)&dtestData, sizeof(float) * numVoxels));
     computeNnzKernel<<<gridSize3D, blockSize3D, 0, stream>>>(
             xs, ys, zs, Nj, minGT, maxGT, minOpt, maxOpt,
-            scalarFieldGT, scalarFieldOpt, dtestData,
-            rowsHasNonZero, rowsNumNonZero);
+            scalarFieldGT, scalarFieldOpt, rowsHasNonZero, rowsNumNonZero);
 
     // Next, use a parallel prefix scan to assign for each thread an index where to write to.
     std::vector<int*> bufferCache;
@@ -697,10 +729,27 @@ void createSystemMatrixCudaSparse(
     cudaErrorCheck(cudaFree(rowsNumNonZeroPrefixSum));
     cudaErrorCheck(cudaFree(dtfGT));
 }
+template
+void createSystemMatrixCudaSparse<float>(
+        int xs, int ys, int zs, int tfSize, float minGT, float maxGT, float minOpt, float maxOpt,
+        CUtexObject scalarFieldGT, CUtexObject scalarFieldOpt, const float* tfGT,
+        int& numRows, int& nnz, float*& csrVals, int*& csrRowPtr, int*& csrColInd, float*& b);
+template
+void createSystemMatrixCudaSparse<double>(
+        int xs, int ys, int zs, int tfSize, float minGT, float maxGT, float minOpt, float maxOpt,
+        CUtexObject scalarFieldGT, CUtexObject scalarFieldOpt, const float* tfGT,
+        int& numRows, int& nnz, double*& csrVals, int*& csrRowPtr, int*& csrColInd, double*& b);
 
+
+
+template<class Real>
 void freeSystemMatrixCudaSparse(Real* csrVals, int* csrRowPtr, int* csrColInd, Real* b) {
     cudaErrorCheck(cudaFree(csrVals));
     cudaErrorCheck(cudaFree(csrRowPtr));
     cudaErrorCheck(cudaFree(csrColInd));
     cudaErrorCheck(cudaFree(b));
 }
+template
+void freeSystemMatrixCudaSparse<float>(float* csrVals, int* csrRowPtr, int* csrColInd, float* b);
+template
+void freeSystemMatrixCudaSparse<double>(double* csrVals, int* csrRowPtr, int* csrColInd, double* b);

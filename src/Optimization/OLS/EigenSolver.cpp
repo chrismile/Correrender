@@ -53,6 +53,7 @@
  * @param rhs The vector c, c = A^T b.
  * @param x The solution vector.
  */
+template<class Real>
 void solveQuadprogBoxConstrainedEigenQP(const Eigen::MatrixXr& lhs, const Eigen::MatrixXr& rhs, Eigen::MatrixXr& x) {
     const auto n = int(lhs.cols());
     Eigen::MatrixXr Q = lhs;
@@ -77,6 +78,7 @@ void solveQuadprogBoxConstrainedEigenQP(const Eigen::MatrixXr& lhs, const Eigen:
  * @param rhs The vector q, q = A^T b.
  * @param x The solution vector.
  */
+template<class Real>
 void solveQuadprogBoxConstrainedQuadProgpp(const Eigen::MatrixXr& lhs, const Eigen::MatrixXr& rhs, Eigen::MatrixXr& x) {
     const auto n = int(lhs.cols());
     x = Eigen::MatrixXr(n, 1);
@@ -144,6 +146,7 @@ void solveQuadprogBoxConstrainedQuadProgpp(const Eigen::MatrixXr& lhs, const Eig
  * @param rhs The vector q, q = A^T b.
  * @param x The solution vector.
  */
+template<class Real>
 void solveQuadprogBoxConstrainedOSQP(const Eigen::MatrixXr& lhs, const Eigen::MatrixXr& rhs, Eigen::MatrixXr& x) {
     const auto n = int(lhs.cols());
     x = Eigen::MatrixXr(n, 1);
@@ -230,6 +233,7 @@ void solveQuadprogBoxConstrainedOSQP(const Eigen::MatrixXr& lhs, const Eigen::Ma
 #define TEST_CONDITION_NUMBER
 
 #ifdef TEST_CONDITION_NUMBER
+template<class Real>
 void printConditionNumber(const std::string& outputPrefix, const Eigen::MatrixXr& M) {
     Eigen::JacobiSVD<Eigen::MatrixXr> svd(M);
     const auto& singularValues = svd.singularValues();
@@ -238,8 +242,11 @@ void printConditionNumber(const std::string& outputPrefix, const Eigen::MatrixXr
 }
 #endif
 
+
+
+template<class Real>
 void solveLeastSquaresEigenDense(
-        EigenSolverType eigenSolverType, bool useRelaxation, const Real lambdaL,
+        EigenSolverType eigenSolverType, bool useRelaxation, Real lambdaL,
         const Eigen::MatrixXr& A, const Eigen::MatrixXr& b, Eigen::MatrixXr& x) {
     if (useRelaxation) {
         const auto c = A.cols();
@@ -356,9 +363,20 @@ void solveLeastSquaresEigenDense(
         }
     }
 }
+template
+void solveLeastSquaresEigenDense<float>(
+        EigenSolverType eigenSolverType, bool useRelaxation, float lambdaL,
+        const Eigen::MatrixXf& A, const Eigen::MatrixXf& b, Eigen::MatrixXf& x);
+template
+void solveLeastSquaresEigenDense<double>(
+        EigenSolverType eigenSolverType, bool useRelaxation, double lambdaL,
+        const Eigen::MatrixXd& A, const Eigen::MatrixXd& b, Eigen::MatrixXd& x);
 
+
+
+template<class Real>
 void solveLinearSystemEigenSymmetric(
-        EigenSolverType eigenSolverType, const Real lambdaL,
+        EigenSolverType eigenSolverType, Real lambdaL,
         const Eigen::MatrixXr& A, const Eigen::MatrixXr& b, Eigen::MatrixXr& x) {
     const auto c = A.cols();
     Eigen::MatrixXr M_I = Eigen::MatrixXr::Identity(c, c);
@@ -418,9 +436,20 @@ void solveLinearSystemEigenSymmetric(
             break;
     }
 }
+template
+void solveLinearSystemEigenSymmetric<float>(
+        EigenSolverType eigenSolverType, float lambdaL,
+        const Eigen::MatrixXf& A, const Eigen::MatrixXf& b, Eigen::MatrixXf& x);
+template
+void solveLinearSystemEigenSymmetric<double>(
+        EigenSolverType eigenSolverType, double lambdaL,
+        const Eigen::MatrixXd& A, const Eigen::MatrixXd& b, Eigen::MatrixXd& x);
 
+
+
+template<class Real>
 void solveLeastSquaresEigenSparse(
-        EigenSparseSolverType solverType, const Real lambdaL,
+        EigenSparseSolverType solverType, Real lambdaL,
         const Eigen::SparseMatrixXr& A, const Eigen::MatrixXr& b, Eigen::MatrixXr& x) {
     if (solverType == EigenSparseSolverType::QR) {
         //Eigen::SparseQR<Eigen::SparseMatrixXr, Eigen::COLAMDOrdering<int>> sparseQr;
@@ -474,9 +503,20 @@ void solveLeastSquaresEigenSparse(
         solveLeastSquaresEigenCGLS(A, b, x, s, tol, maxit, quiet);
     }
 }
+template
+void solveLeastSquaresEigenSparse<float>(
+        EigenSparseSolverType solverType, float lambdaL,
+        const Eigen::SparseMatrixXf& A, const Eigen::MatrixXf& b, Eigen::MatrixXf& x);
+template
+void solveLeastSquaresEigenSparse<double>(
+        EigenSparseSolverType solverType, double lambdaL,
+        const Eigen::SparseMatrixXd& A, const Eigen::MatrixXd& b, Eigen::MatrixXd& x);
 
+
+
+template<class Real>
 void solveLeastSquaresEigenSparseNormalEquations(
-        EigenSolverType eigenSolverType, const Real lambdaL,
+        EigenSolverType eigenSolverType, Real lambdaL,
         const Eigen::SparseMatrixXr& A, const Eigen::MatrixXr& b, Eigen::MatrixXr& x) {
     auto AT = A.adjoint();
     auto lhs = Eigen::MatrixXr(AT * A);
@@ -533,3 +573,11 @@ void solveLeastSquaresEigenSparseNormalEquations(
             break;
     }
 }
+template
+void solveLeastSquaresEigenSparseNormalEquations<float>(
+        EigenSolverType eigenSolverType, float lambdaL,
+        const Eigen::SparseMatrixXf& A, const Eigen::MatrixXf& b, Eigen::MatrixXf& x);
+template
+void solveLeastSquaresEigenSparseNormalEquations<double>(
+        EigenSolverType eigenSolverType, double lambdaL,
+        const Eigen::SparseMatrixXd& A, const Eigen::MatrixXd& b, Eigen::MatrixXd& x);
