@@ -43,7 +43,7 @@ enum class FloatAccuracy {
     FLOAT, DOUBLE
 };
 const char* const FLOAT_ACCURACY_NAMES[] = {
-        "Float", "Double"
+        "Float (32-bit)", "Double (64-bit)"
 };
 
 /// For more details see: https://eigen.tuxfamily.org/dox/group__TutorialLinearAlgebra.html

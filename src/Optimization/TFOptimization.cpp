@@ -177,6 +177,9 @@ void TFOptimization::renderGuiDialog() {
                                 EIGEN_SOLVER_TYPE_NAMES, IM_ARRAYSIZE(EIGEN_SOLVER_TYPE_NAMES));
                     }
                 }
+                ImGui::Combo(
+                        "Float Accuracy", (int*)&settings.floatAccuracy,
+                        FLOAT_ACCURACY_NAMES, IM_ARRAYSIZE(FLOAT_ACCURACY_NAMES));
                 if (settings.backend != OLSBackend::VULKAN) {
                     ImGui::Checkbox("Use Normal Equations", &settings.useNormalEquations);
                 }

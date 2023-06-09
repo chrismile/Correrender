@@ -31,9 +31,43 @@
 
 #include "../TFOptimizer.hpp"
 
-struct TFOptimizerOLSCache;
 class NormalEquationsComputePass;
 class NormalEquationsCopySymmetricPass;
+
+template<class Real>
+struct TFOptimizerOLSCacheTyped;
+
+template<class Real>
+class TFOptimizerOLSTyped {
+public:
+    TFOptimizerOLSTyped(
+            sgl::vk::Renderer* renderer, sgl::vk::Renderer* parentRenderer, bool supportsAsyncCompute,
+            sgl::vk::FencePtr fence, VkCommandPool commandPool, VkCommandBuffer commandBuffer,
+            TFOptimizationWorkerSettings& settings, std::vector<glm::vec4>& tfArrayOpt);
+    ~TFOptimizerOLSTyped();
+    void clearCache();
+    void onRequestQueued(VolumeData* volumeData);
+    void runOptimization(bool& shallStop, bool& hasStopped);
+
+private:
+    TFOptimizerOLSCacheTyped<Real>* cache = nullptr;
+    void buildSystemDense();
+    void buildSystemSparse();
+
+    sgl::vk::Renderer* renderer;
+    sgl::vk::Renderer* parentRenderer;
+    bool supportsAsyncCompute = false;
+
+    sgl::vk::FencePtr fence{};
+    VkCommandPool commandPool{};
+    VkCommandBuffer commandBuffer{};
+
+    TFOptimizationWorkerSettings& settings;
+    std::vector<glm::vec4>& tfArrayOpt;
+
+    std::shared_ptr<NormalEquationsComputePass> normalEquationsComputePass;
+    std::shared_ptr<NormalEquationsCopySymmetricPass> normalEquationsCopySymmetricPass;
+};
 
 class TFOptimizerOLS : public TFOptimizer {
 public:
@@ -44,28 +78,9 @@ public:
     float getProgress() override;
 
 private:
-    TFOptimizerOLSCache* cache = nullptr;
-    void buildSystemDense();
-    void buildSystemSparse();
+    TFOptimizerOLSTyped<float>* fopt;
+    TFOptimizerOLSTyped<double>* dopt;
 
-    std::shared_ptr<NormalEquationsComputePass> normalEquationsComputePass;
-    std::shared_ptr<NormalEquationsCopySymmetricPass> normalEquationsCopySymmetricPass;
-
-    // Non-templated cache data.
-    uint32_t cachedTfSize = 0;
-    uint32_t cachedNumVoxels = 0;
-    uint32_t cachedXs = 0, cachedYs = 0, cachedZs = 0;
-    std::shared_ptr<HostCacheEntryType> fieldEntryGT, fieldEntryOpt;
-    std::pair<float, float> minMaxGT, minMaxOpt;
-    std::vector<glm::vec4> tfGT;
-    // Implicit matrix.
-    sgl::vk::ImageViewPtr inputImageGT, inputImageOpt;
-    sgl::vk::BufferPtr lhsBuffer, rhsBuffer;
-    sgl::vk::BufferPtr lhsStagingBuffer, rhsStagingBuffer;
-    sgl::vk::BufferPtr tfGTBuffer;
-#ifdef CUDA_ENABLED
-    sgl::vk::TextureCudaExternalMemoryVkPtr cudaInputImageGT, cudaInputImageOpt;
-#endif
 };
 
 #endif //CORRERENDER_TFOPTIMIZEROLS_HPP

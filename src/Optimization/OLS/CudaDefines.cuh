@@ -1,7 +1,7 @@
 /*
  * BSD 2-Clause License
  *
- * Copyright (c) 2021, Christoph Neuhauser
+ * Copyright (c) 2023, Christoph Neuhauser
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -26,29 +26,38 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef CORRERENDER_PRECISION_DEFINES_HPP
-#define CORRERENDER_PRECISION_DEFINES_HPP
+#ifndef CORRERENDER_CUDADEFINES_CUH
+#define CORRERENDER_CUDADEFINES_CUH
 
-/**
- * As of 2023-06-09, the floating point type used for simulations can be changed at run time.
- */
+// See: https://stackoverflow.com/questions/17831218/how-can-i-use-templates-or-typedefs-to-select-between-float-double-vector-types
 
-#define SPARSE_ROW_MAJOR
-#ifdef SPARSE_ROW_MAJOR
-#define SparseMatrixXr SparseMatrix<Real, Eigen::RowMajor>
-#define SparseMatrixXf SparseMatrix<float, Eigen::RowMajor>
-#define SparseMatrixXd SparseMatrix<double, Eigen::RowMajor>
-#else
-#define SparseMatrixXr SparseMatrix<Real, Eigen::ColMajor>
-#define SparseMatrixXf SparseMatrix<float, Eigen::ColMajor>
-#define SparseMatrixXd SparseMatrix<double, Eigen::ColMajor>
-#endif
+template <typename T, int cn> struct MakeVec;
 
-#define Vector3r Matrix<Real, 3, 1>
-#define MatrixXr Matrix<Real, -1, -1>
-#define RowVectorXr Matrix<Real, 1, -1>
-#define VectorXr Matrix<Real, -1, 1>
-#define SparseMatrixColXr SparseMatrix<Real, Eigen::ColMajor>
-#define SparseMatrixRowXr SparseMatrix<Real, Eigen::RowMajor>
+template <> struct MakeVec<float, 2> {
+    typedef float3 type;
+};
+template <> struct MakeVec<double, 2> {
+    typedef double3 type;
+};
 
-#endif //CORRERENDER_PRECISION_DEFINES_HPP
+template <> struct MakeVec<float, 3> {
+    typedef float4 type;
+};
+template <> struct MakeVec<double, 3> {
+    typedef double4 type;
+};
+
+template <> struct MakeVec<float, 4> {
+    typedef float4 type;
+};
+template <> struct MakeVec<double, 4> {
+    typedef double4 type;
+};
+
+/*template <typename Real, typename ...Params>
+auto make_real4(Params&&... params) {
+    if constexpr (std::is_same<Real, float>()) return make_float4(std::forward<Params>(params)...);
+    if constexpr (std::is_same<Real, double>()) return make_double4(std::forward<Params>(params)...);
+}*/
+
+#endif //CORRERENDER_CUDADEFINES_CUH

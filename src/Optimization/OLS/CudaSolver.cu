@@ -668,8 +668,8 @@ void createSystemMatrixCudaSparse(
         CUtexObject scalarFieldGT, CUtexObject scalarFieldOpt, const float* tfGT,
         int& numRows, int& nnz, Real*& csrVals, int*& csrRowPtr, int*& csrColInd, Real*& b) {
     const int numVoxels = xs * ys * zs;
-    const int m = numVoxels * 4;
-    const int n = tfSize * 4;
+    //const int m = numVoxels * 4;
+    //const int n = tfSize * 4;
     const auto Nj = float(tfSize - 1);
     float* dtfGT = nullptr;
     cudaErrorCheck(cudaMalloc((void**)&dtfGT, sizeof(float4) * tfSize));
@@ -708,9 +708,10 @@ void createSystemMatrixCudaSparse(
     nnz *= 4;
 
     // Allocate the memory for the matrix and the vector.
-    cudaErrorCheck(cudaMalloc((void**)&b, sizeof(float4) * numVoxels));
+    typedef typename MakeVec<Real, 4>::type real4;
+    cudaErrorCheck(cudaMalloc((void**)&b, sizeof(real4) * numVoxels));
     cudaErrorCheck(cudaMalloc((void**)&csrVals, sizeof(Real) * nnz));
-    cudaErrorCheck(cudaMalloc((void**)&csrRowPtr, sizeof(float4) * (numRows + 1)));
+    cudaErrorCheck(cudaMalloc((void**)&csrRowPtr, sizeof(int) * (numRows + 1)));
     cudaErrorCheck(cudaMalloc((void**)&csrColInd, sizeof(int) * nnz));
 
     // Write the non-zero values to the correct position.
@@ -720,7 +721,7 @@ void createSystemMatrixCudaSparse(
             rowsHasNonZero, rowsHasNonZeroPrefixSum,
             rowsNumNonZero, rowsNumNonZeroPrefixSum,
             nnz, csrVals, csrRowPtr, csrColInd,
-            reinterpret_cast<float4*>(b));
+            reinterpret_cast<real4*>(b));
     writeFinalCsrRowPtr<<<1, 1, 0, stream>>>(nnz, numRows, csrRowPtr);
 
     cudaErrorCheck(cudaFree(rowsHasNonZero));

@@ -1,4 +1,4 @@
-The subdirectories contain the licenses of the libraries LineVis links to.
+The subdirectories contain the licenses of the libraries Correrender links to.
 This list has been created for the MSYS2 build script on Windows and Linux
 vcpkg build script on Ubuntu 20.04 (as of: 2022-08-28).
 Please note that the list of linked libraries may be different when using

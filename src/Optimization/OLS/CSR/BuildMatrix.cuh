@@ -30,6 +30,7 @@
 #define CORRERENDER_BUILDMATRIX_CUH
 
 #include "../PrecisionDefines.hpp"
+#include "../CudaDefines.cuh"
 
 // https://developer.nvidia.com/blog/lerp-faster-cuda/
 __host__ __device__ inline float4 mix(const float4& v0, const float4&  v1, float t) {
@@ -83,7 +84,7 @@ __global__ void writeCsrKernel(
         const int* __restrict__ rowsHasNonZero, const int* __restrict__ hasNonZeroPrefixSum,
         const int* __restrict__ rowsNumNonZero, const int* __restrict__ numNonZeroPrefixSum,
         int nnz, Real* __restrict__ csrVals, int* __restrict__ csrRowPtr, int* __restrict__ csrColInd,
-        float4* __restrict__ b) {
+        typename MakeVec<Real, 4>::type* __restrict__ b) {
     uint32_t globalThreadIdxX = blockIdx.x * blockDim.x + threadIdx.x;
     uint32_t globalThreadIdxY = blockIdx.y * blockDim.y + threadIdx.y;
     uint32_t globalThreadIdxZ = blockIdx.z * blockDim.z + threadIdx.z;
@@ -114,16 +115,20 @@ __global__ void writeCsrKernel(
     float4 cGT0 = tfGT[jGT0];
     float4 cGT1 = tfGT[jGT1];
     float4 colorGT = mix(cGT0, cGT1, fGT);
-    b[writePosRow] = colorGT;
+    if constexpr (std::is_same<Real, float>()) {
+        b[writePosRow] = colorGT;
+    } else {
+        b[writePosRow] = make_double4(double(colorGT.x), double(colorGT.y), double(colorGT.z), double(colorGT.w));
+    }
 
     float tOpt = (scalarOpt - minOpt) / (maxOpt - minOpt);
     float tOpt0 = clamp(floor(tOpt * Nj), 0.0f, Nj);
     float tOpt1 = clamp(ceil(tOpt * Nj), 0.0f, Nj);
-    float fOpt = tOpt * Nj - tOpt0;
+    auto fOpt = Real(tOpt * Nj - tOpt0);
     uint jOpt0 = uint(tOpt0);
     uint jOpt1 = uint(tOpt1);
 
-    float fOpt0 = 1.0f - fOpt;
+    auto fOpt0 = Real(1) - Real(fOpt);
     int j0 = int(jOpt0) * 4;
     int j1 = int(jOpt1) * 4;
     int ir = writePosRow * 4;
