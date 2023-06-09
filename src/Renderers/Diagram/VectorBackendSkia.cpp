@@ -38,6 +38,7 @@
 #include <ImGui/Widgets/PropertyEditor.hpp>
 #include <Graphics/Vector/VectorWidget.hpp>
 
+#include <core/SkMilestone.h>
 #include <core/SkCanvas.h>
 #include <core/SkSurface.h>
 #include <core/SkColorSpace.h>
@@ -45,6 +46,10 @@
 #include <gpu/GrDirectContext.h>
 #include <gpu/vk/GrVkBackendContext.h>
 #include <gpu/vk/VulkanExtensions.h>
+#if SK_MILESTONE >= 115
+#include <gpu/ganesh/SkSurfaceGanesh.h>
+#include <gpu/GrBackendSurface.h>
+#endif
 
 #include "VectorBackendSkia.hpp"
 
@@ -183,7 +188,11 @@ void VectorBackendSkia::onResize() {
     SkSurfaceProps skSurfaceProps(flags, kUnknown_SkPixelGeometry);
 
     GrBackendTexture backendTexture(int(fboWidthInternal), int(fboHeightInternal), skVkImageInfo);
+#if SK_MILESTONE < 115
     skiaCache->surface = SkSurface::MakeFromBackendTexture(
+#else
+    skiaCache->surface = SkSurfaces::WrapBackendTexture(
+#endif
             skiaCache->context.get(), backendTexture,
             kTopLeft_GrSurfaceOrigin, int(sampleCount), kRGBA_8888_SkColorType,
             nullptr, &skSurfaceProps);
@@ -220,7 +229,12 @@ void VectorBackendSkia::renderEnd() {
     skiaCache->surface->flush();
     skiaCache->context->submit();
 
+#if SK_MILESTONE < 115
     GrBackendTexture backendTexture = skiaCache->surface->getBackendTexture(SkSurface::kFlushRead_BackendHandleAccess);
+#else
+    GrBackendTexture backendTexture = SkSurfaces::GetBackendTexture(
+            skiaCache->surface.get(), SkSurface::kFlushRead_BackendHandleAccess);
+#endif
     if (!backendTexture.isValid()) {
         sgl::Logfile::get()->throwError("Error in SkiaRenderPass::recreateSwapchain: getBackendTexture failed.");
     }
