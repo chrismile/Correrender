@@ -37,7 +37,6 @@
 #include <Graphics/Vulkan/Render/ComputePipeline.hpp>
 #include <ImGui/Widgets/PropertyEditor.hpp>
 #include <ImGui/imgui_custom.h>
-#include <Graphics/Texture/Bitmap.hpp>
 
 #include "Widgets/ViewManager.hpp"
 #include "Volume/VolumeData.hpp"
@@ -264,20 +263,6 @@ void WorldMapRenderer::createWorldMapTexture() {
         sgl::Logfile::get()->throwError("Error: TIFFReadRGBAImage failed!");
     }
 
-    /*sgl::BitmapPtr bitmap2(new sgl::Bitmap(imageWidth, imageHeight));
-    for (int y = 0; y < imageHeight; y++) {
-        for (int x = 0; x < imageWidth; x++) {
-            uint32_t color = imageDataRgba[x + y * imageWidth];
-            int r = TIFFGetR(color);
-            int g = TIFFGetG(color);
-            int b = TIFFGetB(color);
-            bitmap2->setPixelColor(x, y, sgl::Color(r, g, b, 255));
-        }
-    }
-    bitmap2->savePNG("test_map2.png");*/
-
-    sgl::BitmapPtr bitmap(new sgl::Bitmap(xs, ys));
-
     for (int y = 0; y < ys; y++) {
         for (int x = 0; x < xs; x++) {
             float x_norm = lonData[x + y * xs] / 360.0f + 0.5f;
@@ -293,10 +278,8 @@ void WorldMapRenderer::createWorldMapTexture() {
             worldMapData[writeIdx + 1] = g;
             worldMapData[writeIdx + 2] = b;
             worldMapData[writeIdx + 3] = 255;
-            bitmap->setPixelColor(x, ys - y - 1, sgl::Color(r, g, b, 255));
         }
     }
-    bitmap->savePNG("test_map.png");
 
     _TIFFfree(imageDataRgba);
     TIFFClose(tif);
