@@ -45,7 +45,8 @@
         "netcdf-c",
         "blosc",
         "eigen3",
-        "nlopt"
+        "nlopt",
+        "curl"
     ],
     "features": {
         "tbb": {

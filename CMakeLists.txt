@@ -484,6 +484,22 @@ if (osqp_FOUND)
     target_compile_definitions(Correrender PRIVATE SUPPORT_OSQP)
 endif()
 
+if(VCPKG_TOOLCHAIN)
+    find_package(CURL CONFIG REQUIRED)
+else()
+    find_package(CURL REQUIRED)
+endif()
+target_link_libraries(Correrender PUBLIC ${CURL_LIBRARIES})  # CURL::libcurl, since CMake 3.12
+target_include_directories(Correrender PUBLIC ${CURL_INCLUDES} ${CURL_INCLUDE_DIRS})
+
+if(VCPKG_TOOLCHAIN)
+    find_package(TIFF CONFIG REQUIRED)
+else()
+    find_package(TIFF REQUIRED)
+endif()
+target_link_libraries(Correrender PUBLIC ${TIFF_LIBRARIES})  # TIFF::TIFF, since CMake 3.5
+target_include_directories(Correrender PUBLIC ${TIFF_INCLUDES} ${TIFF_INCLUDE_DIRS})
+
 # For testing purposes.
 target_compile_definitions(Correrender PRIVATE TEST_INFERENCE_SPEED)
 target_compile_definitions(Correrender PRIVATE SHOW_DEBUG_OPTIONS)

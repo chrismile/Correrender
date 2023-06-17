@@ -62,12 +62,12 @@ is_installed_pacman() {
 
 if command -v pacman &> /dev/null && [ ! -d $build_dir_debug ] && [ ! -d $build_dir_release ]; then
     if ! command -v cmake &> /dev/null || ! command -v git &> /dev/null \
-            || ! command -v curl &> /dev/null || ! command -v wget &> /dev/null \
+            || ! command -v wget &> /dev/null \
             || ! command -v pkg-config &> /dev/null || ! command -v g++ &> /dev/null; then
         echo "------------------------"
         echo "installing build essentials"
         echo "------------------------"
-        pacman --noconfirm -S --needed make git curl wget mingw64/mingw-w64-x86_64-cmake \
+        pacman --noconfirm -S --needed make git wget mingw64/mingw-w64-x86_64-cmake \
         mingw64/mingw-w64-x86_64-gcc mingw64/mingw-w64-x86_64-gdb
     fi
 
@@ -109,6 +109,10 @@ if command -v pacman &> /dev/null && [ ! -d $build_dir_debug ] && [ ! -d $build_
         mingw64/mingw-w64-x86_64-netcdf \
         mingw64/mingw-w64-x86_64-eccodes mingw64/mingw-w64-x86_64-blosc \
         mingw64/mingw-w64-x86_64-python mingw64/mingw-w64-x86_64-eigen3 mingw64/mingw-w64-x86_64-nlopt
+    fi
+    if ! (is_installed_pacman "mingw-w64-x86_64-curl" || is_installed_pacman "mingw-w64-x86_64-curl-gnutls" \
+          || is_installed_pacman "mingw-w64-x86_64-curl-winssl"); then
+        pacman --noconfirm -S --needed mingw64/mingw-w64-x86_64-curl
     fi
 fi
 

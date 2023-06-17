@@ -1,7 +1,7 @@
 /*
  * BSD 2-Clause License
  *
- * Copyright (c) 2022, Christoph Neuhauser
+ * Copyright (c) 2023, Christoph Neuhauser
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -26,32 +26,50 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef CORRERENDER_RENDERINGMODES_HPP
-#define CORRERENDER_RENDERINGMODES_HPP
+-- Vertex
 
-#include <cstdint>
+#version 450 core
 
-enum RenderingMode : int32_t {
-    RENDERING_MODE_NONE = -1,
-    RENDERING_MODE_DIRECT_VOLUME_RENDERING = 0,
-    RENDERING_MODE_ISOSURFACE_RAYCASTER = 1,
-    RENDERING_MODE_ISOSURFACE_RASTERIZER = 2,
-    RENDERING_MODE_DOMAIN_OUTLINE_RENDERER = 3,
-    RENDERING_MODE_SLICE_RENDERER = 4,
-    RENDERING_MODE_WORLD_MAP_RENDERER = 5,
-    RENDERING_MODE_DIAGRAM_RENDERER = 6
+layout(location = 0) in vec3 vertexPosition;
+layout(location = 1) in vec3 vertexNormal;
+layout(location = 0) out vec3 fragmentPositionWorld;
+layout(location = 1) out vec3 fragmentNormal;
+
+void main() {
+    fragmentPositionWorld = vertexPosition;
+    fragmentNormal = vertexNormal;
+    gl_Position = mvpMatrix * vec4(vertexPosition, 1.0);
+}
+
+
+-- Fragment
+
+#version 450 core
+
+layout(binding = 0) uniform RendererUniformDataBuffer {
+    vec3 cameraPosition;
+    uint padding0;
+    vec3 minBoundingBox;
+    float lightingFactor;
+    vec3 maxBoundingBox;
+    float padding1;
 };
-const char* const RENDERING_MODE_NAMES[] = {
-        "Direct Volume Renderer",
-        "Iso Surface Raycaster",
-        "Iso Surface Rasterizer",
-        "Domain Outline Renderer",
-        "Slice Renderer",
-        "World Map Renderer",
-        "Diagram Renderer"
-};
-const int NUM_RENDERING_MODES = ((int)(sizeof(RENDERING_MODE_NAMES) / sizeof(*RENDERING_MODE_NAMES)));
 
-const uint32_t ON_TRANSFER_FUNCTION_MAP_REBUILT_EVENT = 4052753091u;
+layout (binding = 1) uniform sampler2D worldMapTexture;
 
-#endif //CORRERENDER_RENDERINGMODES_HPP
+layout(location = 0) in vec3 fragmentPositionWorld;
+layout(location = 1) in vec3 fragmentNormal;
+layout(location = 0) out vec4 fragColor;
+
+#include "UniformData.glsl"
+#include "Lighting.glsl"
+
+void main() {
+    vec2 texCoords = (fragmentPositionWorld.xy - minBoundingBox.xy) / (maxBoundingBox.xy - minBoundingBox.xy);
+    vec4 worldMapColor = texture(worldMapTexture, texCoords);
+    worldMapColor.a = 1.0;
+    vec3 n = normalize(fragmentNormal);
+    vec4 color = blinnPhongShadingSurface(worldMapColor, fragmentPositionWorld, n);
+    color = mix(worldMapColor, color, lightingFactor);
+    fragColor = color;
+}

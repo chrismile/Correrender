@@ -36,6 +36,7 @@
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtx/rotate_vector.hpp>
 #include <boost/algorithm/string.hpp>
+#include <curl/curl.h>
 
 #ifdef USE_ZEROMQ
 #include <zmq.h>
@@ -79,6 +80,7 @@
 #include "Renderers/IsoSurfaceRasterizer.hpp"
 #include "Renderers/DomainOutlineRenderer.hpp"
 #include "Renderers/SliceRenderer.hpp"
+#include "Renderers/WorldMapRenderer.hpp"
 #include "Renderers/Diagram/DiagramRenderer.hpp"
 #include "Utils/AutomaticPerformanceMeasurer.hpp"
 #include "Optimization/TFOptimization.hpp"
@@ -332,6 +334,8 @@ MainApp::MainApp()
             float& standardZoom) {
     });
 
+    curl_global_init(CURL_GLOBAL_ALL);
+
     useDockSpaceMode = true;
     sgl::AppSettings::get()->getSettings().getValueOpt("useDockSpaceMode", useDockSpaceMode);
     sgl::AppSettings::get()->getSettings().getValueOpt("useFixedSizeViewport", useFixedSizeViewport);
@@ -456,6 +460,8 @@ MainApp::~MainApp() {
         sgl::vk::freeOpenCLFunctionTable();
     }
 #endif
+
+    curl_global_cleanup();
 
     for (int i = 0; i < int(nonBlockingMsgBoxHandles.size()); i++) {
         auto& handle = nonBlockingMsgBoxHandles.at(i);
@@ -676,6 +682,8 @@ void MainApp::setRenderer(RenderingMode newRenderingMode, RendererPtr& newVolume
         newVolumeRenderer = std::make_shared<DomainOutlineRenderer>(viewManager);
     } else if (newRenderingMode == RENDERING_MODE_SLICE_RENDERER) {
         newVolumeRenderer = std::make_shared<SliceRenderer>(viewManager);
+    } else if (newRenderingMode == RENDERING_MODE_WORLD_MAP_RENDERER) {
+        newVolumeRenderer = std::make_shared<WorldMapRenderer>(viewManager);
     } else if (newRenderingMode == RENDERING_MODE_DIAGRAM_RENDERER) {
         newVolumeRenderer = std::make_shared<DiagramRenderer>(viewManager);
     } else {

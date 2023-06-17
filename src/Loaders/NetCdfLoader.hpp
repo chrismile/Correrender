@@ -76,6 +76,17 @@ private:
      * Loads a 3D floating point variable.
      * @param ncid The NetCDF file ID.
      * @param varid The ID of the variable.
+     * @param ylen Dimension size queried by @ref getDim.
+     * @param xlen Dimension size queried by @ref getDim.
+     * @param array A pointer to a float array where the variable data is to be stored. The function will automatically
+     * allocate the memory. The caller needs to deallocate the allocated memory using "delete[]".
+     */
+    void loadFloatArray2D(int varid, size_t ylen, size_t xlen, float*& array);
+
+    /**
+     * Loads a 3D floating point variable.
+     * @param ncid The NetCDF file ID.
+     * @param varid The ID of the variable.
      * @param zlen Dimension size queried by @ref getDim.
      * @param ylen Dimension size queried by @ref getDim.
      * @param xlen Dimension size queried by @ref getDim.

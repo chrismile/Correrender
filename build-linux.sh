@@ -142,6 +142,9 @@ if command -v apt &> /dev/null; then
         libnetcdf-dev libblosc-dev liblz4-dev libeccodes-dev libeccodes-tools libopenjp2-7-dev libeigen3-dev \
         libnlopt-cxx-dev
     fi
+    if ! (is_installed_apt "libcurl4-openssl-dev" || is_installed_apt "libcurl4-gnutls-dev" || is_installed_apt "libcurl4-nss-dev"); then
+        sudo apt install -y libcurl4-openssl-dev
+    fi
 elif command -v pacman &> /dev/null; then
     if ! command -v cmake &> /dev/null || ! command -v git &> /dev/null || ! command -v curl &> /dev/null \
             || ! command -v pkg-config &> /dev/null || ! command -v g++ &> /dev/null \
@@ -193,13 +196,13 @@ elif command -v yum &> /dev/null; then
             || ! is_installed_rpm "json-devel" || ! is_installed_rpm "jsoncpp-devel" \
             || ! is_installed_rpm "blosc-devel" || ! is_installed_rpm "netcdf-devel" \
             || ! is_installed_rpm "eccodes-devel" || ! is_installed_rpm "libeigen3-devel" \
-            || ! is_installed_rpm "NLopt" ; then
+            || ! is_installed_rpm "NLopt" || ! is_installed_rpm "libcurl-devel" ; then
         echo "------------------------"
         echo "installing dependencies "
         echo "------------------------"
         sudo yum install -y boost-devel libarchive-devel glm-devel tinyxml2-devel SDL2-devel SDL2_image-devel \
         libpng-devel glew-devel vulkan-headers libshaderc-devel opencl-headers ocl-icd python3-devel python3-numpy \
-        json-devel jsoncpp-devel blosc-devel netcdf-devel eccodes-devel libeigen3-devel NLopt
+        json-devel jsoncpp-devel blosc-devel netcdf-devel eccodes-devel libeigen3-devel NLopt libcurl-devel
     fi
 else
     echo "Warning: Unsupported system package manager detected." >&2

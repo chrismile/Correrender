@@ -113,6 +113,26 @@ void NetCdfLoader::loadFloatArray1D(int varid, size_t len, float*& array) {
     }
 }
 
+void NetCdfLoader::loadFloatArray2D(int varid, size_t ylen, size_t xlen, float*& array) {
+    array = new float[ylen * xlen];
+    size_t startp[] = { 0, 0 };
+    size_t countp[] = { ylen, xlen };
+
+    nc_type vartype;
+    myassert(nc_inq_vartype(ncid, varid, &vartype) == NC_NOERR);
+    if (vartype == NC_FLOAT) {
+        myassert(nc_get_vara_float(ncid, varid, startp, countp, array) == NC_NOERR);
+    } else if (vartype == NC_DOUBLE) {
+        size_t len = ylen * xlen;
+        auto* arrayDouble = new double[len];
+        myassert(nc_get_vara_double(ncid, varid, startp, countp, arrayDouble) == NC_NOERR);
+        for (size_t i = 0; i < len; i++) {
+            array[i] = float(arrayDouble[i]);
+        }
+        delete[] arrayDouble;
+    }
+}
+
 void NetCdfLoader::loadFloatArray3D(int varid, size_t zlen, size_t ylen, size_t xlen, float*& array) {
     array = new float[zlen * ylen * xlen];
     size_t startp[] = { 0, 0, 0 };
@@ -411,12 +431,48 @@ bool NetCdfLoader::setInputFiles(
     std::unordered_map<FieldType, std::vector<std::string>> fieldNameMap;
     varHasFillValueMap.resize(nvarsp);
     fillValueMap.resize(nvarsp);
+    float* lonData = nullptr;
+    float* latData = nullptr;
     for (int varid = 0; varid < nvarsp; varid++) {
         nc_type type = NC_FLOAT;
         int ndims = 0;
         int natts = 0;
         nc_inq_var(ncid, varid, varname, &type, &ndims, dimids, &natts);
-        if ((type != NC_FLOAT && type != NC_DOUBLE) || (ndims != 3 && ndims != 4)) {
+        bool isFloatingPointData = type == NC_FLOAT || type == NC_DOUBLE;
+
+        // Check if the variable contains the lat/lon simulation grid values.
+        bool isLon = ndims < 3 && isFloatingPointData && strcmp(varname, "lon") == 0;
+        bool isLat = ndims < 3 && isFloatingPointData && strcmp(varname, "lat") == 0;
+        if ((isLon || isLat) && ndims == 1) {
+            float* data1D = nullptr;
+            loadFloatArray1D(varid, isLon ? xs : ys, data1D);
+            if (isLon) {
+                lonData = new float[xs * ys];
+                for (int y = 0; y < ys; y++) {
+                    for (int x = 0; x < xs; x++) {
+                        lonData[x + y * xs] = data1D[x];
+                    }
+                }
+            } else if (isLat) {
+                latData = new float[xs * ys];
+                for (int y = 0; y < ys; y++) {
+                    for (int x = 0; x < xs; x++) {
+                        latData[x + y * xs] = data1D[y];
+                    }
+                }
+            }
+            delete[] data1D;
+            continue;
+        } else if ((isLon || isLat) && ndims == 2) {
+            if (isLon) {
+                loadFloatArray2D(varid, ys, xs, lonData);
+            } else if (isLat) {
+                loadFloatArray2D(varid, ys, xs, latData);
+            }
+            continue;
+        }
+
+        if (!isFloatingPointData || (ndims != 3 && ndims != 4)) {
             continue;
         }
 
@@ -443,6 +499,13 @@ bool NetCdfLoader::setInputFiles(
         fillValueMap.at(varid) = fillValue;
     }
     volumeData->setFieldNames(fieldNameMap);
+
+    if (lonData || latData) {
+        if (!lonData || !latData) {
+            sgl::Logfile::get()->throwError("Error in NetCdfLoader::setInputFiles: Only lat or lon set, but not both.");
+        }
+        volumeData->setLatLonData(latData, lonData);
+    }
 
     return true;
 }

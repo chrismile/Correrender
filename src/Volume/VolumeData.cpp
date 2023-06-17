@@ -212,6 +212,13 @@ VolumeData::~VolumeData() {
         delete volumeLoader;
     }
     volumeLoaders.clear();
+
+    if (latData) {
+        delete[] latData;
+    }
+    if (lonData) {
+        delete[] lonData;
+    }
 }
 
 void VolumeData::setTransposeAxes(const glm::ivec3& axes) {
@@ -538,6 +545,20 @@ bool VolumeData::getIsScalarFieldDivergent(const std::string& fieldName) const {
         return true;
     }
     return false;
+}
+
+void VolumeData::setLatLonData(float* _latData, float* _lonData) {
+    if (latData) {
+        delete[] latData;
+        latData = nullptr;
+    }
+    latData = _latData;
+
+    if (lonData) {
+        delete[] lonData;
+        lonData = nullptr;
+    }
+    lonData = _lonData;
 }
 
 bool VolumeData::setInputFiles(
@@ -1242,6 +1263,15 @@ AuxiliaryMemoryToken VolumeData::pushAuxiliaryMemoryDevice(size_t sizeInBytes) {
 
 void VolumeData::popAuxiliaryMemoryDevice(AuxiliaryMemoryToken token) {
     deviceFieldCache->popAuxiliaryMemory(token);
+}
+
+bool VolumeData::getHasLatLonData() {
+    return latData && lonData;
+}
+
+void VolumeData::getLatLonData(const float*& _latData, const float*& _lonData) {
+    _latData = latData;
+    _lonData = lonData;
 }
 
 void VolumeData::update(float dtFrame) {

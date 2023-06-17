@@ -135,6 +135,7 @@ public:
     void addField(
             void* fieldData, ScalarDataFormat dataFormat, FieldType fieldType,
             const std::string& fieldName, int timeStepIdx, int ensembleIdx);
+    void setLatLonData(float* _latData, float* _lonData);
     void addCalculator(const CalculatorPtr& calculator);
     const std::vector<std::string>& getFieldNames(FieldType fieldType);
     const std::vector<std::string>& getFieldNamesBase(FieldType fieldType);
@@ -219,7 +220,11 @@ public:
     AuxiliaryMemoryToken pushAuxiliaryMemoryDevice(size_t sizeInBytes);
     void popAuxiliaryMemoryDevice(AuxiliaryMemoryToken token);
 
-    /// Keep track of transfer function use in renderers to display overlays in renderer.
+    // For querying lat/lon coordinates possibly associated with the grid.
+    bool getHasLatLonData();
+    void getLatLonData(const float*& _latData, const float*& _lonData);
+
+    // Keep track of transfer function use in renderers to display overlays in renderer.
     void acquireTf(Renderer* renderer, int varIdx);
     void releaseTf(Renderer* renderer, int varIdx);
     void acquireTf(Calculator* renderer, int varIdx);
@@ -346,6 +351,10 @@ protected:
     sgl::vk::BufferPtr stagingBuffer; ///< For transferring calculator output from the GPU to the CPU.
     std::vector<std::pair<std::string, std::function<Calculator*()>>> factoriesCalculator;
     std::unordered_map<CalculatorType, size_t> calculatorTypeUseCounts;
+
+    // Associated lat/lon data (may be nullptr).
+    float* latData = nullptr;
+    float* lonData = nullptr;
 
 private:
     static glm::vec3 screenPosToRayDir(SceneData* sceneData, int globalX, int globalY);
