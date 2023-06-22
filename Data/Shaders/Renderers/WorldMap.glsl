@@ -32,12 +32,15 @@
 
 layout(location = 0) in vec3 vertexPosition;
 layout(location = 1) in vec3 vertexNormal;
+layout(location = 2) in vec2 vertexTexCoord;
 layout(location = 0) out vec3 fragmentPositionWorld;
 layout(location = 1) out vec3 fragmentNormal;
+layout(location = 2) out vec2 fragmentTexCoord;
 
 void main() {
     fragmentPositionWorld = vertexPosition;
     fragmentNormal = vertexNormal;
+    fragmentTexCoord = vertexTexCoord;
     gl_Position = mvpMatrix * vec4(vertexPosition, 1.0);
 }
 
@@ -59,14 +62,15 @@ layout (binding = 1) uniform sampler2D worldMapTexture;
 
 layout(location = 0) in vec3 fragmentPositionWorld;
 layout(location = 1) in vec3 fragmentNormal;
+layout(location = 2) in vec2 fragmentTexCoord;
 layout(location = 0) out vec4 fragColor;
 
 #include "UniformData.glsl"
 #include "Lighting.glsl"
 
 void main() {
-    vec2 texCoords = (fragmentPositionWorld.xy - minBoundingBox.xy) / (maxBoundingBox.xy - minBoundingBox.xy);
-    vec4 worldMapColor = texture(worldMapTexture, texCoords);
+    //vec2 texCoords = (fragmentPositionWorld.xy - minBoundingBox.xy) / (maxBoundingBox.xy - minBoundingBox.xy);
+    vec4 worldMapColor = texture(worldMapTexture, fragmentTexCoord);
     worldMapColor.a = 1.0;
     vec3 n = normalize(fragmentNormal);
     vec4 color = blinnPhongShadingSurface(worldMapColor, fragmentPositionWorld, n);

@@ -34,6 +34,10 @@
 
 class WorldMapRasterPass;
 
+enum class WorldMapQuality {
+    LOW, MEDIUM, HIGH
+};
+
 class WorldMapRenderer : public Renderer {
 public:
     explicit WorldMapRenderer(ViewManager* viewManager);
@@ -58,11 +62,17 @@ private:
     void ensureWorldMapFileExists();
     void createGeometryData(
             std::vector<uint32_t>& triangleIndices, std::vector<glm::vec3>& vertexPositions,
-            std::vector<glm::vec3>& vertexNormals);
+            std::vector<glm::vec3>& vertexNormals, std::vector<glm::vec2>& vertexTexCoords);
     void createWorldMapTexture();
+    WorldMapQuality worldMapQuality = WorldMapQuality::MEDIUM;
+    bool hasCheckedWorldMapExists = false;
+    float minNormX = 0.0f, minNormY = 0.0f, maxNormX = 0.0f, maxNormY = 0.0;
+    uint32_t regionImageWidth = 0, regionImageHeight = 0;
+    uint32_t xl = 0, yl = 0, xu = 0, yu = 0;
     sgl::vk::BufferPtr indexBuffer;
     sgl::vk::BufferPtr vertexPositionBuffer;
     sgl::vk::BufferPtr vertexNormalBuffer;
+    sgl::vk::BufferPtr vertexTexCoordBuffer;
     sgl::vk::TexturePtr worldMapTexture;
 
     // UI renderer settings.
@@ -80,7 +90,8 @@ public:
     void setVolumeData(VolumeDataPtr& _volumeData, bool isNewData);
     void setRenderData(
             const sgl::vk::BufferPtr& _indexBuffer, const sgl::vk::BufferPtr& _vertexPositionBuffer,
-            const sgl::vk::BufferPtr& _vertexNormalBuffer, const sgl::vk::TexturePtr& _worldMapTexture);
+            const sgl::vk::BufferPtr& _vertexNormalBuffer, const sgl::vk::BufferPtr& _vertexTexCoordBuffer,
+            const sgl::vk::TexturePtr& _worldMapTexture);
     inline void setLightingFactor(float factor) { renderSettingsData.lightingFactor = factor; }
     void recreateSwapchain(uint32_t width, uint32_t height) override;
 
@@ -110,6 +121,7 @@ private:
     sgl::vk::BufferPtr indexBuffer;
     sgl::vk::BufferPtr vertexPositionBuffer;
     sgl::vk::BufferPtr vertexNormalBuffer;
+    sgl::vk::BufferPtr vertexTexCoordBuffer;
     sgl::vk::TexturePtr worldMapTexture;
 };
 
