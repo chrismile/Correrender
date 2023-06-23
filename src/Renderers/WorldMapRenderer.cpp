@@ -233,8 +233,8 @@ void WorldMapRenderer::createGeometryData(
                     aabb.min.y + (aabb.max.y - aabb.min.y) * float(y) / float(ys - 1),
                     aabb.min.z);
             vertexNormals.emplace_back(0.0f, 0.0f, 1.0f);
-            float x_norm = lonData[x + y * xs] / 360.0f + 0.5f;
-            float y_norm = latData[x + y * xs] / 180.0f + 0.5f;
+            float x_norm = (lonData ? lonData[x + y * xs] : 0.0f) / 360.0f + 0.5f;
+            float y_norm = (latData ? latData[x + y * xs] : 0.0f) / 180.0f + 0.5f;
             float texCoordX = (x_norm - minNormX) / (maxNormX - minNormX);
             float texCoordY = (y_norm - minNormY) / (maxNormY - minNormY);
             vertexTexCoords.emplace_back(texCoordX, texCoordY);
