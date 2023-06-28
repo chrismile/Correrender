@@ -29,6 +29,7 @@
 #include <Graphics/Vulkan/Render/Renderer.hpp>
 #include <Graphics/Vulkan/Render/ComputePipeline.hpp>
 #include <ImGui/Widgets/PropertyEditor.hpp>
+#include "Utils/InternalState.hpp"
 #include "Widgets/ViewManager.hpp"
 #include "Volume/VolumeData.hpp"
 #include "RenderingModes.hpp"
@@ -167,6 +168,76 @@ void IsoSurfaceRayCastingRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEd
         }
         reRender = true;
     }
+}
+
+void IsoSurfaceRayCastingRenderer::setSettings(const SettingsMap& settings) {
+    Renderer::setSettings(settings);
+    if (settings.getValueOpt("selected_field_idx", selectedFieldIdx)) {
+        const std::vector<std::string>& fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
+        selectedFieldIdx = std::clamp(selectedFieldIdx, 0, int(fieldNames.size()) - 1);
+        selectedScalarFieldName = fieldNames.at(selectedFieldIdx);
+        minMaxScalarFieldValue = volumeData->getMinMaxScalarFieldValue(selectedScalarFieldName);
+        isoValue = (minMaxScalarFieldValue.first + minMaxScalarFieldValue.second) / 2.0f;
+        dirty = true;
+        reRender = true;
+    }
+    if (settings.getValueOpt("iso_value", isoValue)) {
+        for (auto& isoSurfaceRayCastingPass : isoSurfaceRayCastingPasses) {
+            isoSurfaceRayCastingPass->setIsoValue(isoValue);
+        }
+        reRender = true;
+    }
+    if (settings.getValueOpt("analytic_intersections", analyticIntersections)) {
+        for (auto& isoSurfaceRayCastingPass : isoSurfaceRayCastingPasses) {
+            isoSurfaceRayCastingPass->setAnalyticIntersections(analyticIntersections);
+        }
+        reRender = true;
+    }
+    if (settings.getValueOpt("step_size", stepSize)) {
+        for (auto& isoSurfaceRayCastingPass : isoSurfaceRayCastingPasses) {
+            isoSurfaceRayCastingPass->setAnalyticIntersections(analyticIntersections);
+        }
+        reRender = true;
+    }
+
+    std::string intersectionSolverName;
+    if (settings.getValueOpt("intersection_solver", intersectionSolverName)) {
+        for (int i = 0; i < IM_ARRAYSIZE(INTERSECTION_SOLVER_NAMES); i++) {
+            if (intersectionSolverName == INTERSECTION_SOLVER_NAMES[i]) {
+                intersectionSolver = IntersectionSolver(i);
+                break;
+            }
+        }
+        for (auto& isoSurfaceRayCastingPass : isoSurfaceRayCastingPasses) {
+            isoSurfaceRayCastingPass->setIntersectionSolver(intersectionSolver);
+        }
+        reRender = true;
+    }
+
+    bool colorChanged = false;
+    colorChanged |= settings.getValueOpt("iso_surface_color_r", isoSurfaceColor.r);
+    colorChanged |= settings.getValueOpt("iso_surface_color_g", isoSurfaceColor.g);
+    colorChanged |= settings.getValueOpt("iso_surface_color_b", isoSurfaceColor.b);
+    colorChanged |= settings.getValueOpt("iso_surface_color_a", isoSurfaceColor.a);
+    if (colorChanged) {
+        for (auto& isoSurfaceRayCastingPass : isoSurfaceRayCastingPasses) {
+            isoSurfaceRayCastingPass->setIsoSurfaceColor(isoSurfaceColor);
+        }
+        reRender = true;
+    }
+}
+
+void IsoSurfaceRayCastingRenderer::getSettings(SettingsMap& settings) {
+    Renderer::getSettings(settings);
+    settings.addKeyValue("selected_field_idx", selectedFieldIdx);
+    settings.addKeyValue("iso_value", isoValue);
+    settings.addKeyValue("analytic_intersections", analyticIntersections);
+    settings.addKeyValue("step_size", stepSize);
+    settings.addKeyValue("intersection_solver", INTERSECTION_SOLVER_NAMES[int(intersectionSolver)]);
+    settings.addKeyValue("iso_surface_color_r", isoSurfaceColor.r);
+    settings.addKeyValue("iso_surface_color_g", isoSurfaceColor.g);
+    settings.addKeyValue("iso_surface_color_b", isoSurfaceColor.b);
+    settings.addKeyValue("iso_surface_color_a", isoSurfaceColor.a);
 }
 
 

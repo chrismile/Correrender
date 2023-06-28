@@ -27,6 +27,7 @@
  */
 
 #include <ImGui/Widgets/PropertyEditor.hpp>
+#include "Utils/InternalState.hpp"
 #include "Volume/VolumeData.hpp"
 #include "Widgets/ViewManager.hpp"
 #include "RenderingModes.hpp"
@@ -179,4 +180,26 @@ void Renderer::renderGui(sgl::PropertyEditor& propertyEditor) {
 }
 
 void Renderer::renderGuiOverlay(uint32_t viewIdx) {
+}
+
+void Renderer::setSettings(const SettingsMap& settings) {
+    std::string viewVisibilityString;
+    if (settings.getValueOpt("view_visibility", viewVisibilityString)) {
+        for (size_t i = 0; i < viewVisibilityString.size(); i++) {
+            bool visible = viewVisibilityString.at(i) != '0';
+            if (visible != viewVisibilityArray.at(i)) {
+                viewVisibilityArray.at(i) = visible;
+                reRenderViewArray.at(i) = true;
+            }
+        }
+        updateViewComboSelection();
+    }
+}
+
+void Renderer::getSettings(SettingsMap& settings) {
+    std::string viewVisibilityString;
+    for (auto entry : viewVisibilityArray) {
+        viewVisibilityString += entry ? '1' : '0';
+    }
+    settings.addKeyValue("view_visibility", viewVisibilityString);
 }

@@ -29,6 +29,7 @@
 #include <Graphics/Vulkan/Render/Renderer.hpp>
 #include <Graphics/Vulkan/Render/ComputePipeline.hpp>
 #include <ImGui/Widgets/PropertyEditor.hpp>
+#include "Utils/InternalState.hpp"
 #include "Widgets/ViewManager.hpp"
 #include "Volume/VolumeData.hpp"
 #include "RenderingModes.hpp"
@@ -149,6 +150,54 @@ void DvrRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         }
         reRender = true;
     }
+}
+
+void DvrRenderer::setSettings(const SettingsMap& settings) {
+    Renderer::setSettings(settings);
+    if (settings.getValueOpt("selected_field_idx", selectedFieldIdx)) {
+        const std::vector<std::string>& fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
+        selectedFieldIdx = std::clamp(selectedFieldIdx, 0, int(fieldNames.size()) - 1);
+        selectedScalarFieldName = fieldNames.at(selectedFieldIdx);
+        for (auto& dvrPass : dvrPasses) {
+            dvrPass->setSelectedScalarField(selectedFieldIdx, selectedScalarFieldName);
+        }
+        dirty = true;
+        reRender = true;
+    }
+    if (settings.getValueOpt("step_size", stepSize)) {
+        stepSize = std::clamp(stepSize, 0.01f, 1.0f);
+        for (auto& dvrPass : dvrPasses) {
+            dvrPass->setStepSize(stepSize);
+        }
+        reRender = true;
+    }
+    if (settings.getValueOpt("attenuation_coefficient", attenuationCoefficient)) {
+        for (auto& dvrPass : dvrPasses) {
+            dvrPass->setAttenuationCoefficient(attenuationCoefficient);
+        }
+        reRender = true;
+    }
+    std::string nanHandlingId;
+    if (settings.getValueOpt("nan_handling", nanHandlingId)) {
+        for (int i = 0; i < IM_ARRAYSIZE(NAN_HANDLING_IDS); i++) {
+            if (nanHandlingId == NAN_HANDLING_IDS[i]) {
+                nanHandling = NaNHandling(i);
+                break;
+            }
+        }
+        for (auto& dvrPass : dvrPasses) {
+            dvrPass->setNaNHandling(nanHandling);
+        }
+        reRender = true;
+    }
+}
+
+void DvrRenderer::getSettings(SettingsMap& settings) {
+    Renderer::getSettings(settings);
+    settings.addKeyValue("selected_field_idx", selectedFieldIdx);
+    settings.addKeyValue("step_size", stepSize);
+    settings.addKeyValue("attenuation_coefficient", attenuationCoefficient);
+    settings.addKeyValue("nan_handling", NAN_HANDLING_IDS[int(nanHandling)]);
 }
 
 

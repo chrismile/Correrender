@@ -47,6 +47,7 @@ class FileDialog;
 }
 typedef IGFD::FileDialog ImGuiFileDialog;
 
+class SettingsMap;
 class ViewManager;
 class VolumeData;
 class Renderer;
@@ -57,10 +58,22 @@ typedef std::shared_ptr<DeviceCacheEntryType> DeviceCacheEntry;
 enum class CalculatorType : uint32_t {
     VELOCITY, VECTOR_MAGNITUDE, VORTICITY, HELICITY,
     BINARY_OPERATOR, NOISE_REDUCTION, ENSEMBLE_VARIANCE, RESIDUAL_COLOR,
-    CORRELATION, TORCH, TINY_CUDA_NN, QUICK_MLP
+    CORRELATION, TORCH, TINY_CUDA_NN, QUICK_MLP,
+    INVALID
 };
 const CalculatorType firstCorrelationCalculatorType = CalculatorType::CORRELATION;
 const CalculatorType lastCorrelationCalculatorType = CalculatorType::QUICK_MLP;
+const char* const CALCULATOR_TYPE_IDS[] = {
+        "velocity", "vector_magnitude", "vorticity", "helicity",
+        "binary_operator", "noise_reduction", "ensemble_variance", "residual_color",
+        "correlation", "correlation_torch", "correlation_tiny_cuda_nn", "correlation_quick_mlp"
+};
+const char* const CALCULATOR_NAMES[] = {
+        "Velocity Calculator", "Vector Magnitude Calculator", "Vorticity Calculator", "Helicity Calculator",
+        "Binary Operator", "Noise Reduction", "Ensemble Variance", "Residual Color Calculator",
+        "Correlation Calculator", "PyTorch Similarity Calculator", "tiny-cuda-nn Similarity Calculator",
+        "QuickMLP Similarity Calculator"
+};
 
 enum class FilterDevice {
     CPU, VULKAN, CUDA
@@ -101,6 +114,8 @@ public:
     virtual FilterDevice getFilterDevice() = 0;
     [[nodiscard]] virtual bool getHasFixedRange() const { return false; }
     [[nodiscard]] virtual std::pair<float, float> getFixedRange() const { return std::make_pair(-1.0f, 1.0f); }
+    virtual void setSettings(const SettingsMap& settings) {}
+    virtual void getSettings(SettingsMap& settings) {}
 
     /// Writes the derived data to the output data of size VolumeData::xs*ys*zs.
     virtual void calculateCpu(int timeStepIdx, int ensembleIdx, float* buffer) {}

@@ -36,8 +36,8 @@
 #include <Graphics/Vulkan/Render/Renderer.hpp>
 #include <ImGui/Widgets/PropertyEditor.hpp>
 #include <ImGui/imgui_custom.h>
-#include <iostream>
 
+#include "Utils/InternalState.hpp"
 #include "Loaders/DataSet.hpp"
 #include "Volume/VolumeData.hpp"
 #include "NoiseReductionCalculator.hpp"
@@ -209,6 +209,43 @@ void NoiseReductionCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEditor
         hasNameChanged = true;
         dirty = true;
     }*/
+}
+
+void NoiseReductionCalculator::setSettings(const SettingsMap& settings) {
+    Calculator::setSettings(settings);
+    if (settings.getValueOpt("scalar_field_idx", scalarFieldIndexGui)) {
+        volumeData->releaseScalarField(this, scalarFieldIndex);
+        scalarFieldIndex = int(scalarFieldIndexArray.at(scalarFieldIndexGui));
+        volumeData->acquireScalarField(this, scalarFieldIndex);
+        dirty = true;
+    }
+    std::string noiseReductionTypeString;
+    if (settings.getValueOpt("noise_reduction_type", noiseReductionTypeString)) {
+        for (int i = 0; i < IM_ARRAYSIZE(NOISE_REDUCTION_TYPE_NAMES); i++) {
+            if (noiseReductionTypeString == NOISE_REDUCTION_TYPE_NAMES[i]) {
+                noiseReductionType = NoiseReductionType(i);
+                break;
+            }
+        }
+        hasNameChanged = true;
+        dirty = true;
+    }
+    if (settings.getValueOpt("sigma", sigma)) {
+        smoothingComputePass->setSigma(sigma);
+        dirty = true;
+    }
+    if (settings.getValueOpt("kernel_size", kernelSize)) {
+        smoothingComputePass->setKernelSize(kernelSize);
+        dirty = true;
+    }
+}
+
+void NoiseReductionCalculator::getSettings(SettingsMap& settings) {
+    Calculator::getSettings(settings);
+    settings.addKeyValue("scalar_field_idx", scalarFieldIndexGui);
+    settings.addKeyValue("noise_reduction_type", NOISE_REDUCTION_TYPE_NAMES[int(noiseReductionType)]);
+    settings.addKeyValue("sigma", sigma);
+    settings.addKeyValue("kernel_size", kernelSize);
 }
 
 

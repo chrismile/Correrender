@@ -30,6 +30,8 @@
 #include <Graphics/Vulkan/Render/Renderer.hpp>
 #include <Graphics/Vulkan/Render/ComputePipeline.hpp>
 #include <ImGui/Widgets/PropertyEditor.hpp>
+
+#include "Utils/InternalState.hpp"
 #include "Widgets/ViewManager.hpp"
 #include "Volume/VolumeData.hpp"
 #include "RenderingModes.hpp"
@@ -100,6 +102,26 @@ void DomainOutlineRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         }
         reRender = true;
     }
+}
+
+void DomainOutlineRenderer::setSettings(const SettingsMap& settings) {
+    Renderer::setSettings(settings);
+    if (settings.getValueOpt("line_width", lineWidth)) {
+        recreateBuffers();
+        reRender = true;
+    }
+    if (settings.getValueOpt("use_depth_cues", useDepthCues)) {
+        for (auto& domainOutlineRasterPass : domainOutlineRasterPasses) {
+            domainOutlineRasterPass->setUseDepthCues(useDepthCues);
+        }
+        reRender = true;
+    }
+}
+
+void DomainOutlineRenderer::getSettings(SettingsMap& settings) {
+    Renderer::getSettings(settings);
+    settings.addKeyValue("line_width", lineWidth);
+    settings.addKeyValue("use_depth_cues", useDepthCues);
 }
 
 void addEdge(

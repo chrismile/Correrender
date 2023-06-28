@@ -56,6 +56,8 @@ public:
     FilterDevice getFilterDevice() override { return FilterDevice::VULKAN; }
     void calculateCpu(int timeStepIdx, int ensembleIdx, float* buffer) override;
     void calculateDevice(int timeStepIdx, int ensembleIdx, const DeviceCacheEntry& deviceCacheEntry) override;
+    void setSettings(const SettingsMap& settings) override;
+    void getSettings(SettingsMap& settings) override;
 
 protected:
     void renderGuiImpl(sgl::PropertyEditor& propertyEditor) override;

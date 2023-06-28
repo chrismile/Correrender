@@ -35,6 +35,7 @@
 #include <Graphics/Vulkan/Render/Renderer.hpp>
 #include <ImGui/Widgets/PropertyEditor.hpp>
 
+#include "Utils/InternalState.hpp"
 #include "Loaders/DataSet.hpp"
 #include "Volume/VolumeData.hpp"
 #include "BinaryOperatorCalculator.hpp"
@@ -178,6 +179,39 @@ void BinaryOperatorCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEditor
         hasNameChanged = true;
         dirty = true;
     }
+}
+
+void BinaryOperatorCalculator::setSettings(const SettingsMap& settings) {
+    Calculator::setSettings(settings);
+    for (int i = 0; i < 2; i++) {
+        std::string keyName = "scalar_field_idx_" + std::to_string(i);
+        if (settings.getValueOpt(keyName.c_str(), scalarFieldIndicesGui[i])) {
+            volumeData->releaseScalarField(this, scalarFieldIndices[i]);
+            scalarFieldIndices[i] = int(scalarFieldIndexArray.at(scalarFieldIndicesGui[i]));
+            volumeData->acquireScalarField(this, scalarFieldIndices[i]);
+            dirty = true;
+        }
+    }
+    std::string binaryOperatorTypeString;
+    if (settings.getValueOpt("binary_operator_type", binaryOperatorTypeString)) {
+        for (int i = 0; i < IM_ARRAYSIZE(BINARY_OPERATOR_NAMES); i++) {
+            if (binaryOperatorTypeString == BINARY_OPERATOR_NAMES[i]) {
+                binaryOperatorType = BinaryOperatorType(i);
+                break;
+            }
+        }
+        binaryOperatorComputePass->setBinaryOperatorType(binaryOperatorType);
+        hasNameChanged = true;
+        dirty = true;
+    }
+}
+
+void BinaryOperatorCalculator::getSettings(SettingsMap& settings) {
+    Calculator::getSettings(settings);
+    for (int i = 0; i < 2; i++) {
+        settings.addKeyValue("scalar_field_idx_" + std::to_string(i), scalarFieldIndicesGui[i]);
+    }
+    settings.addKeyValue("binary_operator_type", BINARY_OPERATOR_NAMES[int(binaryOperatorType)]);
 }
 
 

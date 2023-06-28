@@ -32,6 +32,7 @@
 #include <memory>
 #include <Utils/Events/EventManager.hpp>
 
+#include "RenderingModes.hpp"
 #include "SceneData.hpp"
 
 namespace sgl {
@@ -49,6 +50,7 @@ class FileDialog;
 }
 typedef IGFD::FileDialog ImGuiFileDialog;
 
+class SettingsMap;
 class ViewManager;
 class VolumeData;
 typedef std::shared_ptr<VolumeData> VolumeDataPtr;
@@ -61,11 +63,15 @@ enum class NaNHandling {
 const char* const NAN_HANDLING_NAMES[] = {
         "Ignore", "Show as Yellow"
 };
+const char* const NAN_HANDLING_IDS[] = {
+        "ignore", "yellow"
+};
 
 class Renderer {
     friend class VolumeData;
 public:
     Renderer(std::string windowName, ViewManager* viewManager);
+    [[nodiscard]] virtual RenderingMode getRenderingMode() const = 0;
     virtual void initialize();
     virtual ~Renderer();
 
@@ -93,6 +99,8 @@ public:
     virtual void setFileDialogInstance(ImGuiFileDialog* _fileDialogInstance) {
         fileDialogInstance = _fileDialogInstance;
     }
+    virtual void setSettings(const SettingsMap& settings);
+    virtual void getSettings(SettingsMap& settings);
 
     /// Called when the transfer function was changed.
     virtual void onTransferFunctionMapRebuilt() {}

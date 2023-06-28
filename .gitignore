@@ -90,6 +90,7 @@ Data/Videos/*
 Data/TransferFunctions/*
 Data/Texture/*
 Data/Maps/*
+Data/States/*
 Data/ReplayScripts/__pycache__/*
 Data/ReplayScripts/modules/__pycache__/*
 Data/__cudacache__/*

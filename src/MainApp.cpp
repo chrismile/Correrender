@@ -984,6 +984,53 @@ void MainApp::renderGui() {
         IGFD_CloseDialog(fileDialogInstance);
     }
 
+    if (IGFD_DisplayDialog(
+            fileDialogInstance,
+            "ChooseStateFile", ImGuiWindowFlags_NoCollapse,
+            sgl::ImGuiWrapper::get()->getScaleDependentSize(1000, 580),
+            ImVec2(FLT_MAX, FLT_MAX))) {
+        if (IGFD_IsOk(fileDialogInstance)) {
+            std::string filePathName = IGFD_GetFilePathName(fileDialogInstance);
+            std::string filePath = IGFD_GetCurrentPath(fileDialogInstance);
+            std::string filter = IGFD_GetCurrentFilter(fileDialogInstance);
+            std::string userDatas;
+            if (IGFD_GetUserDatas(fileDialogInstance)) {
+                userDatas = std::string((const char*)IGFD_GetUserDatas(fileDialogInstance));
+            }
+            auto selection = IGFD_GetSelection(fileDialogInstance);
+
+            const char* currentPath = IGFD_GetCurrentPath(fileDialogInstance);
+            std::string filename = currentPath;
+            if (!filename.empty() && filename.back() != '/' && filename.back() != '\\') {
+                filename += "/";
+            }
+            std::string currentFileName;
+            if (filter == ".*") {
+                currentFileName = IGFD_GetCurrentFileNameRaw(fileDialogInstance);
+            } else {
+                currentFileName = IGFD_GetCurrentFileName(fileDialogInstance);
+            }
+            if (selection.count != 0 && selection.table[0].fileName == currentFileName) {
+                filename += selection.table[0].fileName;
+            } else {
+                filename += currentFileName;
+            }
+            IGFD_Selection_DestroyContent(&selection);
+            if (currentPath) {
+                free((void*)currentPath);
+                currentPath = nullptr;
+            }
+
+            stateFileDirectory = sgl::FileUtils::get()->getPathToFile(filename);
+            if (stateModeSave) {
+                saveStateToFile(filename);
+            } else {
+                loadStateFromFile(filename);
+            }
+        }
+        IGFD_CloseDialog(fileDialogInstance);
+    }
+
     if (useDockSpaceMode) {
         if (isFirstFrame && dataViews.size() == 1) {
             if (volumeRenderers.empty()) {
@@ -992,33 +1039,40 @@ void MainApp::renderGui() {
             isFirstFrame = false;
         }
 
-        ImGuiID dockSpaceId = ImGui::DockSpaceOverViewport(ImGui::GetMainViewport());
-        ImGuiDockNode* centralNode = ImGui::DockBuilderGetNode(dockSpaceId);
         static bool isProgramStartup = true;
-        if (isProgramStartup && centralNode->IsEmpty()) {
-            ImGuiID dockLeftId, dockMainId;
-            ImGui::DockBuilderSplitNode(
-                    dockSpaceId, ImGuiDir_Left, 0.29f, &dockLeftId, &dockMainId);
-            ImGui::DockBuilderDockWindow("Opaque Renderer (1)###data_view_0", dockMainId);
+        ImGuiID dockSpaceId = ImGui::DockSpaceOverViewport(ImGui::GetMainViewport());
+        if (isProgramStartup) {
+            ImGuiDockNode* centralNode = ImGui::DockBuilderGetNode(dockSpaceId);
+            if (centralNode->IsEmpty()) {
+                auto* window = sgl::AppSettings::get()->getMainWindow();
+                //const ImVec2 dockSpaceSize = ImGui::GetMainViewport()->Size;//ImGui::GetContentRegionAvail();
+                const ImVec2 dockSpaceSize(float(window->getWidth()), float(window->getHeight()));
+                ImGui::DockBuilderSetNodeSize(dockSpaceId, dockSpaceSize);
 
-            ImGuiID dockLeftUpId, dockLeftDownId;
-            ImGui::DockBuilderSplitNode(
-                    dockLeftId, ImGuiDir_Up, 0.45f, &dockLeftUpId, &dockLeftDownId);
-            ImGui::DockBuilderDockWindow("Property Editor", dockLeftUpId);
+                ImGuiID dockLeftId, dockMainId;
+                ImGui::DockBuilderSplitNode(
+                        dockSpaceId, ImGuiDir_Left, 0.29f, &dockLeftId, &dockMainId);
+                ImGui::DockBuilderSetNodeSize(dockLeftId, ImVec2(dockSpaceSize.x * 0.29f, dockSpaceSize.y));
+                ImGui::DockBuilderDockWindow("Data View###data_view_0", dockMainId);
 
-            ImGuiID dockLeftDownUpId, dockLeftDownDownId;
-            ImGui::DockBuilderSplitNode(
-                    dockLeftDownId, ImGuiDir_Up, 0.28f,
-                    &dockLeftDownUpId, &dockLeftDownDownId);
-            ImGui::DockBuilderDockWindow("Transfer Function", dockLeftDownDownId);
-            ImGui::DockBuilderDockWindow("Multi-Var Transfer Function", dockLeftDownDownId);
-            ImGui::DockBuilderDockWindow("Camera Checkpoints", dockLeftDownUpId);
-            ImGui::DockBuilderDockWindow("Replay Widget", dockLeftDownUpId);
+                ImGuiID dockLeftUpId, dockLeftDownId;
+                ImGui::DockBuilderSplitNode(
+                        dockLeftId, ImGuiDir_Up, 0.45f, &dockLeftUpId, &dockLeftDownId);
+                ImGui::DockBuilderDockWindow("Property Editor", dockLeftUpId);
 
-            ImGui::DockBuilderFinish(dockLeftId);
-            ImGui::DockBuilderFinish(dockSpaceId);
+                ImGuiID dockLeftDownUpId, dockLeftDownDownId;
+                ImGui::DockBuilderSplitNode(
+                        dockLeftDownId, ImGuiDir_Up, 0.28f,
+                        &dockLeftDownUpId, &dockLeftDownDownId);
+                ImGui::DockBuilderDockWindow("Transfer Function", dockLeftDownDownId);
+                ImGui::DockBuilderDockWindow("Multi-Var Transfer Function", dockLeftDownDownId);
+                ImGui::DockBuilderDockWindow("Camera Checkpoints", dockLeftDownUpId);
+                ImGui::DockBuilderDockWindow("Replay Widget", dockLeftDownUpId);
+
+                ImGui::DockBuilderFinish(dockSpaceId);
+            }
+            isProgramStartup = false;
         }
-        isProgramStartup = false;
 
         renderGuiMenuBar();
 
@@ -1441,6 +1495,18 @@ void MainApp::openExportFieldFileDialog() {
             ImGuiFileDialogFlags_ConfirmOverwrite);
 }
 
+void MainApp::openSelectStateDialog() {
+    if (stateFileDirectory.empty() || !sgl::FileUtils::get()->directoryExists(exportFieldFileDialogDirectory)) {
+        stateFileDirectory = sgl::AppSettings::get()->getDataDirectory() + "States/";
+        if (!sgl::FileUtils::get()->exists(stateFileDirectory)) {
+            sgl::FileUtils::get()->ensureDirectoryExists(stateFileDirectory);
+        }
+    }
+    IGFD_OpenModal(
+            fileDialogInstance, "ChooseStateFile", "Choose a File", ".json", stateFileDirectory.c_str(), "", 1, nullptr,
+            stateModeSave ? ImGuiFileDialogFlags_ConfirmOverwrite : ImGuiFileDialogFlags_None);
+}
+
 void MainApp::renderGuiMenuBar() {
     bool openExportFieldDialog = false;
     bool openFieldSimilarityDialog = false;
@@ -1504,9 +1570,9 @@ void MainApp::renderGuiMenuBar() {
             }
             if (ImGui::MenuItem("New View...")) {
                 addNewDataView();
-                if (dataViews.size() == 1) {
-                    initializeFirstDataView();
-                }
+                //if (dataViews.size() == 1) {
+                //    initializeFirstDataView();
+                //}
             }
             if (volumeData && ImGui::BeginMenu("New Calculator...")) {
                 volumeData->renderGuiNewCalculators();
@@ -1553,6 +1619,15 @@ void MainApp::renderGuiMenuBar() {
             }
             if (volumeData && ImGui::MenuItem("Optimize Transfer Function...")) {
                 openOptimizeTFDialog = true;
+            }
+
+            if (ImGui::MenuItem("Load State...")) {
+                stateModeSave = false;
+                openSelectStateDialog();
+            }
+            if (ImGui::MenuItem("Save State...")) {
+                stateModeSave = true;
+                openSelectStateDialog();
             }
 
             if (ImGui::MenuItem("Print Camera State")) {

@@ -145,6 +145,13 @@ private:
     void openExportFieldFileDialog();
     int selectedFieldIndexExport = 0;
     std::string exportFieldFileDialogDirectory;
+    // For loading and saving the application state.
+    void openSelectStateDialog();
+    void saveStateToFile(const std::string& stateFilePath);
+    void loadStateFromFile(const std::string& stateFilePath);
+    bool stateModeSave = false;
+    std::string stateFileDirectory;
+    // For field similarity computation.
     CorrelationMeasureType correlationMeasureFieldSimilarity = CorrelationMeasureType::PEARSON;
     int useFieldAccuracyDouble = 1;
     int similarityFieldIdx0 = 0, similarityFieldIdx1 = 0;

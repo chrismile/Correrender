@@ -35,6 +35,7 @@
 #include <Graphics/Vulkan/Render/Renderer.hpp>
 #include <ImGui/Widgets/PropertyEditor.hpp>
 
+#include "Utils/InternalState.hpp"
 #include "Loaders/DataSet.hpp"
 #include "Volume/VolumeData.hpp"
 #include "EnsembleVarianceCalculator.hpp"
@@ -186,6 +187,21 @@ void EnsembleVarianceCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEdit
         volumeData->acquireScalarField(this, scalarFieldIndex);
         dirty = true;
     }
+}
+
+void EnsembleVarianceCalculator::setSettings(const SettingsMap& settings) {
+    Calculator::setSettings(settings);
+    if (settings.getValueOpt("scalar_field_idx", scalarFieldIndexGui)) {
+        volumeData->releaseScalarField(this, scalarFieldIndex);
+        scalarFieldIndex = int(scalarFieldIndexArray.at(scalarFieldIndexGui));
+        volumeData->acquireScalarField(this, scalarFieldIndex);
+        dirty = true;
+    }
+}
+
+void EnsembleVarianceCalculator::getSettings(SettingsMap& settings) {
+    Calculator::getSettings(settings);
+    settings.addKeyValue("scalar_field_idx", scalarFieldIndexGui);
 }
 
 

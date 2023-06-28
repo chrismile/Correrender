@@ -39,8 +39,11 @@ public:
     explicit DomainOutlineRenderer(ViewManager* viewManager);
     ~DomainOutlineRenderer() override;
     void initialize() override;
+    [[nodiscard]] RenderingMode getRenderingMode() const override { return RENDERING_MODE_DOMAIN_OUTLINE_RENDERER; }
     void setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) override;
     void recreateSwapchainView(uint32_t viewIdx, uint32_t width, uint32_t height) override;
+    void setSettings(const SettingsMap& settings) override;
+    void getSettings(SettingsMap& settings) override;
 
 protected:
     void renderViewImpl(uint32_t viewIdx) override;

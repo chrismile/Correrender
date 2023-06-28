@@ -38,6 +38,7 @@
 #include <IsosurfaceCpp/src/SnapMC.hpp>
 
 #include "Utils/Normalization.hpp"
+#include "Utils/InternalState.hpp"
 #include "Widgets/ViewManager.hpp"
 #include "Export/WriteMesh.hpp"
 #include "Volume/VolumeData.hpp"
@@ -269,6 +270,71 @@ void IsoSurfaceRasterizer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         }
         propertyEditor.endNode();
     }
+}
+
+void IsoSurfaceRasterizer::setSettings(const SettingsMap& settings) {
+    Renderer::setSettings(settings);
+    if (settings.getValueOpt("selected_field_idx", selectedFieldIdx)) {
+        const std::vector<std::string>& fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
+        selectedFieldIdx = std::clamp(selectedFieldIdx, 0, int(fieldNames.size()) - 1);
+        selectedScalarFieldName = fieldNames.at(selectedFieldIdx);
+        minMaxScalarFieldValue = volumeData->getMinMaxScalarFieldValue(selectedScalarFieldName);
+        isoValue = (minMaxScalarFieldValue.first + minMaxScalarFieldValue.second) / 2.0f;
+        dirty = true;
+        reRender = true;
+    }
+    if (settings.getValueOpt("iso_value", isoValue)) {
+        for (auto& isoSurfaceRasterPass : isoSurfaceRasterPasses) {
+            isoSurfaceRasterPass->setIsoValue(isoValue);
+        }
+        dirty = true;
+        reRender = true;
+    }
+
+    std::string isoSurfaceExtractionTechniqueName;
+    if (settings.getValueOpt("iso_surface_extraction_technique", isoSurfaceExtractionTechniqueName)) {
+        for (int i = 0; i < IM_ARRAYSIZE(ISO_SURFACE_EXTRACTION_TECHNIQUE_NAMES); i++) {
+            if (isoSurfaceExtractionTechniqueName == ISO_SURFACE_EXTRACTION_TECHNIQUE_NAMES[i]) {
+                isoSurfaceExtractionTechnique = IsoSurfaceExtractionTechnique(i);
+                break;
+            }
+        }
+        dirty = true;
+        reRender = true;
+    }
+    if (settings.getValueOpt("gamma_snap_mc", gammaSnapMC)) {
+        dirty = true;
+        reRender = true;
+    }
+
+    bool colorChanged = false;
+    colorChanged |= settings.getValueOpt("iso_surface_color_r", isoSurfaceColor.r);
+    colorChanged |= settings.getValueOpt("iso_surface_color_g", isoSurfaceColor.g);
+    colorChanged |= settings.getValueOpt("iso_surface_color_b", isoSurfaceColor.b);
+    colorChanged |= settings.getValueOpt("iso_surface_color_a", isoSurfaceColor.a);
+    if (colorChanged) {
+        for (auto& isoSurfaceRasterPass : isoSurfaceRasterPasses) {
+            isoSurfaceRasterPass->setIsoSurfaceColor(isoSurfaceColor);
+        }
+        reRender = true;
+    }
+
+    settings.getValueOpt("export_file_path", exportFilePath);
+}
+
+void IsoSurfaceRasterizer::getSettings(SettingsMap& settings) {
+    Renderer::getSettings(settings);
+    settings.addKeyValue("selected_field_idx", selectedFieldIdx);
+    settings.addKeyValue("iso_value", isoValue);
+    settings.addKeyValue(
+            "iso_surface_extraction_technique",
+            ISO_SURFACE_EXTRACTION_TECHNIQUE_NAMES[int(isoSurfaceExtractionTechnique)]);
+    settings.addKeyValue("gamma_snap_mc", gammaSnapMC);
+    settings.addKeyValue("iso_surface_color_r", isoSurfaceColor.r);
+    settings.addKeyValue("iso_surface_color_g", isoSurfaceColor.g);
+    settings.addKeyValue("iso_surface_color_b", isoSurfaceColor.b);
+    settings.addKeyValue("iso_surface_color_a", isoSurfaceColor.a);
+    settings.addKeyValue("export_file_path", exportFilePath);
 }
 
 

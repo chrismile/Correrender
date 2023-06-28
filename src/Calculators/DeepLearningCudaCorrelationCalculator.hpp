@@ -72,6 +72,9 @@ public:
     FilterDevice getFilterDevice() override { return FilterDevice::CUDA; }
     void calculateDevice(int timeStepIdx, int ensembleIdx, const DeviceCacheEntry& deviceCacheEntry) override;
 
+    void setSettings(const SettingsMap& settings) override;
+    void getSettings(SettingsMap& settings) override;
+
 protected:
     virtual void loadModelFromFile(const std::string& modelPath) = 0;
     void clearFieldDeviceData() override {}

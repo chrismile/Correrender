@@ -63,6 +63,7 @@ public:
     explicit DiagramRenderer(ViewManager* viewManager);
     ~DiagramRenderer() override;
     void initialize() override;
+    [[nodiscard]] RenderingMode getRenderingMode() const override { return RENDERING_MODE_DIAGRAM_RENDERER; }
     [[nodiscard]] bool getIsOpaqueRenderer() const override { return false; }
     [[nodiscard]] bool getIsOverlayRenderer() const override { return true; }
     void setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) override;
@@ -72,6 +73,8 @@ public:
     void onHasMoved(uint32_t viewIdx) override;
     void setClearColor(const sgl::Color& clearColor) override;
     [[nodiscard]] bool getHasGrabbedMouse() const override;
+    void setSettings(const SettingsMap& settings) override;
+    void getSettings(SettingsMap& settings) override;
 
 protected:
     void renderViewImpl(uint32_t viewIdx) override;

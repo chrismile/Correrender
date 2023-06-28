@@ -43,6 +43,7 @@
 #include <Input/Mouse.hpp>
 #include <Input/Keyboard.hpp>
 
+#include "Utils/InternalState.hpp"
 #include "Loaders/DataSet.hpp"
 #include "Volume/VolumeData.hpp"
 #include "Widgets/ViewManager.hpp"
@@ -394,6 +395,108 @@ bool ICorrelationCalculator::getSupportsSeparateFields() {
     return true;
 }
 
+void ICorrelationCalculator::setSettings(const SettingsMap& settings) {
+    Calculator::setSettings(settings);
+
+    if (settings.getValueOpt("use_separate_fields", useSeparateFields)) {
+        if (useSeparateFields) {
+            volumeData->acquireScalarField(this, fieldIndex2);
+        } else {
+            volumeData->releaseScalarField(this, fieldIndex2);
+        }
+        clearFieldDeviceData();
+        dirty = true;
+    }
+
+    bool needsScalarFieldData = getNeedsScalarFieldData();
+    if (needsScalarFieldData && useSeparateFields) {
+        if (settings.getValueOpt("scalar_field_idx_ref", fieldIndex2Gui)) {
+            clearFieldDeviceData();
+            volumeData->releaseScalarField(this, fieldIndex2);
+            fieldIndex2 = int(scalarFieldIndexArray.at(fieldIndex2Gui));
+            volumeData->acquireScalarField(this, fieldIndex2);
+            dirty = true;
+        }
+        if (settings.getValueOpt("scalar_field_idx_query", fieldIndexGui)) {
+            clearFieldDeviceData();
+            volumeData->releaseScalarField(this, fieldIndex);
+            fieldIndex = int(scalarFieldIndexArray.at(fieldIndexGui));
+            volumeData->acquireScalarField(this, fieldIndex);
+            dirty = true;
+        }
+    } else {
+        if (settings.getValueOpt("scalar_field_idx", fieldIndexGui)) {
+            clearFieldDeviceData();
+            volumeData->releaseScalarField(this, fieldIndex);
+            fieldIndex = int(scalarFieldIndexArray.at(fieldIndexGui));
+            volumeData->acquireScalarField(this, fieldIndex);
+            dirty = true;
+        }
+    }
+
+    std::string ensembleModeName;
+    if (settings.getValueOpt("correlation_mode", ensembleModeName)) {
+        if (ensembleModeName == CORRELATION_MODE_NAMES[0]) {
+            isEnsembleMode = true;
+        } else {
+            isEnsembleMode = false;
+        }
+        onCorrelationMemberCountChanged();
+        clearFieldDeviceData();
+        dirty = true;
+    }
+
+    bool referencePointChanged = false;
+    referencePointChanged |= settings.getValueOpt("reference_point_x", referencePointIndex[0]);
+    referencePointChanged |= settings.getValueOpt("reference_point_y", referencePointIndex[1]);
+    referencePointChanged |= settings.getValueOpt("reference_point_z", referencePointIndex[2]);
+    if (referencePointChanged) {
+        referencePointSelectionRenderer->setReferencePosition(referencePointIndex);
+        dirty = true;
+    }
+
+    // Advanced settings.
+    std::string dataModeString;
+    if (settings.getValueOpt("data_mode", dataModeString)) {
+        for (int i = 0; i < IM_ARRAYSIZE(DATA_MODE_NAMES); i++) {
+            if (dataModeString == DATA_MODE_NAMES[i]) {
+                dataMode = CorrelationDataMode(i);
+                break;
+            }
+        }
+        clearFieldDeviceData();
+        dirty = true;
+    }
+    if (settings.getValueOpt("use_buffer_tiling", useBufferTiling)) {
+        clearFieldDeviceData();
+        dirty = true;
+    }
+    settings.getValueOpt("fix_picking_z", fixPickingZPlane);
+}
+
+void ICorrelationCalculator::getSettings(SettingsMap& settings) {
+    Calculator::getSettings(settings);
+
+    settings.addKeyValue("use_separate_fields", useSeparateFields);
+    bool needsScalarFieldData = getNeedsScalarFieldData();
+    if (needsScalarFieldData && useSeparateFields) {
+        settings.addKeyValue("scalar_field_idx_ref", fieldIndex2Gui);
+        settings.addKeyValue("scalar_field_idx_query", fieldIndexGui);
+    } else {
+        settings.addKeyValue("scalar_field_idx", fieldIndexGui);
+    }
+
+    settings.addKeyValue("correlation_mode", CORRELATION_MODE_NAMES[isEnsembleMode ? 0 : 1]);
+    settings.addKeyValue("reference_point_x", referencePointIndex[0]);
+    settings.addKeyValue("reference_point_y", referencePointIndex[1]);
+    settings.addKeyValue("reference_point_z", referencePointIndex[2]);
+
+    // Advanced settings.
+    settings.addKeyValue("data_mode", DATA_MODE_NAMES[int(dataMode)]);
+    settings.addKeyValue("use_buffer_tiling", useBufferTiling);
+    settings.addKeyValue("fix_picking_z", fixPickingZPlane);
+}
+
 
 
 CorrelationCalculator::CorrelationCalculator(sgl::vk::Renderer* renderer) : ICorrelationCalculator(renderer) {
@@ -532,6 +635,81 @@ void CorrelationCalculator::renderGuiImplSub(sgl::PropertyEditor& propertyEditor
         dirty = true;
     }
 #endif
+}
+
+void CorrelationCalculator::setSettings(const SettingsMap& settings) {
+    ICorrelationCalculator::setSettings(settings);
+
+    std::string correlationMeasureTypeName;
+    if (settings.getValueOpt("correlation_measure_type", correlationMeasureTypeName)) {
+        for (int i = 0; i < IM_ARRAYSIZE(CORRELATION_MEASURE_TYPE_IDS); i++) {
+            if (correlationMeasureTypeName == CORRELATION_MEASURE_TYPE_IDS[i]) {
+                correlationMeasureType = CorrelationMeasureType(i);
+                break;
+            }
+        }
+        hasNameChanged = true;
+        dirty = true;
+        correlationComputePass->setCorrelationMeasureType(correlationMeasureType);
+    }
+    std::string deviceName;
+    if (settings.getValueOpt("device", deviceName)) {
+        const char* const choices[] = {
+                "CPU", "Vulkan", "CUDA"
+        };
+        int choice = 1;
+        for (int i = 0; i < 3; i++) {
+            if (deviceName == choices[i]) {
+                choice = i;
+                break;
+            }
+        }
+#ifndef SUPPORT_CUDA_INTEROP
+        if (choice == 2) {
+            choice = 1;
+        }
+#else
+        if (choice == 2 && !sgl::vk::getIsCudaDeviceApiFunctionTableInitialized()) {
+            choice = 1;
+        }
+#endif
+        bool useGpuOld = useGpu;
+        useGpu = choice != 0;
+        useCuda = choice != 1;
+        hasFilterDeviceChanged = useGpuOld != useGpu;
+        dirty = true;
+    }
+    if (settings.getValueOpt("calculate_absolute_value", calculateAbsoluteValue)) {
+        correlationComputePass->setCalculateAbsoluteValue(calculateAbsoluteValue);
+        dirty = true;
+    }
+    if (settings.getValueOpt("mi_bins", numBins)) {
+        correlationComputePass->setNumBins(numBins);
+        dirty = true;
+    }
+    if (settings.getValueOpt("kmi_neighbors", k)) {
+        correlationComputePass->setKraskovNumNeighbors(k);
+        dirty = true;
+    }
+    if (settings.getValueOpt("kraskov_estimator_index", kraskovEstimatorIndex)) {
+        kraskovEstimatorIndex = std::clamp(kraskovEstimatorIndex, 1, 2);
+        correlationComputePass->setKraskovEstimatorIndex(kraskovEstimatorIndex);
+        dirty = true;
+    }
+}
+
+void CorrelationCalculator::getSettings(SettingsMap& settings) {
+    ICorrelationCalculator::getSettings(settings);
+
+    settings.addKeyValue("correlation_measure_type", CORRELATION_MEASURE_TYPE_IDS[int(correlationMeasureType)]);
+    const char* const choices[] = {
+            "CPU", "Vulkan", "CUDA"
+    };
+    settings.addKeyValue("device", choices[!useGpu ? 0 : (!useCuda ? 1 : 2)]);
+    settings.addKeyValue("calculate_absolute_value", calculateAbsoluteValue);
+    settings.addKeyValue("mi_bins", numBins);
+    settings.addKeyValue("kmi_neighbors", k);
+    settings.addKeyValue("kraskov_estimator_index", kraskovEstimatorIndex);
 }
 
 void CorrelationCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float* buffer) {

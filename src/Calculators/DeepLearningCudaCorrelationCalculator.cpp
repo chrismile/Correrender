@@ -42,6 +42,7 @@
 #include <ImGui/ImGuiFileDialog/ImGuiFileDialog.h>
 #include <ImGui/Widgets/PropertyEditor.hpp>
 
+#include "Utils/InternalState.hpp"
 #include "Volume/VolumeData.hpp"
 #include "Volume/Cache/DeviceCacheEntry.hpp"
 #include "DeepLearningCudaCorrelationCalculator.hpp"
@@ -275,6 +276,28 @@ void DeepLearningCudaCorrelationCalculator::renderGuiImplSub(sgl::PropertyEditor
 
     // TODO
     //propertyEditor.addText("Data type:", "Float");
+}
+
+void DeepLearningCudaCorrelationCalculator::setSettings(const SettingsMap& settings) {
+    ICorrelationCalculator::setSettings(settings);
+    if (settings.getValueOpt("model_file_path", modelFilePath)) {
+        dirty = true;
+    }
+    if (settings.getValueOpt("model_preset_index", modelPresetIndex)) {
+        modelPresetIndex = std::clamp(modelPresetIndex, 0, int(modelPresetFilenames.size()) - 1);
+        modelFilePath = modelPresetFilenames.at(modelPresetIndex);
+        dirty = true;
+    }
+    if (settings.getValueOpt("calculate_absolute_value", calculateAbsoluteValue)) {
+        dirty = true;
+    }
+}
+
+void DeepLearningCudaCorrelationCalculator::getSettings(SettingsMap& settings) {
+    ICorrelationCalculator::getSettings(settings);
+    settings.addKeyValue("model_file_path", modelFilePath);
+    settings.addKeyValue("model_preset_index", modelPresetIndex);
+    settings.addKeyValue("calculate_absolute_value", calculateAbsoluteValue);
 }
 
 bool DeepLearningCudaCorrelationCalculator::getSupportsSeparateFields() {

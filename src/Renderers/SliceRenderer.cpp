@@ -33,6 +33,7 @@
 #include <ImGui/Widgets/PropertyEditor.hpp>
 #include <ImGui/imgui_custom.h>
 
+#include "Utils/InternalState.hpp"
 #include "Widgets/ViewManager.hpp"
 #include "Volume/VolumeData.hpp"
 #include "RenderingModes.hpp"
@@ -293,6 +294,63 @@ void SliceRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         }
         reRender = true;
     }
+}
+
+void SliceRenderer::setSettings(const SettingsMap& settings) {
+    Renderer::setSettings(settings);
+    if (settings.getValueOpt("selected_field_idx", selectedFieldIdx)) {
+        const std::vector<std::string>& fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
+        selectedFieldIdx = std::clamp(selectedFieldIdx, 0, int(fieldNames.size()) - 1);
+        selectedScalarFieldName = fieldNames.at(selectedFieldIdx);
+        for (auto& sliceRasterPass : sliceRasterPasses) {
+            sliceRasterPass->setSelectedScalarField(selectedFieldIdx, selectedScalarFieldName);
+        }
+        dirty = true;
+        reRender = true;
+    }
+    bool normalChanged = false;
+    normalChanged |= settings.getValueOpt("normal_x", planeNormalUi.x);
+    normalChanged |= settings.getValueOpt("normal_y", planeNormalUi.y);
+    normalChanged |= settings.getValueOpt("normal_z", planeNormalUi.z);
+    if (normalChanged) {
+        planeNormal = glm::normalize(planeNormalUi);
+        dirty = true;
+        reRender = true;
+    }
+    if (settings.getValueOpt("plane_dist", planeDist)) {
+        dirty = true;
+        reRender = true;
+    }
+    if (settings.getValueOpt("lighting_factor", lightingFactor)) {
+        for (auto& sliceRasterPass : sliceRasterPasses) {
+            sliceRasterPass->setLightingFactor(lightingFactor);
+        }
+        reRender = true;
+    }
+    std::string nanHandlingId;
+    if (settings.getValueOpt("nan_handling", nanHandlingId)) {
+        for (int i = 0; i < IM_ARRAYSIZE(NAN_HANDLING_IDS); i++) {
+            if (nanHandlingId == NAN_HANDLING_IDS[i]) {
+                nanHandling = NaNHandling(i);
+                break;
+            }
+        }
+        for (auto& sliceRasterPass : sliceRasterPasses) {
+            sliceRasterPass->setNaNHandling(nanHandling);
+        }
+        reRender = true;
+    }
+}
+
+void SliceRenderer::getSettings(SettingsMap& settings) {
+    Renderer::getSettings(settings);
+    settings.addKeyValue("selected_field_idx", selectedFieldIdx);
+    settings.addKeyValue("normal_x", planeNormalUi.x);
+    settings.addKeyValue("normal_y", planeNormalUi.y);
+    settings.addKeyValue("normal_z", planeNormalUi.z);
+    settings.addKeyValue("plane_dist", planeDist);
+    settings.addKeyValue("lighting_factor", lightingFactor);
+    settings.addKeyValue("nan_handling", NAN_HANDLING_IDS[int(nanHandling)]);
 }
 
 

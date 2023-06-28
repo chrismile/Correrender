@@ -38,6 +38,7 @@ class ReferencePointSelectionRenderer : public Renderer {
 public:
     explicit ReferencePointSelectionRenderer(ViewManager* viewManager);
     void initialize() override;
+    [[nodiscard]] RenderingMode getRenderingMode() const override { return RENDERING_MODE_CUSTOM; }
     void setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) override {}
     void setVolumeDataPtr(VolumeData* _volumeData, bool isNewData);
     void setReferencePosition(const glm::ivec3& referencePosition);

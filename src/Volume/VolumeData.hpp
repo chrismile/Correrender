@@ -65,6 +65,7 @@ class FileDialog;
 typedef IGFD::FileDialog ImGuiFileDialog;
 
 struct SceneData;
+class MainApp;
 class ViewManager;
 class VolumeLoader;
 class VolumeWriter;
@@ -75,6 +76,7 @@ enum class CalculatorType : uint32_t;
 class ICorrelationCalculator;
 
 class VolumeData {
+    friend class MainApp;
 public:
     using HostCacheEntry = std::shared_ptr<HostCacheEntryType>;
     using DeviceCacheEntry = std::shared_ptr<DeviceCacheEntryType>;
@@ -146,6 +148,10 @@ public:
     [[nodiscard]] inline int getGridSizeZ() const { return zs; }
     [[nodiscard]] inline int getTimeStepCount() const { return ts; }
     [[nodiscard]] inline int getEnsembleMemberCount() const { return es; }
+    [[nodiscard]] inline int getCurrentTimeStepIdx() const { return currentTimeStepIdx; }
+    [[nodiscard]] inline int getCurrentEnsembleIdx() const { return currentEnsembleIdx; }
+    void setCurrentTimeStepIdx(int newTimeStepIdx);
+    void setCurrentEnsembleIdx(int newEnsembleIdx);
     [[nodiscard]] inline size_t getSlice3dSizeInBytes(FieldType fieldType) const {
         return size_t(xs) * size_t(ys) * size_t(zs) * sizeof(float) * (fieldType == FieldType::SCALAR ? 1 : 3);
     }
@@ -237,6 +243,7 @@ public:
     bool getIsScalarFieldUsedInView(uint32_t viewIdx, uint32_t varIdx, Calculator* calculator = nullptr);
     bool getIsScalarFieldUsedInAnyView(uint32_t varIdx, Calculator* calculator = nullptr);
     uint32_t getVarIdxForCalculator(Calculator* calculator);
+    const std::vector<CalculatorPtr>& getCalculators();
     std::vector<std::shared_ptr<ICorrelationCalculator>> getCorrelationCalculatorsUsed();
     [[nodiscard]] inline int getStandardScalarFieldIdx() const { return standardScalarFieldIdx; }
 

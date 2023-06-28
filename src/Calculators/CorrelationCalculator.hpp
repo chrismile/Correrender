@@ -80,6 +80,9 @@ public:
     std::pair<float, float> getMinMaxScalarFieldValue(
             const std::string& fieldName, int fieldIdx, int timeStepIdx, int ensembleIdx);
 
+    void setSettings(const SettingsMap& settings) override;
+    void getSettings(SettingsMap& settings) override;
+
 protected:
     void renderGuiImpl(sgl::PropertyEditor& propertyEditor) override;
     virtual void renderGuiImplSub(sgl::PropertyEditor& propertyEditor) {}
@@ -161,6 +164,9 @@ public:
     }
     void calculateCpu(int timeStepIdx, int ensembleIdx, float* buffer) override;
     void calculateDevice(int timeStepIdx, int ensembleIdx, const DeviceCacheEntry& deviceCacheEntry) override;
+
+    void setSettings(const SettingsMap& settings) override;
+    void getSettings(SettingsMap& settings) override;
 
 protected:
     /// Renders the GUI. Returns whether re-rendering has become necessary due to the user's actions.

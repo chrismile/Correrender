@@ -39,10 +39,13 @@ public:
     explicit DvrRenderer(ViewManager* viewManager);
     ~DvrRenderer() override;
     void initialize() override;
+    [[nodiscard]] RenderingMode getRenderingMode() const override { return RENDERING_MODE_DIRECT_VOLUME_RENDERING; }
     [[nodiscard]] bool getIsOpaqueRenderer() const override { return false; }
     void setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) override;
     void onFieldRemoved(FieldType fieldType, int fieldIdx) override;
     void recreateSwapchainView(uint32_t viewIdx, uint32_t width, uint32_t height) override;
+    void setSettings(const SettingsMap& settings) override;
+    void getSettings(SettingsMap& settings) override;
 
 protected:
     void renderViewImpl(uint32_t viewIdx) override;

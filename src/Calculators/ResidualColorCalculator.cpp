@@ -35,6 +35,7 @@
 #include <Graphics/Vulkan/Render/Renderer.hpp>
 #include <ImGui/Widgets/PropertyEditor.hpp>
 
+#include "Utils/InternalState.hpp"
 #include "Loaders/DataSet.hpp"
 #include "Volume/VolumeData.hpp"
 #include "ResidualColorCalculator.hpp"
@@ -129,6 +130,28 @@ void ResidualColorCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEditor)
             volumeData->acquireTf(this, scalarFieldIndices[i]);
             dirty = true;
         }
+    }
+}
+
+void ResidualColorCalculator::setSettings(const SettingsMap& settings) {
+    Calculator::setSettings(settings);
+    for (int i = 0; i < 2; i++) {
+        std::string keyName = "scalar_field_idx_" + std::to_string(i);
+        if (settings.getValueOpt(keyName.c_str(), scalarFieldIndicesGui[i])) {
+            volumeData->releaseScalarField(this, scalarFieldIndices[i]);
+            volumeData->releaseTf(this, scalarFieldIndices[i]);
+            scalarFieldIndices[i] = int(scalarFieldIndexArray.at(scalarFieldIndicesGui[i]));
+            volumeData->acquireScalarField(this, scalarFieldIndices[i]);
+            volumeData->acquireTf(this, scalarFieldIndices[i]);
+            dirty = true;
+        }
+    }
+}
+
+void ResidualColorCalculator::getSettings(SettingsMap& settings) {
+    Calculator::getSettings(settings);
+    for (int i = 0; i < 2; i++) {
+        settings.addKeyValue("scalar_field_idx_" + std::to_string(i), scalarFieldIndicesGui[i]);
     }
 }
 

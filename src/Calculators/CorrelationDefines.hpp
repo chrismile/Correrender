@@ -44,6 +44,9 @@ enum class CorrelationMeasureType {
 const char* const CORRELATION_MEASURE_TYPE_NAMES[] = {
         "Pearson", "Spearman", "Kendall", "Mutual Information (Binned)", "Mutual Information (Kraskov)"
 };
+const char* const CORRELATION_MEASURE_TYPE_IDS[] = {
+        "pearson", "spearman", "kendall", "mi_binned", "mi_kraskov"
+};
 
 const char* const FIELD_ACCURACY_NAMES[] = {
         "Float (32-bit)", "Double (64-bit)"

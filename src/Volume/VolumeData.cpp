@@ -1328,6 +1328,20 @@ void VolumeData::setBaseFieldsDirty() {
     }
 }
 
+void VolumeData::setCurrentTimeStepIdx(int newTimeStepIdx) {
+    if (currentTimeStepIdx != newTimeStepIdx) {
+        setBaseFieldsDirty();
+    }
+    currentTimeStepIdx = std::clamp(newTimeStepIdx, 0, std::max(ts - 1, 0));
+}
+
+void VolumeData::setCurrentEnsembleIdx(int newEnsembleIdx) {
+    if (currentEnsembleIdx != newEnsembleIdx) {
+        setBaseFieldsDirty();
+    }
+    currentEnsembleIdx = std::clamp(newEnsembleIdx, 0, std::max(es - 1, 0));
+}
+
 void VolumeData::renderGui(sgl::PropertyEditor& propertyEditor) {
     if (propertyEditor.beginNode("Volume Data")) {
         propertyEditor.addText(
@@ -1676,6 +1690,10 @@ uint32_t VolumeData::getVarIdxForCalculator(Calculator* calculator) {
     }
     sgl::Logfile::get()->throwError("Error in VolumeData::getVarIdxForCalculator: Encountered unknown calculator.");
     return varIdx;
+}
+
+const std::vector<CalculatorPtr>& VolumeData::getCalculators() {
+    return calculators;
 }
 
 std::vector<std::shared_ptr<ICorrelationCalculator>> VolumeData::getCorrelationCalculatorsUsed() {

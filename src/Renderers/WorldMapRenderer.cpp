@@ -38,6 +38,7 @@
 #include <ImGui/Widgets/PropertyEditor.hpp>
 #include <ImGui/imgui_custom.h>
 
+#include "Utils/InternalState.hpp"
 #include "Widgets/ViewManager.hpp"
 #include "Volume/VolumeData.hpp"
 #include "RenderingModes.hpp"
@@ -450,6 +451,38 @@ void WorldMapRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         }
         reRender = true;
     }
+}
+
+void WorldMapRenderer::setSettings(const SettingsMap& settings) {
+    Renderer::setSettings(settings);
+    if (settings.getValueOpt("lighting_factor", lightingFactor)) {
+        for (auto& worldMapRasterPass : worldMapRasterPasses) {
+            worldMapRasterPass->setLightingFactor(lightingFactor);
+        }
+        reRender = true;
+    }
+    std::string worldMapQualityString;
+    if (settings.getValueOpt("world_map_quality", worldMapQualityString)) {
+        for (int i = 0; i < IM_ARRAYSIZE(WORLD_MAP_QUALITY_NAMES); i++) {
+            if (worldMapQualityString == WORLD_MAP_QUALITY_NAMES[i]) {
+                worldMapQuality = WorldMapQuality(i);
+                break;
+            }
+        }
+        hasCheckedWorldMapExists = false;
+        createWorldMapTexture();
+        for (auto& worldMapRasterPass : worldMapRasterPasses) {
+            worldMapRasterPass->setRenderData(
+                    indexBuffer, vertexPositionBuffer, vertexNormalBuffer, vertexTexCoordBuffer, worldMapTexture);
+        }
+        reRender = true;
+    }
+}
+
+void WorldMapRenderer::getSettings(SettingsMap& settings) {
+    Renderer::getSettings(settings);
+    settings.addKeyValue("lighting_factor", lightingFactor);
+    settings.addKeyValue("world_map_quality", WORLD_MAP_QUALITY_NAMES[int(worldMapQuality)]);
 }
 
 

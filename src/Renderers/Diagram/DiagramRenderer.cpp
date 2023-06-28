@@ -35,6 +35,7 @@
 #include <ImGui/imgui_custom.h>
 #include <ImGui/Widgets/PropertyEditor.hpp>
 
+#include "Utils/InternalState.hpp"
 #include "Renderers/DomainOutlineRenderer.hpp"
 #include "Calculators/CorrelationCalculator.hpp"
 #include "Widgets/DataView.hpp"
@@ -314,6 +315,9 @@ void DiagramRenderer::recreateDiagramSwapchain(int diagramIdx) {
             diagramViewIdx = focusDiagramViewIdx;
         }
         SceneData* sceneData = viewManager->getViewSceneData(diagramViewIdx);
+        if (!(*sceneData->sceneTexture)) {
+            continue;
+        }
         auto& diagram = diagrams.at(idx);
         diagram->setBlitTargetVk(
                 (*sceneData->sceneTexture)->getImageView(),
@@ -1331,4 +1335,373 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         reRender = true;
         reRenderTriggeredByDiagram = true;
     }
+}
+
+void DiagramRenderer::setSettings(const SettingsMap& settings) {
+    Renderer::setSettings(settings);
+
+    bool diagramChanged = false;
+    diagramChanged |= settings.getValueOpt("context_diagram_view", contextDiagramViewIdx);
+    diagramChanged |= settings.getValueOpt("focus_diagram_view", focusDiagramViewIdx);
+    if (diagramChanged) {
+        recreateDiagramSwapchain();
+    }
+    std::string ensembleModeName;
+    if (settings.getValueOpt("correlation_mode", ensembleModeName)) {
+        if (ensembleModeName == CORRELATION_MODE_NAMES[0]) {
+            isEnsembleMode = true;
+        } else {
+            isEnsembleMode = false;
+        }
+        for (auto& diagram : diagrams) {
+            diagram->setIsEnsembleMode(isEnsembleMode);
+        }
+    }
+    std::string correlationMeasureTypeName;
+    if (settings.getValueOpt("correlation_measure_type", correlationMeasureTypeName)) {
+        for (int i = 0; i < IM_ARRAYSIZE(CORRELATION_MEASURE_TYPE_IDS); i++) {
+            if (correlationMeasureTypeName == CORRELATION_MEASURE_TYPE_IDS[i]) {
+                correlationMeasureType = CorrelationMeasureType(i);
+                break;
+            }
+        }
+        for (auto& diagram : diagrams) {
+            diagram->setCorrelationMeasureType(correlationMeasureType);
+        }
+        onCorrelationMemberCountChanged();
+    }
+    if (settings.getValueOpt("use_absolute_correlation_measure", useAbsoluteCorrelationMeasure)) {
+        for (auto& diagram : diagrams) {
+            diagram->setUseAbsoluteCorrelationMeasure(useAbsoluteCorrelationMeasure);
+        }
+        correlationRange = parentDiagram->getCorrelationRangeTotal();
+    }
+    if (settings.getValueOpt("mi_bins", numBins)) {
+        for (auto& diagram : diagrams) {
+            diagram->setNumBins(numBins);
+        }
+    }
+    if (settings.getValueOpt("kmi_neighbors", k)) {
+        for (auto& diagram : diagrams) {
+            diagram->setKraskovNumNeighbors(k);
+        }
+        correlationRange = parentDiagram->getCorrelationRangeTotal();
+    }
+    std::string samplingMethodTypeString;
+    if (settings.getValueOpt("sampling_method_type", samplingMethodTypeString)) {
+        for (int i = 0; i < IM_ARRAYSIZE(SAMPLING_METHOD_TYPE_NAMES); i++) {
+            if (samplingMethodTypeString == SAMPLING_METHOD_TYPE_NAMES[i]) {
+                samplingMethodType = SamplingMethodType(i);
+                break;
+            }
+        }
+        for (auto& diagram : diagrams) {
+            diagram->setSamplingMethodType(samplingMethodType);
+        }
+        correlationRange = parentDiagram->getCorrelationRangeTotal();
+    }
+    if (settings.getValueOpt("num_samples", numSamples)) {
+        for (auto& diagram : diagrams) {
+            diagram->setNumSamples(numSamples);
+        }
+    }
+    if (settings.getValueOpt("num_init_samples", numInitSamples)) {
+        for (auto& diagram : diagrams) {
+            diagram->setNumInitSamples(numInitSamples);
+        }
+    }
+    if (settings.getValueOpt("num_bo_iterations", numBOIterations)) {
+        for (auto& diagram : diagrams) {
+            diagram->setNumBOIterations(numBOIterations);
+        }
+    }
+
+    std::string scalarFieldSelectionString;
+    if (settings.getValueOpt("scalar_field_selection", scalarFieldSelectionString)) {
+        // Remove old selection.
+        for (size_t i = 0; i < selectedScalarFields.size(); i++) {
+            for (auto& diagram : diagrams) {
+                diagram->removeScalarField(selectedScalarFields.at(i).first, false);
+            }
+            volumeData->releaseScalarField(this, selectedScalarFields.at(i).first);
+        }
+        selectedScalarFields.clear();
+
+        const std::vector<std::string>& fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
+        for (size_t fieldIdx = 0; fieldIdx < scalarFieldSelectionString.size(); fieldIdx++) {
+            bool useField = scalarFieldSelectionString.at(fieldIdx) != '0';
+            scalarFieldSelectionArray.at(fieldIdx) = false;
+            if (useField) {
+                scalarFieldSelectionArray.at(fieldIdx) = true;
+                std::string text = fieldNames.at(fieldIdx);
+                for (auto& diagram : diagrams) {
+                    diagram->addScalarField(int(fieldIdx), text);
+                }
+
+                int selectionIdx = int(selectedScalarFields.size());
+                DiagramColorMap colorMap = DiagramColorMap::VIRIDIS;
+                std::string colorMapName;
+                std::string colorMapIdx = "color_map_" + std::to_string(selectionIdx);
+                if (settings.getValueOpt(colorMapIdx.c_str(), colorMapName)) {
+                    for (int i = 0; i < IM_ARRAYSIZE(DIAGRAM_COLOR_MAP_NAMES); i++) {
+                        if (colorMapName == DIAGRAM_COLOR_MAP_NAMES[i]) {
+                            colorMap = DiagramColorMap(i);
+                            break;
+                        }
+                    }
+                }
+                DiagramSelectedFieldData newFieldData(int(fieldIdx), text, colorMap);
+                selectedScalarFields.push_back(newFieldData);
+                for (auto& diagram : diagrams) {
+                    diagram->setColorMap(selectionIdx, newFieldData.third);
+                }
+            }
+        }
+        updateScalarFieldComboValue();
+    }
+
+    if (settings.getValueOpt("separate_color_variance_and_correlation", separateColorVarianceAndCorrelation)) {
+        for (auto& diagram : diagrams) {
+            diagram->setUseSeparateColorVarianceAndCorrelation(separateColorVarianceAndCorrelation);
+        }
+    }
+    std::string colorMapName;
+    if (settings.getValueOpt("color_map_variance", colorMapName)) {
+        for (int i = 0; i < IM_ARRAYSIZE(DIAGRAM_COLOR_MAP_NAMES); i++) {
+            if (colorMapName == DIAGRAM_COLOR_MAP_NAMES[i]) {
+                colorMapVariance = DiagramColorMap(i);
+                break;
+            }
+        }
+        for (auto& diagram : diagrams) {
+            diagram->setColorMapVariance(colorMapVariance);
+        }
+    }
+    if (settings.getValueOpt("opacity_by_value", opacityByValue)) {
+        for (auto& diagram : diagrams) {
+            diagram->setOpacityByValue(opacityByValue);
+        }
+    }
+    if (settings.getValueOpt("show_selected_regions_by_color", showSelectedRegionsByColor)) {
+        for (auto& diagram : diagrams) {
+            diagram->setShowSelectedRegionsByColor(showSelectedRegionsByColor);
+        }
+    }
+    if (settings.getValueOpt("beta", beta)) {
+        for (auto& diagram : diagrams) {
+            diagram->setBeta(beta);
+        }
+    }
+
+    settings.getValueOpt("downscaling_power_of_two", downscalingPowerOfTwo);
+    bool contextScaleChanged = false;
+    contextScaleChanged |= settings.getValueOpt("downscaling_factor_x", downscalingFactorX);
+    contextScaleChanged |= settings.getValueOpt("downscaling_factor_y", downscalingFactorY);
+    contextScaleChanged |= settings.getValueOpt("downscaling_factor__z", downscalingFactorZ);
+    if (contextScaleChanged) {
+        parentDiagram->setDownscalingFactors(downscalingFactorX, downscalingFactorY, downscalingFactorZ);
+        cellDistanceRange = parentDiagram->getCellDistanceRangeTotal();
+    }
+
+    bool focusScaleChanged = false;
+    focusScaleChanged |= settings.getValueOpt("downscaling_factor_focus_x", downscalingFactorFocusX);
+    focusScaleChanged |= settings.getValueOpt("downscaling_factor_focus_y", downscalingFactorFocusY);
+    focusScaleChanged |= settings.getValueOpt("downscaling_factor_focus_z", downscalingFactorFocusZ);
+    //if (focusScaleChanged) {
+    //    ;
+    //}
+
+    if (settings.getValueOpt("line_count_factor_context", lineCountFactorContext)) {
+        parentDiagram->setLineCountFactor(lineCountFactorContext);
+    }
+    if (settings.getValueOpt("line_count_factor_focus", lineCountFactorFocus)) {
+        for (size_t i = 1; i < diagrams.size(); i++) {
+            diagrams.at(i)->setLineCountFactor(lineCountFactorFocus);
+        }
+    }
+    if (settings.getValueOpt("curve_thickness", curveThickness)) {
+        for (auto& diagram : diagrams) {
+            diagram->setCurveThickness(curveThickness);
+        }
+    }
+    if (settings.getValueOpt("curve_opacity_context", curveOpacityContext)) {
+        parentDiagram->setCurveOpacity(curveOpacityContext);
+    }
+    if (settings.getValueOpt("curve_opacity_focus", curveOpacityFocus)) {
+        for (size_t i = 1; i < diagrams.size(); i++) {
+            diagrams.at(i)->setCurveOpacity(curveOpacityFocus);
+        }
+    }
+    if (settings.getValueOpt("correlation_range_lower", correlationRange.x)) {
+        parentDiagram->setCorrelationRange(correlationRange);
+    }
+    if (settings.getValueOpt("correlation_range_upper", correlationRange.y)) {
+        parentDiagram->setCorrelationRange(correlationRange);
+    }
+    if (settings.getValueOpt("cell_distance_range_lower", cellDistanceRange.x)) {
+        parentDiagram->setCellDistanceRange(cellDistanceRange);
+    }
+    if (settings.getValueOpt("cell_distance_range_upper", cellDistanceRange.y)) {
+        parentDiagram->setCellDistanceRange(cellDistanceRange);
+    }
+    if (settings.getValueOpt("diagram_radius", diagramRadius)) {
+        diagramRadius = std::max(diagramRadius, 1);
+        for (auto& diagram : diagrams) {
+            diagram->setDiagramRadius(diagramRadius);
+        }
+    }
+    if (settings.getValueOpt("outer_ring_size_pct", outerRingSizePct)) {
+        outerRingSizePct = std::clamp(outerRingSizePct, 0.0f, 1.0f);
+        for (auto& diagram : diagrams) {
+            diagram->setOuterRingSizePercentage(outerRingSizePct);
+        }
+    }
+    if (settings.getValueOpt("align_with_parent_window", alignWithParentWindow)) {
+        parentDiagram->setAlignWithParentWindow(alignWithParentWindow);
+        if (renderOnlyLastFocusDiagram) {
+            for (size_t i = 1; i < diagrams.size(); i++) {
+                diagrams.at(i)->setAlignWithParentWindow(alignWithParentWindow);
+            }
+        }
+    }
+
+    // Advanced settings.
+    if (settings.getValueOpt("use_correlation_computation_gpu", useCorrelationComputationGpu)) {
+        for (auto& diagram : diagrams) {
+            diagram->setUseCorrelationComputationGpu(useCorrelationComputationGpu);
+        }
+    }
+    std::string dataModeString;
+    if (settings.getValueOpt("data_mode", dataModeString)) {
+        for (int i = 0; i < IM_ARRAYSIZE(DATA_MODE_NAMES); i++) {
+            if (dataModeString == DATA_MODE_NAMES[i]) {
+                dataMode = CorrelationDataMode(i);
+                break;
+            }
+        }
+        for (auto& diagram : diagrams) {
+            diagram->setDataMode(dataMode);
+        }
+    }
+    if (settings.getValueOpt("use_buffer_tiling", useBufferTiling)) {
+        for (auto& diagram : diagrams) {
+            diagram->setUseBufferTiling(useBufferTiling);
+        }
+    }
+    settings.getValueOpt("show_only_selected_variable_in_focus_diagrams", showOnlySelectedVariableInFocusDiagrams);
+    if (settings.getValueOpt("render_only_last_focus_diagram", renderOnlyLastFocusDiagram)) {
+        for (size_t i = 1; i < diagrams.size(); i++) {
+            diagrams.at(i)->setAlignWithParentWindow(alignWithParentWindow && renderOnlyLastFocusDiagram);
+        }
+    }
+    settings.getValueOpt("use_alignment_rotation", useAlignmentRotation);
+    settings.getValueOpt("use_opaque_selection_boxes", useOpaqueSelectionBoxes);
+    if (settings.getValueOpt("desaturate_unselected_ring", desaturateUnselectedRing)) {
+        for (auto& diagram : diagrams) {
+            diagram->setDesaturateUnselectedRing(desaturateUnselectedRing);
+        }
+    }
+    if (settings.getValueOpt("use_neon_selection_colors", useNeonSelectionColors)) {
+        for (auto& diagram : diagrams) {
+            diagram->setUseNeonSelectionColors(useNeonSelectionColors);
+        }
+    }
+    if (settings.getValueOpt("use_global_std_dev_range", useGlobalStdDevRange)) {
+        for (auto& diagram : diagrams) {
+            diagram->setUseGlobalStdDevRange(useGlobalStdDevRange);
+        }
+    }
+    std::string octreeMethodString;
+    if (settings.getValueOpt("octree_method", octreeMethodString)) {
+        for (int i = 0; i < IM_ARRAYSIZE(OCTREE_METHOD_NAMES); i++) {
+            if (octreeMethodString == OCTREE_METHOD_NAMES[i]) {
+                octreeMethod = OctreeMethod(i);
+                break;
+            }
+        }
+        for (auto& diagram : diagrams) {
+            diagram->setOctreeMethod(octreeMethod);
+        }
+    }
+
+    // No vector widget settings for now.
+
+    // TODO: Save selectedRegionStack
+    resetSelections();
+    correlationRangeTotal = parentDiagram->getCorrelationRangeTotal();
+    cellDistanceRangeTotal = parentDiagram->getCellDistanceRangeTotal();
+    dirty = true;
+    reRender = true;
+    reRenderTriggeredByDiagram = true;
+    for (auto& diagram : diagrams) {
+        diagram->setCorrelationRange(correlationRange);
+    }
+}
+
+void DiagramRenderer::getSettings(SettingsMap& settings) {
+    Renderer::getSettings(settings);
+
+    settings.addKeyValue("context_diagram_view", contextDiagramViewIdx);
+    settings.addKeyValue("focus_diagram_view", focusDiagramViewIdx);
+    settings.addKeyValue("correlation_mode", CORRELATION_MODE_NAMES[isEnsembleMode ? 0 : 1]);
+    settings.addKeyValue("correlation_measure_type", CORRELATION_MEASURE_TYPE_IDS[int(correlationMeasureType)]);
+    settings.addKeyValue("use_absolute_correlation_measure", useAbsoluteCorrelationMeasure);
+    settings.addKeyValue("mi_bins", numBins);
+    settings.addKeyValue("kmi_neighbors", k);
+    settings.addKeyValue("sampling_method_type", SAMPLING_METHOD_TYPE_NAMES[int(samplingMethodType)]);
+    settings.addKeyValue("num_samples", numSamples);
+    settings.addKeyValue("num_init_samples", numInitSamples);
+    settings.addKeyValue("num_bo_iterations", numBOIterations);
+
+    std::string scalarFieldSelectionString;
+    for (auto entry : scalarFieldSelectionArray) {
+        scalarFieldSelectionString += entry ? '1' : '0';
+    }
+    settings.addKeyValue("scalar_field_selection", scalarFieldSelectionString);
+    for (size_t i = 0; i < selectedScalarFields.size(); i++) {
+        settings.addKeyValue(
+                "color_map_" + std::to_string(i), DIAGRAM_COLOR_MAP_NAMES[int(selectedScalarFields.at(i).third)]);
+    }
+
+    settings.addKeyValue("separate_color_variance_and_correlation", separateColorVarianceAndCorrelation);
+    settings.addKeyValue("color_map_variance", DIAGRAM_COLOR_MAP_NAMES[int(colorMapVariance)]);
+    settings.addKeyValue("opacity_by_value", opacityByValue);
+    settings.addKeyValue("show_selected_regions_by_color", showSelectedRegionsByColor);
+    settings.addKeyValue("beta", beta);
+
+    settings.addKeyValue("downscaling_power_of_two", downscalingPowerOfTwo);
+    settings.addKeyValue("downscaling_factor_x", downscalingFactorX);
+    settings.addKeyValue("downscaling_factor_y", downscalingFactorY);
+    settings.addKeyValue("downscaling_factor__z", downscalingFactorZ);
+    settings.addKeyValue("downscaling_factor_focus_x", downscalingFactorFocusX);
+    settings.addKeyValue("downscaling_factor_focus_y", downscalingFactorFocusY);
+    settings.addKeyValue("downscaling_factor_focus_z", downscalingFactorFocusZ);
+
+    settings.addKeyValue("line_count_factor_context", lineCountFactorContext);
+    settings.addKeyValue("line_count_factor_focus", lineCountFactorFocus);
+    settings.addKeyValue("curve_thickness", curveThickness);
+    settings.addKeyValue("curve_opacity_context", curveOpacityContext);
+    settings.addKeyValue("curve_opacity_focus", curveOpacityFocus);
+    settings.addKeyValue("correlation_range_lower", correlationRange.x);
+    settings.addKeyValue("correlation_range_upper", correlationRange.y);
+    settings.addKeyValue("cell_distance_range_lower", cellDistanceRange.x);
+    settings.addKeyValue("cell_distance_range_upper", cellDistanceRange.y);
+    settings.addKeyValue("diagram_radius", diagramRadius);
+    settings.addKeyValue("outer_ring_size_pct", outerRingSizePct);
+    settings.addKeyValue("align_with_parent_window", alignWithParentWindow);
+
+    // Advanced settings.
+    settings.addKeyValue("use_correlation_computation_gpu", useCorrelationComputationGpu);
+    settings.addKeyValue("data_mode", DATA_MODE_NAMES[int(dataMode)]);
+    settings.addKeyValue("use_buffer_tiling", useBufferTiling);
+    settings.addKeyValue("show_only_selected_variable_in_focus_diagrams", showOnlySelectedVariableInFocusDiagrams);
+    settings.addKeyValue("render_only_last_focus_diagram", renderOnlyLastFocusDiagram);
+    settings.addKeyValue("use_alignment_rotation", useAlignmentRotation);
+    settings.addKeyValue("use_opaque_selection_boxes", useOpaqueSelectionBoxes);
+    settings.addKeyValue("desaturate_unselected_ring", desaturateUnselectedRing);
+    settings.addKeyValue("use_neon_selection_colors", useNeonSelectionColors);
+    settings.addKeyValue("use_global_std_dev_range", useGlobalStdDevRange);
+    settings.addKeyValue("octree_method", OCTREE_METHOD_NAMES[int(octreeMethod)]);
+
+    // No vector widget settings for now.
 }
