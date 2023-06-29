@@ -278,6 +278,15 @@ void DeepLearningCudaCorrelationCalculator::renderGuiImplSub(sgl::PropertyEditor
     //propertyEditor.addText("Data type:", "Float");
 }
 
+void DeepLearningCudaCorrelationCalculator::renderGuiImplAdvanced(sgl::PropertyEditor& propertyEditor) {
+    ICorrelationCalculator::renderGuiImplAdvanced(propertyEditor);
+    if (networkType != NetworkType::MINE && propertyEditor.addCheckbox(
+            "Use Data NaN Stencil", &useDataNanStencil)) {
+        clearFieldDeviceData();
+        dirty = true;
+    }
+}
+
 void DeepLearningCudaCorrelationCalculator::setSettings(const SettingsMap& settings) {
     ICorrelationCalculator::setSettings(settings);
     if (settings.getValueOpt("model_file_path", modelFilePath)) {
@@ -291,6 +300,9 @@ void DeepLearningCudaCorrelationCalculator::setSettings(const SettingsMap& setti
     if (settings.getValueOpt("calculate_absolute_value", calculateAbsoluteValue)) {
         dirty = true;
     }
+    if (settings.getValueOpt("use_data_nan_stencil", useDataNanStencil)) {
+        dirty = true;
+    }
 }
 
 void DeepLearningCudaCorrelationCalculator::getSettings(SettingsMap& settings) {
@@ -298,11 +310,35 @@ void DeepLearningCudaCorrelationCalculator::getSettings(SettingsMap& settings) {
     settings.addKeyValue("model_file_path", modelFilePath);
     settings.addKeyValue("model_preset_index", modelPresetIndex);
     settings.addKeyValue("calculate_absolute_value", calculateAbsoluteValue);
+    settings.addKeyValue("use_data_nan_stencil", useDataNanStencil);
 }
 
 bool DeepLearningCudaCorrelationCalculator::getSupportsSeparateFields() {
     useSeparateFields = false;
     return false;
+}
+
+void DeepLearningCudaCorrelationCalculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
+    ICorrelationCalculator::setVolumeData(_volumeData, isNewData);
+    if (isNewData) {
+        isNanStencilInitialized = false;
+    }
+}
+
+void DeepLearningCudaCorrelationCalculator::computeNanStencilBuffer() {
+    numNonNanValues = 0;
+    VolumeData::HostCacheEntry fieldEntry = getFieldEntryCpu(scalarFieldNames.at(fieldIndexGui), -1, -1, -1);
+    const auto* fieldData = fieldEntry->data<float>();
+    int xs = volumeData->getGridSizeX();
+    int ys = volumeData->getGridSizeY();
+    int zs = volumeData->getGridSizeZ();
+    //auto* nonNanIndexBuffer = new uint32_t[];
+    uint32_t numCells = uint32_t(xs) * uint32_t(ys) * uint32_t(zs);
+    for (uint32_t cellIdx = 0; cellIdx < numCells; cellIdx++) {
+        if (!std::isnan(fieldData[cellIdx])) {
+            numNonNanValues++;
+        }
+    }
 }
 
 void DeepLearningCudaCorrelationCalculator::calculateDevice(
@@ -480,6 +516,11 @@ void DeepLearningCudaCorrelationCalculator::calculateDevice(
     vulkanFinishedSemaphore->waitSemaphoreCuda(stream, timelineValue);
 
     uint32_t alignmentVec4 = sgl::uiceil(getInputChannelAlignment(), 4);
+
+    if (useDataNanStencil && !isNanStencilInitialized) {
+        computeNanStencilBuffer();
+        isNanStencilInitialized = true;
+    }
 
     callbackBeginCompute();
 

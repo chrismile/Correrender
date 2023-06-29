@@ -71,11 +71,13 @@ public:
     }
     FilterDevice getFilterDevice() override { return FilterDevice::CUDA; }
     void calculateDevice(int timeStepIdx, int ensembleIdx, const DeviceCacheEntry& deviceCacheEntry) override;
+    void setVolumeData(VolumeData* _volumeData, bool isNewData) override;
 
     void setSettings(const SettingsMap& settings) override;
     void getSettings(SettingsMap& settings) override;
 
 protected:
+    void computeNanStencilBuffer();
     virtual void loadModelFromFile(const std::string& modelPath) = 0;
     void clearFieldDeviceData() override {}
     bool getSupportsSeparateFields() override;
@@ -94,8 +96,8 @@ protected:
     virtual uint32_t getInputChannelAlignment() { return 1; }
     virtual uint32_t getSrnStride() { return 3; }
 
-    /// Renders the GUI. Returns whether re-rendering has become necessary due to the user's actions.
     void renderGuiImplSub(sgl::PropertyEditor& propertyEditor) override;
+    void renderGuiImplAdvanced(sgl::PropertyEditor& propertyEditor) override;
 
     std::string modelFilePath;
     std::string fileDialogDirectory;
@@ -113,6 +115,12 @@ protected:
     size_t cachedVolumeDataSlice3dSize = 0;
     bool isMutualInformationData = true;
     bool calculateAbsoluteValue = false;
+
+    // NaN stencil for SRN_MINE.
+    bool useDataNanStencil = true;
+    bool isNanStencilInitialized = false;
+    CUdeviceptr nonNanIndexBufferCu{};
+    uint32_t numNonNanValues = 0;
 
     size_t cachedCorrelationMemberCountDevice = std::numeric_limits<size_t>::max();
     bool cacheNeedsRecreate = false;
