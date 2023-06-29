@@ -393,6 +393,35 @@ extern "C" __global__ void writeGridPositions(
     outputBuffer[pointIdxWriteOffset + 2] = 2.0f * float(z) / float(zs - 1) - 1.0f;
 }
 
+extern "C" __global__ void writeGridPositionsStencil(
+        uint32_t xs, uint32_t ys, uint32_t zs, uint32_t batchOffset, uint32_t batchSize,
+        float* __restrict__ outputBuffer, uint32_t stride, const uint32_t* __restrict__ nonNanIndexBuffer) {
+    uint32_t globalThreadIdx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (globalThreadIdx >= batchSize) {
+        return;
+    }
+    uint32_t pointIdxWriteOffset = globalThreadIdx * stride;
+    uint32_t pointIdxReadOffset = nonNanIndexBuffer[globalThreadIdx + batchOffset];
+    uint32_t x = pointIdxReadOffset % xs;
+    uint32_t y = (pointIdxReadOffset / xs) % ys;
+    uint32_t z = pointIdxReadOffset / (xs * ys);
+    outputBuffer[pointIdxWriteOffset] = 2.0f * float(x) / float(xs - 1) - 1.0f;
+    outputBuffer[pointIdxWriteOffset + 1] = 2.0f * float(y) / float(ys - 1) - 1.0f;
+    outputBuffer[pointIdxWriteOffset + 2] = 2.0f * float(z) / float(zs - 1) - 1.0f;
+}
+
+extern "C" __global__ void unpackStencilValues(
+        uint32_t numNonNanValues, const uint32_t* __restrict__ nonNanIndexBuffer,
+        const float* __restrict__ outputImageBuffer, float* __restrict__ outputImageBufferUnpacked) {
+    uint32_t globalThreadIdx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (globalThreadIdx >= numNonNanValues) {
+        return;
+    }
+    uint32_t pointIdxReadOffset = globalThreadIdx;
+    uint32_t pointIdxWriteOffset = nonNanIndexBuffer[globalThreadIdx];
+    outputImageBufferUnpacked[pointIdxWriteOffset] = outputImageBuffer[pointIdxReadOffset];
+}
+
 extern "C" __global__ void writeGridPositionReference(
         uint32_t xs, uint32_t ys, uint32_t zs, uint3 referencePointIdx, float* outputBuffer) {
     uint32_t globalThreadIdx = blockIdx.x * blockDim.x + threadIdx.x;

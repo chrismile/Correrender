@@ -116,10 +116,12 @@ protected:
     bool isMutualInformationData = true;
     bool calculateAbsoluteValue = false;
 
-    // NaN stencil for SRN_MINE.
+    /// NaN stencil for networkType == NetworkType::SRN_MINE.
     bool useDataNanStencil = true;
     bool isNanStencilInitialized = false;
     CUdeviceptr nonNanIndexBufferCu{};
+    CUdeviceptr outputImageBufferUnpackedCu{};
+    size_t cachedVolumeDataSlice3dSizeUnpacked = 0;
     uint32_t numNonNanValues = 0;
 
     size_t cachedCorrelationMemberCountDevice = std::numeric_limits<size_t>::max();
@@ -146,7 +148,9 @@ protected:
     CUfunction combineCorrelationMembersBufferTiledFunctionCu{}, combineCorrelationMembersReferenceBufferTiledFunctionCu{};
     CUfunction combineCorrelationMembersAlignedBufferTiledFunctionCu{}, combineCorrelationMembersReferenceAlignedBufferTiledFunctionCu{};
     // For networkType == NetworkType::SRN_MINE.
-    CUfunction writeGridPositionsFunctionCu{}, writeGridPositionReferenceFunctionCu{};
+    CUfunction writeGridPositionsFunctionCu{}, writeGridPositionsStencilFunctionCu{};
+    CUfunction writeGridPositionReferenceFunctionCu{};
+    CUfunction unpackStencilValuesFunctionCu{};
 
 private:
     void parseModelPresetsFile(const std::string& filename);
