@@ -93,7 +93,8 @@ if command -v pacman &> /dev/null && [ ! -d $build_dir_debug ] && [ ! -d $build_
             || ! is_installed_pacman "mingw-w64-x86_64-blosc" \
             || ! is_installed_pacman "mingw-w64-x86_64-python" \
             || ! is_installed_pacman "mingw-w64-x86_64-eigen3" \
-            || ! is_installed_pacman "mingw-w64-x86_64-nlopt"; then
+            || ! is_installed_pacman "mingw-w64-x86_64-nlopt" \
+            || ! is_installed_pacman "mingw-w64-x86_64-libtiff"; then
         echo "------------------------"
         echo "installing dependencies "
         echo "------------------------"

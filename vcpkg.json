@@ -46,7 +46,8 @@
         "blosc",
         "eigen3",
         "nlopt",
-        "curl"
+        "curl",
+        "tiff"
     ],
     "features": {
         "tbb": {
