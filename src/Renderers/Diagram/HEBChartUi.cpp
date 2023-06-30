@@ -1767,7 +1767,8 @@ void HEBChart::drawColorLegends() {
     if (numFieldsSize == 0) {
         return;
     }
-    if (separateColorVarianceAndCorrelation) {
+    bool useColorMapVariance = separateColorVarianceAndCorrelation && outerRingSizePct > 0.0f;
+    if (useColorMapVariance) {
         numFieldsSize++;
     }
 
@@ -1778,7 +1779,7 @@ void HEBChart::drawColorLegends() {
         std::string variableName;
         std::function<glm::vec4(float)> colorMap;
         std::function<std::string(float)> labelMap;
-        bool isEnsembleSpread = separateColorVarianceAndCorrelation && i == 0;
+        bool isEnsembleSpread = useColorMapVariance && i == 0;
         if (isEnsembleSpread) {
             variableName = u8"\u03C3"; //< sigma.
             colorMap = [fieldDataArrayLocal](float t) {
@@ -1796,7 +1797,7 @@ void HEBChart::drawColorLegends() {
                     }
                 }
             } else {
-                fieldIdx = separateColorVarianceAndCorrelation ? i - 1 : i;
+                fieldIdx = useColorMapVariance ? i - 1 : i;
             }
             fieldData = fieldDataArray.at(fieldIdx).get();
             variableName = fieldData->selectedScalarFieldName;

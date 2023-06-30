@@ -29,6 +29,7 @@
 #include <json/json.h>
 
 #include <Graphics/Window.hpp>
+#include <Graphics/Vulkan/Render/Renderer.hpp>
 #include <ImGui/ImGuiWrapper.hpp>
 #include <ImGui/imgui.h>
 
@@ -203,6 +204,7 @@ void MainApp::loadStateFromFile(const std::string& stateFilePath) {
     int windowHeight = windowSizeNode["y"].asInt();
     auto* window = sgl::AppSettings::get()->getMainWindow();
     if (windowWidth != window->getPixelWidth() || windowHeight != window->getPixelHeight()) {
+        rendererVk->syncWithCpu();
         window->setWindowPixelSize(windowWidth, windowHeight);
     }
 
@@ -262,6 +264,8 @@ void MainApp::loadStateFromFile(const std::string& stateFilePath) {
         if (selectedDataSetIndex >= 0) {
             loadVolumeDataSet(getSelectedDataSetFilenames());
         }
+
+        rendererVk->syncWithCpu();
 
         volumeData->setCurrentTimeStepIdx(volumeDataNode["current_time_step_idx"].asInt());
         volumeData->setCurrentEnsembleIdx(volumeDataNode["current_ensemble_idx"].asInt());
@@ -421,4 +425,3 @@ void MainApp::loadStateFromFile(const std::string& stateFilePath) {
     hasMoved();
     onCameraReset();
 }
-
