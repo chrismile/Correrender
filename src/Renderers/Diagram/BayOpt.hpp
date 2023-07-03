@@ -248,6 +248,32 @@ struct MutualFunctor{
     }
 };
 
+struct MutualBinnedCCFunctor{
+    const float& minFieldVal1, maxFieldVal1;
+    const float& minFieldVal2, maxFieldVal2;
+    const int&   numBins;
+    mutable std::vector<double> histogram0, histogram1, histogram2d;
+    float operator()(float* a, float* b, int num_members) const {
+        histogram0.reserve(numBins);
+        histogram1.reserve(numBins);
+        histogram2d.reserve(numBins * numBins);
+        for (int c = 0; c < num_members; c++) {
+            a[c] = (a[c] - minFieldVal1) / (maxFieldVal1 - minFieldVal1);
+            b[c] = (b[c] - minFieldVal2) / (maxFieldVal2 - minFieldVal2);
+        }
+        float mi = computeMutualInformationBinned<double>(a, b, numBins, num_members, histogram0.data(), histogram1.data(), histogram2d.data());
+        return std::sqrt(1.0f - std::exp(-2.0f * mi));
+    }
+};
+struct MutualCCFunctor{
+    const int& k;
+    mutable KraskovEstimatorCache<double> kraskovEstimatorCache;
+    float operator()(float* a, float* b, int num_members) const {
+        float mi = computeMutualInformationKraskov<double>(a, b, k, num_members, kraskovEstimatorCache);
+        return std::sqrt(1.0f - std::exp(-2.0f * mi));
+    }
+};
+
 template<typename Params, nlopt::algorithm Algo> using o = limbo::opt::NLOptNoGrad<Params, Algo>;
 template<typename Params>
 using AlgorithmNoGradVariants = std::variant<o<Params, nlopt::LN_COBYLA> ,  o<Params, nlopt::LN_BOBYQA> ,

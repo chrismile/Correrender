@@ -502,10 +502,15 @@ void main() {
     float d = digamma(cs);
     //float mi = (-a - b + c + d) / log(base);
     float mi = -a - b + c + d;
+    mi = max(mi, 0.0);
+
+#ifdef MI_CORRELATION_COEFFICIENT
+    mi = sqrt(1.0 - exp(-2.0 * mi));
+#endif
 
 #ifdef USE_REQUESTS_BUFFER
-    outputBuffer[requestIdx] = isnan(nanValue) ? nanValue : max(mi, 0.0);
+    outputBuffer[requestIdx] = isnan(nanValue) ? nanValue : mi;
 #else
-    imageStore(outputImage, currentPointIdx, vec4(isnan(nanValue) ? nanValue : max(mi, 0.0)));
+    imageStore(outputImage, currentPointIdx, vec4(isnan(nanValue) ? nanValue : mi));
 #endif
 }

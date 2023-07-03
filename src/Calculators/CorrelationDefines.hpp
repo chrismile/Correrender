@@ -39,14 +39,35 @@ enum class CorrelationDataMode {
 const char* const DATA_MODE_NAMES[] = { "Image 3D Array", "Buffer Array" };
 
 enum class CorrelationMeasureType {
-    PEARSON, SPEARMAN, KENDALL, MUTUAL_INFORMATION_BINNED, MUTUAL_INFORMATION_KRASKOV
+    PEARSON, SPEARMAN, KENDALL, MUTUAL_INFORMATION_BINNED, MUTUAL_INFORMATION_KRASKOV,
+    BINNED_MI_CORRELATION_COEFFICIENT, KMI_CORRELATION_COEFFICIENT
 };
 const char* const CORRELATION_MEASURE_TYPE_NAMES[] = {
-        "Pearson", "Spearman", "Kendall", "Mutual Information (Binned)", "Mutual Information (Kraskov)"
+        "Pearson", "Spearman", "Kendall", "Mutual Information (Binned)", "Mutual Information (Kraskov)",
+        "Binned MI Correlation Coefficient", "KMI Correlation Coefficient"
 };
 const char* const CORRELATION_MEASURE_TYPE_IDS[] = {
-        "pearson", "spearman", "kendall", "mi_binned", "mi_kraskov"
+        "pearson", "spearman", "kendall", "mi_binned", "mi_kraskov",
+        "binned_mi_correlation_coefficient", "kmi_correlation_coefficient"
 };
+inline bool isMeasureBinnedMI(CorrelationMeasureType m) {
+    return m == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED
+            || m == CorrelationMeasureType::BINNED_MI_CORRELATION_COEFFICIENT;
+}
+inline bool isMeasureKraskovMI(CorrelationMeasureType m) {
+    return m == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV
+            || m == CorrelationMeasureType::KMI_CORRELATION_COEFFICIENT;
+}
+inline bool isMeasureMI(CorrelationMeasureType m) {
+    return m == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED
+            || m == CorrelationMeasureType::BINNED_MI_CORRELATION_COEFFICIENT
+            || m == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV
+            || m == CorrelationMeasureType::KMI_CORRELATION_COEFFICIENT;
+}
+inline bool isMeasureCorrelationCoefficientMI(CorrelationMeasureType m) {
+    return m == CorrelationMeasureType::BINNED_MI_CORRELATION_COEFFICIENT
+           || m == CorrelationMeasureType::KMI_CORRELATION_COEFFICIENT;
+}
 
 const char* const FIELD_ACCURACY_NAMES[] = {
         "Float (32-bit)", "Double (64-bit)"

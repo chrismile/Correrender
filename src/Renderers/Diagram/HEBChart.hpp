@@ -281,6 +281,9 @@ public:
     // For performance tests.
     inline void setIsHeadlessMode(bool _isHeadlessMode)  { isHeadlessMode = _isHeadlessMode; }
     void setSyntheticTestCase(const std::vector<std::pair<uint32_t, uint32_t>>& blockPairs);
+    [[nodiscard]] inline bool getForcedUseMeanFields() const { return isUseMeanFieldsForced; }
+    void setForcedUseMeanFields(int fx, int fy, int fz);
+    void disableForcedUseMeanFields();
 
     struct PerfStatistics {
         double elapsedTimeMicroseconds{};
@@ -341,6 +344,7 @@ private:
     uint32_t leafIdxOffset = 0, leafIdxOffset1 = 0;
 
     // Mean field data.
+    bool isUseMeanFieldsForced = false;
     bool useMeanFields = false;
     int mdfx = 1, mdfy = 1, mdfz = 1;
 

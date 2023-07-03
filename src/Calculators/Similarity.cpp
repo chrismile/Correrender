@@ -84,7 +84,7 @@ float computeFieldSimilarity(
         y.reserve(cs);
         correlationValue = computeKendall<int64_t>(
                 X.data(), Y.data(), cs, jointArray, ordinalRankArray, y, sortArray, stack);
-    } else if (cmt == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
+    } else if (isMeasureBinnedMI(cmt)) {
         int numBins = 80;
         std::vector<T> histogram0;
         std::vector<T> histogram1;
@@ -94,12 +94,19 @@ float computeFieldSimilarity(
         histogram2d.reserve(numBins *numBins);
         correlationValue = computeMutualInformationBinned<T>(
                 X.data(), Y.data(), numBins, cs, histogram0.data(), histogram1.data(), histogram2d.data());
-    } else if (cmt == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV) {
+        if (cmt == CorrelationMeasureType::BINNED_MI_CORRELATION_COEFFICIENT) {
+            correlationValue = std::sqrt(1.0f - std::exp(-2.0f * correlationValue));
+        }
+    } else if (isMeasureKraskovMI(cmt)) {
         int k = std::clamp(sgl::iceil(3 * cs, 100), 1, 100);
         KraskovEstimatorCache<T> kraskovEstimatorCache;
         correlationValue = computeMutualInformationKraskovParallel<T>(
                 X.data(), Y.data(), k, cs, kraskovEstimatorCache);
-        maxCorrelationValue = computeMaximumMutualInformationKraskov(k, cs);
+        if (cmt == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV) {
+            maxCorrelationValue = computeMaximumMutualInformationKraskov(k, cs);
+        } else {
+            correlationValue = std::sqrt(1.0f - std::exp(-2.0f * correlationValue));
+        }
     }
     return correlationValue;
 }

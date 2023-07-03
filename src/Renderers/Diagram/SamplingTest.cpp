@@ -51,6 +51,10 @@ struct TestCase {
     int numInitSamples = 20;
     int numBOIterations = 60;
     nlopt::algorithm algorithm = nlopt::GN_DIRECT_L_RAND;
+
+    // Subsampling of used field.
+    bool useMeanField = false;
+    int f = 1;
 };
 
 void runTestCase(
@@ -63,6 +67,11 @@ void runTestCase(
     chart->setNumInitSamples(testCase.numInitSamples);
     chart->setNumBOIterations(testCase.numBOIterations);
     chart->setNloptAlgorithm(testCase.algorithm);
+    if (testCase.useMeanField && !chart->getForcedUseMeanFields()) {
+        chart->setForcedUseMeanFields(testCase.f, testCase.f, testCase.f);
+    } else if (!testCase.useMeanField && chart->getForcedUseMeanFields()) {
+        chart->disableForcedUseMeanFields();
+    }
 
     auto invN = 1.0 / double(blockPairs.size() * size_t(numRuns));
     for (int runIdx = 0; runIdx < numRuns; runIdx++) {
@@ -103,13 +112,19 @@ void runTestCase(
     }
 }
 
+const int TEST_CASE_DATA_ERROR = 0;
+const int TEST_CASE_DATA_MAX = 1;
+const int TEST_CASE_SYNTH_ERROR = 2;
+const int TEST_CASE_DATA_MAX_SUBSAMPLED = 3;
+
 void runSamplingTests(const std::string& dataSetPath, int testIdx) {
     std::cout << "Starting test case #" << testIdx << " for data set '" << dataSetPath << "'." << std::endl;
     sgl::vk::Device* device = sgl::AppSettings::get()->getPrimaryDevice();
     auto* renderer = new sgl::vk::Renderer(device, 100);
 
-    const bool modeGT = testIdx != 1;
-    bool isSyntheticTestCase = testIdx == 2;
+    const bool modeGT =
+            testIdx != TEST_CASE_DATA_MAX && testIdx != TEST_CASE_DATA_MAX_SUBSAMPLED;
+    bool isSyntheticTestCase = testIdx == TEST_CASE_SYNTH_ERROR;
 
     // Load the volume data set.
     VolumeDataPtr volumeData(new VolumeData(renderer));
@@ -134,10 +149,10 @@ void runSamplingTests(const std::string& dataSetPath, int testIdx) {
     //constexpr int dfx = 10;
     //constexpr int dfy = 10;
     //constexpr int dfz = 10;
-    const int dfx = testIdx == 0 ? 10 : 32;
-    const int dfy = testIdx == 0 ? 10 : 32;
-    const int dfz = testIdx == 0 ? 10 : (isSyntheticTestCase ? 32 : 20);
-    const int numRuns = testIdx == 0 ? 10 : 100;
+    const int dfx = testIdx == TEST_CASE_DATA_ERROR ? 10 : 32;
+    const int dfy = testIdx == TEST_CASE_DATA_ERROR ? 10 : 32;
+    const int dfz = testIdx == TEST_CASE_DATA_ERROR ? 10 : (isSyntheticTestCase ? 32 : 20);
+    const int numRuns = testIdx == TEST_CASE_DATA_ERROR ? 10 : 100;
     int numPairsToCheck = 1000;
     int numLogSteps = 3;
     std::vector<int> numSamplesArray;
@@ -155,7 +170,7 @@ void runSamplingTests(const std::string& dataSetPath, int testIdx) {
     //if (numLogSteps == 2) {
     //    numSamplesArray.push_back(200);
     //}
-    bool computeMean = !isSyntheticTestCase;
+    bool computeMean = !isSyntheticTestCase && testIdx != TEST_CASE_DATA_MAX_SUBSAMPLED;
     bool runTestsOptimizers = false;
     bool computeGroundTruth = modeGT;
 
@@ -238,48 +253,62 @@ void runSamplingTests(const std::string& dataSetPath, int testIdx) {
     }
 
     // Add the test cases.
-    SamplingMethodType firstSamplingMethodType =
-            computeMean ? SamplingMethodType::MEAN : SamplingMethodType::RANDOM_UNIFORM;
-    //firstSamplingMethodType = SamplingMethodType::BAYESIAN_OPTIMIZATION; // Just for testing, remove this line.
     std::vector<TestCase> testCases;
-    for (int samplingMethodTypeIdx = int(firstSamplingMethodType);
-            samplingMethodTypeIdx <= int(SamplingMethodType::QUASIRANDOM_PLASTIC);
-            samplingMethodTypeIdx++) {
-        for (int numSamples : numSamplesArray) {
-            TestCase testCase;
-            testCase.samplingMethodType = SamplingMethodType(samplingMethodTypeIdx);
-            testCase.numSamples = numSamples;
-            testCase.testCaseName = SAMPLING_METHOD_TYPE_NAMES[int(testCase.samplingMethodType)];
-            testCases.push_back(testCase);
-        }
-    }
-
-    // Add Bayesian Optimization test cases.
-    if (runTestsOptimizers) {
-        for (size_t algoIdx = 0; algoIdx < IM_ARRAYSIZE(NLoptAlgorithmsNoGrad); algoIdx++) {
-            auto algorithm = NLoptAlgorithmsNoGrad[algoIdx];
-            // Seems to hang the program. One thread worker doesn't terminate.
-            if (algorithm == nlopt::LN_NEWUOA_BOUND) {
-                continue;
+    if (testIdx != TEST_CASE_DATA_MAX_SUBSAMPLED) {
+        SamplingMethodType firstSamplingMethodType =
+                computeMean ? SamplingMethodType::MEAN : SamplingMethodType::RANDOM_UNIFORM;
+        //firstSamplingMethodType = SamplingMethodType::BAYESIAN_OPTIMIZATION; // Just for testing, remove this line.
+        for (int samplingMethodTypeIdx = int(firstSamplingMethodType);
+             samplingMethodTypeIdx <= int(SamplingMethodType::QUASIRANDOM_PLASTIC);
+             samplingMethodTypeIdx++) {
+            for (int numSamples : numSamplesArray) {
+                TestCase testCase;
+                testCase.samplingMethodType = SamplingMethodType(samplingMethodTypeIdx);
+                testCase.numSamples = numSamples;
+                testCase.testCaseName = SAMPLING_METHOD_TYPE_NAMES[int(testCase.samplingMethodType)];
+                testCases.push_back(testCase);
             }
+        }
+
+        // Add Bayesian Optimization test cases.
+        if (runTestsOptimizers) {
+            for (size_t algoIdx = 0; algoIdx < IM_ARRAYSIZE(NLoptAlgorithmsNoGrad); algoIdx++) {
+                auto algorithm = NLoptAlgorithmsNoGrad[algoIdx];
+                // Seems to hang the program. One thread worker doesn't terminate.
+                if (algorithm == nlopt::LN_NEWUOA_BOUND) {
+                    continue;
+                }
+                for (int numSamples : numSamplesArray) {
+                    TestCase testCase;
+                    testCase.samplingMethodType = SamplingMethodType::BAYESIAN_OPTIMIZATION;
+                    testCase.algorithm = algorithm;
+                    testCase.numSamples = numSamples;
+                    testCase.numInitSamples = std::clamp(sgl::iceil(numSamples, 2), 1, 20);
+                    testCase.testCaseName = SAMPLING_METHOD_TYPE_NAMES[int(testCase.samplingMethodType)];
+                    testCase.testCaseName += std::string(" (") + NLOPT_ALGORITHM_NAMES_NOGRAD[algoIdx] + ")";
+                    testCases.push_back(testCase);
+                }
+            }
+        } else {
             for (int numSamples : numSamplesArray) {
                 TestCase testCase;
                 testCase.samplingMethodType = SamplingMethodType::BAYESIAN_OPTIMIZATION;
-                testCase.algorithm = algorithm;
                 testCase.numSamples = numSamples;
                 testCase.numInitSamples = std::clamp(sgl::iceil(numSamples, 2), 1, 20);
                 testCase.testCaseName = SAMPLING_METHOD_TYPE_NAMES[int(testCase.samplingMethodType)];
-                testCase.testCaseName += std::string(" (") + NLOPT_ALGORITHM_NAMES_NOGRAD[algoIdx] + ")";
                 testCases.push_back(testCase);
             }
         }
     } else {
-        for (int numSamples : numSamplesArray) {
+        for (int f = 1; f <= 4; f *= 2) {
             TestCase testCase;
             testCase.samplingMethodType = SamplingMethodType::BAYESIAN_OPTIMIZATION;
-            testCase.numSamples = numSamples;
-            testCase.numInitSamples = std::clamp(sgl::iceil(numSamples, 2), 1, 20);
+            testCase.numSamples = 100;
+            testCase.numInitSamples = std::clamp(sgl::iceil(testCase.numSamples, 2), 1, 20);
+            testCase.useMeanField = true;
+            testCase.f = f;
             testCase.testCaseName = SAMPLING_METHOD_TYPE_NAMES[int(testCase.samplingMethodType)];
+            testCase.testCaseName += std::string(" (f=") + std::to_string(f) + ")";
             testCases.push_back(testCase);
         }
     }

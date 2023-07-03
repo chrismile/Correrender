@@ -503,8 +503,13 @@ __global__ void mutualInformationKraskov(
     float d = digamma(MEMBER_COUNT);
     //float mi = (-a - b + c + d) / log(base);
     float mi = -a - b + c + d;
+    mi = fmaxf(mi, 0.0f);
 
-    miArray[globalThreadIdx] = isnan(nanValue) ? nanValue : fmaxf(mi, 0.0f);
+#ifdef MI_CORRELATION_COEFFICIENT
+    mi = sqrtf(1.0f - expf(-2.0f * mi));
+#endif
+
+    miArray[globalThreadIdx] = isnan(nanValue) ? nanValue : mi;
 }
 
 }

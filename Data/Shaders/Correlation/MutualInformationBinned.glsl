@@ -153,6 +153,10 @@ void main() {
         }
     }
 
+#ifdef MI_CORRELATION_COEFFICIENT
+    mi = sqrt(1.0 - exp(-2.0 * mi));
+#endif
+
 #ifdef USE_REQUESTS_BUFFER
     outputBuffer[requestIdx] = isnan(nanValue) ? nanValue : mi;
 #else

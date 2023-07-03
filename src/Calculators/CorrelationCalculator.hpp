@@ -153,7 +153,7 @@ public:
     [[nodiscard]] std::pair<float, float> getFixedRange() const override {
         if (correlationMeasureType != CorrelationMeasureType::MUTUAL_INFORMATION_BINNED
                 && correlationMeasureType != CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV) {
-            if (calculateAbsoluteValue) {
+            if (calculateAbsoluteValue || isMeasureCorrelationCoefficientMI(correlationMeasureType)) {
                 return std::make_pair(0.0f, 1.0f);
             } else {
                 return std::make_pair(-1.0f, 1.0f);

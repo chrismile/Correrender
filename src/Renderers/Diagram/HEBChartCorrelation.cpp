@@ -406,8 +406,7 @@ void HEBChart::computeCorrelations(
     }
 
     //auto startTimeSort = std::chrono::system_clock::now();
-    if (useAbsoluteCorrelationMeasure || correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED
-            || correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV) {
+    if (useAbsoluteCorrelationMeasure || isMeasureMI(correlationMeasureType)) {
 #ifdef USE_TBB
         tbb::parallel_sort(miFieldEntries.begin(), miFieldEntries.end());
 //#elif __cpp_lib_parallel_algorithm >= 201603L
@@ -463,7 +462,7 @@ void HEBChart::computeCorrelations(
     std::vector<double> histogram0;                               \
     std::vector<double> histogram1;                               \
     std::vector<double> histogram2d;                              \
-    if (cmt == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) \
+    if (isMeasureBinnedMI(cmt))                                   \
     {                                                             \
         histogram0.reserve(numBins);                              \
         histogram1.reserve(numBins);                              \
@@ -531,7 +530,7 @@ void HEBChart::computeCorrelationsMean(
                 if (correlationMeasureType == CorrelationMeasureType::SPEARMAN) {
                     computeRanks(X.data(), referenceRanks.data(), ordinalRankArrayRef, cs);
                 }
-                if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
+                if (isMeasureBinnedMI(correlationMeasureType)) {
                     minFieldValRef = std::numeric_limits<float>::max();
                     maxFieldValRef = std::numeric_limits<float>::lowest();
                     for (int c = 0; c < cs; c++) {
@@ -566,7 +565,7 @@ void HEBChart::computeCorrelationsMean(
                         }
                     }
                     if (!isNan) {
-                        if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
+                        if (isMeasureBinnedMI(correlationMeasureType)) {
                             minFieldVal = minFieldValRef;
                             maxFieldVal = maxFieldValRef;
                             for (int c = 0; c < cs; c++) {
@@ -587,13 +586,21 @@ void HEBChart::computeCorrelationsMean(
                             correlationValue = computePearson2<float>(referenceRanks.data(), gridPointRanks.data(), cs);
                         } else if (cmt == CorrelationMeasureType::KENDALL) {
                             correlationValue = computeKendall<int32_t>(
-                                X.data(), Y.data(), cs, jointArray, ordinalRankArray, y, sortArray, stack);
+                                    X.data(), Y.data(), cs, jointArray, ordinalRankArray, y, sortArray, stack);
                         } else if (cmt == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
                             correlationValue = computeMutualInformationBinned<double>(
-                                X.data(), Y.data(), numBins, cs, histogram0.data(), histogram1.data(), histogram2d.data());
+                                    X.data(), Y.data(), numBins, cs, histogram0.data(), histogram1.data(), histogram2d.data());
                         } else if (cmt == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV) {
                             correlationValue = computeMutualInformationKraskov<double>(
-                                X.data(), Y.data(), k, cs, kraskovEstimatorCache);
+                                    X.data(), Y.data(), k, cs, kraskovEstimatorCache);
+                        } else if (cmt == CorrelationMeasureType::BINNED_MI_CORRELATION_COEFFICIENT) {
+                            correlationValue = computeMutualInformationBinned<double>(
+                                    X.data(), Y.data(), numBins, cs, histogram0.data(), histogram1.data(), histogram2d.data());
+                            correlationValue = std::sqrt(1.0f - std::exp(-2.0f * correlationValue));
+                        } else if (cmt == CorrelationMeasureType::KMI_CORRELATION_COEFFICIENT) {
+                            correlationValue = computeMutualInformationKraskov<double>(
+                                    X.data(), Y.data(), k, cs, kraskovEstimatorCache);
+                            correlationValue = std::sqrt(1.0f - std::exp(-2.0f * correlationValue));
                         }
                         if (useAbsoluteCorrelationMeasure) {
                             correlationValue = std::abs(correlationValue);
@@ -644,7 +651,7 @@ void HEBChart::computeCorrelationsSamplingCpu(
         const float *field = fieldEntry->data<float>();
         fieldEntries.push_back(fieldEntry);
         fields.push_back(field);
-        if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
+        if (isMeasureBinnedMI(correlationMeasureType)) {
             auto [minVal, maxVal] = getMinMaxScalarFieldValue(fieldData->selectedScalarFieldName1, fieldIdx);
             minFieldVal = std::min(minFieldVal, minVal);
             maxFieldVal = std::max(maxFieldVal, maxVal);
@@ -661,7 +668,7 @@ void HEBChart::computeCorrelationsSamplingCpu(
             const float *field2 = fieldEntry2->data<float>();
             fieldEntries2.push_back(fieldEntry2);
             fields2.push_back(field2);
-            if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
+            if (isMeasureBinnedMI(correlationMeasureType)) {
                 auto [minVal2, maxVal2] = getMinMaxScalarFieldValue(fieldData->selectedScalarFieldName2, fieldIdx);
                 minFieldVal2 = std::min(minFieldVal2, minVal2);
                 maxFieldVal2 = std::max(maxFieldVal2, maxVal2);
@@ -792,6 +799,18 @@ void HEBChart::correlationSamplingExecuteCpuDefault(
                     } else if (cmt == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV) {
                         correlationValue = computeMutualInformationKraskov<double>(
                             X.data(), Y.data(), k, cs, kraskovEstimatorCache);
+                    } else if (cmt == CorrelationMeasureType::BINNED_MI_CORRELATION_COEFFICIENT) {
+                        for (int c = 0; c < cs; c++) {
+                            X[c] = (X[c] - minFieldVal) / (maxFieldVal - minFieldVal);
+                            Y[c] = (Y[c] - minFieldVal2) / (maxFieldVal2 - minFieldVal2);
+                        }
+                        correlationValue = computeMutualInformationBinned<double>(
+                                X.data(), Y.data(), numBins, cs, histogram0.data(), histogram1.data(), histogram2d.data());
+                        correlationValue = std::sqrt(1.0f - std::exp(-2.0f * correlationValue));
+                    } else if (cmt == CorrelationMeasureType::KMI_CORRELATION_COEFFICIENT) {
+                        correlationValue = computeMutualInformationKraskov<double>(
+                                X.data(), Y.data(), k, cs, kraskovEstimatorCache);
+                        correlationValue = std::sqrt(1.0f - std::exp(-2.0f * correlationValue));
                     }
                     if (std::abs(correlationValue) >= std::abs(correlationValueMax)) {
                         if (useAbsoluteCorrelationMeasure) {
@@ -905,6 +924,14 @@ void HEBChart::correlationSamplingExecuteCpuBayesian(
             case CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV:
                 optimizer.optimize(BayOpt::Eval<BayOpt::MutualFunctor>{fields, fields2, region_min, region_max, cs, xs, ys, {mutualInformationK}});
                 break;
+            case CorrelationMeasureType::BINNED_MI_CORRELATION_COEFFICIENT:
+                optimizer.optimize(BayOpt::Eval<BayOpt::MutualBinnedCCFunctor>{
+                        fields, fields2, region_min, region_max, cs, xs, ys,
+                        BayOpt::MutualBinnedCCFunctor{minFieldVal, maxFieldVal, minFieldVal2, maxFieldVal2, numBins}});
+                break;
+            case CorrelationMeasureType::KMI_CORRELATION_COEFFICIENT:
+                optimizer.optimize(BayOpt::Eval<BayOpt::MutualCCFunctor>{fields, fields2, region_min, region_max, cs, xs, ys, {mutualInformationK}});
+                break;
             default:
                 assert(false && "Unimplemented Correlation measure type");
             }
@@ -1006,7 +1033,7 @@ std::shared_ptr<HEBChartFieldCache> HEBChart::getFieldCache(HEBChartFieldData* f
                 }
             }
         }
-        if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
+        if (isMeasureBinnedMI(correlationMeasureType)) {
             fieldCache->minFieldVal = fieldData->minFieldVal;
             fieldCache->maxFieldVal = fieldData->maxFieldVal;
 
@@ -1029,7 +1056,7 @@ std::shared_ptr<HEBChartFieldCache> HEBChart::getFieldCache(HEBChartFieldData* f
             } else {
                 fieldCache->fieldBuffers.push_back(fieldEntry->getVulkanBuffer());
             }
-            if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
+            if (isMeasureBinnedMI(correlationMeasureType)) {
                 auto [minVal, maxVal] = getMinMaxScalarFieldValue(fieldData->selectedScalarFieldName1, fieldIdx);
                 fieldCache->minFieldVal = std::min(fieldCache->minFieldVal, minVal);
                 fieldCache->maxFieldVal = std::max(fieldCache->maxFieldVal, maxVal);
@@ -1048,7 +1075,7 @@ std::shared_ptr<HEBChartFieldCache> HEBChart::getFieldCache(HEBChartFieldData* f
                 } else {
                     fieldCache->fieldBuffers2.push_back(fieldEntry2->getVulkanBuffer());
                 }
-                if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
+                if (isMeasureBinnedMI(correlationMeasureType)) {
                     auto [minVal2, maxVal2] = getMinMaxScalarFieldValue(fieldData->selectedScalarFieldName2, fieldIdx);
                     fieldCache->minFieldVal2 = std::min(fieldCache->minFieldVal2, minVal2);
                     fieldCache->maxFieldVal2 = std::max(fieldCache->maxFieldVal2, maxVal2);
@@ -1131,7 +1158,7 @@ sgl::vk::BufferPtr HEBChart::computeCorrelationsForRequests(
         requestsStagingBuffer);
     computeRenderer->pushConstants(
             correlationComputePass->getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, 0, uint32_t(requests.size()));
-    if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
+    if (isMeasureBinnedMI(correlationMeasureType)) {
         computeRenderer->pushConstants(
             correlationComputePass->getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, 2 * sizeof(float),
             glm::vec2(fieldCache->minFieldVal, fieldCache->maxFieldVal));

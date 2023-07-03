@@ -587,7 +587,7 @@ void CorrelationCalculator::renderGuiImplSub(sgl::PropertyEditor& propertyEditor
 
 #ifdef SUPPORT_CUDA_INTEROP
     if (sgl::vk::getIsCudaDeviceApiFunctionTableInitialized() && sgl::vk::getIsNvrtcFunctionTableInitialized()
-            && correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV) {
+            && isMeasureKraskovMI(correlationMeasureType)) {
         const char* const choices[] = {
                 "CPU", "Vulkan", "CUDA"
         };
@@ -606,24 +606,22 @@ void CorrelationCalculator::renderGuiImplSub(sgl::PropertyEditor& propertyEditor
         dirty = true;
     }
 
-    if (correlationMeasureType != CorrelationMeasureType::MUTUAL_INFORMATION_BINNED
-            && correlationMeasureType != CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV
-            && propertyEditor.addCheckbox("Absolute Value", &calculateAbsoluteValue)) {
+    if (!isMeasureMI(correlationMeasureType) && propertyEditor.addCheckbox("Absolute Value", &calculateAbsoluteValue)) {
         correlationComputePass->setCalculateAbsoluteValue(calculateAbsoluteValue);
         dirty = true;
     }
 
-    if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED && propertyEditor.addSliderIntEdit(
+    if (isMeasureBinnedMI(correlationMeasureType) && propertyEditor.addSliderIntEdit(
             "#Bins", &numBins, 10, 100) == ImGui::EditMode::INPUT_FINISHED) {
         correlationComputePass->setNumBins(numBins);
         dirty = true;
     }
-    if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV && propertyEditor.addSliderIntEdit(
+    if (isMeasureKraskovMI(correlationMeasureType) && propertyEditor.addSliderIntEdit(
             "#Neighbors", &k, 1, kMax) == ImGui::EditMode::INPUT_FINISHED) {
         correlationComputePass->setKraskovNumNeighbors(k);
         dirty = true;
     }
-    if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV && propertyEditor.addSliderIntEdit(
+    if (isMeasureKraskovMI(correlationMeasureType) && propertyEditor.addSliderIntEdit(
             "Kraskov Estimator", &kraskovEstimatorIndex, 1, 2) == ImGui::EditMode::INPUT_FINISHED) {
         kraskovEstimatorIndex = std::clamp(kraskovEstimatorIndex, 1, 2);
         correlationComputePass->setKraskovEstimatorIndex(kraskovEstimatorIndex);
@@ -749,7 +747,7 @@ void CorrelationCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float
 
     float minFieldValRef = std::numeric_limits<float>::max();
     float maxFieldValRef = std::numeric_limits<float>::lowest();
-    if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
+    if (isMeasureBinnedMI(correlationMeasureType)) {
         for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
             auto [minVal, maxVal] = getMinMaxScalarFieldValue(
                     scalarFieldNames.at(useSeparateFields ? fieldIndex2Gui : fieldIndexGui),
@@ -763,14 +761,14 @@ void CorrelationCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float
     }
     float minFieldValQuery = std::numeric_limits<float>::max();
     float maxFieldValQuery = std::numeric_limits<float>::lowest();
-    if (useSeparateFields && correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
+    if (useSeparateFields && isMeasureBinnedMI(correlationMeasureType)) {
         for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
             auto [minVal, maxVal] = getMinMaxScalarFieldValue(
                     scalarFieldNames.at(fieldIndexGui), fieldIdx, timeStepIdx, ensembleIdx);
             minFieldValQuery = std::min(minFieldValQuery, minVal);
             maxFieldValQuery = std::max(maxFieldValQuery, maxVal);
         }
-    } else if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
+    } else if (isMeasureBinnedMI(correlationMeasureType)) {
         minFieldValQuery = minFieldValRef;
         maxFieldValQuery = maxFieldValRef;
     }
@@ -950,7 +948,7 @@ void CorrelationCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float
 #ifdef USE_TBB
         });
 #endif
-    } else if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
+    } else if (isMeasureBinnedMI(correlationMeasureType)) {
 #ifdef USE_TBB
         tbb::parallel_for(tbb::blocked_range<size_t>(0, numGridPoints), [&](auto const& r) {
             auto* gridPointValues = new float[cs];
@@ -995,6 +993,9 @@ void CorrelationCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float
 
                 float mutualInformation = computeMutualInformationBinned<double>(
                         referenceValues, gridPointValues, numBins, cs, histogram0, histogram1, histogram2d);
+                if (correlationMeasureType == CorrelationMeasureType::BINNED_MI_CORRELATION_COEFFICIENT) {
+                    mutualInformation = std::sqrt(1.0f - std::exp(-2.0f * mutualInformation));
+                }
                 buffer[gridPointIdx] = mutualInformation;
             }
             delete[] gridPointValues;
@@ -1007,7 +1008,7 @@ void CorrelationCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float
 #ifdef USE_TBB
         });
 #endif
-    } else if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV) {
+    } else if (isMeasureKraskovMI(correlationMeasureType)) {
 #ifdef USE_TBB
         tbb::parallel_for(tbb::blocked_range<size_t>(0, numGridPoints), [&](auto const& r) {
             auto* gridPointValues = new float[cs];
@@ -1050,6 +1051,9 @@ void CorrelationCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float
                 } else {
                     mutualInformation = computeMutualInformationKraskov2<double>(
                             referenceValues, gridPointValues, k, cs, kraskovEstimatorCache);
+                }
+                if (correlationMeasureType == CorrelationMeasureType::KMI_CORRELATION_COEFFICIENT) {
+                    mutualInformation = std::sqrt(1.0f - std::exp(-2.0f * mutualInformation));
                 }
                 buffer[gridPointIdx] = mutualInformation;
             }
@@ -1143,7 +1147,7 @@ void CorrelationCalculator::calculateDevice(int timeStepIdx, int ensembleIdx, co
     auto startInference = std::chrono::system_clock::now();
 #endif
 
-    if (correlationMeasureType != CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV || !useCuda) {
+    if (!isMeasureKraskovMI(correlationMeasureType) || !useCuda) {
         correlationComputePass->setOutputImage(deviceCacheEntry->getVulkanImageView());
 
         renderer->insertImageMemoryBarrier(
@@ -1154,13 +1158,13 @@ void CorrelationCalculator::calculateDevice(int timeStepIdx, int ensembleIdx, co
 
         correlationComputePass->buildIfNecessary();
         correlationComputePass->setReferencePoint(referencePointIndex);
-        if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
+        if (isMeasureBinnedMI(correlationMeasureType)) {
             if (useSeparateFields) {
                 float minFieldValRef = std::numeric_limits<float>::max();
                 float maxFieldValRef = std::numeric_limits<float>::lowest();
                 float minFieldValQuery = std::numeric_limits<float>::max();
                 float maxFieldValQuery = std::numeric_limits<float>::lowest();
-                if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
+                if (isMeasureBinnedMI(correlationMeasureType)) {
                     for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
                         auto [minValRef, maxValRef] = getMinMaxScalarFieldValue(
                                 scalarFieldNames.at(fieldIndex2Gui), fieldIdx, timeStepIdx, ensembleIdx);
@@ -1178,7 +1182,7 @@ void CorrelationCalculator::calculateDevice(int timeStepIdx, int ensembleIdx, co
             } else {
                 float minFieldVal = std::numeric_limits<float>::max();
                 float maxFieldVal = std::numeric_limits<float>::lowest();
-                if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
+                if (isMeasureBinnedMI(correlationMeasureType)) {
                     for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
                         auto [minVal, maxVal] = getMinMaxScalarFieldValue(
                                 scalarFieldNames.at(fieldIndexGui), fieldIdx, timeStepIdx, ensembleIdx);
@@ -1419,8 +1423,7 @@ void CorrelationComputePass::setOutputImage(const sgl::vk::ImageViewPtr& _output
 void CorrelationComputePass::setReferencePoint(const glm::ivec3& referencePointIndex) {
     if (correlationMeasureType == CorrelationMeasureType::PEARSON
             || correlationMeasureType == CorrelationMeasureType::KENDALL
-            || correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED
-            || correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV) {
+            || isMeasureMI(correlationMeasureType)) {
         renderer->pushConstants(getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, 0, referencePointIndex);
     } else if (correlationMeasureType == CorrelationMeasureType::SPEARMAN) {
         spearmanReferenceRankComputePass->buildIfNecessary();
@@ -1467,22 +1470,21 @@ void CorrelationComputePass::setCalculateAbsoluteValue(bool _calculateAbsoluteVa
 }
 
 void CorrelationComputePass::setNumBins(int _numBins) {
-    if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED && numBins != _numBins) {
+    if (isMeasureBinnedMI(correlationMeasureType) && numBins != _numBins) {
         setShaderDirty();
     }
     numBins = _numBins;
 }
 
 void CorrelationComputePass::setKraskovNumNeighbors(int _k) {
-    if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV && k != _k) {
+    if (isMeasureKraskovMI(correlationMeasureType) && k != _k) {
         setShaderDirty();
     }
     k = _k;
 }
 
 void CorrelationComputePass::setKraskovEstimatorIndex(int _kraskovEstimatorIndex) {
-    if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV
-            && kraskovEstimatorIndex != _kraskovEstimatorIndex) {
+    if (isMeasureKraskovMI(correlationMeasureType) && kraskovEstimatorIndex != _kraskovEstimatorIndex) {
         setShaderDirty();
     }
     kraskovEstimatorIndex = _kraskovEstimatorIndex;
@@ -1520,9 +1522,7 @@ void CorrelationComputePass::loadShader() {
             preprocessorDefines.insert(std::make_pair("USE_SECONDARY_FIELDS", ""));
         }
     }
-    if (correlationMeasureType != CorrelationMeasureType::MUTUAL_INFORMATION_BINNED
-            && correlationMeasureType != CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV
-            && calculateAbsoluteValue) {
+    if (!isMeasureMI(correlationMeasureType) && calculateAbsoluteValue) {
         preprocessorDefines.insert(std::make_pair("CALCULATE_ABSOLUTE_VALUE", ""));
     }
     if (correlationMeasureType == CorrelationMeasureType::KENDALL) {
@@ -1530,9 +1530,9 @@ void CorrelationComputePass::loadShader() {
         preprocessorDefines.insert(std::make_pair(
                 "MAX_STACK_SIZE", std::to_string(maxStackSize)));
         preprocessorDefines.insert(std::make_pair("k", std::to_string(k)));
-    } else if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
+    } else if (isMeasureBinnedMI(correlationMeasureType)) {
         preprocessorDefines.insert(std::make_pair("numBins", std::to_string(numBins)));
-    } else if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV) {
+    } else if (isMeasureKraskovMI(correlationMeasureType)) {
         auto maxBinaryTreeLevels = uint32_t(std::ceil(std::log2(cachedCorrelationMemberCount + 1)));
         preprocessorDefines.insert(std::make_pair(
                 "MAX_STACK_SIZE_BUILD", std::to_string(2 * maxBinaryTreeLevels)));
@@ -1541,6 +1541,9 @@ void CorrelationComputePass::loadShader() {
         preprocessorDefines.insert(std::make_pair("k", std::to_string(k)));
         preprocessorDefines.insert(std::make_pair("KRASKOV_ESTIMATOR_INDEX", std::to_string(kraskovEstimatorIndex)));
     }
+    if (isMeasureCorrelationCoefficientMI(correlationMeasureType)) {
+        preprocessorDefines.insert(std::make_pair("MI_CORRELATION_COEFFICIENT", ""));
+    }
     std::string shaderName;
     if (correlationMeasureType == CorrelationMeasureType::PEARSON) {
         shaderName = "PearsonCorrelation.Compute";
@@ -1548,9 +1551,9 @@ void CorrelationComputePass::loadShader() {
         shaderName = "SpearmanRankCorrelation.Compute";
     } else if (correlationMeasureType == CorrelationMeasureType::KENDALL) {
         shaderName = "KendallRankCorrelation.Compute";
-    } else if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
+    } else if (isMeasureBinnedMI(correlationMeasureType)) {
         shaderName = "MutualInformationBinned.Compute";
-    } else if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV) {
+    } else if (isMeasureKraskovMI(correlationMeasureType)) {
         shaderName = "MutualInformationKraskov.Compute";
     }
     shaderStages = sgl::vk::ShaderManager->getShaderStages({ shaderName }, preprocessorDefines);
@@ -1602,8 +1605,7 @@ void CorrelationComputePass::_render() {
             correlationMeasureType == CorrelationMeasureType::PEARSON
             || correlationMeasureType == CorrelationMeasureType::SPEARMAN
             || correlationMeasureType == CorrelationMeasureType::KENDALL
-            || correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED
-            || correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV;
+            || isMeasureMI(correlationMeasureType);
     supportsBatchedRendering = supportsBatchedRendering && !useRequestEvaluationMode;
     if (supportsBatchedRendering) {
         /*
@@ -1627,9 +1629,9 @@ void CorrelationComputePass::_render() {
             batchCorrelationMemberCountThreshold = batchCorrelationMemberCountThresholdSpearman;
         } else if (correlationMeasureType == CorrelationMeasureType::KENDALL) {
             batchCorrelationMemberCountThreshold = batchCorrelationMemberCountThresholdKendall;
-        } else if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
+        } else if (isMeasureBinnedMI(correlationMeasureType)) {
             batchCorrelationMemberCountThreshold = batchCorrelationMemberCountThresholdMiBinned;
-        } else if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV) {
+        } else if (isMeasureKraskovMI(correlationMeasureType)) {
             batchCorrelationMemberCountThreshold = batchCorrelationMemberCountThresholdKraskov;
         }
         if (cachedCorrelationMemberCount > int(batchCorrelationMemberCountThreshold)) {
@@ -1804,6 +1806,9 @@ void CorrelationComputePass::computeCuda(
     preprocessorDefines.insert(std::make_pair(
             "MAX_STACK_SIZE_KN", std::to_string(maxBinaryTreeLevels)));
     preprocessorDefines.insert(std::make_pair("k", std::to_string(k)));
+    if (isMeasureCorrelationCoefficientMI(correlationMeasureType)) {
+        preprocessorDefines.insert(std::make_pair("MI_CORRELATION_COEFFICIENT", ""));
+    }
     if (dataMode == CorrelationDataMode::IMAGE_3D_ARRAY) {
         preprocessorDefines.insert(std::make_pair("USE_SCALAR_FIELD_IMAGES", ""));
     } else if (useBufferTiling) {

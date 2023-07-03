@@ -295,7 +295,7 @@ glm::vec2 HEBChart::getCorrelationRangeTotal() {
         int cs = getCorrelationMemberCount();
         correlationRangeTotal.x = 0.0f;
         correlationRangeTotal.y = computeMaximumMutualInformationKraskov(k, cs);
-    } else if (useAbsoluteCorrelationMeasure) {
+    } else if (useAbsoluteCorrelationMeasure || isMeasureCorrelationCoefficientMI(correlationMeasureType)) {
         correlationRangeTotal.x = 0.0f;
         correlationRangeTotal.y = 1.0f;
     } else {
@@ -621,25 +621,42 @@ void HEBChart::updateRegion() {
     size_t sizeFields = size_t(xs) * size_t(ys) * size_t(zs) * size_t(cs) * sizeof(float);
     double budgetVram = double(availableVram) * 0.4;
     //double budgetVram = double(sizeFields) * 0.6;
-    if (double(sizeFields) > budgetVram) {
-        useMeanFields = true;
+    if (isUseMeanFieldsForced) {
+        useMeanFields = mdfx > 1 || mdfy > 1 || mdfz > 1;
     } else {
-        useMeanFields = false;
+        if (double(sizeFields) > budgetVram) {
+            useMeanFields = true;
+        } else {
+            useMeanFields = false;
+        }
+        if (useMeanFields) {
+            int xsr = std::max(r0.xsr, r1.xsr);
+            int ysr = std::max(r0.ysr, r1.ysr);
+            int zsr = std::max(r0.zsr, r1.zsr);
+            size_t sizeFieldsAtLevel = size_t(xsr) * size_t(ysr) * size_t(zsr) * size_t(cs) * sizeof(float);
+            auto f = std::max(int(std::ceil(std::cbrt(double(sizeFieldsAtLevel) / budgetVram))), 1);
+            mdfx = f;
+            mdfy = f;
+            mdfz = f;
+        } else {
+            mdfx = 1;
+            mdfy = 1;
+            mdfz = 1;
+        }
     }
-    if (useMeanFields) {
-        int xsr = std::max(r0.xsr, r1.xsr);
-        int ysr = std::max(r0.ysr, r1.ysr);
-        int zsr = std::max(r0.zsr, r1.zsr);
-        size_t sizeFieldsAtLevel = size_t(xsr) * size_t(ysr) * size_t(zsr) * size_t(cs) * sizeof(float);
-        auto f = std::max(int(std::ceil(std::cbrt(double(sizeFieldsAtLevel) / budgetVram))), 1);
-        mdfx = f;
-        mdfy = f;
-        mdfz = f;
-    } else {
-        mdfx = 1;
-        mdfy = 1;
-        mdfz = 1;
-    }
+}
+
+void HEBChart::setForcedUseMeanFields(int fx, int fy, int fz) {
+    isUseMeanFieldsForced = true;
+    mdfx = fx;
+    mdfy = fy;
+    mdfz = fz;
+    updateRegion();
+}
+
+void HEBChart::disableForcedUseMeanFields() {
+    isUseMeanFieldsForced = false;
+    updateRegion();
 }
 
 void HEBChart::updateData() {

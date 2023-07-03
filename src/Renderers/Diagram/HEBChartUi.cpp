@@ -622,8 +622,7 @@ void HEBChart::update(float dt) {
 std::pair<float, float> HEBChart::getMinMaxCorrelationValue() {
     float minValue = correlationValuesArray.empty() ? 0.0f : correlationValuesArray.front();
     float maxValue = correlationValuesArray.empty() ? 0.0f : correlationValuesArray.back();
-    if (!useAbsoluteCorrelationMeasure && correlationMeasureType != CorrelationMeasureType::MUTUAL_INFORMATION_BINNED
-            && correlationMeasureType != CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV) {
+    if (!useAbsoluteCorrelationMeasure && isMeasureMI(correlationMeasureType)) {
         maxValue = std::abs(maxValue);
         minValue = -maxValue;
     }

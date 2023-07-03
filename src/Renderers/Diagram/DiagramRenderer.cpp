@@ -869,8 +869,7 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         reRenderTriggeredByDiagram = true;
     }
 
-    if (correlationMeasureType != CorrelationMeasureType::MUTUAL_INFORMATION_BINNED
-            && correlationMeasureType != CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV
+    if (!isMeasureMI(correlationMeasureType)
             && propertyEditor.addCheckbox("Absolute Correlations", &useAbsoluteCorrelationMeasure)) {
         for (auto& diagram : diagrams) {
             diagram->setUseAbsoluteCorrelationMeasure(useAbsoluteCorrelationMeasure);
@@ -885,7 +884,7 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         reRenderTriggeredByDiagram = true;
     }
 
-    if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED && propertyEditor.addSliderIntEdit(
+    if (isMeasureBinnedMI(correlationMeasureType) && propertyEditor.addSliderIntEdit(
             "#Bins", &numBins, 10, 100) == ImGui::EditMode::INPUT_FINISHED) {
         for (auto& diagram : diagrams) {
             diagram->setNumBins(numBins);
@@ -895,7 +894,7 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         reRender = true;
         reRenderTriggeredByDiagram = true;
     }
-    if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV && propertyEditor.addSliderIntEdit(
+    if (isMeasureKraskovMI(correlationMeasureType) && propertyEditor.addSliderIntEdit(
             "#Neighbors", &k, 1, kMax) == ImGui::EditMode::INPUT_FINISHED) {
         for (auto& diagram : diagrams) {
             diagram->setKraskovNumNeighbors(k);
