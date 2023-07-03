@@ -768,184 +768,7 @@ void HEBChart::renderBaseNanoVG() {
     }
 
     if (showRing) {
-        glm::vec2 center(windowWidth / 2.0f, windowHeight / 2.0f);
-
-        auto numFields = int(fieldDataArray.size());
-        auto numFieldsSize = limitedFieldIdx >= 0 ? std::min(int(fieldDataArray.size()), 1) : int(fieldDataArray.size());
-        for (int i = 0; i < numFields; i++) {
-            auto* fieldData = fieldDataArray.at(i).get();
-            int ip = i;
-            if (limitedFieldIdx >= 0) {
-                if (limitedFieldIdx != fieldData->selectedFieldIdx) {
-                    continue;
-                } else {
-                    ip = 0;
-                }
-            }
-            std::pair<float, float> stdDevRange;
-            if (useGlobalStdDevRange) {
-                stdDevRange = getGlobalStdDevRange(fieldData->selectedFieldIdx);
-            } else {
-                stdDevRange = std::make_pair(fieldData->minStdDev, fieldData->maxStdDev);
-            }
-            float pctLower = float(ip) / float(numFieldsSize);
-            float pctMiddle = (float(ip) + 0.5f) / float(numFieldsSize);
-            float pctUpper = float(ip + 1) / float(numFieldsSize);
-            float rlo = chartRadius + outerRingOffset + pctLower * outerRingWidth;
-            float rmi = chartRadius + outerRingOffset + pctMiddle * outerRingWidth;
-            float rhi = chartRadius + outerRingOffset + pctUpper * outerRingWidth;
-            bool isSaturated =
-                    (separateColorVarianceAndCorrelation && getIsGrayscaleColorMap(colorMapVariance))
-                    || !separateColorVarianceAndCorrelation || selectedLineIdx < 0
-                    || lineFieldIndexArray.at(selectedLineIdx) == i;
-
-            for (int leafIdx = int(leafIdxOffset); leafIdx < int(nodesList.size()); leafIdx++) {
-                bool isSingleElementRegion = false;
-                if (!regionsEqual) {
-                    if (leafIdx == int(leafIdxOffset1) - 1) {
-                        if (leafIdxOffset + 1 == leafIdxOffset1) {
-                            isSingleElementRegion = true;
-                        } else {
-                            continue;
-                        }
-                    }
-                    if (leafIdx == int(nodesList.size()) - 1) {
-                        if (int(leafIdxOffset1) + 1 == int(nodesList.size())) {
-                            isSingleElementRegion = true;
-                        } else {
-                            continue;
-                        }
-                    }
-                }
-                //if (!regionsEqual && (leafIdx == int(leafIdxOffset1) - 1 || leafIdx == int(nodesList.size()) - 1)) {
-                //    continue;
-                //}
-                int numLeaves = int(nodesList.size()) - int(leafIdxOffset);
-                int nextIdx = (leafIdx + 1 - int(leafIdxOffset)) % numLeaves + int(leafIdxOffset);
-                if (isSingleElementRegion) {
-                    nextIdx = leafIdx;
-                }
-                const auto &leafCurr = nodesList.at(leafIdx);
-                const auto &leafNext = nodesList.at(nextIdx);
-                float angle0 = leafCurr.angle;
-                float angle1 = leafNext.angle + 0.01f;
-                if (isSingleElementRegion) {
-                    const float angleRangeHalf = sgl::PI * 0.92f;
-                    angle0 = leafCurr.angle - 0.5f * angleRangeHalf;
-                    angle1 = leafCurr.angle + 0.5f * angleRangeHalf;
-                }
-                float angleMid0 = angle0;
-                float angleMid1 = angle1;
-                if (!regionsEqual && (leafIdx == int(leafIdxOffset) || leafIdx == int(leafIdxOffset1))) {
-                    float deltaAngle = std::min(angle1 - angle0, 0.1f);
-                    angle0 -= deltaAngle * 0.5f;
-                    if (leafIdx == int(leafIdxOffset)) {
-                        fieldData->a00 = angle0;
-                    } else {
-                        fieldData->a10 = angle0;
-                    }
-                }
-                if (!regionsEqual && (nextIdx == int(leafIdxOffset1) - 1 || nextIdx == int(nodesList.size()) - 1)) {
-                    float deltaAngle = std::min(angle1 - angle0, 0.1f);
-                    angle1 += deltaAngle * 0.5f;
-                    if (nextIdx == int(leafIdxOffset1) - 1) {
-                        fieldData->a01 = angle1;
-                    } else {
-                        fieldData->a11 = angle1;
-                    }
-                }
-                float cos0 = std::cos(angle0), sin0 = std::sin(angle0);
-                float cos1 = std::cos(angle1), sin1 = std::sin(angle1);
-                float cosMid0 = std::cos(angleMid0), sinMid0 = std::sin(angleMid0);
-                float cosMid1 = std::cos(angleMid1), sinMid1 = std::sin(angleMid1);
-                //glm::vec2 lo0 = center + rlo * glm::vec2(cos0, sin0);
-                glm::vec2 lo1 = center + rlo * glm::vec2(cos1, sin1);
-                glm::vec2 hi0 = center + rhi * glm::vec2(cos0, sin0);
-                //glm::vec2 hi1 = center + rhi * glm::vec2(cos1, sin1);
-                glm::vec2 mi0 = center + rmi * glm::vec2(cosMid0, sinMid0);
-                glm::vec2 mi1 = center + rmi * glm::vec2(cosMid1, sinMid1);
-                nvgBeginPath(vg);
-                nvgArc(vg, center.x, center.y, rlo, angle1, angle0, NVG_CCW);
-                nvgLineTo(vg, hi0.x, hi0.y);
-                nvgArc(vg, center.x, center.y, rhi, angle0, angle1, NVG_CW);
-                nvgLineTo(vg, lo1.x, lo1.y);
-                nvgClosePath(vg);
-
-                float stdev0 = fieldData->leafStdDevArray.at(leafIdx - int(leafIdxOffset));
-                float t0 = stdDevRange.first == stdDevRange.second ? 0.0f : (stdev0 - stdDevRange.first) / (stdDevRange.second - stdDevRange.first);
-                glm::vec4 rgbColor0 = fieldData->evalColorMapVec4Variance(t0, isSaturated);
-                //glm::vec4 rgbColor0 = fieldData->evalColorMapVec4Variance(leafCurr.angle / sgl::TWO_PI, false);
-                rgbColor0.w = 1.0f;
-                NVGcolor fillColor0 = nvgRGBAf(rgbColor0.x, rgbColor0.y, rgbColor0.z, rgbColor0.w);
-                float stdev1 = fieldData->leafStdDevArray.at(nextIdx - int(leafIdxOffset));
-                float t1 = stdDevRange.first == stdDevRange.second ? 0.0f : (stdev1 - stdDevRange.first) / (stdDevRange.second - stdDevRange.first);
-                glm::vec4 rgbColor1 = fieldData->evalColorMapVec4Variance(t1, isSaturated);
-                //glm::vec4 rgbColor1 = fieldData->evalColorMapVec4Variance(leafNext.angle / sgl::TWO_PI, false);
-                rgbColor1.w = 1.0f;
-                NVGcolor fillColor1 = nvgRGBAf(rgbColor1.x, rgbColor1.y, rgbColor1.z, rgbColor1.w);
-
-                NVGpaint paint = nvgLinearGradient(vg, mi0.x, mi0.y, mi1.x, mi1.y, fillColor0, fillColor1);
-                nvgFillPaint(vg, paint);
-                nvgFill(vg);
-            }
-        }
-
-        sgl::Color circleStrokeColor = isDarkMode ? circleStrokeColorDark : circleStrokeColorBright;
-        NVGcolor circleStrokeColorNvg = nvgRGBA(
-                circleStrokeColor.getR(), circleStrokeColor.getG(),
-                circleStrokeColor.getB(), circleStrokeColor.getA());
-        NVGcolor currentCircleColor;
-        for (int i = 0; i < numFields; i++) {
-            currentCircleColor = circleStrokeColorNvg;
-            int fieldIdx = i;
-            bool isSelectedRing = false;
-            if (separateColorVarianceAndCorrelation && getIsGrayscaleColorMap(colorMapVariance) && numFieldsSize > 1
-                    && selectedLineIdx >= 0 && limitedFieldIdx < 0) {
-                int selectedLineFieldIdx = lineFieldIndexArray.at(selectedLineIdx);
-                if (i == numFields - 1) {
-                    fieldIdx = selectedLineFieldIdx;
-                    currentCircleColor = nvgRGBA(
-                            ringStrokeColorSelected.getR(), ringStrokeColorSelected.getG(),
-                            ringStrokeColorSelected.getB(), ringStrokeColorSelected.getA());
-                    isSelectedRing = true;
-                } else if (i >= selectedLineFieldIdx) {
-                    fieldIdx++;
-                }
-            }
-            int ip = fieldIdx;
-            auto* fieldData = fieldDataArray.at(fieldIdx).get();
-            if (limitedFieldIdx >= 0) {
-                if (limitedFieldIdx != fieldData->selectedFieldIdx) {
-                    continue;
-                } else {
-                    ip = 0;
-                }
-            }
-            float pctLower = float(ip) / float(numFieldsSize);
-            float pctUpper = float(ip + 1) / float(numFieldsSize);
-            float rlo = chartRadius + outerRingOffset + pctLower * outerRingWidth;
-            float rhi = chartRadius + outerRingOffset + pctUpper * outerRingWidth;
-            nvgBeginPath(vg);
-            if (regionsEqual) {
-                nvgCircle(vg, center.x, center.y, rlo);
-                if (ip == numFieldsSize - 1 || isSelectedRing || limitedFieldIdx >= 0) {
-                    nvgCircle(vg, center.x, center.y, rhi);
-                }
-            } else {
-                nvgArc(vg, center.x, center.y, rlo, fieldData->a00, fieldData->a01, NVG_CW);
-                nvgLineTo(vg, center.x + rhi * std::cos(fieldData->a01), center.y + rhi * std::sin(fieldData->a01));
-                nvgArc(vg, center.x, center.y, rhi, fieldData->a01, fieldData->a00, NVG_CCW);
-                nvgLineTo(vg, center.x + rlo * std::cos(fieldData->a00), center.y + rlo * std::sin(fieldData->a00));
-                nvgMoveTo(vg, center.x + rlo * std::cos(fieldData->a10), center.y + rlo * std::sin(fieldData->a10));
-                nvgArc(vg, center.x, center.y, rlo, fieldData->a10, fieldData->a11, NVG_CW);
-                nvgLineTo(vg, center.x + rhi * std::cos(fieldData->a11), center.y + rhi * std::sin(fieldData->a11));
-                nvgArc(vg, center.x, center.y, rhi, fieldData->a11, fieldData->a10, NVG_CCW);
-                nvgLineTo(vg, center.x + rlo * std::cos(fieldData->a10), center.y + rlo * std::sin(fieldData->a10));
-            }
-            nvgStrokeWidth(vg, 1.0f);
-            nvgStrokeColor(vg, currentCircleColor);
-            nvgStroke(vg);
-        }
+        renderRings();
     }
 
     if (selectedPointIndices[0] >= 0) {
@@ -996,6 +819,596 @@ void HEBChart::renderBaseNanoVG() {
     // Draw color legend.
     if (shallDrawColorLegend) {
         drawColorLegends();
+    }
+}
+
+void HEBChart::renderRings() {
+#ifdef SUPPORT_SKIA
+    SkPaint* paint = nullptr, *gradientPaint = nullptr;
+    SkPath* path = nullptr;
+    if (canvas) {
+        paint = new SkPaint;
+        gradientPaint = new SkPaint;
+        static_cast<VectorBackendSkia*>(vectorBackend)->initializePaint(paint);
+        static_cast<VectorBackendSkia*>(vectorBackend)->initializePaint(gradientPaint);
+        path = new SkPath;
+    }
+#endif
+
+    glm::vec2 center(windowWidth / 2.0f, windowHeight / 2.0f);
+    auto numFields = int(fieldDataArray.size());
+    auto numFieldsReal = 0;
+    for (int i = 0; i < numFields; i++) {
+        numFieldsReal += fieldDataArray.at(i)->useTwoFields ? 2 : 1;
+    }
+    auto numFieldsSize =
+            limitedFieldIdx >= 0
+            ? std::min(numFieldsReal, fieldDataArray.at(limitedFieldIdx)->useTwoFields ? 2 : 1)
+            : numFieldsReal;
+    int i = 0;
+    bool secondField = false;
+    for (int ix = 0; ix < numFieldsReal; ix++) {
+        auto* fieldData = fieldDataArray.at(i).get();
+        std::vector<float>* leafStdDevArray = nullptr;
+        if (!fieldData->useTwoFields || !secondField) {
+            leafStdDevArray = &fieldData->leafStdDevArray;
+        } else {
+            leafStdDevArray = &fieldData->leafStdDevArray2;
+        }
+        int ip = ix;
+        if (limitedFieldIdx >= 0) {
+            if (limitedFieldIdx != fieldData->selectedFieldIdx) {
+                continue;
+            } else {
+                ip = secondField ? 1 : 0;
+            }
+        }
+        std::pair<float, float> stdDevRange;
+        if (useGlobalStdDevRange) {
+            if (!fieldData->useTwoFields || !secondField) {
+                stdDevRange = getGlobalStdDevRange(fieldData->selectedFieldIdx, 0);
+            } else {
+                stdDevRange = getGlobalStdDevRange(fieldData->selectedFieldIdx, 1);
+            }
+        } else {
+            stdDevRange = std::make_pair(fieldData->minStdDev, fieldData->maxStdDev);
+        }
+        float pctLower = float(ip) / float(numFieldsSize);
+        float pctMiddle = (float(ip) + 0.5f) / float(numFieldsSize);
+        float pctUpper = float(ip + 1) / float(numFieldsSize);
+        float rlo = chartRadius + outerRingOffset + pctLower * outerRingWidth;
+        float rmi = chartRadius + outerRingOffset + pctMiddle * outerRingWidth;
+        float rhi = chartRadius + outerRingOffset + pctUpper * outerRingWidth;
+        bool isSaturated =
+                (separateColorVarianceAndCorrelation && getIsGrayscaleColorMap(colorMapVariance))
+                || !separateColorVarianceAndCorrelation || selectedLineIdx < 0
+                || lineFieldIndexArray.at(selectedLineIdx) == i;
+
+        for (int leafIdx = int(leafIdxOffset); leafIdx < int(nodesList.size()); leafIdx++) {
+            bool isSingleElementRegion = false;
+            if (!regionsEqual) {
+                if (leafIdx == int(leafIdxOffset1) - 1) {
+                    if (leafIdxOffset + 1 == leafIdxOffset1) {
+                        isSingleElementRegion = true;
+                    } else {
+                        continue;
+                    }
+                }
+                if (leafIdx == int(nodesList.size()) - 1) {
+                    if (int(leafIdxOffset1) + 1 == int(nodesList.size())) {
+                        isSingleElementRegion = true;
+                    } else {
+                        continue;
+                    }
+                }
+            }
+            //if (!regionsEqual && (leafIdx == int(leafIdxOffset1) - 1 || leafIdx == int(nodesList.size()) - 1)) {
+            //    continue;
+            //}
+            int numLeaves = int(nodesList.size()) - int(leafIdxOffset);
+            int nextIdx = (leafIdx + 1 - int(leafIdxOffset)) % numLeaves + int(leafIdxOffset);
+            if (isSingleElementRegion) {
+                nextIdx = leafIdx;
+            }
+            const auto &leafCurr = nodesList.at(leafIdx);
+            const auto &leafNext = nodesList.at(nextIdx);
+            float angle0 = leafCurr.angle;
+            float angle1 = leafNext.angle + 0.01f;
+            if (isSingleElementRegion) {
+                const float angleRangeHalf = sgl::PI * 0.92f;
+                angle0 = leafCurr.angle - 0.5f * angleRangeHalf;
+                angle1 = leafCurr.angle + 0.5f * angleRangeHalf;
+            }
+            float angleMid0 = angle0;
+            float angleMid1 = angle1;
+            if (!regionsEqual && (leafIdx == int(leafIdxOffset) || leafIdx == int(leafIdxOffset1))) {
+                float deltaAngle = std::min(angle1 - angle0, 0.1f);
+                angle0 -= deltaAngle * 0.5f;
+                if (leafIdx == int(leafIdxOffset)) {
+                    fieldData->a00 = angle0;
+                } else {
+                    fieldData->a10 = angle0;
+                }
+            }
+            if (!regionsEqual && (nextIdx == int(leafIdxOffset1) - 1 || nextIdx == int(nodesList.size()) - 1)) {
+                float deltaAngle = std::min(angle1 - angle0, 0.1f);
+                angle1 += deltaAngle * 0.5f;
+                if (nextIdx == int(leafIdxOffset1) - 1) {
+                    fieldData->a01 = angle1;
+                } else {
+                    fieldData->a11 = angle1;
+                }
+            }
+            float cos0 = std::cos(angle0), sin0 = std::sin(angle0);
+            float cos1 = std::cos(angle1), sin1 = std::sin(angle1);
+            float cosMid0 = std::cos(angleMid0), sinMid0 = std::sin(angleMid0);
+            float cosMid1 = std::cos(angleMid1), sinMid1 = std::sin(angleMid1);
+            //glm::vec2 lo0 = center + rlo * glm::vec2(cos0, sin0);
+            glm::vec2 lo1 = center + rlo * glm::vec2(cos1, sin1);
+            glm::vec2 hi0 = center + rhi * glm::vec2(cos0, sin0);
+            //glm::vec2 hi1 = center + rhi * glm::vec2(cos1, sin1);
+            glm::vec2 mi0 = center + rmi * glm::vec2(cosMid0, sinMid0);
+            glm::vec2 mi1 = center + rmi * glm::vec2(cosMid1, sinMid1);
+
+            float stdev0 = leafStdDevArray->at(leafIdx - int(leafIdxOffset));
+            float t0 = stdDevRange.first == stdDevRange.second ? 0.0f : (stdev0 - stdDevRange.first) / (stdDevRange.second - stdDevRange.first);
+            float stdev1 = leafStdDevArray->at(nextIdx - int(leafIdxOffset));
+            float t1 = stdDevRange.first == stdDevRange.second ? 0.0f : (stdev1 - stdDevRange.first) / (stdDevRange.second - stdDevRange.first);
+
+            if (vg) {
+                glm::vec4 rgbColor0 = fieldData->evalColorMapVec4Variance(t0, isSaturated);
+                rgbColor0.w = 1.0f;
+                glm::vec4 rgbColor1 = fieldData->evalColorMapVec4Variance(t1, isSaturated);
+                rgbColor1.w = 1.0f;
+                NVGcolor fillColor0 = nvgRGBAf(rgbColor0.x, rgbColor0.y, rgbColor0.z, rgbColor0.w);
+                NVGcolor fillColor1 = nvgRGBAf(rgbColor1.x, rgbColor1.y, rgbColor1.z, rgbColor1.w);
+
+                nvgBeginPath(vg);
+                nvgArc(vg, center.x, center.y, rlo, angle1, angle0, NVG_CCW);
+                nvgLineTo(vg, hi0.x, hi0.y);
+                nvgArc(vg, center.x, center.y, rhi, angle0, angle1, NVG_CW);
+                nvgLineTo(vg, lo1.x, lo1.y);
+                nvgClosePath(vg);
+
+                NVGpaint paint = nvgLinearGradient(vg, mi0.x, mi0.y, mi1.x, mi1.y, fillColor0, fillColor1);
+                nvgFillPaint(vg, paint);
+                nvgFill(vg);
+            }
+#ifdef SUPPORT_SKIA
+            else if (canvas) {
+                float angle0Deg = angle0 / sgl::PI * 180.0f;
+                float angle1Deg = angle1 / sgl::PI * 180.0f + (nextIdx < leafIdx ? 360.0f : 0.0f);
+                sgl::Color rgbColor0 = fieldData->evalColorMapVariance(t0, isSaturated);
+                rgbColor0.setA(255);
+                sgl::Color rgbColor1 = fieldData->evalColorMapVariance(t1, isSaturated);
+                rgbColor1.setA(255);
+
+                SkPoint linearPoints[2] = { { mi0.x * s, mi0.y * s }, { mi1.x * s, mi1.y * s } };
+                SkColor linearColors[2] = { toSkColor(rgbColor0), toSkColor(rgbColor1) };
+                gradientPaint->setShader(SkGradientShader::MakeLinear(
+                        linearPoints, linearColors, nullptr, 2, SkTileMode::kClamp));
+
+                path->reset();
+                path->addArc(
+                        SkRect{(center.x - rlo) * s, (center.y - rlo) * s, (center.x + rlo) * s, (center.y + rlo) * s},
+                        angle1Deg, angle0Deg - angle1Deg);
+                path->lineTo(hi0.x * s, hi0.y * s);
+                path->arcTo(
+                        SkRect{(center.x - rhi) * s, (center.y - rhi) * s, (center.x + rhi) * s, (center.y + rhi) * s},
+                        angle0Deg, angle1Deg - angle0Deg, false);
+                //path.lineTo(lo1.x * s, lo1.y * s);
+                path->close();
+
+                canvas->drawPath(*path, *gradientPaint);
+            }
+#endif
+#ifdef SUPPORT_VKVG
+            else if (context) {
+                glm::vec4 rgbColor0 = fieldData->evalColorMapVec4Variance(t0, isSaturated);
+                glm::vec4 rgbColor1 = fieldData->evalColorMapVec4Variance(t1, isSaturated);
+
+                vkvg_arc_negative(context, center.x * s, center.y * s, rlo * s, angle1, angle0);
+                vkvg_line_to(context, hi0.x * s, hi0.y * s);
+                vkvg_arc(context, center.x * s, center.y * s, rhi * s, angle0, angle1);
+                vkvg_line_to(context, lo1.x * s, lo1.y * s);
+
+                auto pattern = vkvg_pattern_create_linear(mi0.x * s, mi0.y * s, mi1.x * s, mi1.y * s);
+                vkvg_pattern_add_color_stop(pattern, 0.0f, rgbColor0.x, rgbColor0.y, rgbColor0.z, 1.0f);
+                vkvg_pattern_add_color_stop(pattern, 1.0f, rgbColor1.x, rgbColor1.y, rgbColor1.z, 1.0f);
+                vkvg_set_source(context, pattern);
+                vkvg_pattern_destroy(pattern);
+                vkvg_fill(context);
+            }
+#endif
+        }
+
+        if (fieldData->useTwoFields) {
+            if (secondField) {
+                i++;
+                secondField = false;
+            } else {
+                secondField = true;
+            }
+        } else {
+            i++;
+        }
+    }
+
+    int selectedLineFieldPos = 0;
+    if (selectedLineIdx >= 0) {
+        int selectedLineFieldIdx = lineFieldIndexArray.at(selectedLineIdx);
+        for (int j = 0; j < numFields; j++) {
+            if (j == selectedLineFieldIdx) {
+                break;
+            }
+            selectedLineFieldPos += fieldDataArray.at(selectedLineFieldIdx)->useTwoFields ? 2 : 1;
+        }
+    }
+
+    sgl::Color circleStrokeColor = isDarkMode ? circleStrokeColorDark : circleStrokeColorBright;
+    sgl::Color currentCircleColor;
+    i = 0;
+    secondField = false;
+    for (int ix = 0; ix < numFieldsReal; ix++) {
+        currentCircleColor = circleStrokeColor;
+        int fieldIdx = i;
+        int ip = ix;
+        bool isSelectedRing = false;
+        if (separateColorVarianceAndCorrelation && getIsGrayscaleColorMap(colorMapVariance) && numFieldsSize > 1
+                && selectedLineIdx >= 0 && limitedFieldIdx < 0) {
+            int selectedLineFieldIdx = lineFieldIndexArray.at(selectedLineIdx);
+            if (i == numFields - 1) {
+                fieldIdx = selectedLineFieldIdx;
+                ip = selectedLineFieldPos + (secondField ? 1 : 0);
+                currentCircleColor = ringStrokeColorSelected;
+                isSelectedRing = true;
+            } else if (i >= selectedLineFieldIdx) {
+                fieldIdx++;
+                ip += fieldDataArray.at(selectedLineFieldIdx)->useTwoFields ? 2 : 1;
+            }
+        }
+        auto* fieldData = fieldDataArray.at(fieldIdx).get();
+        if (limitedFieldIdx >= 0) {
+            if (limitedFieldIdx != fieldData->selectedFieldIdx) {
+                continue;
+            } else {
+                ip = 0;
+            }
+        }
+        float pctLower = float(ip) / float(numFieldsSize);
+        float pctUpper = float(ip + 1) / float(numFieldsSize);
+        float rlo = chartRadius + outerRingOffset + pctLower * outerRingWidth;
+        float rhi = chartRadius + outerRingOffset + pctUpper * outerRingWidth;
+
+        if (vg) {
+            nvgBeginPath(vg);
+            if (regionsEqual) {
+                nvgCircle(vg, center.x, center.y, rlo);
+                if (ip == numFieldsSize - 1 || isSelectedRing || limitedFieldIdx >= 0) {
+                    nvgCircle(vg, center.x, center.y, rhi);
+                }
+            } else {
+                nvgArc(vg, center.x, center.y, rlo, fieldData->a00, fieldData->a01, NVG_CW);
+                nvgLineTo(vg, center.x + rhi * std::cos(fieldData->a01), center.y + rhi * std::sin(fieldData->a01));
+                nvgArc(vg, center.x, center.y, rhi, fieldData->a01, fieldData->a00, NVG_CCW);
+                nvgLineTo(vg, center.x + rlo * std::cos(fieldData->a00), center.y + rlo * std::sin(fieldData->a00));
+                nvgMoveTo(vg, center.x + rlo * std::cos(fieldData->a10), center.y + rlo * std::sin(fieldData->a10));
+                nvgArc(vg, center.x, center.y, rlo, fieldData->a10, fieldData->a11, NVG_CW);
+                nvgLineTo(vg, center.x + rhi * std::cos(fieldData->a11), center.y + rhi * std::sin(fieldData->a11));
+                nvgArc(vg, center.x, center.y, rhi, fieldData->a11, fieldData->a10, NVG_CCW);
+                nvgLineTo(vg, center.x + rlo * std::cos(fieldData->a10), center.y + rlo * std::sin(fieldData->a10));
+            }
+            nvgStrokeWidth(vg, 1.0f);
+            NVGcolor currentCircleColorNvg = nvgRGBA(
+                    currentCircleColor.getR(), currentCircleColor.getG(),
+                    currentCircleColor.getB(), currentCircleColor.getA());
+            nvgStrokeColor(vg, currentCircleColorNvg);
+            nvgStroke(vg);
+        }
+#ifdef SUPPORT_SKIA
+        else if (canvas) {
+            paint->setStroke(true);
+            paint->setStrokeWidth(1.0f * s);
+            paint->setColor(toSkColor(currentCircleColor));
+            if (regionsEqual) {
+                canvas->drawCircle(center.x * s, center.y * s, rlo * s, *paint);
+                if (ip == numFieldsSize - 1 || isSelectedRing || limitedFieldIdx >= 0) {
+                    canvas->drawCircle(center.x * s, center.y * s, rhi * s, *paint);
+                }
+            } else {
+                float a00Deg = fieldData->a00 / sgl::PI * 180.0f;
+                float a01Deg = fieldData->a01 / sgl::PI * 180.0f;
+                float a10Deg = fieldData->a10 / sgl::PI * 180.0f;
+                float a11Deg = fieldData->a11 / sgl::PI * 180.0f;
+                path->reset();
+                path->arcTo(
+                        SkRect{(center.x - rlo) * s, (center.y - rlo) * s, (center.x + rlo) * s, (center.y + rlo) * s},
+                        a00Deg, a01Deg - a00Deg, false);
+                path->lineTo((center.x + rhi * std::cos(fieldData->a01)) * s, (center.y + rhi * std::sin(fieldData->a01)) * s);
+                path->arcTo(
+                        SkRect{(center.x - rhi) * s, (center.y - rhi) * s, (center.x + rhi) * s, (center.y + rhi) * s},
+                        a01Deg, a00Deg - a01Deg, false);
+                path->close();
+                canvas->drawPath(*path, *paint);
+                path->reset();
+                path->arcTo(
+                        SkRect{(center.x - rlo) * s, (center.y - rlo) * s, (center.x + rlo) * s, (center.y + rlo) * s},
+                        a10Deg, a11Deg - a10Deg, false);
+                path->lineTo((center.x + rhi * std::cos(fieldData->a11)) * s, (center.y + rhi * std::sin(fieldData->a11)) * s);
+                path->arcTo(
+                        SkRect{(center.x - rhi) * s, (center.y - rhi) * s, (center.x + rhi) * s, (center.y + rhi) * s},
+                        a11Deg, a10Deg - a11Deg, false);
+                path->close();
+                canvas->drawPath(*path, *paint);
+            }
+        }
+#endif
+#ifdef SUPPORT_VKVG
+        else if (context) {
+            if (regionsEqual) {
+                vkvg_arc(context, center.x * s, center.y * s, rlo * s, 0.0f, sgl::TWO_PI);
+                if (ip == numFieldsSize - 1 || isSelectedRing || limitedFieldIdx >= 0) {
+                    vkvg_arc(context, center.x * s, center.y * s, rhi * s, 0.0f, sgl::TWO_PI);
+                }
+            } else {
+                vkvg_arc(context, center.x * s, center.y * s, rlo * s, fieldData->a00, fieldData->a01);
+                vkvg_line_to(context, (center.x + rhi * std::cos(fieldData->a01)) * s, (center.y + rhi * std::sin(fieldData->a01)) * s);
+                vkvg_arc_negative(context, center.x * s, center.y * s, rhi * s, fieldData->a01, fieldData->a00);
+                vkvg_line_to(context, (center.x + rlo * std::cos(fieldData->a00)) * s, (center.y + rlo * std::sin(fieldData->a00)) * s);
+                vkvg_move_to(context, (center.x + rlo * std::cos(fieldData->a10)) * s, (center.y + rlo * std::sin(fieldData->a10)) * s);
+                vkvg_arc(context, center.x * s, center.y * s, rlo * s, fieldData->a10, fieldData->a11);
+                vkvg_line_to(context, (center.x + rhi * std::cos(fieldData->a11)) * s, (center.y + rhi * std::sin(fieldData->a11)) * s);
+                vkvg_arc_negative(context, center.x * s, center.y * s, rhi * s, fieldData->a11, fieldData->a10);
+                vkvg_line_to(context, (center.x + rlo * std::cos(fieldData->a10)) * s, (center.y + rlo * std::sin(fieldData->a10)) * s);
+            }
+            vkvg_set_line_width(context, 1.0f * s);
+            vkvg_set_source_color(context, currentCircleColor.getColorRGBA());
+            vkvg_stroke(context);
+        }
+#endif
+
+        if (fieldData->useTwoFields) {
+            if (secondField) {
+                i++;
+                secondField = false;
+            } else {
+                secondField = true;
+            }
+        } else {
+            i++;
+        }
+    }
+
+#ifdef SUPPORT_SKIA
+    if (canvas) {
+        delete paint;
+        delete gradientPaint;
+        delete path;
+    }
+#endif
+}
+
+void HEBChart::renderRingsNanoVG() {
+    glm::vec2 center(windowWidth / 2.0f, windowHeight / 2.0f);
+
+    auto numFields = int(fieldDataArray.size());
+    auto numFieldsReal = 0;
+    for (int i = 0; i < numFields; i++) {
+        numFieldsReal += fieldDataArray.at(i)->useTwoFields ? 2 : 1;
+    }
+    auto numFieldsSize =
+            limitedFieldIdx >= 0
+            ? std::min(numFieldsReal, fieldDataArray.at(limitedFieldIdx)->useTwoFields ? 2 : 1)
+            : numFieldsReal;
+    int i = 0;
+    bool secondField = false;
+    for (int ix = 0; ix < numFieldsReal; ix++) {
+        auto* fieldData = fieldDataArray.at(i).get();
+        std::vector<float>* leafStdDevArray = nullptr;
+        if (!fieldData->useTwoFields || !secondField) {
+            leafStdDevArray = &fieldData->leafStdDevArray;
+        } else {
+            leafStdDevArray = &fieldData->leafStdDevArray2;
+        }
+        int ip = ix;
+        if (limitedFieldIdx >= 0) {
+            if (limitedFieldIdx != fieldData->selectedFieldIdx) {
+                continue;
+            } else {
+                ip = secondField ? 1 : 0;
+            }
+        }
+        std::pair<float, float> stdDevRange;
+        if (useGlobalStdDevRange) {
+            if (!fieldData->useTwoFields || !secondField) {
+                stdDevRange = getGlobalStdDevRange(fieldData->selectedFieldIdx, 0);
+            } else {
+                stdDevRange = getGlobalStdDevRange(fieldData->selectedFieldIdx, 1);
+            }
+        } else {
+            stdDevRange = std::make_pair(fieldData->minStdDev, fieldData->maxStdDev);
+        }
+        float pctLower = float(ip) / float(numFieldsSize);
+        float pctMiddle = (float(ip) + 0.5f) / float(numFieldsSize);
+        float pctUpper = float(ip + 1) / float(numFieldsSize);
+        float rlo = chartRadius + outerRingOffset + pctLower * outerRingWidth;
+        float rmi = chartRadius + outerRingOffset + pctMiddle * outerRingWidth;
+        float rhi = chartRadius + outerRingOffset + pctUpper * outerRingWidth;
+        bool isSaturated =
+                (separateColorVarianceAndCorrelation && getIsGrayscaleColorMap(colorMapVariance))
+                || !separateColorVarianceAndCorrelation || selectedLineIdx < 0
+                || lineFieldIndexArray.at(selectedLineIdx) == i;
+
+        for (int leafIdx = int(leafIdxOffset); leafIdx < int(nodesList.size()); leafIdx++) {
+            bool isSingleElementRegion = false;
+            if (!regionsEqual) {
+                if (leafIdx == int(leafIdxOffset1) - 1) {
+                    if (leafIdxOffset + 1 == leafIdxOffset1) {
+                        isSingleElementRegion = true;
+                    } else {
+                        continue;
+                    }
+                }
+                if (leafIdx == int(nodesList.size()) - 1) {
+                    if (int(leafIdxOffset1) + 1 == int(nodesList.size())) {
+                        isSingleElementRegion = true;
+                    } else {
+                        continue;
+                    }
+                }
+            }
+            //if (!regionsEqual && (leafIdx == int(leafIdxOffset1) - 1 || leafIdx == int(nodesList.size()) - 1)) {
+            //    continue;
+            //}
+            int numLeaves = int(nodesList.size()) - int(leafIdxOffset);
+            int nextIdx = (leafIdx + 1 - int(leafIdxOffset)) % numLeaves + int(leafIdxOffset);
+            if (isSingleElementRegion) {
+                nextIdx = leafIdx;
+            }
+            const auto &leafCurr = nodesList.at(leafIdx);
+            const auto &leafNext = nodesList.at(nextIdx);
+            float angle0 = leafCurr.angle;
+            float angle1 = leafNext.angle + 0.01f;
+            if (isSingleElementRegion) {
+                const float angleRangeHalf = sgl::PI * 0.92f;
+                angle0 = leafCurr.angle - 0.5f * angleRangeHalf;
+                angle1 = leafCurr.angle + 0.5f * angleRangeHalf;
+            }
+            float angleMid0 = angle0;
+            float angleMid1 = angle1;
+            if (!regionsEqual && (leafIdx == int(leafIdxOffset) || leafIdx == int(leafIdxOffset1))) {
+                float deltaAngle = std::min(angle1 - angle0, 0.1f);
+                angle0 -= deltaAngle * 0.5f;
+                if (leafIdx == int(leafIdxOffset)) {
+                    fieldData->a00 = angle0;
+                } else {
+                    fieldData->a10 = angle0;
+                }
+            }
+            if (!regionsEqual && (nextIdx == int(leafIdxOffset1) - 1 || nextIdx == int(nodesList.size()) - 1)) {
+                float deltaAngle = std::min(angle1 - angle0, 0.1f);
+                angle1 += deltaAngle * 0.5f;
+                if (nextIdx == int(leafIdxOffset1) - 1) {
+                    fieldData->a01 = angle1;
+                } else {
+                    fieldData->a11 = angle1;
+                }
+            }
+            float cos0 = std::cos(angle0), sin0 = std::sin(angle0);
+            float cos1 = std::cos(angle1), sin1 = std::sin(angle1);
+            float cosMid0 = std::cos(angleMid0), sinMid0 = std::sin(angleMid0);
+            float cosMid1 = std::cos(angleMid1), sinMid1 = std::sin(angleMid1);
+            //glm::vec2 lo0 = center + rlo * glm::vec2(cos0, sin0);
+            glm::vec2 lo1 = center + rlo * glm::vec2(cos1, sin1);
+            glm::vec2 hi0 = center + rhi * glm::vec2(cos0, sin0);
+            //glm::vec2 hi1 = center + rhi * glm::vec2(cos1, sin1);
+            glm::vec2 mi0 = center + rmi * glm::vec2(cosMid0, sinMid0);
+            glm::vec2 mi1 = center + rmi * glm::vec2(cosMid1, sinMid1);
+            nvgBeginPath(vg);
+            nvgArc(vg, center.x, center.y, rlo, angle1, angle0, NVG_CCW);
+            nvgLineTo(vg, hi0.x, hi0.y);
+            nvgArc(vg, center.x, center.y, rhi, angle0, angle1, NVG_CW);
+            nvgLineTo(vg, lo1.x, lo1.y);
+            nvgClosePath(vg);
+
+            float stdev0 = leafStdDevArray->at(leafIdx - int(leafIdxOffset));
+            float t0 = stdDevRange.first == stdDevRange.second ? 0.0f : (stdev0 - stdDevRange.first) / (stdDevRange.second - stdDevRange.first);
+            glm::vec4 rgbColor0 = fieldData->evalColorMapVec4Variance(t0, isSaturated);
+            //glm::vec4 rgbColor0 = fieldData->evalColorMapVec4Variance(leafCurr.angle / sgl::TWO_PI, false);
+            rgbColor0.w = 1.0f;
+            NVGcolor fillColor0 = nvgRGBAf(rgbColor0.x, rgbColor0.y, rgbColor0.z, rgbColor0.w);
+            float stdev1 = leafStdDevArray->at(nextIdx - int(leafIdxOffset));
+            float t1 = stdDevRange.first == stdDevRange.second ? 0.0f : (stdev1 - stdDevRange.first) / (stdDevRange.second - stdDevRange.first);
+            glm::vec4 rgbColor1 = fieldData->evalColorMapVec4Variance(t1, isSaturated);
+            //glm::vec4 rgbColor1 = fieldData->evalColorMapVec4Variance(leafNext.angle / sgl::TWO_PI, false);
+            rgbColor1.w = 1.0f;
+            NVGcolor fillColor1 = nvgRGBAf(rgbColor1.x, rgbColor1.y, rgbColor1.z, rgbColor1.w);
+
+            NVGpaint paint = nvgLinearGradient(vg, mi0.x, mi0.y, mi1.x, mi1.y, fillColor0, fillColor1);
+            nvgFillPaint(vg, paint);
+            nvgFill(vg);
+        }
+
+        if (fieldData->useTwoFields) {
+            if (secondField) {
+                i++;
+                secondField = false;
+            } else {
+                secondField = true;
+            }
+        } else {
+            i++;
+        }
+    }
+
+    sgl::Color circleStrokeColor = isDarkMode ? circleStrokeColorDark : circleStrokeColorBright;
+    NVGcolor circleStrokeColorNvg = nvgRGBA(
+            circleStrokeColor.getR(), circleStrokeColor.getG(),
+            circleStrokeColor.getB(), circleStrokeColor.getA());
+    NVGcolor currentCircleColor;
+    i = 0;
+    secondField = false;
+    for (int ix = 0; ix < numFieldsReal; ix++) {
+        currentCircleColor = circleStrokeColorNvg;
+        int fieldIdx = i;
+        bool isSelectedRing = false;
+        if (separateColorVarianceAndCorrelation && getIsGrayscaleColorMap(colorMapVariance) && numFieldsSize > 1
+                && selectedLineIdx >= 0 && limitedFieldIdx < 0) {
+            int selectedLineFieldIdx = lineFieldIndexArray.at(selectedLineIdx);
+            if (i == numFields - 1) {
+                fieldIdx = selectedLineFieldIdx;
+                currentCircleColor = nvgRGBA(
+                        ringStrokeColorSelected.getR(), ringStrokeColorSelected.getG(),
+                        ringStrokeColorSelected.getB(), ringStrokeColorSelected.getA());
+                isSelectedRing = true;
+            } else if (i >= selectedLineFieldIdx) {
+                fieldIdx++;
+            }
+        }
+        int ip = ix;
+        auto* fieldData = fieldDataArray.at(fieldIdx).get();
+        if (limitedFieldIdx >= 0) {
+            if (limitedFieldIdx != fieldData->selectedFieldIdx) {
+                continue;
+            } else {
+                ip = 0;
+            }
+        }
+        float pctLower = float(ip) / float(numFieldsSize);
+        float pctUpper = float(ip + 1) / float(numFieldsSize);
+        float rlo = chartRadius + outerRingOffset + pctLower * outerRingWidth;
+        float rhi = chartRadius + outerRingOffset + pctUpper * outerRingWidth;
+        nvgBeginPath(vg);
+        if (regionsEqual) {
+            nvgCircle(vg, center.x, center.y, rlo);
+            if (ip == numFieldsSize - 1 || isSelectedRing || limitedFieldIdx >= 0) {
+                nvgCircle(vg, center.x, center.y, rhi);
+            }
+        } else {
+            nvgArc(vg, center.x, center.y, rlo, fieldData->a00, fieldData->a01, NVG_CW);
+            nvgLineTo(vg, center.x + rhi * std::cos(fieldData->a01), center.y + rhi * std::sin(fieldData->a01));
+            nvgArc(vg, center.x, center.y, rhi, fieldData->a01, fieldData->a00, NVG_CCW);
+            nvgLineTo(vg, center.x + rlo * std::cos(fieldData->a00), center.y + rlo * std::sin(fieldData->a00));
+            nvgMoveTo(vg, center.x + rlo * std::cos(fieldData->a10), center.y + rlo * std::sin(fieldData->a10));
+            nvgArc(vg, center.x, center.y, rlo, fieldData->a10, fieldData->a11, NVG_CW);
+            nvgLineTo(vg, center.x + rhi * std::cos(fieldData->a11), center.y + rhi * std::sin(fieldData->a11));
+            nvgArc(vg, center.x, center.y, rhi, fieldData->a11, fieldData->a10, NVG_CCW);
+            nvgLineTo(vg, center.x + rlo * std::cos(fieldData->a10), center.y + rlo * std::sin(fieldData->a10));
+        }
+        nvgStrokeWidth(vg, 1.0f);
+        nvgStrokeColor(vg, currentCircleColor);
+        nvgStroke(vg);
+
+        if (fieldData->useTwoFields) {
+            if (secondField) {
+                i++;
+                secondField = false;
+            } else {
+                secondField = true;
+            }
+        } else {
+            i++;
+        }
     }
 }
 
@@ -1116,203 +1529,7 @@ void HEBChart::renderBaseSkia() {
     }
 
     if (showRing) {
-        SkPaint gradientPaint;
-        static_cast<VectorBackendSkia*>(vectorBackend)->initializePaint(&gradientPaint);
-        gradientPaint.setStroke(false);
-        SkPath path;
-
-        glm::vec2 center(windowWidth / 2.0f * s, windowHeight / 2.0f * s);
-        auto numFields = int(fieldDataArray.size());
-        auto numFieldsSize = limitedFieldIdx >= 0 ? std::min(int(fieldDataArray.size()), 1) : int(fieldDataArray.size());
-        for (int i = 0; i < numFields; i++) {
-            auto* fieldData = fieldDataArray.at(i).get();
-            int ip = i;
-            if (limitedFieldIdx >= 0) {
-                if (limitedFieldIdx != fieldData->selectedFieldIdx) {
-                    continue;
-                } else {
-                    ip = 0;
-                }
-            }
-            std::pair<float, float> stdDevRange;
-            if (useGlobalStdDevRange) {
-                stdDevRange = getGlobalStdDevRange(fieldData->selectedFieldIdx);
-            } else {
-                stdDevRange = std::make_pair(fieldData->minStdDev, fieldData->maxStdDev);
-            }
-            float pctLower = float(ip) / float(numFieldsSize);
-            float pctMiddle = (float(ip) + 0.5f) / float(numFieldsSize);
-            float pctUpper = float(ip + 1) / float(numFieldsSize);
-            float rlo = (chartRadius + outerRingOffset + pctLower * outerRingWidth) * s;
-            float rmi = (chartRadius + outerRingOffset + pctMiddle * outerRingWidth) * s;
-            float rhi = (chartRadius + outerRingOffset + pctUpper * outerRingWidth) * s;
-            bool isSaturated =
-                    (separateColorVarianceAndCorrelation && getIsGrayscaleColorMap(colorMapVariance))
-                    || !separateColorVarianceAndCorrelation || selectedLineIdx < 0
-                    || lineFieldIndexArray.at(selectedLineIdx) == i;
-
-            for (int leafIdx = int(leafIdxOffset); leafIdx < int(nodesList.size()); leafIdx++) {
-                bool isSingleElementRegion = false;
-                if (!regionsEqual) {
-                    if (leafIdx == int(leafIdxOffset1) - 1) {
-                        if (leafIdxOffset + 1 == leafIdxOffset1) {
-                            isSingleElementRegion = true;
-                        } else {
-                            continue;
-                        }
-                    }
-                    if (leafIdx == int(nodesList.size()) - 1) {
-                        if (int(leafIdxOffset1) + 1 == int(nodesList.size())) {
-                            isSingleElementRegion = true;
-                        } else {
-                            continue;
-                        }
-                    }
-                }
-                //if (!regionsEqual && (leafIdx == int(leafIdxOffset1) - 1 || leafIdx == int(nodesList.size()) - 1)) {
-                //    continue;
-                //}
-                int numLeaves = int(nodesList.size()) - int(leafIdxOffset);
-                int nextIdx = (leafIdx + 1 - int(leafIdxOffset)) % numLeaves + int(leafIdxOffset);
-                if (isSingleElementRegion) {
-                    nextIdx = leafIdx;
-                }
-                const auto &leafCurr = nodesList.at(leafIdx);
-                const auto &leafNext = nodesList.at(nextIdx);
-                float angle0 = leafCurr.angle;
-                float angle1 = leafNext.angle + 0.01f;
-                if (isSingleElementRegion) {
-                    const float angleRangeHalf = sgl::PI * 0.92f;
-                    angle0 = leafCurr.angle - 0.5f * angleRangeHalf;
-                    angle1 = leafCurr.angle + 0.5f * angleRangeHalf;
-                }
-                float angleMid0 = angle0;
-                float angleMid1 = angle1;
-                if (!regionsEqual && (leafIdx == int(leafIdxOffset) || leafIdx == int(leafIdxOffset1))) {
-                    float deltaAngle = std::min(angle1 - angle0, 0.1f);
-                    angle0 -= deltaAngle * 0.5f;
-                    if (leafIdx == int(leafIdxOffset)) {
-                        fieldData->a00 = angle0;
-                    } else {
-                        fieldData->a10 = angle0;
-                    }
-                }
-                if (!regionsEqual && (nextIdx == int(leafIdxOffset1) - 1 || nextIdx == int(nodesList.size()) - 1)) {
-                    float deltaAngle = std::min(angle1 - angle0, 0.1f);
-                    angle1 += deltaAngle * 0.5f;
-                    if (nextIdx == int(leafIdxOffset1) - 1) {
-                        fieldData->a01 = angle1;
-                    } else {
-                        fieldData->a11 = angle1;
-                    }
-                }
-                float angle0Deg = angle0 / sgl::PI * 180.0f;
-                float angle1Deg = angle1 / sgl::PI * 180.0f + (nextIdx < leafIdx ? 360.0f : 0.0f);
-                float cos0 = std::cos(angle0), sin0 = std::sin(angle0);
-                //float cos1 = std::cos(angle1), sin1 = std::sin(angle1);
-                float cosMid0 = std::cos(angleMid0), sinMid0 = std::sin(angleMid0);
-                float cosMid1 = std::cos(angleMid1), sinMid1 = std::sin(angleMid1);
-                //glm::vec2 lo0 = center + rlo * glm::vec2(cos0, sin0);
-                //glm::vec2 lo1 = center + rlo * glm::vec2(cos1, sin1);
-                glm::vec2 hi0 = center + rhi * glm::vec2(cos0, sin0);
-                //glm::vec2 hi1 = center + rhi * glm::vec2(cos1, sin1);
-                glm::vec2 mi0 = center + rmi * glm::vec2(cosMid0, sinMid0);
-                glm::vec2 mi1 = center + rmi * glm::vec2(cosMid1, sinMid1);
-
-                float stdev0 = fieldData->leafStdDevArray.at(leafIdx - int(leafIdxOffset));
-                float t0 = stdDevRange.first == stdDevRange.second ? 0.0f : (stdev0 - stdDevRange.first) / (stdDevRange.second - stdDevRange.first);
-                sgl::Color rgbColor0 = fieldData->evalColorMapVariance(t0, isSaturated);
-                rgbColor0.setA(255);
-                float stdev1 = fieldData->leafStdDevArray.at(nextIdx - int(leafIdxOffset));
-                float t1 = stdDevRange.first == stdDevRange.second ? 0.0f : (stdev1 - stdDevRange.first) / (stdDevRange.second - stdDevRange.first);
-                sgl::Color rgbColor1 = fieldData->evalColorMapVariance(t1, isSaturated);
-                rgbColor1.setA(255);
-
-                SkPoint linearPoints[2] = { { mi0.x, mi0.y }, { mi1.x, mi1.y } };
-                SkColor linearColors[2] = { toSkColor(rgbColor0), toSkColor(rgbColor1) };
-                gradientPaint.setShader(SkGradientShader::MakeLinear(
-                        linearPoints, linearColors, nullptr, 2, SkTileMode::kClamp));
-
-                path.reset();
-                path.addArc(
-                        SkRect{center.x - rlo, center.y - rlo, center.x + rlo, center.y + rlo},
-                        angle1Deg, angle0Deg - angle1Deg);
-                path.lineTo(hi0.x, hi0.y);
-                path.arcTo(
-                        SkRect{center.x - rhi, center.y - rhi, center.x + rhi, center.y + rhi},
-                        angle0Deg, angle1Deg - angle0Deg, false);
-                //path.lineTo(lo1.x, lo1.y);
-                path.close();
-
-                canvas->drawPath(path, gradientPaint);
-            }
-        }
-
-        sgl::Color circleStrokeColor = isDarkMode ? circleStrokeColorDark : circleStrokeColorBright;
-        sgl::Color currentCircleColor;
-        for (int i = 0; i < numFields; i++) {
-            currentCircleColor = circleStrokeColor;
-            int fieldIdx = i;
-            bool isSelectedRing = false;
-            if (separateColorVarianceAndCorrelation && getIsGrayscaleColorMap(colorMapVariance) && numFieldsSize > 1
-                    && selectedLineIdx >= 0 && limitedFieldIdx < 0) {
-                int selectedLineFieldIdx = lineFieldIndexArray.at(selectedLineIdx);
-                if (i == numFields - 1) {
-                    fieldIdx = selectedLineFieldIdx;
-                    currentCircleColor = ringStrokeColorSelected;
-                    isSelectedRing = true;
-                } else if (i >= selectedLineFieldIdx) {
-                    fieldIdx++;
-                }
-            }
-            int ip = fieldIdx;
-            auto* fieldData = fieldDataArray.at(fieldIdx).get();
-            if (limitedFieldIdx >= 0) {
-                if (limitedFieldIdx != fieldData->selectedFieldIdx) {
-                    continue;
-                } else {
-                    ip = 0;
-                }
-            }
-            float pctLower = float(ip) / float(numFieldsSize);
-            float pctUpper = float(ip + 1) / float(numFieldsSize);
-            float rlo = (chartRadius + outerRingOffset + pctLower * outerRingWidth) * s;
-            float rhi = (chartRadius + outerRingOffset + pctUpper * outerRingWidth) * s;
-            paint.setStroke(true);
-            paint.setStrokeWidth(1.0f * s);
-            paint.setColor(toSkColor(currentCircleColor));
-            if (regionsEqual) {
-                canvas->drawCircle(center.x, center.y, rlo, paint);
-                if (ip == numFieldsSize - 1 || isSelectedRing || limitedFieldIdx >= 0) {
-                    canvas->drawCircle(center.x, center.y, rhi, paint);
-                }
-            } else {
-                float a00Deg = fieldData->a00 / sgl::PI * 180.0f;
-                float a01Deg = fieldData->a01 / sgl::PI * 180.0f;
-                float a10Deg = fieldData->a10 / sgl::PI * 180.0f;
-                float a11Deg = fieldData->a11 / sgl::PI * 180.0f;
-                path.reset();
-                path.arcTo(
-                        SkRect{center.x - rlo, center.y - rlo, center.x + rlo, center.y + rlo},
-                        a00Deg, a01Deg - a00Deg, false);
-                path.lineTo(center.x + rhi * std::cos(fieldData->a01), center.y + rhi * std::sin(fieldData->a01));
-                path.arcTo(
-                        SkRect{center.x - rhi, center.y - rhi, center.x + rhi, center.y + rhi},
-                        a01Deg, a00Deg - a01Deg, false);
-                path.close();
-                canvas->drawPath(path, paint);
-                path.reset();
-                path.arcTo(
-                        SkRect{center.x - rlo, center.y - rlo, center.x + rlo, center.y + rlo},
-                        a10Deg, a11Deg - a10Deg, false);
-                path.lineTo(center.x + rhi * std::cos(fieldData->a11), center.y + rhi * std::sin(fieldData->a11));
-                path.arcTo(
-                        SkRect{center.x - rhi, center.y - rhi, center.x + rhi, center.y + rhi},
-                        a11Deg, a10Deg - a11Deg, false);
-                path.close();
-                canvas->drawPath(path, paint);
-            }
-        }
+        renderRings();
     }
 
     if (selectedPointIndices[0] >= 0) {
@@ -1353,6 +1570,208 @@ void HEBChart::renderBaseSkia() {
     // Draw color legend.
     if (shallDrawColorLegend) {
         drawColorLegends();
+    }
+}
+
+void HEBChart::renderRingsSkia() {
+    SkPaint paint;
+    static_cast<VectorBackendSkia*>(vectorBackend)->initializePaint(&paint);
+    SkPaint gradientPaint;
+    static_cast<VectorBackendSkia*>(vectorBackend)->initializePaint(&gradientPaint);
+    gradientPaint.setStroke(false);
+    SkPath path;
+
+    glm::vec2 center(windowWidth / 2.0f * s, windowHeight / 2.0f * s);
+    auto numFields = int(fieldDataArray.size());
+    auto numFieldsSize = limitedFieldIdx >= 0 ? std::min(int(fieldDataArray.size()), 1) : int(fieldDataArray.size());
+    for (int i = 0; i < numFields; i++) {
+        auto* fieldData = fieldDataArray.at(i).get();
+        int ip = i;
+        if (limitedFieldIdx >= 0) {
+            if (limitedFieldIdx != fieldData->selectedFieldIdx) {
+                continue;
+            } else {
+                ip = 0;
+            }
+        }
+        std::pair<float, float> stdDevRange;
+        if (useGlobalStdDevRange) {
+            stdDevRange = getGlobalStdDevRange(fieldData->selectedFieldIdx, 0);
+        } else {
+            stdDevRange = std::make_pair(fieldData->minStdDev, fieldData->maxStdDev);
+        }
+        float pctLower = float(ip) / float(numFieldsSize);
+        float pctMiddle = (float(ip) + 0.5f) / float(numFieldsSize);
+        float pctUpper = float(ip + 1) / float(numFieldsSize);
+        float rlo = (chartRadius + outerRingOffset + pctLower * outerRingWidth) * s;
+        float rmi = (chartRadius + outerRingOffset + pctMiddle * outerRingWidth) * s;
+        float rhi = (chartRadius + outerRingOffset + pctUpper * outerRingWidth) * s;
+        bool isSaturated =
+                (separateColorVarianceAndCorrelation && getIsGrayscaleColorMap(colorMapVariance))
+                || !separateColorVarianceAndCorrelation || selectedLineIdx < 0
+                || lineFieldIndexArray.at(selectedLineIdx) == i;
+
+        for (int leafIdx = int(leafIdxOffset); leafIdx < int(nodesList.size()); leafIdx++) {
+            bool isSingleElementRegion = false;
+            if (!regionsEqual) {
+                if (leafIdx == int(leafIdxOffset1) - 1) {
+                    if (leafIdxOffset + 1 == leafIdxOffset1) {
+                        isSingleElementRegion = true;
+                    } else {
+                        continue;
+                    }
+                }
+                if (leafIdx == int(nodesList.size()) - 1) {
+                    if (int(leafIdxOffset1) + 1 == int(nodesList.size())) {
+                        isSingleElementRegion = true;
+                    } else {
+                        continue;
+                    }
+                }
+            }
+            //if (!regionsEqual && (leafIdx == int(leafIdxOffset1) - 1 || leafIdx == int(nodesList.size()) - 1)) {
+            //    continue;
+            //}
+            int numLeaves = int(nodesList.size()) - int(leafIdxOffset);
+            int nextIdx = (leafIdx + 1 - int(leafIdxOffset)) % numLeaves + int(leafIdxOffset);
+            if (isSingleElementRegion) {
+                nextIdx = leafIdx;
+            }
+            const auto &leafCurr = nodesList.at(leafIdx);
+            const auto &leafNext = nodesList.at(nextIdx);
+            float angle0 = leafCurr.angle;
+            float angle1 = leafNext.angle + 0.01f;
+            if (isSingleElementRegion) {
+                const float angleRangeHalf = sgl::PI * 0.92f;
+                angle0 = leafCurr.angle - 0.5f * angleRangeHalf;
+                angle1 = leafCurr.angle + 0.5f * angleRangeHalf;
+            }
+            float angleMid0 = angle0;
+            float angleMid1 = angle1;
+            if (!regionsEqual && (leafIdx == int(leafIdxOffset) || leafIdx == int(leafIdxOffset1))) {
+                float deltaAngle = std::min(angle1 - angle0, 0.1f);
+                angle0 -= deltaAngle * 0.5f;
+                if (leafIdx == int(leafIdxOffset)) {
+                    fieldData->a00 = angle0;
+                } else {
+                    fieldData->a10 = angle0;
+                }
+            }
+            if (!regionsEqual && (nextIdx == int(leafIdxOffset1) - 1 || nextIdx == int(nodesList.size()) - 1)) {
+                float deltaAngle = std::min(angle1 - angle0, 0.1f);
+                angle1 += deltaAngle * 0.5f;
+                if (nextIdx == int(leafIdxOffset1) - 1) {
+                    fieldData->a01 = angle1;
+                } else {
+                    fieldData->a11 = angle1;
+                }
+            }
+            float angle0Deg = angle0 / sgl::PI * 180.0f;
+            float angle1Deg = angle1 / sgl::PI * 180.0f + (nextIdx < leafIdx ? 360.0f : 0.0f);
+            float cos0 = std::cos(angle0), sin0 = std::sin(angle0);
+            //float cos1 = std::cos(angle1), sin1 = std::sin(angle1);
+            float cosMid0 = std::cos(angleMid0), sinMid0 = std::sin(angleMid0);
+            float cosMid1 = std::cos(angleMid1), sinMid1 = std::sin(angleMid1);
+            //glm::vec2 lo0 = center + rlo * glm::vec2(cos0, sin0);
+            //glm::vec2 lo1 = center + rlo * glm::vec2(cos1, sin1);
+            glm::vec2 hi0 = center + rhi * glm::vec2(cos0, sin0);
+            //glm::vec2 hi1 = center + rhi * glm::vec2(cos1, sin1);
+            glm::vec2 mi0 = center + rmi * glm::vec2(cosMid0, sinMid0);
+            glm::vec2 mi1 = center + rmi * glm::vec2(cosMid1, sinMid1);
+
+            float stdev0 = fieldData->leafStdDevArray.at(leafIdx - int(leafIdxOffset));
+            float t0 = stdDevRange.first == stdDevRange.second ? 0.0f : (stdev0 - stdDevRange.first) / (stdDevRange.second - stdDevRange.first);
+            sgl::Color rgbColor0 = fieldData->evalColorMapVariance(t0, isSaturated);
+            rgbColor0.setA(255);
+            float stdev1 = fieldData->leafStdDevArray.at(nextIdx - int(leafIdxOffset));
+            float t1 = stdDevRange.first == stdDevRange.second ? 0.0f : (stdev1 - stdDevRange.first) / (stdDevRange.second - stdDevRange.first);
+            sgl::Color rgbColor1 = fieldData->evalColorMapVariance(t1, isSaturated);
+            rgbColor1.setA(255);
+
+            SkPoint linearPoints[2] = { { mi0.x, mi0.y }, { mi1.x, mi1.y } };
+            SkColor linearColors[2] = { toSkColor(rgbColor0), toSkColor(rgbColor1) };
+            gradientPaint.setShader(SkGradientShader::MakeLinear(
+                    linearPoints, linearColors, nullptr, 2, SkTileMode::kClamp));
+
+            path.reset();
+            path.addArc(
+                    SkRect{center.x - rlo, center.y - rlo, center.x + rlo, center.y + rlo},
+                    angle1Deg, angle0Deg - angle1Deg);
+            path.lineTo(hi0.x, hi0.y);
+            path.arcTo(
+                    SkRect{center.x - rhi, center.y - rhi, center.x + rhi, center.y + rhi},
+                    angle0Deg, angle1Deg - angle0Deg, false);
+            //path.lineTo(lo1.x, lo1.y);
+            path.close();
+
+            canvas->drawPath(path, gradientPaint);
+        }
+    }
+
+    sgl::Color circleStrokeColor = isDarkMode ? circleStrokeColorDark : circleStrokeColorBright;
+    sgl::Color currentCircleColor;
+    for (int i = 0; i < numFields; i++) {
+        currentCircleColor = circleStrokeColor;
+        int fieldIdx = i;
+        bool isSelectedRing = false;
+        if (separateColorVarianceAndCorrelation && getIsGrayscaleColorMap(colorMapVariance) && numFieldsSize > 1
+            && selectedLineIdx >= 0 && limitedFieldIdx < 0) {
+            int selectedLineFieldIdx = lineFieldIndexArray.at(selectedLineIdx);
+            if (i == numFields - 1) {
+                fieldIdx = selectedLineFieldIdx;
+                currentCircleColor = ringStrokeColorSelected;
+                isSelectedRing = true;
+            } else if (i >= selectedLineFieldIdx) {
+                fieldIdx++;
+            }
+        }
+        int ip = fieldIdx;
+        auto* fieldData = fieldDataArray.at(fieldIdx).get();
+        if (limitedFieldIdx >= 0) {
+            if (limitedFieldIdx != fieldData->selectedFieldIdx) {
+                continue;
+            } else {
+                ip = 0;
+            }
+        }
+        float pctLower = float(ip) / float(numFieldsSize);
+        float pctUpper = float(ip + 1) / float(numFieldsSize);
+        float rlo = (chartRadius + outerRingOffset + pctLower * outerRingWidth) * s;
+        float rhi = (chartRadius + outerRingOffset + pctUpper * outerRingWidth) * s;
+        paint.setStroke(true);
+        paint.setStrokeWidth(1.0f * s);
+        paint.setColor(toSkColor(currentCircleColor));
+        if (regionsEqual) {
+            canvas->drawCircle(center.x, center.y, rlo, paint);
+            if (ip == numFieldsSize - 1 || isSelectedRing || limitedFieldIdx >= 0) {
+                canvas->drawCircle(center.x, center.y, rhi, paint);
+            }
+        } else {
+            float a00Deg = fieldData->a00 / sgl::PI * 180.0f;
+            float a01Deg = fieldData->a01 / sgl::PI * 180.0f;
+            float a10Deg = fieldData->a10 / sgl::PI * 180.0f;
+            float a11Deg = fieldData->a11 / sgl::PI * 180.0f;
+            path.reset();
+            path.arcTo(
+                    SkRect{center.x - rlo, center.y - rlo, center.x + rlo, center.y + rlo},
+                    a00Deg, a01Deg - a00Deg, false);
+            path.lineTo(center.x + rhi * std::cos(fieldData->a01), center.y + rhi * std::sin(fieldData->a01));
+            path.arcTo(
+                    SkRect{center.x - rhi, center.y - rhi, center.x + rhi, center.y + rhi},
+                    a01Deg, a00Deg - a01Deg, false);
+            path.close();
+            canvas->drawPath(path, paint);
+            path.reset();
+            path.arcTo(
+                    SkRect{center.x - rlo, center.y - rlo, center.x + rlo, center.y + rlo},
+                    a10Deg, a11Deg - a10Deg, false);
+            path.lineTo(center.x + rhi * std::cos(fieldData->a11), center.y + rhi * std::sin(fieldData->a11));
+            path.arcTo(
+                    SkRect{center.x - rhi, center.y - rhi, center.x + rhi, center.y + rhi},
+                    a11Deg, a10Deg - a11Deg, false);
+            path.close();
+            canvas->drawPath(path, paint);
+        }
     }
 }
 #endif
@@ -1491,172 +1910,7 @@ void HEBChart::renderBaseVkvg() {
     }
 
     if (showRing) {
-        glm::vec2 center(windowWidth / 2.0f * s, windowHeight / 2.0f * s);
-        auto numFields = int(fieldDataArray.size());
-        auto numFieldsSize = limitedFieldIdx >= 0 ? std::min(int(fieldDataArray.size()), 1) : int(fieldDataArray.size());
-        for (int i = 0; i < numFields; i++) {
-            auto* fieldData = fieldDataArray.at(i).get();
-            int ip = i;
-            if (limitedFieldIdx >= 0) {
-                if (limitedFieldIdx != fieldData->selectedFieldIdx) {
-                    continue;
-                } else {
-                    ip = 0;
-                }
-            }
-            std::pair<float, float> stdDevRange;
-            if (useGlobalStdDevRange) {
-                stdDevRange = getGlobalStdDevRange(fieldData->selectedFieldIdx);
-            } else {
-                stdDevRange = std::make_pair(fieldData->minStdDev, fieldData->maxStdDev);
-            }
-            float pctLower = float(ip) / float(numFieldsSize);
-            float pctMiddle = (float(ip) + 0.5f) / float(numFieldsSize);
-            float pctUpper = float(ip + 1) / float(numFieldsSize);
-            float rlo = (chartRadius + outerRingOffset + pctLower * outerRingWidth) * s;
-            float rmi = (chartRadius + outerRingOffset + pctMiddle * outerRingWidth) * s;
-            float rhi = (chartRadius + outerRingOffset + pctUpper * outerRingWidth) * s;
-            bool isSaturated =
-                    (separateColorVarianceAndCorrelation && getIsGrayscaleColorMap(colorMapVariance))
-                    || !separateColorVarianceAndCorrelation || selectedLineIdx < 0
-                    || lineFieldIndexArray.at(selectedLineIdx) == i;
-
-            for (int leafIdx = int(leafIdxOffset); leafIdx < int(nodesList.size()); leafIdx++) {
-                bool isSingleElementRegion = false;
-                if (!regionsEqual) {
-                    if (leafIdx == int(leafIdxOffset1) - 1) {
-                        if (leafIdxOffset + 1 == leafIdxOffset1) {
-                            isSingleElementRegion = true;
-                        } else {
-                            continue;
-                        }
-                    }
-                    if (leafIdx == int(nodesList.size()) - 1) {
-                        if (int(leafIdxOffset1) + 1 == int(nodesList.size())) {
-                            isSingleElementRegion = true;
-                        } else {
-                            continue;
-                        }
-                    }
-                }
-                //if (!regionsEqual && (leafIdx == int(leafIdxOffset1) - 1 || leafIdx == int(nodesList.size()) - 1)) {
-                //    continue;
-                //}
-                int numLeaves = int(nodesList.size()) - int(leafIdxOffset);
-                int nextIdx = (leafIdx + 1 - int(leafIdxOffset)) % numLeaves + int(leafIdxOffset);
-                if (isSingleElementRegion) {
-                    nextIdx = leafIdx;
-                }
-                const auto &leafCurr = nodesList.at(leafIdx);
-                const auto &leafNext = nodesList.at(nextIdx);
-                float angle0 = leafCurr.angle;
-                float angle1 = leafNext.angle + 0.01f;
-                if (isSingleElementRegion) {
-                    const float angleRangeHalf = sgl::PI * 0.92f;
-                    angle0 = leafCurr.angle - 0.5f * angleRangeHalf;
-                    angle1 = leafCurr.angle + 0.5f * angleRangeHalf;
-                }
-                float angleMid0 = angle0;
-                float angleMid1 = angle1;
-                if (!regionsEqual && (leafIdx == int(leafIdxOffset) || leafIdx == int(leafIdxOffset1))) {
-                    float deltaAngle = std::min(angle1 - angle0, 0.1f);
-                    angle0 -= deltaAngle * 0.5f;
-                    if (leafIdx == int(leafIdxOffset)) {
-                        fieldData->a00 = angle0;
-                    } else {
-                        fieldData->a10 = angle0;
-                    }
-                }
-                if (!regionsEqual && (nextIdx == int(leafIdxOffset1) - 1 || nextIdx == int(nodesList.size()) - 1)) {
-                    float deltaAngle = std::min(angle1 - angle0, 0.1f);
-                    angle1 += deltaAngle * 0.5f;
-                    if (nextIdx == int(leafIdxOffset1) - 1) {
-                        fieldData->a01 = angle1;
-                    } else {
-                        fieldData->a11 = angle1;
-                    }
-                }
-                float cos0 = std::cos(angle0), sin0 = std::sin(angle0);
-                float cos1 = std::cos(angle1), sin1 = std::sin(angle1);
-                float cosMid0 = std::cos(angleMid0), sinMid0 = std::sin(angleMid0);
-                float cosMid1 = std::cos(angleMid1), sinMid1 = std::sin(angleMid1);
-                //glm::vec2 lo0 = center + rlo * glm::vec2(cos0, sin0);
-                glm::vec2 lo1 = center + rlo * glm::vec2(cos1, sin1);
-                glm::vec2 hi0 = center + rhi * glm::vec2(cos0, sin0);
-                //glm::vec2 hi1 = center + rhi * glm::vec2(cos1, sin1);
-                glm::vec2 mi0 = center + rmi * glm::vec2(cosMid0, sinMid0);
-                glm::vec2 mi1 = center + rmi * glm::vec2(cosMid1, sinMid1);
-                vkvg_arc_negative(context, center.x, center.y, rlo, angle1, angle0);
-                vkvg_line_to(context, hi0.x, hi0.y);
-                vkvg_arc(context, center.x, center.y, rhi, angle0, angle1);
-                vkvg_line_to(context, lo1.x, lo1.y);
-
-                float stdev0 = fieldData->leafStdDevArray.at(leafIdx - int(leafIdxOffset));
-                float t0 = stdDevRange.first == stdDevRange.second ? 0.0f : (stdev0 - stdDevRange.first) / (stdDevRange.second - stdDevRange.first);
-                glm::vec4 rgbColor0 = fieldData->evalColorMapVec4Variance(t0, isSaturated);
-                float stdev1 = fieldData->leafStdDevArray.at(nextIdx - int(leafIdxOffset));
-                float t1 = stdDevRange.first == stdDevRange.second ? 0.0f : (stdev1 - stdDevRange.first) / (stdDevRange.second - stdDevRange.first);
-                glm::vec4 rgbColor1 = fieldData->evalColorMapVec4Variance(t1, isSaturated);
-
-                auto pattern = vkvg_pattern_create_linear(mi0.x, mi0.y, mi1.x, mi1.y);
-                vkvg_pattern_add_color_stop(pattern, 0.0f, rgbColor0.x, rgbColor0.y, rgbColor0.z, 1.0f);
-                vkvg_pattern_add_color_stop(pattern, 1.0f, rgbColor1.x, rgbColor1.y, rgbColor1.z, 1.0f);
-                vkvg_set_source(context, pattern);
-                vkvg_pattern_destroy(pattern);
-                vkvg_fill(context);
-            }
-        }
-
-        sgl::Color circleStrokeColor = isDarkMode ? circleStrokeColorDark : circleStrokeColorBright;
-        sgl::Color currentCircleColor;
-        for (int i = 0; i < numFields; i++) {
-            currentCircleColor = circleStrokeColor;
-            int fieldIdx = i;
-            bool isSelectedRing = false;
-            if (separateColorVarianceAndCorrelation && getIsGrayscaleColorMap(colorMapVariance) && numFieldsSize > 1
-                    && selectedLineIdx >= 0 && limitedFieldIdx < 0) {
-                int selectedLineFieldIdx = lineFieldIndexArray.at(selectedLineIdx);
-                if (i == numFields - 1) {
-                    fieldIdx = selectedLineFieldIdx;
-                    currentCircleColor = ringStrokeColorSelected;
-                    isSelectedRing = true;
-                } else if (i >= selectedLineFieldIdx) {
-                    fieldIdx++;
-                }
-            }
-            int ip = fieldIdx;
-            auto* fieldData = fieldDataArray.at(fieldIdx).get();
-            if (limitedFieldIdx >= 0) {
-                if (limitedFieldIdx != fieldData->selectedFieldIdx) {
-                    continue;
-                } else {
-                    ip = 0;
-                }
-            }
-            float pctLower = float(ip) / float(numFieldsSize);
-            float pctUpper = float(ip + 1) / float(numFieldsSize);
-            float rlo = (chartRadius + outerRingOffset + pctLower * outerRingWidth) * s;
-            float rhi = (chartRadius + outerRingOffset + pctUpper * outerRingWidth) * s;
-            if (regionsEqual) {
-                vkvg_arc(context, center.x, center.y, rlo, 0.0f, sgl::TWO_PI);
-                if (ip == numFieldsSize - 1 || isSelectedRing || limitedFieldIdx >= 0) {
-                    vkvg_arc(context, center.x, center.y, rhi, 0.0f, sgl::TWO_PI);
-                }
-            } else {
-                vkvg_arc(context, center.x, center.y, rlo, fieldData->a00, fieldData->a01);
-                vkvg_line_to(context, center.x + rhi * std::cos(fieldData->a01), center.y + rhi * std::sin(fieldData->a01));
-                vkvg_arc_negative(context, center.x, center.y, rhi, fieldData->a01, fieldData->a00);
-                vkvg_line_to(context, center.x + rlo * std::cos(fieldData->a00), center.y + rlo * std::sin(fieldData->a00));
-                vkvg_move_to(context, center.x + rlo * std::cos(fieldData->a10), center.y + rlo * std::sin(fieldData->a10));
-                vkvg_arc(context, center.x, center.y, rlo, fieldData->a10, fieldData->a11);
-                vkvg_line_to(context, center.x + rhi * std::cos(fieldData->a11), center.y + rhi * std::sin(fieldData->a11));
-                vkvg_arc_negative(context, center.x, center.y, rhi, fieldData->a11, fieldData->a10);
-                vkvg_line_to(context, center.x + rlo * std::cos(fieldData->a10), center.y + rlo * std::sin(fieldData->a10));
-            }
-            vkvg_set_line_width(context, 1.0f * s);
-            vkvg_set_source_color(context, currentCircleColor.getColorRGBA());
-            vkvg_stroke(context);
-        }
+        renderRings();
     }
 
     if (selectedPointIndices[0] >= 0) {
@@ -1690,6 +1944,175 @@ void HEBChart::renderBaseVkvg() {
     // Draw color legend.
     if (shallDrawColorLegend) {
         drawColorLegends();
+    }
+}
+
+void HEBChart::renderRingsVkvg() {
+    glm::vec2 center(windowWidth / 2.0f * s, windowHeight / 2.0f * s);
+    auto numFields = int(fieldDataArray.size());
+    auto numFieldsSize = limitedFieldIdx >= 0 ? std::min(int(fieldDataArray.size()), 1) : int(fieldDataArray.size());
+    for (int i = 0; i < numFields; i++) {
+        auto* fieldData = fieldDataArray.at(i).get();
+        int ip = i;
+        if (limitedFieldIdx >= 0) {
+            if (limitedFieldIdx != fieldData->selectedFieldIdx) {
+                continue;
+            } else {
+                ip = 0;
+            }
+        }
+        std::pair<float, float> stdDevRange;
+        if (useGlobalStdDevRange) {
+            stdDevRange = getGlobalStdDevRange(fieldData->selectedFieldIdx, 0);
+        } else {
+            stdDevRange = std::make_pair(fieldData->minStdDev, fieldData->maxStdDev);
+        }
+        float pctLower = float(ip) / float(numFieldsSize);
+        float pctMiddle = (float(ip) + 0.5f) / float(numFieldsSize);
+        float pctUpper = float(ip + 1) / float(numFieldsSize);
+        float rlo = (chartRadius + outerRingOffset + pctLower * outerRingWidth) * s;
+        float rmi = (chartRadius + outerRingOffset + pctMiddle * outerRingWidth) * s;
+        float rhi = (chartRadius + outerRingOffset + pctUpper * outerRingWidth) * s;
+        bool isSaturated =
+                (separateColorVarianceAndCorrelation && getIsGrayscaleColorMap(colorMapVariance))
+                || !separateColorVarianceAndCorrelation || selectedLineIdx < 0
+                || lineFieldIndexArray.at(selectedLineIdx) == i;
+
+        for (int leafIdx = int(leafIdxOffset); leafIdx < int(nodesList.size()); leafIdx++) {
+            bool isSingleElementRegion = false;
+            if (!regionsEqual) {
+                if (leafIdx == int(leafIdxOffset1) - 1) {
+                    if (leafIdxOffset + 1 == leafIdxOffset1) {
+                        isSingleElementRegion = true;
+                    } else {
+                        continue;
+                    }
+                }
+                if (leafIdx == int(nodesList.size()) - 1) {
+                    if (int(leafIdxOffset1) + 1 == int(nodesList.size())) {
+                        isSingleElementRegion = true;
+                    } else {
+                        continue;
+                    }
+                }
+            }
+            //if (!regionsEqual && (leafIdx == int(leafIdxOffset1) - 1 || leafIdx == int(nodesList.size()) - 1)) {
+            //    continue;
+            //}
+            int numLeaves = int(nodesList.size()) - int(leafIdxOffset);
+            int nextIdx = (leafIdx + 1 - int(leafIdxOffset)) % numLeaves + int(leafIdxOffset);
+            if (isSingleElementRegion) {
+                nextIdx = leafIdx;
+            }
+            const auto &leafCurr = nodesList.at(leafIdx);
+            const auto &leafNext = nodesList.at(nextIdx);
+            float angle0 = leafCurr.angle;
+            float angle1 = leafNext.angle + 0.01f;
+            if (isSingleElementRegion) {
+                const float angleRangeHalf = sgl::PI * 0.92f;
+                angle0 = leafCurr.angle - 0.5f * angleRangeHalf;
+                angle1 = leafCurr.angle + 0.5f * angleRangeHalf;
+            }
+            float angleMid0 = angle0;
+            float angleMid1 = angle1;
+            if (!regionsEqual && (leafIdx == int(leafIdxOffset) || leafIdx == int(leafIdxOffset1))) {
+                float deltaAngle = std::min(angle1 - angle0, 0.1f);
+                angle0 -= deltaAngle * 0.5f;
+                if (leafIdx == int(leafIdxOffset)) {
+                    fieldData->a00 = angle0;
+                } else {
+                    fieldData->a10 = angle0;
+                }
+            }
+            if (!regionsEqual && (nextIdx == int(leafIdxOffset1) - 1 || nextIdx == int(nodesList.size()) - 1)) {
+                float deltaAngle = std::min(angle1 - angle0, 0.1f);
+                angle1 += deltaAngle * 0.5f;
+                if (nextIdx == int(leafIdxOffset1) - 1) {
+                    fieldData->a01 = angle1;
+                } else {
+                    fieldData->a11 = angle1;
+                }
+            }
+            float cos0 = std::cos(angle0), sin0 = std::sin(angle0);
+            float cos1 = std::cos(angle1), sin1 = std::sin(angle1);
+            float cosMid0 = std::cos(angleMid0), sinMid0 = std::sin(angleMid0);
+            float cosMid1 = std::cos(angleMid1), sinMid1 = std::sin(angleMid1);
+            //glm::vec2 lo0 = center + rlo * glm::vec2(cos0, sin0);
+            glm::vec2 lo1 = center + rlo * glm::vec2(cos1, sin1);
+            glm::vec2 hi0 = center + rhi * glm::vec2(cos0, sin0);
+            //glm::vec2 hi1 = center + rhi * glm::vec2(cos1, sin1);
+            glm::vec2 mi0 = center + rmi * glm::vec2(cosMid0, sinMid0);
+            glm::vec2 mi1 = center + rmi * glm::vec2(cosMid1, sinMid1);
+            vkvg_arc_negative(context, center.x, center.y, rlo, angle1, angle0);
+            vkvg_line_to(context, hi0.x, hi0.y);
+            vkvg_arc(context, center.x, center.y, rhi, angle0, angle1);
+            vkvg_line_to(context, lo1.x, lo1.y);
+
+            float stdev0 = fieldData->leafStdDevArray.at(leafIdx - int(leafIdxOffset));
+            float t0 = stdDevRange.first == stdDevRange.second ? 0.0f : (stdev0 - stdDevRange.first) / (stdDevRange.second - stdDevRange.first);
+            glm::vec4 rgbColor0 = fieldData->evalColorMapVec4Variance(t0, isSaturated);
+            float stdev1 = fieldData->leafStdDevArray.at(nextIdx - int(leafIdxOffset));
+            float t1 = stdDevRange.first == stdDevRange.second ? 0.0f : (stdev1 - stdDevRange.first) / (stdDevRange.second - stdDevRange.first);
+            glm::vec4 rgbColor1 = fieldData->evalColorMapVec4Variance(t1, isSaturated);
+
+            auto pattern = vkvg_pattern_create_linear(mi0.x, mi0.y, mi1.x, mi1.y);
+            vkvg_pattern_add_color_stop(pattern, 0.0f, rgbColor0.x, rgbColor0.y, rgbColor0.z, 1.0f);
+            vkvg_pattern_add_color_stop(pattern, 1.0f, rgbColor1.x, rgbColor1.y, rgbColor1.z, 1.0f);
+            vkvg_set_source(context, pattern);
+            vkvg_pattern_destroy(pattern);
+            vkvg_fill(context);
+        }
+    }
+
+    sgl::Color circleStrokeColor = isDarkMode ? circleStrokeColorDark : circleStrokeColorBright;
+    sgl::Color currentCircleColor;
+    for (int i = 0; i < numFields; i++) {
+        currentCircleColor = circleStrokeColor;
+        int fieldIdx = i;
+        bool isSelectedRing = false;
+        if (separateColorVarianceAndCorrelation && getIsGrayscaleColorMap(colorMapVariance) && numFieldsSize > 1
+            && selectedLineIdx >= 0 && limitedFieldIdx < 0) {
+            int selectedLineFieldIdx = lineFieldIndexArray.at(selectedLineIdx);
+            if (i == numFields - 1) {
+                fieldIdx = selectedLineFieldIdx;
+                currentCircleColor = ringStrokeColorSelected;
+                isSelectedRing = true;
+            } else if (i >= selectedLineFieldIdx) {
+                fieldIdx++;
+            }
+        }
+        int ip = fieldIdx;
+        auto* fieldData = fieldDataArray.at(fieldIdx).get();
+        if (limitedFieldIdx >= 0) {
+            if (limitedFieldIdx != fieldData->selectedFieldIdx) {
+                continue;
+            } else {
+                ip = 0;
+            }
+        }
+        float pctLower = float(ip) / float(numFieldsSize);
+        float pctUpper = float(ip + 1) / float(numFieldsSize);
+        float rlo = (chartRadius + outerRingOffset + pctLower * outerRingWidth) * s;
+        float rhi = (chartRadius + outerRingOffset + pctUpper * outerRingWidth) * s;
+        if (regionsEqual) {
+            vkvg_arc(context, center.x, center.y, rlo, 0.0f, sgl::TWO_PI);
+            if (ip == numFieldsSize - 1 || isSelectedRing || limitedFieldIdx >= 0) {
+                vkvg_arc(context, center.x, center.y, rhi, 0.0f, sgl::TWO_PI);
+            }
+        } else {
+            vkvg_arc(context, center.x, center.y, rlo, fieldData->a00, fieldData->a01);
+            vkvg_line_to(context, center.x + rhi * std::cos(fieldData->a01), center.y + rhi * std::sin(fieldData->a01));
+            vkvg_arc_negative(context, center.x, center.y, rhi, fieldData->a01, fieldData->a00);
+            vkvg_line_to(context, center.x + rlo * std::cos(fieldData->a00), center.y + rlo * std::sin(fieldData->a00));
+            vkvg_move_to(context, center.x + rlo * std::cos(fieldData->a10), center.y + rlo * std::sin(fieldData->a10));
+            vkvg_arc(context, center.x, center.y, rlo, fieldData->a10, fieldData->a11);
+            vkvg_line_to(context, center.x + rhi * std::cos(fieldData->a11), center.y + rhi * std::sin(fieldData->a11));
+            vkvg_arc_negative(context, center.x, center.y, rhi, fieldData->a11, fieldData->a10);
+            vkvg_line_to(context, center.x + rlo * std::cos(fieldData->a10), center.y + rlo * std::sin(fieldData->a10));
+        }
+        vkvg_set_line_width(context, 1.0f * s);
+        vkvg_set_source_color(context, currentCircleColor.getColorRGBA());
+        vkvg_stroke(context);
     }
 }
 #endif
@@ -2111,7 +2534,7 @@ void HEBChart::computeColorLegendHeight() {
     }
 }
 
-std::pair<float, float> HEBChart::getLocalStdDevRange(int fieldIdx) {
+std::pair<float, float> HEBChart::getLocalStdDevRange(int fieldIdx, int varNum) {
     auto numFields = int(fieldDataArray.size());
     for (int i = 0; i < numFields; i++) {
         auto* fieldData = fieldDataArray.at(i).get();
@@ -2119,17 +2542,25 @@ std::pair<float, float> HEBChart::getLocalStdDevRange(int fieldIdx) {
             continue;
         }
         if (fieldData->selectedFieldIdx == fieldIdx) {
-            return std::make_pair(fieldData->minStdDev, fieldData->maxStdDev);
+            if (fieldData->useTwoFields && varNum != 0 && varNum != 1) {
+                return std::make_pair(
+                        std::min(fieldData->minStdDev, fieldData->minStdDev2),
+                        std::max(fieldData->maxStdDev, fieldData->maxStdDev2));
+            } else if (fieldData->useTwoFields && varNum == 1) {
+                return std::make_pair(fieldData->minStdDev2, fieldData->maxStdDev2);
+            } else {
+                return std::make_pair(fieldData->minStdDev, fieldData->maxStdDev);
+            }
         }
     }
     return std::make_pair(std::numeric_limits<float>::max(), std::numeric_limits<float>::lowest());
 }
 
 void HEBChart::setGlobalStdDevRangeQueryCallback(
-        std::function<std::pair<float, float>(int)> callback) {
+        std::function<std::pair<float, float>(int, int )> callback) {
     globalStdDevRangeQueryCallback = std::move(callback);
 }
 
-std::pair<float, float> HEBChart::getGlobalStdDevRange(int fieldIdx) {
-    return globalStdDevRangeQueryCallback(fieldIdx);
+std::pair<float, float> HEBChart::getGlobalStdDevRange(int fieldIdx, int varNum) {
+    return globalStdDevRangeQueryCallback(fieldIdx, varNum);
 }

@@ -81,11 +81,19 @@ void HEBChartFieldData::createFieldCache(
     cachedUseBufferTiling = useBufferTiling;
     minFieldVal = std::numeric_limits<float>::max();
     maxFieldVal = std::numeric_limits<float>::lowest();
+    minFieldVal2 = std::numeric_limits<float>::max();
+    maxFieldVal2 = std::numeric_limits<float>::lowest();
     clearMemoryTokens();
     fieldImageViews.clear();
     fieldBuffers.clear();
     fieldImageViewsR1.clear();
     fieldBuffersR1.clear();
+    if (useTwoFields) {
+        fieldImageViews2.clear();
+        fieldBuffers2.clear();
+        fieldImageViewsR12.clear();
+        fieldBuffersR12.clear();
+    }
 
     int cs = getCorrelationMemberCount();
     if (dataMode == CorrelationDataMode::IMAGE_3D_ARRAY) {
@@ -93,25 +101,54 @@ void HEBChartFieldData::createFieldCache(
         if (!regionsEqual) {
             fieldImageViewsR1.resize(cs);
         }
+        if (useTwoFields) {
+            fieldImageViews2.resize(cs);
+            if (!regionsEqual) {
+                fieldImageViewsR12.resize(cs);
+            }
+        }
     } else if (dataMode == CorrelationDataMode::BUFFER_ARRAY) {
         fieldBuffers.resize(cs);
         if (!regionsEqual) {
             fieldBuffersR1.resize(cs);
         }
+        if (useTwoFields) {
+            fieldBuffers2.resize(cs);
+            if (!regionsEqual) {
+                fieldBuffersR12.resize(cs);
+            }
+        }
     }
+
     deviceMemoryTokens.resize(cs);
     if (!regionsEqual) {
         deviceMemoryTokensR1.resize(cs);
     }
+    if (useTwoFields) {
+        deviceMemoryTokens2.resize(cs);
+        if (!regionsEqual) {
+            deviceMemoryTokensR12.resize(cs);
+        }
+    }
 
     for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
-        computeDownscaledFields(0, fieldIdx);
+        computeDownscaledFields(0, 0, fieldIdx);
         if (!regionsEqual) {
-            computeDownscaledFields(1, fieldIdx);
+            computeDownscaledFields(1, 0, fieldIdx);
         }
-        auto [minVal, maxVal] = getMinMaxScalarFieldValue(selectedScalarFieldName, fieldIdx);
+        auto [minVal, maxVal] = getMinMaxScalarFieldValue(selectedScalarFieldName1, fieldIdx);
         minFieldVal = std::min(minFieldVal, minVal);
         maxFieldVal = std::max(maxFieldVal, maxVal);
+
+        if (useTwoFields) {
+            computeDownscaledFields(0, 1, fieldIdx);
+            if (!regionsEqual) {
+                computeDownscaledFields(1, 1, fieldIdx);
+            }
+            auto [minVal2, maxVal2] = getMinMaxScalarFieldValue(selectedScalarFieldName2, fieldIdx);
+            minFieldVal2 = std::min(minFieldVal2, minVal2);
+            maxFieldVal2 = std::max(maxFieldVal2, maxVal2);
+        }
     }
 }
 
@@ -124,6 +161,17 @@ void HEBChartFieldData::clearMemoryTokens() {
     }
     deviceMemoryTokens.clear();
     deviceMemoryTokensR1.clear();
+
+    if (useTwoFields) {
+        for (auto token : deviceMemoryTokens2) {
+            volumeData->popAuxiliaryMemoryDevice(token);
+        }
+        for (auto token : deviceMemoryTokensR12) {
+            volumeData->popAuxiliaryMemoryDevice(token);
+        }
+        deviceMemoryTokens2.clear();
+        deviceMemoryTokensR12.clear();
+    }
 }
 
 int HEBChartFieldData::getCorrelationMemberCount() {
@@ -143,7 +191,7 @@ std::pair<float, float> HEBChartFieldData::getMinMaxScalarFieldValue(const std::
             fieldName, cachedIsEnsembleMode ? -1 : fieldIdx, cachedIsEnsembleMode ? fieldIdx : -1);
 }
 
-void HEBChartFieldData::computeDownscaledFields(int idx, int fieldIdx) {
+void HEBChartFieldData::computeDownscaledFields(int idx, int varNum, int fieldIdx) {
     GridRegion r = idx == 0 ? cachedR0 : cachedR1;
     int xs = volumeData->getGridSizeX();
     int ys = volumeData->getGridSizeY();
@@ -158,8 +206,14 @@ void HEBChartFieldData::computeDownscaledFields(int idx, int fieldIdx) {
     const int tileSizeX = 8;
     const int tileSizeY = 8;
     const int tileSizeZ = 4;
+    std::string scalarFieldName;
+    if (varNum == 0) {
+        scalarFieldName = selectedScalarFieldName1;
+    } else {
+        scalarFieldName = selectedScalarFieldName2;
+    }
 
-    VolumeData::HostCacheEntry fieldEntry = getFieldEntryCpu(selectedScalarFieldName, fieldIdx);
+    VolumeData::HostCacheEntry fieldEntry = getFieldEntryCpu(scalarFieldName, fieldIdx);
 
     const float* field = fieldEntry->data<float>();
     auto* downscaledField = new float[numPoints];
@@ -211,10 +265,18 @@ void HEBChartFieldData::computeDownscaledFields(int idx, int fieldIdx) {
         image->uploadData(sizeInBytes, downscaledField);
         sizeInBytes = image->getDeviceMemoryAllocationSize();
         auto imageView = std::make_shared<sgl::vk::ImageView>(image, VK_IMAGE_VIEW_TYPE_3D);
-        if (idx == 0) {
-            fieldImageViews.at(fieldIdx) = imageView;
+        if (varNum == 0) {
+            if (idx == 0) {
+                fieldImageViews.at(fieldIdx) = imageView;
+            } else {
+                fieldImageViewsR1.at(fieldIdx) = imageView;
+            }
         } else {
-            fieldImageViewsR1.at(fieldIdx) = imageView;
+            if (idx == 0) {
+                fieldImageViews2.at(fieldIdx) = imageView;
+            } else {
+                fieldImageViewsR12.at(fieldIdx) = imageView;
+            }
         }
     } else {
         if (cachedUseBufferTiling) {
@@ -231,7 +293,7 @@ void HEBChartFieldData::computeDownscaledFields(int idx, int fieldIdx) {
             size_t numEntries = sizeInBytes / sizeof(float);
             auto* linearBufferData = downscaledField;
             auto* tiledBufferData = new float[numEntries];
-            auto tileNumVoxels = tileSizeX * tileSizeY * tileSizeZ;
+            auto tileNumVoxels = uint32_t(tileSizeX) * uint32_t(tileSizeY) * uint32_t(tileSizeZ);
             uint32_t xst = sgl::uiceil(xsd, tileSizeX);
             uint32_t yst = sgl::uiceil(ysd, tileSizeY);
             uint32_t zst = sgl::uiceil(zsd, tileSizeZ);
@@ -272,18 +334,34 @@ void HEBChartFieldData::computeDownscaledFields(int idx, int fieldIdx) {
             buffer->uploadData(sizeInBytes, downscaledField);
         }
         sizeInBytes = buffer->getDeviceMemoryAllocationSize();
-        if (idx == 0) {
-            fieldBuffers.at(fieldIdx) = buffer;
+        if (varNum == 0) {
+            if (idx == 0) {
+                fieldBuffers.at(fieldIdx) = buffer;
+            } else {
+                fieldBuffersR1.at(fieldIdx) = buffer;
+            }
         } else {
-            fieldBuffersR1.at(fieldIdx) = buffer;
+            if (idx == 0) {
+                fieldBuffers2.at(fieldIdx) = buffer;
+            } else {
+                fieldBuffersR12.at(fieldIdx) = buffer;
+            }
         }
     }
 
     auto token = volumeData->pushAuxiliaryMemoryDevice(sizeInBytes);
-    if (idx == 0) {
-        deviceMemoryTokens.at(fieldIdx) = token;
+    if (varNum == 0) {
+        if (idx == 0) {
+            deviceMemoryTokens.at(fieldIdx) = token;
+        } else {
+            deviceMemoryTokensR1.at(fieldIdx) = token;
+        }
     } else {
-        deviceMemoryTokensR1.at(fieldIdx) = token;
+        if (idx == 0) {
+            deviceMemoryTokens2.at(fieldIdx) = token;
+        } else {
+            deviceMemoryTokensR12.at(fieldIdx) = token;
+        }
     }
 
     delete[] downscaledField;
@@ -562,25 +640,53 @@ void HEBChart::computeCorrelationsSamplingCpu(
     std::vector<VolumeData::HostCacheEntry> fieldEntries;
     std::vector<const float*> fields;
     for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
-        VolumeData::HostCacheEntry fieldEntry = getFieldEntryCpu(fieldData->selectedScalarFieldName, fieldIdx);
+        VolumeData::HostCacheEntry fieldEntry = getFieldEntryCpu(fieldData->selectedScalarFieldName1, fieldIdx);
         const float *field = fieldEntry->data<float>();
         fieldEntries.push_back(fieldEntry);
         fields.push_back(field);
         if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
-            auto [minVal, maxVal] = getMinMaxScalarFieldValue(fieldData->selectedScalarFieldName, fieldIdx);
+            auto [minVal, maxVal] = getMinMaxScalarFieldValue(fieldData->selectedScalarFieldName1, fieldIdx);
             minFieldVal = std::min(minFieldVal, minVal);
             maxFieldVal = std::max(maxFieldVal, maxVal);
         }
     }
 
-    if (samplingMethodType == SamplingMethodType::BAYESIAN_OPTIMIZATION) {
-        correlationSamplingExecuteCpuBayesian(fieldData, miFieldEntries, fields, minFieldVal, maxFieldVal);
+    float minFieldVal2 = std::numeric_limits<float>::max();
+    float maxFieldVal2 = std::numeric_limits<float>::lowest();
+    std::vector<VolumeData::HostCacheEntry> fieldEntries2;
+    std::vector<const float*> fields2;
+    if (fieldData->useTwoFields) {
+        for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
+            VolumeData::HostCacheEntry fieldEntry2 = getFieldEntryCpu(fieldData->selectedScalarFieldName2, fieldIdx);
+            const float *field2 = fieldEntry2->data<float>();
+            fieldEntries2.push_back(fieldEntry2);
+            fields2.push_back(field2);
+            if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
+                auto [minVal2, maxVal2] = getMinMaxScalarFieldValue(fieldData->selectedScalarFieldName2, fieldIdx);
+                minFieldVal2 = std::min(minFieldVal2, minVal2);
+                maxFieldVal2 = std::max(maxFieldVal2, maxVal2);
+            }
+        }
     } else {
-        correlationSamplingExecuteCpuDefault(fieldData, miFieldEntries, fields, minFieldVal, maxFieldVal);
+        minFieldVal2 = minFieldVal;
+        maxFieldVal2 = maxFieldVal;
+        fieldEntries2 = fieldEntries;
+        fields2 = fields;
+    }
+
+    if (samplingMethodType == SamplingMethodType::BAYESIAN_OPTIMIZATION) {
+        correlationSamplingExecuteCpuBayesian(
+                fieldData, miFieldEntries, fields, minFieldVal, maxFieldVal, fields2, minFieldVal2, maxFieldVal2);
+    } else {
+        correlationSamplingExecuteCpuDefault(
+                fieldData, miFieldEntries, fields, minFieldVal, maxFieldVal, fields2, minFieldVal2, maxFieldVal2);
     }
 }
 
-void HEBChart::correlationSamplingExecuteCpuDefault(HEBChartFieldData* fieldData, std::vector<MIFieldEntry>& miFieldEntries, const std::vector<const float*>& fields, float minFieldVal, float maxFieldVal){
+void HEBChart::correlationSamplingExecuteCpuDefault(
+        HEBChartFieldData* fieldData, std::vector<MIFieldEntry>& miFieldEntries,
+        const std::vector<const float*>& fields, float minFieldVal, float maxFieldVal,
+        const std::vector<const float*>& fields2, float minFieldVal2, float maxFieldVal2) {
     const int cs = getCorrelationMemberCount();
     const int numPoints0 = xsd0 * ysd0 * zsd0;
     const int numPoints1 = xsd1 * ysd1 * zsd1;
@@ -604,8 +710,8 @@ void HEBChart::correlationSamplingExecuteCpuDefault(HEBChartFieldData* fieldData
 #else
     miFieldEntries.reserve(numPairsDownsampled);
 #if _OPENMP >= 201107
-#pragma omp parallel default(none) shared(miFieldEntries, numPoints0, numPoints1, cs, k, numBins) \
-    shared(numPairsDownsampled, minFieldVal, maxFieldVal, fields, numSamples, samples)
+    #pragma omp parallel default(none) shared(miFieldEntries, numPoints0, numPoints1, cs, k, numBins) \
+    shared(numPairsDownsampled, minFieldVal, maxFieldVal, fields, minFieldVal2, maxFieldVal2, fields2, numSamples, samples)
 #endif
     {
         const CorrelationMeasureType cmt = correlationMeasureType;
@@ -613,7 +719,7 @@ void HEBChart::correlationSamplingExecuteCpuDefault(HEBChartFieldData* fieldData
         CORRELATION_CACHE;
 
 #if _OPENMP >= 201107
-#pragma omp for schedule(dynamic)
+        #pragma omp for schedule(dynamic)
 #endif
         for (int m = 0; m < numPairsDownsampled; m++) {
 #endif
@@ -656,7 +762,7 @@ void HEBChart::correlationSamplingExecuteCpuDefault(HEBChartFieldData* fieldData
                     bool isNan = false;
                     for (int c = 0; c < cs; c++) {
                         X[c] = fields.at(c)[idxi];
-                        Y[c] = fields.at(c)[idxj];
+                        Y[c] = fields2.at(c)[idxj];
                         if (std::isnan(X[c]) || std::isnan(Y[c])) {
                             isNan = true;
                             break;
@@ -679,7 +785,7 @@ void HEBChart::correlationSamplingExecuteCpuDefault(HEBChartFieldData* fieldData
                     } else if (cmt == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
                         for (int c = 0; c < cs; c++) {
                             X[c] = (X[c] - minFieldVal) / (maxFieldVal - minFieldVal);
-                            Y[c] = (Y[c] - minFieldVal) / (maxFieldVal - minFieldVal);
+                            Y[c] = (Y[c] - minFieldVal2) / (maxFieldVal2 - minFieldVal2);
                         }
                         correlationValue = computeMutualInformationBinned<double>(
                             X.data(), Y.data(), numBins, cs, histogram0.data(), histogram1.data(), histogram2d.data());
@@ -728,7 +834,8 @@ void HEBChart::correlationSamplingExecuteCpuDefault(HEBChartFieldData* fieldData
 
 void HEBChart::correlationSamplingExecuteCpuBayesian(
         HEBChartFieldData *fieldData, std::vector<MIFieldEntry> &miFieldEntries,
-        const std::vector<const float*> &fields, float minFieldVal, float maxFieldVal) {
+        const std::vector<const float*> &fields, float minFieldVal, float maxFieldVal,
+        const std::vector<const float*>& fields2, float minFieldVal2, float maxFieldVal2) {
     const int cs = getCorrelationMemberCount();
     const int numPoints0 = xsd0 * ysd0 * zsd0;
     const int numPoints1 = xsd1 * ysd1 * zsd1;
@@ -782,19 +889,21 @@ void HEBChart::correlationSamplingExecuteCpuBayesian(
             BayOpt::Params::opt_nloptnograd::set_iterations(numBOIterations);
             switch (correlationType) {
             case CorrelationMeasureType::PEARSON:
-                optimizer.optimize(BayOpt::Eval<BayOpt::PearsonFunctor>{fields, region_min, region_max, cs, xs, ys, BayOpt::PearsonFunctor()});
+                optimizer.optimize(BayOpt::Eval<BayOpt::PearsonFunctor>{fields, fields2, region_min, region_max, cs, xs, ys, BayOpt::PearsonFunctor()});
                 break;
             case CorrelationMeasureType::SPEARMAN:
-                optimizer.optimize(BayOpt::Eval<BayOpt::SpearmanFunctor>{fields, region_min, region_max, cs, xs, ys});
+                optimizer.optimize(BayOpt::Eval<BayOpt::SpearmanFunctor>{fields, fields2, region_min, region_max, cs, xs, ys});
                 break;
             case CorrelationMeasureType::KENDALL:
-                optimizer.optimize(BayOpt::Eval<BayOpt::KendallFunctor>{fields, region_min, region_max, cs, xs, ys});
+                optimizer.optimize(BayOpt::Eval<BayOpt::KendallFunctor>{fields, fields2, region_min, region_max, cs, xs, ys});
                 break;
             case CorrelationMeasureType::MUTUAL_INFORMATION_BINNED:
-                optimizer.optimize(BayOpt::Eval<BayOpt::MutualBinnedFunctor>{fields, region_min, region_max, cs, xs, ys, BayOpt::MutualBinnedFunctor{minFieldVal, maxFieldVal, numBins}});
+                optimizer.optimize(BayOpt::Eval<BayOpt::MutualBinnedFunctor>{
+                    fields, fields2, region_min, region_max, cs, xs, ys,
+                    BayOpt::MutualBinnedFunctor{minFieldVal, maxFieldVal, minFieldVal2, maxFieldVal2, numBins}});
                 break;
             case CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV:
-                optimizer.optimize(BayOpt::Eval<BayOpt::MutualFunctor>{fields, region_min, region_max, cs, xs, ys, {mutualInformationK}});
+                optimizer.optimize(BayOpt::Eval<BayOpt::MutualFunctor>{fields, fields2, region_min, region_max, cs, xs, ys, {mutualInformationK}});
                 break;
             default:
                 assert(false && "Unimplemented Correlation measure type");
@@ -838,6 +947,14 @@ std::shared_ptr<HEBChartFieldCache> HEBChart::getFieldCache(HEBChartFieldData* f
     } else {
         fieldCache->fieldBuffers.reserve(cs);
     }
+    fieldCache->useTwoFields = fieldData->useTwoFields;
+    if (fieldData->useTwoFields) {
+        if (useImageArray) {
+            fieldCache->fieldImageViews2.reserve(cs);
+        } else {
+            fieldCache->fieldBuffers2.reserve(cs);
+        }
+    }
 
     if (useMeanFields) {
         fieldData->createFieldCache(
@@ -858,21 +975,50 @@ std::shared_ptr<HEBChartFieldCache> HEBChart::getFieldCache(HEBChartFieldData* f
                                 VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, computeRenderer->getVkCommandBuffer());
                     }
                 }
+
+                if (fieldData->useTwoFields) {
+                    auto& fieldImageView2 = fieldData->fieldImageViews2.at(fieldIdx);
+                    fieldCache->fieldImageViews2.push_back(fieldImageView2);
+                    if (fieldImageView2->getImage()->getVkImageLayout() != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+                        fieldImageView2->getImage()->transitionImageLayout(
+                                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, computeRenderer->getVkCommandBuffer());
+                    }
+                    if (!regionsEqual) {
+                        auto& fieldImageViewR12 = fieldData->fieldImageViewsR12.at(fieldIdx);
+                        fieldCache->fieldImageViewsR12.push_back(fieldImageViewR12);
+                        if (fieldImageViewR12->getImage()->getVkImageLayout() != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+                            fieldImageViewR12->getImage()->transitionImageLayout(
+                                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, computeRenderer->getVkCommandBuffer());
+                        }
+                    }
+                }
             } else {
                 fieldCache->fieldBuffers.push_back(fieldData->fieldBuffers.at(fieldIdx));
                 if (!regionsEqual) {
                     fieldCache->fieldBuffersR1.push_back(fieldData->fieldBuffersR1.at(fieldIdx));
+                }
+
+                if (fieldData->useTwoFields) {
+                    fieldCache->fieldBuffers2.push_back(fieldData->fieldBuffers2.at(fieldIdx));
+                    if (!regionsEqual) {
+                        fieldCache->fieldBuffersR12.push_back(fieldData->fieldBuffersR12.at(fieldIdx));
+                    }
                 }
             }
         }
         if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
             fieldCache->minFieldVal = fieldData->minFieldVal;
             fieldCache->maxFieldVal = fieldData->maxFieldVal;
+
+            if (fieldData->useTwoFields) {
+                fieldCache->minFieldVal2 = fieldData->minFieldVal2;
+                fieldCache->maxFieldVal2 = fieldData->maxFieldVal2;
+            }
         }
     } else {
         for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
             VolumeData::DeviceCacheEntry fieldEntry = getFieldEntryDevice(
-                    fieldData->selectedScalarFieldName, fieldIdx, useImageArray);
+                    fieldData->selectedScalarFieldName1, fieldIdx, useImageArray);
             fieldCache->fieldEntries.push_back(fieldEntry);
             if (useImageArray) {
                 fieldCache->fieldImageViews.push_back(fieldEntry->getVulkanImageView());
@@ -884,9 +1030,29 @@ std::shared_ptr<HEBChartFieldCache> HEBChart::getFieldCache(HEBChartFieldData* f
                 fieldCache->fieldBuffers.push_back(fieldEntry->getVulkanBuffer());
             }
             if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
-                auto [minVal, maxVal] = getMinMaxScalarFieldValue(fieldData->selectedScalarFieldName, fieldIdx);
+                auto [minVal, maxVal] = getMinMaxScalarFieldValue(fieldData->selectedScalarFieldName1, fieldIdx);
                 fieldCache->minFieldVal = std::min(fieldCache->minFieldVal, minVal);
                 fieldCache->maxFieldVal = std::max(fieldCache->maxFieldVal, maxVal);
+            }
+
+            if (fieldData->useTwoFields) {
+                VolumeData::DeviceCacheEntry fieldEntry2 = getFieldEntryDevice(
+                        fieldData->selectedScalarFieldName2, fieldIdx, useImageArray);
+                fieldCache->fieldEntries2.push_back(fieldEntry2);
+                if (useImageArray) {
+                    fieldCache->fieldImageViews2.push_back(fieldEntry2->getVulkanImageView());
+                    if (fieldEntry2->getVulkanImage()->getVkImageLayout() != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+                        fieldEntry2->getVulkanImage()->transitionImageLayout(
+                                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, computeRenderer->getVkCommandBuffer());
+                    }
+                } else {
+                    fieldCache->fieldBuffers2.push_back(fieldEntry2->getVulkanBuffer());
+                }
+                if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
+                    auto [minVal2, maxVal2] = getMinMaxScalarFieldValue(fieldData->selectedScalarFieldName2, fieldIdx);
+                    fieldCache->minFieldVal2 = std::min(fieldCache->minFieldVal2, minVal2);
+                    fieldCache->maxFieldVal2 = std::max(fieldCache->maxFieldVal2, maxVal2);
+                }
             }
         }
     }

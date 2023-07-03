@@ -770,8 +770,8 @@ FieldAccess VolumeData::createFieldAccessStruct(
 bool VolumeData::getScalarFieldSupportsBufferMode(int scalarFieldIdx) {
     const auto& scalarFieldNames = getFieldNames(FieldType::SCALAR);
     const auto& scalarFieldNamesBase = getFieldNamesBase(FieldType::SCALAR);
-    const std::string& fieldName = scalarFieldNames.at(scalarFieldIdx);
-    if (scalarFieldIdx >= int(scalarFieldNamesBase.size())) {
+    if (scalarFieldIdx < int(scalarFieldNames.size()) && scalarFieldIdx >= int(scalarFieldNamesBase.size())) {
+        const std::string& fieldName = scalarFieldNames.at(scalarFieldIdx);
         auto itCalc = calculatorsDevice.find(fieldName);
         return itCalc != calculatorsDevice.end();
     }

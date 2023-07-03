@@ -138,7 +138,8 @@ inline int64_t pr(double x){
 
 template<typename Functor>
 struct Eval{
-    const std::vector<const float *>& d;
+    const std::vector<const float *>& d1;
+    const std::vector<const float *>& d2;
     const std::array<int, 6>&       bounds_min;
     const std::array<int, 6>&       bounds_max;
     const int                       num_members, xs, ys;
@@ -167,9 +168,9 @@ struct Eval{
         int64_t lin_pos_a = IDXS(dims[0], dims[1], dims[2]);
         int64_t lin_pos_b = IDXS(dims[3], dims[4], dims[5]);
         for(int i: i_range(num_members))
-            a[i] = d.at(i)[lin_pos_a];
+            a[i] = d1.at(i)[lin_pos_a];
         for(int i: i_range(num_members))
-            b[i] = d.at(i)[lin_pos_b];
+            b[i] = d2.at(i)[lin_pos_b];
 
         auto middle = std::chrono::system_clock::now();
         
@@ -224,7 +225,8 @@ struct KendallFunctor{
     }
 };
 struct MutualBinnedFunctor{
-    const float& minFieldVal, maxFieldVal;
+    const float& minFieldVal1, maxFieldVal1;
+    const float& minFieldVal2, maxFieldVal2;
     const int&   numBins;
     mutable std::vector<double> histogram0, histogram1, histogram2d;
     float operator()(float* a, float* b, int num_members) const {
@@ -232,8 +234,8 @@ struct MutualBinnedFunctor{
         histogram1.reserve(numBins);
         histogram2d.reserve(numBins * numBins);
         for (int c = 0; c < num_members; c++) {
-            a[c] = (a[c] - minFieldVal) / (maxFieldVal - minFieldVal);
-            b[c] = (b[c] - minFieldVal) / (maxFieldVal - minFieldVal);
+            a[c] = (a[c] - minFieldVal1) / (maxFieldVal1 - minFieldVal1);
+            b[c] = (b[c] - minFieldVal2) / (maxFieldVal2 - minFieldVal2);
         }
         return computeMutualInformationBinned<double>(a, b, numBins, num_members, histogram0.data(), histogram1.data(), histogram2d.data());
     }

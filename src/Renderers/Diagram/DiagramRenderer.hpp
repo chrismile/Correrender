@@ -88,7 +88,7 @@ private:
     void updateScalarFieldComboValue();
     void recreateDiagramSwapchain(int diagramIdx = -1);
     void resetSelections(int idx = 0);
-    std::pair<float, float> computeGlobalStdDevRange(int fieldIdx);
+    std::pair<float, float> computeGlobalStdDevRange(int fieldIdx, int varNum);
     VolumeDataPtr volumeData;
     void onCorrelationMemberCountChanged();
     int cachedMemberCount = 0;
@@ -104,6 +104,9 @@ private:
 
     // UI renderer settings.
     int getCorrelationMemberCount();
+    std::vector<std::string> availableFieldNames;
+    int numFieldsBase = 0;
+
     std::vector<bool> scalarFieldSelectionArray;
     std::string scalarFieldComboValue;
     std::vector<DiagramSelectedFieldData> selectedScalarFields;
@@ -116,7 +119,7 @@ private:
     int numBins = 80; ///< For CorrelationMeasureType::MUTUAL_INFORMATION_BINNED.
     int k = 3; ///< For CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV.
     int kMax = 20; ///< For CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV.
-    SamplingMethodType samplingMethodType = SamplingMethodType::MEAN;
+    SamplingMethodType samplingMethodType = SamplingMethodType::QUASIRANDOM_PLASTIC;
     int numSamples = 100;
     int numInitSamples = 20;
     int numBOIterations = 100;

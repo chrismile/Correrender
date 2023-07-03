@@ -116,7 +116,7 @@ struct HEBChartFieldData {
             VolumeData* _volumeData, bool regionsEqual, GridRegion r0, GridRegion r1, int mdfx, int mdfy, int mdfz,
             bool isEnsembleMode, CorrelationDataMode dataMode, bool useBufferTiling);
     void clearMemoryTokens();
-    void computeDownscaledFields(int idx, int fieldIdx);
+    void computeDownscaledFields(int idx, int varNum, int fieldIdx);
     int getCorrelationMemberCount();
     HostCacheEntry getFieldEntryCpu(const std::string& fieldName, int fieldIdx);
     std::pair<float, float> getMinMaxScalarFieldValue(const std::string& fieldName, int fieldIdx);
@@ -137,6 +137,22 @@ struct HEBChartFieldData {
     std::vector<sgl::vk::ImageViewPtr> fieldImageViewsR1;
     std::vector<sgl::vk::BufferPtr> fieldBuffersR1;
     std::vector<AuxiliaryMemoryToken> deviceMemoryTokensR1;
+
+    // For comparing two different fields.
+    bool useTwoFields = false;
+    int selectedFieldIdx1 = 0, selectedFieldIdx2 = 0;
+    std::string selectedScalarFieldName1, selectedScalarFieldName2;
+    std::vector<float> leafStdDevArray2;
+    float minStdDev2 = std::numeric_limits<float>::max(), maxStdDev2 = std::numeric_limits<float>::lowest();
+    // Data.
+    float minFieldVal2 = std::numeric_limits<float>::max(), maxFieldVal2 = std::numeric_limits<float>::lowest();
+    std::vector<sgl::vk::ImageViewPtr> fieldImageViews2;
+    std::vector<sgl::vk::BufferPtr> fieldBuffers2;
+    std::vector<AuxiliaryMemoryToken> deviceMemoryTokens2;
+    // Optional, if separate regions and downscaled fields are used.
+    std::vector<sgl::vk::ImageViewPtr> fieldImageViewsR12;
+    std::vector<sgl::vk::BufferPtr> fieldBuffersR12;
+    std::vector<AuxiliaryMemoryToken> deviceMemoryTokensR12;
 };
 typedef std::shared_ptr<HEBChartFieldData> HEBChartFieldDataPtr;
 
@@ -145,14 +161,25 @@ struct CorrelationRequestData {
 };
 
 struct HEBChartFieldCache {
-    float minFieldVal;
-    float maxFieldVal;
+    float minFieldVal = std::numeric_limits<float>::max();
+    float maxFieldVal = std::numeric_limits<float>::lowest();
     std::vector<VolumeData::DeviceCacheEntry> fieldEntries;
     std::vector<sgl::vk::ImageViewPtr> fieldImageViews;
     std::vector<sgl::vk::BufferPtr> fieldBuffers;
     // Optional, if separate regions and downscaled fields are used.
     std::vector<sgl::vk::ImageViewPtr> fieldImageViewsR1;
     std::vector<sgl::vk::BufferPtr> fieldBuffersR1;
+
+    // For comparing two different fields.
+    bool useTwoFields = false;
+    // Data.
+    float minFieldVal2 = std::numeric_limits<float>::max(), maxFieldVal2 = std::numeric_limits<float>::lowest();
+    std::vector<VolumeData::DeviceCacheEntry> fieldEntries2;
+    std::vector<sgl::vk::ImageViewPtr> fieldImageViews2;
+    std::vector<sgl::vk::BufferPtr> fieldBuffers2;
+    // Optional, if separate regions and downscaled fields are used.
+    std::vector<sgl::vk::ImageViewPtr> fieldImageViewsR12;
+    std::vector<sgl::vk::BufferPtr> fieldBuffersR12;
 };
 
 /**
@@ -247,9 +274,9 @@ public:
     [[nodiscard]] inline bool getIsEnsembleMode() const { return isEnsembleMode; }
 
     // For computing a global min/max over all diagrams.
-    std::pair<float, float> getLocalStdDevRange(int fieldIdx);
-    void setGlobalStdDevRangeQueryCallback(std::function<std::pair<float, float>(int)> callback);
-    std::pair<float, float> getGlobalStdDevRange(int fieldIdx);
+    std::pair<float, float> getLocalStdDevRange(int fieldIdx, int varNum);
+    void setGlobalStdDevRangeQueryCallback(std::function<std::pair<float, float>(int, int)> callback);
+    std::pair<float, float> getGlobalStdDevRange(int fieldIdx, int varNum);
 
     // For performance tests.
     inline void setIsHeadlessMode(bool _isHeadlessMode)  { isHeadlessMode = _isHeadlessMode; }
@@ -271,11 +298,14 @@ protected:
         return true;
     }
     void renderBaseNanoVG() override;
+    void renderRingsNanoVG();
 #ifdef SUPPORT_SKIA
     void renderBaseSkia() override;
+    void renderRingsSkia();
 #endif
 #ifdef SUPPORT_VKVG
     void renderBaseVkvg() override;
+    void renderRingsVkvg();
 #endif
 
     void onUpdatedWindowSize() override;
@@ -319,7 +349,7 @@ private:
     void updateRegion();
     void computeDownscaledField(
             HEBChartFieldData* fieldData, int idx, std::vector<float*>& downscaledFields);
-    void computeDownscaledFieldVariance(HEBChartFieldData* fieldData, int idx);
+    void computeDownscaledFieldVariance(HEBChartFieldData* fieldData, int idx, int varNum);
     OctreeMethod octreeMethod = OctreeMethod::TOP_DOWN_POT;
     int numLinesTotal = 0;
     int MAX_NUM_LINES = 100;
@@ -340,8 +370,14 @@ private:
             const std::vector<float*>& downscaledFields0, const std::vector<float*>& downscaledFields1,
             std::vector<MIFieldEntry>& miFieldEntries);
     void computeCorrelationsSamplingCpu(HEBChartFieldData* fieldData, std::vector<MIFieldEntry>& miFieldEntries);
-    void correlationSamplingExecuteCpuDefault(HEBChartFieldData* fieldData, std::vector<MIFieldEntry>& miFieldEntries, const std::vector<const float*>& fields, float minFieldVal, float maxFieldVal);
-    void correlationSamplingExecuteCpuBayesian(HEBChartFieldData* fieldData, std::vector<MIFieldEntry>& miFieldEntries, const std::vector<const float*>& fields, float minFieldVal, float maxFieldVal);
+    void correlationSamplingExecuteCpuDefault(
+            HEBChartFieldData* fieldData, std::vector<MIFieldEntry>& miFieldEntries,
+            const std::vector<const float*>& fields, float minFieldVal, float maxFieldVal,
+            const std::vector<const float*>& fields2, float minFieldVal2, float maxFieldVal2);
+    void correlationSamplingExecuteCpuBayesian(
+            HEBChartFieldData* fieldData, std::vector<MIFieldEntry>& miFieldEntries,
+            const std::vector<const float*>& fields, float minFieldVal, float maxFieldVal,
+            const std::vector<const float*>& fields2, float minFieldVal2, float maxFieldVal2);
     // GPU code.
     void computeCorrelationsSamplingGpu(HEBChartFieldData* fieldData, std::vector<MIFieldEntry>& miFieldEntries);
     void correlationSamplingExecuteGpuDefault(HEBChartFieldData* fieldData, std::vector<MIFieldEntry>& miFieldEntries);
@@ -386,7 +422,7 @@ private:
     std::vector<int> lineFieldIndexArray;
     float minCorrelationValueGlobal = 0.0f, maxCorrelationValueGlobal = 0.0f;
     DiagramColorMap colorMapVariance = DiagramColorMap::VIRIDIS;
-    std::function<std::pair<float, float>(int)> globalStdDevRangeQueryCallback;
+    std::function<std::pair<float, float>(int, int)> globalStdDevRangeQueryCallback;
     bool useGlobalStdDevRange = true;
     int limitedFieldIdx = -1;
 
@@ -418,6 +454,7 @@ private:
     bool useNeonSelectionColors = true;
 
     // Outer ring.
+    void renderRings();
     bool showRing = true;
     float outerRingOffset = 3.0f;
     float outerRingWidth = 0.0f; //< Determined automatically.

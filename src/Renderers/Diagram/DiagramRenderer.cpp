@@ -74,7 +74,8 @@ void DiagramRenderer::initialize() {
         parentDiagram->setVolumeData(volumeData, true);
         parentDiagram->setIsEnsembleMode(isEnsembleMode);
         parentDiagram->setUseSeparateColorVarianceAndCorrelation(separateColorVarianceAndCorrelation);
-        parentDiagram->setGlobalStdDevRangeQueryCallback([this](int idx) { return computeGlobalStdDevRange(idx); });
+        parentDiagram->setGlobalStdDevRangeQueryCallback(
+                [this](int idx, int varNum) { return computeGlobalStdDevRange(idx, varNum); });
         parentDiagram->setColorMapVariance(colorMapVariance);
         parentDiagram->setCorrelationMeasureType(correlationMeasureType);
         parentDiagram->setUseAbsoluteCorrelationMeasure(useAbsoluteCorrelationMeasure);
@@ -141,6 +142,15 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
         isEnsembleMode = true;
     }
 
+    const std::vector<std::string>& fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
+    numFieldsBase = int(fieldNames.size());
+    availableFieldNames = volumeData->getFieldNames(FieldType::SCALAR);
+    for (size_t i = 0; i < fieldNames.size(); i++) {
+        for (size_t j = i + 1; j < fieldNames.size(); j++) {
+            availableFieldNames.push_back(fieldNames.at(i) + "/" + fieldNames.at(j));
+        }
+    }
+
     if (isNewData) {
         reRenderTriggeredByDiagram = true;
         int xs = volumeData->getGridSizeX();
@@ -174,14 +184,13 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
         }
     }
 
-    const std::vector<std::string>& fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
     parentDiagram->setVolumeData(volumeData, isNewData);
     if (isNewData) {
         selectedScalarFields.clear();
         int standardFieldIdx = volumeData->getStandardScalarFieldIdx();
         selectedScalarFields.emplace_back(standardFieldIdx, fieldNames.at(standardFieldIdx), DiagramColorMap::WISTIA);
         scalarFieldSelectionArray.clear();
-        scalarFieldSelectionArray.resize(fieldNames.size());
+        scalarFieldSelectionArray.resize(availableFieldNames.size());
         scalarFieldSelectionArray.at(standardFieldIdx) = true;
         scalarFieldComboValue = fieldNames.at(standardFieldIdx);
         volumeData->acquireScalarField(this, standardFieldIdx);
@@ -192,7 +201,8 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
             parentDiagram->addScalarField(selectedScalarField.first, selectedScalarField.second);
             parentDiagram->setColorMap(selectedFieldIdx, selectedScalarField.third);
         }
-        parentDiagram->setGlobalStdDevRangeQueryCallback([this](int idx) { return computeGlobalStdDevRange(idx); });
+        parentDiagram->setGlobalStdDevRangeQueryCallback(
+                [this](int idx, int varNum) { return computeGlobalStdDevRange(idx, varNum); });
         parentDiagram->setColorMapVariance(colorMapVariance);
         parentDiagram->setIsEnsembleMode(isEnsembleMode);
         parentDiagram->setCorrelationMeasureType(correlationMeasureType);
@@ -232,8 +242,8 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
             auto& diagram = diagrams.at(i);
             diagram->setVolumeData(volumeData, isNewData);
         }
-        if (fieldNames.size() > scalarFieldSelectionArray.size()) {
-            scalarFieldSelectionArray.resize(fieldNames.size());
+        if (availableFieldNames.size() > scalarFieldSelectionArray.size()) {
+            scalarFieldSelectionArray.resize(availableFieldNames.size());
         }
     }
 
@@ -244,7 +254,7 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
     updateScalarFieldComboValue();
     for (int selectedFieldIdx = 0; selectedFieldIdx < int(selectedScalarFields.size()); selectedFieldIdx++) {
         auto& selectedScalarField = selectedScalarFields.at(selectedFieldIdx);
-        selectedScalarField.second = fieldNames.at(selectedScalarField.first);
+        selectedScalarField.second = availableFieldNames.at(selectedScalarField.first);
     }
 }
 
@@ -376,7 +386,8 @@ void DiagramRenderer::resetSelections(int idx) {
                 diagram->addScalarField(selectedScalarField.first, selectedScalarField.second);
                 diagram->setColorMap(selectedFieldIdx, selectedScalarField.third);
             }
-            diagram->setGlobalStdDevRangeQueryCallback([this](int idx) { return computeGlobalStdDevRange(idx); });
+            diagram->setGlobalStdDevRangeQueryCallback(
+                    [this](int idx, int varNum) { return computeGlobalStdDevRange(idx, varNum); });
             diagram->setColorMapVariance(colorMapVariance);
             diagram->setIsEnsembleMode(isEnsembleMode);
             diagram->setCorrelationMeasureType(correlationMeasureType);
@@ -416,11 +427,11 @@ void DiagramRenderer::resetSelections(int idx) {
     }
 }
 
-std::pair<float, float> DiagramRenderer::computeGlobalStdDevRange(int fieldIdx) {
-    std::pair<float, float> minMaxPair = parentDiagram->getLocalStdDevRange(fieldIdx);
+std::pair<float, float> DiagramRenderer::computeGlobalStdDevRange(int fieldIdx, int varNum) {
+    std::pair<float, float> minMaxPair = parentDiagram->getLocalStdDevRange(fieldIdx, varNum);
     for (size_t i = 1; i < diagrams.size(); i++) {
         auto diagram = diagrams.at(i);
-        auto newMinMax = diagram->getLocalStdDevRange(fieldIdx);
+        auto newMinMax = diagram->getLocalStdDevRange(fieldIdx, varNum);
         if (newMinMax.first < minMaxPair.first) {
             newMinMax.first = newMinMax.first;
         }
@@ -782,11 +793,10 @@ void DiagramRenderer::removeViewImpl(uint32_t viewIdx) {
 
 void DiagramRenderer::updateScalarFieldComboValue() {
     std::vector<std::string> comboSelVec(0);
-    const std::vector<std::string>& fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
-    for (size_t fieldIdx = 0; fieldIdx < fieldNames.size(); fieldIdx++) {
+    for (size_t fieldIdx = 0; fieldIdx < availableFieldNames.size(); fieldIdx++) {
         if (scalarFieldSelectionArray.at(fieldIdx)) {
             ImGui::SetItemDefaultFocus();
-            comboSelVec.push_back(fieldNames.at(fieldIdx));
+            comboSelVec.push_back(availableFieldNames.at(fieldIdx));
         }
     }
     scalarFieldComboValue = "";
@@ -947,9 +957,8 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
     if (volumeData) {
         if (propertyEditor.addBeginCombo(
                 "Scalar Fields", scalarFieldComboValue, ImGuiComboFlags_NoArrowButton)) {
-            const std::vector<std::string>& fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
-            for (size_t fieldIdx = 0; fieldIdx < fieldNames.size(); fieldIdx++) {
-                std::string text = fieldNames.at(fieldIdx);
+            for (size_t fieldIdx = 0; fieldIdx < availableFieldNames.size(); fieldIdx++) {
+                std::string text = availableFieldNames.at(fieldIdx);
                 bool useField = scalarFieldSelectionArray.at(fieldIdx);
                 if (ImGui::Selectable(
                         text.c_str(), &useField, ImGuiSelectableFlags_::ImGuiSelectableFlags_DontClosePopups)) {
@@ -1427,13 +1436,12 @@ void DiagramRenderer::setSettings(const SettingsMap& settings) {
         }
         selectedScalarFields.clear();
 
-        const std::vector<std::string>& fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
         for (size_t fieldIdx = 0; fieldIdx < scalarFieldSelectionString.size(); fieldIdx++) {
             bool useField = scalarFieldSelectionString.at(fieldIdx) != '0';
             scalarFieldSelectionArray.at(fieldIdx) = false;
             if (useField) {
                 scalarFieldSelectionArray.at(fieldIdx) = true;
-                std::string text = fieldNames.at(fieldIdx);
+                std::string text = availableFieldNames.at(fieldIdx);
                 for (auto& diagram : diagrams) {
                     diagram->addScalarField(int(fieldIdx), text);
                 }

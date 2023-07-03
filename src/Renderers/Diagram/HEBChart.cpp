@@ -127,6 +127,31 @@ void HEBChart::addScalarField(int _selectedFieldIdx, const std::string& _scalarF
     fieldData->separateColorVarianceAndCorrelation = separateColorVarianceAndCorrelation;
     fieldData->setColorMapVariance(colorMapVariance);
 
+    const std::vector<std::string>& fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
+    if (fieldData->selectedFieldIdx >= int(fieldNames.size())) {
+        uint32_t m = uint32_t(fieldData->selectedFieldIdx) - uint32_t(fieldNames.size());
+        uint32_t mp = 0;
+        for (size_t i = 0; i < fieldNames.size(); i++) {
+            for (size_t j = i + 1; j < fieldNames.size(); j++) {
+                if (m == mp) {
+                    fieldData->selectedFieldIdx1 = int(i);
+                    fieldData->selectedFieldIdx2 = int(j);
+                    break;
+                }
+                mp++;
+            }
+            if (m == mp) {
+                break;
+            }
+        }
+        fieldData->selectedScalarFieldName1 = fieldNames.at(fieldData->selectedFieldIdx1);
+        fieldData->selectedScalarFieldName2 = fieldNames.at(fieldData->selectedFieldIdx2);
+        fieldData->useTwoFields = true;
+    } else {
+        fieldData->selectedFieldIdx1 = fieldData->selectedFieldIdx;
+        fieldData->selectedScalarFieldName1 = fieldData->selectedScalarFieldName;
+    }
+
     bool foundInsertionPosition = false;
     for (size_t i = 0; i < fieldDataArray.size(); i++) {
         if (fieldDataArray.at(i)->selectedFieldIdx > _selectedFieldIdx) {
@@ -382,7 +407,7 @@ void HEBChart::computeDownscaledFieldPerfTest(std::vector<float*>& downscaledFie
     computeDownscaledField(fieldDataArray.front().get(), 0, downscaledFields);
 }
 
-void HEBChart::computeDownscaledFieldVariance(HEBChartFieldData* fieldData, int idx) {
+void HEBChart::computeDownscaledFieldVariance(HEBChartFieldData* fieldData, int idx, int varNum) {
     // Compute the standard deviation inside the downscaled grids.
     int cs = getCorrelationMemberCount();
     int xsd = idx == 0 ? xsd0 : xsd1;
@@ -391,12 +416,16 @@ void HEBChart::computeDownscaledFieldVariance(HEBChartFieldData* fieldData, int 
     int numPoints = xsd * ysd * zsd;
     GridRegion r = idx == 0 ? r0 : r1;
     auto& pointToNodeIndexMap = idx == 0 ? pointToNodeIndexMap0 : pointToNodeIndexMap1;
-    fieldData->leafStdDevArray.resize(xsd0 * ysd0 * zsd0 + (idx == 0 ? 0 : + xsd1 * ysd1 * zsd1));
+    std::vector<float>& leafStdDevArray = varNum == 0 ? fieldData->leafStdDevArray : fieldData->leafStdDevArray2;
+    leafStdDevArray.resize(xsd0 * ysd0 * zsd0 + (idx == 0 ? 0 : + xsd1 * ysd1 * zsd1));
+
+    const std::string& selectedScalarFieldName =
+            varNum == 0 ? fieldData->selectedScalarFieldName1 : fieldData->selectedScalarFieldName2;
 
     std::vector<VolumeData::HostCacheEntry> fieldEntries;
     std::vector<const float*> fields;
     for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
-        VolumeData::HostCacheEntry fieldEntry = getFieldEntryCpu(fieldData->selectedScalarFieldName, fieldIdx);
+        VolumeData::HostCacheEntry fieldEntry = getFieldEntryCpu(selectedScalarFieldName, fieldIdx);
         const float* field = fieldEntry->data<float>();
         fieldEntries.push_back(fieldEntry);
         fields.push_back(field);
@@ -407,7 +436,8 @@ void HEBChart::computeDownscaledFieldVariance(HEBChartFieldData* fieldData, int 
             for (auto pointIdx = reg.begin(); pointIdx != reg.end(); pointIdx++) {
 #else
 #if _OPENMP >= 200805
-    #pragma omp parallel for default(none) shared(fields, fieldData, pointToNodeIndexMap, xsd, ysd, zsd, r, numPoints, cs)
+    #pragma omp parallel for default(none) shared(leafStdDevArray) \
+    shared(fields, fieldData, pointToNodeIndexMap, xsd, ysd, zsd, r, numPoints, cs)
 #endif
     for (int pointIdx = 0; pointIdx < numPoints; pointIdx++) {
 #endif
@@ -496,9 +526,12 @@ void HEBChart::computeDownscaledFieldVariance(HEBChartFieldData* fieldData, int 
         } else {
             stdDev = std::numeric_limits<float>::quiet_NaN();
         }
+        if (fieldData->useTwoFields) {
+            stdDev *= 0.5f;
+        }
 
         uint32_t leafIdx = pointToNodeIndexMap.at(pointIdx) - leafIdxOffset;
-        fieldData->leafStdDevArray.at(leafIdx) = stdDev;
+        leafStdDevArray.at(leafIdx) = stdDev;
     }
 #ifdef USE_TBB
     });
@@ -677,14 +710,25 @@ void HEBChart::updateData() {
                 regionsEqual, xsd0, ysd0, zsd0, xsd1, ysd1, zsd1);
 
         // Compute the standard deviation inside the downscaled grids.
-        computeDownscaledFieldVariance(fieldData, 0);
+        computeDownscaledFieldVariance(fieldData, 0, 0);
         if (!regionsEqual) {
-            computeDownscaledFieldVariance(fieldData, 1);
+            computeDownscaledFieldVariance(fieldData, 1, 0);
+        }
+        if (fieldData->useTwoFields) {
+            computeDownscaledFieldVariance(fieldData, 0, 1);
+            if (!regionsEqual) {
+                computeDownscaledFieldVariance(fieldData, 1, 1);
+            }
         }
         // Normalize standard deviations for visualization.
         auto [minVal, maxVal] = sgl::reduceFloatArrayMinMax(fieldData->leafStdDevArray);
         fieldData->minStdDev = minVal;
         fieldData->maxStdDev = maxVal;
+        if (fieldData->useTwoFields) {
+            auto [minVal2, maxVal2] = sgl::reduceFloatArrayMinMax(fieldData->leafStdDevArray2);
+            fieldData->minStdDev2 = minVal2;
+            fieldData->maxStdDev2 = maxVal2;
+        }
 
         int maxNumLines = numPoints * MAX_NUM_LINES / 100;
         int numLinesLocal = std::min(maxNumLines, int(miFieldEntries.size()));
