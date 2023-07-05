@@ -55,6 +55,7 @@ struct TestCase {
     // Subsampling of used field.
     bool useMeanField = false;
     int f = 1;
+    std::vector<double> meanPairMaximum;
 };
 
 void runTestCase(
@@ -107,6 +108,38 @@ void runTestCase(
                 testCase.errorLinear += invN * searchValue;
                 testCase.errorAbsolute += invN * searchValue;
             }
+        }
+        testCase.elapsedTimeMicroseconds += invN * statisticsList.elapsedTimeMicroseconds;
+    }
+}
+
+void runTestCaseBlockList(
+        HEBChart* chart, TestCase& testCase, int numRuns,
+        const std::vector<std::pair<uint32_t, uint32_t>>& blockPairs,
+        const std::vector<float*>& downscaledFields) {
+    chart->setSamplingMethodType(testCase.samplingMethodType);
+    chart->setNumSamples(testCase.numSamples);
+    chart->setNumInitSamples(testCase.numInitSamples);
+    chart->setNumBOIterations(testCase.numBOIterations);
+    chart->setNloptAlgorithm(testCase.algorithm);
+    if (testCase.useMeanField && !chart->getForcedUseMeanFields()) {
+        chart->setForcedUseMeanFields(testCase.f, testCase.f, testCase.f);
+    } else if (!testCase.useMeanField && chart->getForcedUseMeanFields()) {
+        chart->disableForcedUseMeanFields();
+    }
+
+    testCase.meanPairMaximum.resize(blockPairs.size(), 0.0);
+    auto invN = 1.0 / double(blockPairs.size() * size_t(numRuns));
+    auto invM = 1.0 / double(size_t(numRuns));
+    for (int runIdx = 0; runIdx < numRuns; runIdx++) {
+        auto statisticsList = chart->computeCorrelationsBlockPairs(blockPairs, downscaledFields, downscaledFields);
+
+        for (size_t i = 0; i < blockPairs.size(); i++) {
+            float searchValue = statisticsList.maximumValues.at(i);
+            testCase.meanPairMaximum.at(i) += invM * searchValue;
+            testCase.errorQuantile += invN * searchValue;
+            testCase.errorLinear += invN * searchValue;
+            testCase.errorAbsolute += invN * searchValue;
         }
         testCase.elapsedTimeMicroseconds += invN * statisticsList.elapsedTimeMicroseconds;
     }
@@ -303,6 +336,7 @@ void runSamplingTests(const std::string& dataSetPath, int testIdx) {
         for (int f = 1; f <= 4; f *= 2) {
             TestCase testCase;
             testCase.samplingMethodType = SamplingMethodType::BAYESIAN_OPTIMIZATION;
+            //testCase.samplingMethodType = SamplingMethodType::QUASIRANDOM_PLASTIC;
             testCase.numSamples = 100;
             testCase.numInitSamples = std::clamp(sgl::iceil(testCase.numSamples, 2), 1, 20);
             testCase.useMeanField = true;
@@ -315,46 +349,81 @@ void runSamplingTests(const std::string& dataSetPath, int testIdx) {
 
     // Run the tests and write the results to a file.
     std::string csvFilename = "Sampling ";
-    if (isSyntheticTestCase) {
-        csvFilename += "Synthetic";
-    } else {
+    if (testIdx == TEST_CASE_DATA_MAX_SUBSAMPLED) {
+        csvFilename += "Mean ";
         csvFilename += CORRELATION_MEASURE_TYPE_NAMES[int(correlationMeasureType)];
+    } else {
+        if (isSyntheticTestCase) {
+            csvFilename += "Synthetic";
+        } else {
+            csvFilename += CORRELATION_MEASURE_TYPE_NAMES[int(correlationMeasureType)];
+        }
     }
     csvFilename += " " + std::to_string(dfx) + "x" + std::to_string(dfy) + "x" + std::to_string(dfz);
     csvFilename += ".csv";
     sgl::CsvWriter file(csvFilename);
-    file.writeRow({ "Sampling Method", "Samples", "Time", "Quantile", "Linear", "Absolute", "Init Samples" });
-    size_t firstMeanIdx = 0;
-    for (size_t testCaseIdx = 0; testCaseIdx < testCases.size(); testCaseIdx++) {
-        TestCase& testCaseAtIdx = testCases.at(testCaseIdx);
-        size_t testCaseIdxReal = testCaseIdx;
-        if (testCaseAtIdx.samplingMethodType == SamplingMethodType::MEAN && testCaseIdx > 0) {
-            testCaseIdxReal = firstMeanIdx;
+
+    if (testIdx == TEST_CASE_DATA_MAX_SUBSAMPLED) {
+        file.writeRow({ "Block Pair Index", "Max f=1", "Max f=2", "Max f=4" });
+        for (size_t testCaseIdx = 0; testCaseIdx < testCases.size(); testCaseIdx++) {
+            TestCase& testCase = testCases.at(testCaseIdx);
+            std::cout << "Test case: " << testCase.testCaseName << std::endl;
+            runTestCaseBlockList(chart, testCase, numRuns, blockPairs, downscaledFields);
         }
 
-        TestCase& testCase = testCases.at(testCaseIdxReal);
-        if (testCase.samplingMethodType == SamplingMethodType::BAYESIAN_OPTIMIZATION && testCase.numSamples > 100) {
-            continue;
+        // Sort arrays from lowest to highest.
+        std::vector<int> permutationArray(blockPairs.size(), 0);
+        std::iota(permutationArray.begin(), permutationArray.end(), 0);
+        auto& baseMeanPairMaximum = testCases.at(0).meanPairMaximum;
+        std::sort(permutationArray.begin(), permutationArray.end(),
+             [&baseMeanPairMaximum](const int& i, const int& j) {
+                 return baseMeanPairMaximum[i] < baseMeanPairMaximum[j];
+             }
+        );
+
+        for (size_t blockPairIdx = 0; blockPairIdx < blockPairs.size(); blockPairIdx++) {
+            file.writeCell(std::to_string(blockPairIdx));
+            for (size_t testCaseIdx = 0; testCaseIdx < testCases.size(); testCaseIdx++) {
+                TestCase& testCase = testCases.at(testCaseIdx);
+                file.writeCell(std::to_string(testCase.meanPairMaximum.at(permutationArray.at(blockPairIdx))));
+            }
+            file.newRow();
         }
-        std::cout << "Test case: " << testCase.testCaseName;
-        std::cout << ", samples: " << std::to_string(testCaseAtIdx.numSamples) << std::endl;
-        if (testCaseIdx == testCaseIdxReal) {
-            runTestCase(chart, testCase, numRuns, blockPairs, allValuesSortedArray, downscaledFields);
+    } else {
+        file.writeRow({ "Sampling Method", "Samples", "Time", "Quantile", "Linear", "Absolute", "Init Samples" });
+        size_t firstMeanIdx = 0;
+        for (size_t testCaseIdx = 0; testCaseIdx < testCases.size(); testCaseIdx++) {
+            TestCase& testCaseAtIdx = testCases.at(testCaseIdx);
+            size_t testCaseIdxReal = testCaseIdx;
+            if (testCaseAtIdx.samplingMethodType == SamplingMethodType::MEAN && testCaseIdx > 0) {
+                testCaseIdxReal = firstMeanIdx;
+            }
+
+            TestCase& testCase = testCases.at(testCaseIdxReal);
+            if (testCase.samplingMethodType == SamplingMethodType::BAYESIAN_OPTIMIZATION && testCase.numSamples > 100) {
+                continue;
+            }
+            std::cout << "Test case: " << testCase.testCaseName;
+            std::cout << ", samples: " << std::to_string(testCaseAtIdx.numSamples) << std::endl;
+            if (testCaseIdx == testCaseIdxReal) {
+                runTestCase(chart, testCase, numRuns, blockPairs, allValuesSortedArray, downscaledFields);
+            }
+            file.writeCell(testCase.testCaseName);
+            file.writeCell(std::to_string(testCaseAtIdx.numSamples));
+            file.writeCell(std::to_string(testCase.elapsedTimeMicroseconds));
+            file.writeCell(std::to_string(testCase.errorQuantile));
+            file.writeCell(std::to_string(testCase.errorLinear));
+            file.writeCell(std::to_string(testCase.errorAbsolute));
+            file.writeCell(std::to_string(testCase.numInitSamples));
+            //if (testCase.samplingMethodType == SamplingMethodType::BAYESIAN_OPTIMIZATION) {
+            //    file.writeCell(NLOPT_ALGORITHM_NAMES_NOGRAD[int(testCase.algorithm)]);
+            //} else {
+            //    file.writeCell("-");
+            //}
+            file.newRow();
         }
-        file.writeCell(testCase.testCaseName);
-        file.writeCell(std::to_string(testCaseAtIdx.numSamples));
-        file.writeCell(std::to_string(testCase.elapsedTimeMicroseconds));
-        file.writeCell(std::to_string(testCase.errorQuantile));
-        file.writeCell(std::to_string(testCase.errorLinear));
-        file.writeCell(std::to_string(testCase.errorAbsolute));
-        file.writeCell(std::to_string(testCase.numInitSamples));
-        //if (testCase.samplingMethodType == SamplingMethodType::BAYESIAN_OPTIMIZATION) {
-        //    file.writeCell(NLOPT_ALGORITHM_NAMES_NOGRAD[int(testCase.algorithm)]);
-        //} else {
-        //    file.writeCell("-");
-        //}
-        file.newRow();
     }
+
     file.close();
 
     if (computeGroundTruth) {

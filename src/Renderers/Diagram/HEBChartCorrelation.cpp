@@ -218,10 +218,16 @@ void HEBChartFieldData::computeDownscaledFields(int idx, int varNum, int fieldId
     const float* field = fieldEntry->data<float>();
     auto* downscaledField = new float[numPoints];
 
+#define DOWNSAMPLING_MAX
+
     for (int zd = 0; zd < zsd; zd++) {
         for (int yd = 0; yd < ysd; yd++) {
             for (int xd = 0; xd < xsd; xd++) {
+#ifdef DOWNSAMPLING_MAX
                 float valueMean = 0.0f;
+#else
+                float valueMean = 0.0f;
+#endif
                 int numValid = 0;
                 for (int zo = 0; zo < dfz; zo++) {
                     for (int yo = 0; yo < dfy; yo++) {
@@ -232,7 +238,13 @@ void HEBChartFieldData::computeDownscaledFields(int idx, int varNum, int fieldId
                             if (x <= r.xmax && y <= r.ymax && z <= r.zmax) {
                                 float val = field[IDXS(x, y, z)];
                                 if (!std::isnan(val)) {
+#ifdef DOWNSAMPLING_MAX
+                                    if (std::abs(val) > std::abs(valueMean)) {
+                                        valueMean = val;
+                                    }
+#else
                                     valueMean += val;
+#endif
                                     numValid++;
                                 }
                             }
@@ -240,7 +252,9 @@ void HEBChartFieldData::computeDownscaledFields(int idx, int varNum, int fieldId
                     }
                 }
                 if (numValid > 0) {
+#ifndef DOWNSAMPLING_MAX
                     valueMean = valueMean / float(numValid);
+#endif
                 } else {
                     valueMean = std::numeric_limits<float>::quiet_NaN();
                 }
