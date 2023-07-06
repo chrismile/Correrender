@@ -39,13 +39,14 @@
 
 #include <Math/Geometry/AABB3.hpp>
 
+#include "Calculators/CorrelationDefines.hpp"
+#include "Calculators/CorrelationMatrix.hpp"
 #include "DiagramColorMap.hpp"
 #include "Region.hpp"
 #include "Octree.hpp"
 #include "Sampling.hpp"
 #include "DiagramButton.hpp"
 #include "DiagramBase.hpp"
-#include "../../Calculators/CorrelationDefines.hpp"
 
 namespace sgl { namespace vk {
 class Fence;
@@ -198,6 +199,7 @@ public:
     void update(float dt) override;
     void updateSizeByParent() override;
     void setVolumeData(VolumeDataPtr& _volumeData, bool isNewData);
+    void setDiagramMode(DiagramMode _diagramMode);
     void setIsFocusView(int focusViewLevel);
     void setRegions(const std::pair<GridRegion, GridRegion>& _rs);
     void clearScalarFields();
@@ -230,7 +232,6 @@ public:
     void setUseNeonSelectionColors(bool _useNeonSelectionColors);
     void setUseGlobalStdDevRange(bool _useGlobalStdDevRange);
     void setShowSelectedRegionsByColor(bool _show);
-    void setUse2DField(bool _use2dField);
     void setUseCorrelationComputationGpu(bool _useGpu);
     void setDataMode(CorrelationDataMode _dataMode);
     void setUseBufferTiling(bool _useBufferTiling);
@@ -300,15 +301,16 @@ protected:
     bool hasData() override {
         return true;
     }
+    void renderCorrelationMatrix();
     void renderBaseNanoVG() override;
-    void renderRingsNanoVG();
+    void renderChordDiagramNanoVG();
 #ifdef SUPPORT_SKIA
     void renderBaseSkia() override;
-    void renderRingsSkia();
+    void renderChordDiagramSkia();
 #endif
 #ifdef SUPPORT_VKVG
     void renderBaseVkvg() override;
-    void renderRingsVkvg();
+    void renderChordDiagramVkvg();
 #endif
 
     void onUpdatedWindowSize() override;
@@ -318,6 +320,7 @@ private:
     bool isFocusView = false;
     bool dataDirty = true;
     bool isHeadlessMode = false;
+    DiagramMode diagramMode = DiagramMode::MATRIX;
 
     int getCorrelationMemberCount();
     HostCacheEntry getFieldEntryCpu(const std::string& fieldName, int fieldIdx);
@@ -338,7 +341,6 @@ private:
     int xsd1 = 0, ysd1 = 0, zsd1 = 0; //< Downscaled grid size.
     GridRegion r0{}, r1{};
     bool regionsEqual = true;
-    bool use2dField = false;
     std::vector<HEBNode> nodesList;
     std::vector<uint32_t> pointToNodeIndexMap0, pointToNodeIndexMap1;
     uint32_t leafIdxOffset = 0, leafIdxOffset1 = 0;
@@ -354,6 +356,14 @@ private:
     void computeDownscaledField(
             HEBChartFieldData* fieldData, int idx, std::vector<float*>& downscaledFields);
     void computeDownscaledFieldVariance(HEBChartFieldData* fieldData, int idx, int varNum);
+    glm::vec2 correlationRange{}, correlationRangeTotal{};
+    glm::ivec2 cellDistanceRange{}, cellDistanceRangeTotal{};
+
+    // Chord diagram data.
+    void updateDataVarChord(
+            HEBChartFieldData* fieldData, const std::vector<MIFieldEntry>& miFieldEntries,
+            HEBChartFieldUpdateData& updateData);
+    void updateDataChord(std::vector<HEBChartFieldUpdateData>& updateDataArray);
     OctreeMethod octreeMethod = OctreeMethod::TOP_DOWN_POT;
     int numLinesTotal = 0;
     int MAX_NUM_LINES = 100;
@@ -361,8 +371,16 @@ private:
     float beta = 0.75f;
     float curveThickness = 1.5f;
     float curveOpacity = 0.4f;
-    glm::vec2 correlationRange{}, correlationRangeTotal{};
-    glm::ivec2 cellDistanceRange{}, cellDistanceRangeTotal{};
+    // Lines (stored separately from field data, as lines should be rendered from lowest to highest value).
+    std::vector<glm::vec2> curvePoints;
+    std::vector<float> correlationValuesArray; ///< per-line values.
+    std::vector<std::pair<int, int>> connectedPointsArray; ///< points connected by lines.
+    std::vector<int> lineFieldIndexArray;
+
+    // Correlation matrix data.
+    void updateDataVarMatrix(
+            HEBChartFieldData* fieldData, const std::vector<MIFieldEntry>& miFieldEntries);
+    std::shared_ptr<CorrelationMatrix> correlationMatrix;
 
     // Correlation sampling.
     void computeCorrelations(
@@ -419,11 +437,6 @@ private:
     // Field data.
     std::pair<float, float> getMinMaxCorrelationValue();
     std::vector<HEBChartFieldDataPtr> fieldDataArray;
-    // Lines (stored separately from field data, as lines should be rendered from lowest to highest value).
-    std::vector<glm::vec2> curvePoints;
-    std::vector<float> correlationValuesArray; ///< per-line values.
-    std::vector<std::pair<int, int>> connectedPointsArray; ///< points connected by lines.
-    std::vector<int> lineFieldIndexArray;
     float minCorrelationValueGlobal = 0.0f, maxCorrelationValueGlobal = 0.0f;
     DiagramColorMap colorMapVariance = DiagramColorMap::VIRIDIS;
     std::function<std::pair<float, float>(int, int)> globalStdDevRangeQueryCallback;

@@ -342,6 +342,7 @@ void buildHebTree(
         }
     } else {
         pointToNodeIndexMap1 = pointToNodeIndexMap0;
+        leafIdxOffset1 = leafIdxOffset0;
     }
 
 

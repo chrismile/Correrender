@@ -59,6 +59,8 @@ DiagramRenderer::~DiagramRenderer() {
     for (auto& selectedScalarField : selectedScalarFields) {
         volumeData->releaseScalarField(this, selectedScalarField.first);
     }
+    parentDiagram = {};
+    diagrams.clear();
 }
 
 void DiagramRenderer::initialize() {
@@ -72,6 +74,7 @@ void DiagramRenderer::initialize() {
     //diagram->setUseEqualArea(true);
     if (volumeData) {
         parentDiagram->setVolumeData(volumeData, true);
+        parentDiagram->setDiagramMode(diagramMode);
         parentDiagram->setIsEnsembleMode(isEnsembleMode);
         parentDiagram->setUseSeparateColorVarianceAndCorrelation(separateColorVarianceAndCorrelation);
         parentDiagram->setGlobalStdDevRangeQueryCallback(
@@ -98,7 +101,6 @@ void DiagramRenderer::initialize() {
         parentDiagram->setUseGlobalStdDevRange(useGlobalStdDevRange);
         parentDiagram->setOctreeMethod(octreeMethod);
         parentDiagram->setColorByValue(colorByValue);
-        parentDiagram->setUse2DField(use2dField);
         parentDiagram->setClearColor(viewManager->getClearColor());
         parentDiagram->setUseCorrelationComputationGpu(useCorrelationComputationGpu);
         parentDiagram->setDataMode(dataMode);
@@ -204,6 +206,7 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
         parentDiagram->setGlobalStdDevRangeQueryCallback(
                 [this](int idx, int varNum) { return computeGlobalStdDevRange(idx, varNum); });
         parentDiagram->setColorMapVariance(colorMapVariance);
+        parentDiagram->setDiagramMode(diagramMode);
         parentDiagram->setIsEnsembleMode(isEnsembleMode);
         parentDiagram->setCorrelationMeasureType(correlationMeasureType);
         parentDiagram->setUseAbsoluteCorrelationMeasure(useAbsoluteCorrelationMeasure);
@@ -226,7 +229,6 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
         parentDiagram->setUseGlobalStdDevRange(useGlobalStdDevRange);
         parentDiagram->setOctreeMethod(octreeMethod);
         parentDiagram->setColorByValue(colorByValue);
-        parentDiagram->setUse2DField(use2dField);
         parentDiagram->setClearColor(viewManager->getClearColor());
         parentDiagram->setUseCorrelationComputationGpu(useCorrelationComputationGpu);
         parentDiagram->setDataMode(dataMode);
@@ -389,6 +391,7 @@ void DiagramRenderer::resetSelections(int idx) {
             diagram->setGlobalStdDevRangeQueryCallback(
                     [this](int idx, int varNum) { return computeGlobalStdDevRange(idx, varNum); });
             diagram->setColorMapVariance(colorMapVariance);
+            diagram->setDiagramMode(diagramMode);
             diagram->setIsEnsembleMode(isEnsembleMode);
             diagram->setCorrelationMeasureType(correlationMeasureType);
             diagram->setUseAbsoluteCorrelationMeasure(useAbsoluteCorrelationMeasure);
@@ -412,7 +415,6 @@ void DiagramRenderer::resetSelections(int idx) {
             diagram->setUseGlobalStdDevRange(useGlobalStdDevRange);
             diagram->setOctreeMethod(octreeMethod);
             diagram->setColorByValue(colorByValue);
-            diagram->setUse2DField(use2dField);
             diagram->setClearColor(viewManager->getClearColor());
             diagram->setUseCorrelationComputationGpu(useCorrelationComputationGpu);
             diagram->setDataMode(dataMode);
@@ -837,6 +839,16 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
     } else {
         renderDiagramViewSelectionGui(propertyEditor, "Diagram View", contextDiagramViewIdx);
         focusDiagramViewIdx = contextDiagramViewIdx;
+    }
+
+    if (propertyEditor.addCombo(
+            "Diagram Type", (int*)&diagramMode, DIAGRAM_MODE_NAMES, IM_ARRAYSIZE(DIAGRAM_MODE_NAMES))) {
+        for (auto& diagram : diagrams) {
+            diagram->setDiagramMode(diagramMode);
+        }
+        dirty = true;
+        reRender = true;
+        reRenderTriggeredByDiagram = true;
     }
 
     if (volumeData->getEnsembleMemberCount() > 1 && volumeData->getTimeStepCount() > 1) {
@@ -1328,14 +1340,6 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         propertyEditor.endNode();
     }
 
-    /*if (propertyEditor.addCheckbox("Use 2D Field", &use2dField)) {
-         for (auto& diagram : diagrams) {
-             diagram->setUse2DField(use2dField);
-         }
-         reRender = true;
-         reRenderTriggeredByDiagram = true;
-     }*/
-
     if (parentDiagram->renderGuiPropertyEditor(propertyEditor)) {
         for (size_t i = 1; i < diagrams.size(); i++) {
             diagrams.at(i)->copyVectorWidgetSettingsFrom(parentDiagram.get());
@@ -1353,6 +1357,18 @@ void DiagramRenderer::setSettings(const SettingsMap& settings) {
     diagramChanged |= settings.getValueOpt("focus_diagram_view", focusDiagramViewIdx);
     if (diagramChanged) {
         recreateDiagramSwapchain();
+    }
+    std::string diagramTypeName;
+    if (settings.getValueOpt("diagram_type", diagramTypeName)) {
+        for (int i = 0; i < IM_ARRAYSIZE(DIAGRAM_MODE_TYPE_IDS); i++) {
+            if (diagramTypeName == DIAGRAM_MODE_TYPE_IDS[i]) {
+                diagramMode = DiagramMode(i);
+                break;
+            }
+        }
+        for (auto& diagram : diagrams) {
+            diagram->setDiagramMode(diagramMode);
+        }
     }
     std::string ensembleModeName;
     if (settings.getValueOpt("correlation_mode", ensembleModeName)) {
@@ -1650,6 +1666,7 @@ void DiagramRenderer::getSettings(SettingsMap& settings) {
 
     settings.addKeyValue("context_diagram_view", contextDiagramViewIdx);
     settings.addKeyValue("focus_diagram_view", focusDiagramViewIdx);
+    settings.addKeyValue("diagram_type", DIAGRAM_MODE_TYPE_IDS[int(diagramMode)]);
     settings.addKeyValue("correlation_mode", CORRELATION_MODE_NAMES[isEnsembleMode ? 0 : 1]);
     settings.addKeyValue("correlation_measure_type", CORRELATION_MEASURE_TYPE_IDS[int(correlationMeasureType)]);
     settings.addKeyValue("use_absolute_correlation_measure", useAbsoluteCorrelationMeasure);

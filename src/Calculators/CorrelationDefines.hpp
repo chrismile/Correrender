@@ -93,4 +93,14 @@ const char* const NETWORK_TYPE_SHORT_NAMES[] = {
         "MINE", "SRN_MINE", "SRN"
 };
 
+enum class DiagramMode {
+    CHORD, MATRIX
+};
+const char* const DIAGRAM_MODE_NAMES[] = {
+        "Chord Diagram", "Correlation Matrix"
+};
+const char* const DIAGRAM_MODE_TYPE_IDS[] = {
+        "chords", "matrix"
+};
+
 #endif //CORRERENDER_CORRELATIONDEFINES_HPP

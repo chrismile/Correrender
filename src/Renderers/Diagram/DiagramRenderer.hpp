@@ -107,6 +107,7 @@ private:
     std::vector<std::string> availableFieldNames;
     int numFieldsBase = 0;
 
+    DiagramMode diagramMode = DiagramMode::MATRIX;
     std::vector<bool> scalarFieldSelectionArray;
     std::string scalarFieldComboValue;
     std::vector<DiagramSelectedFieldData> selectedScalarFields;
@@ -145,7 +146,6 @@ private:
     bool showSelectedRegionsByColor = true;
     bool useNeonSelectionColors = true;
     bool useGlobalStdDevRange = true;
-    bool use2dField = false;
     bool useCorrelationComputationGpu = true;
     CorrelationDataMode dataMode = CorrelationDataMode::BUFFER_ARRAY;
     bool useBufferTiling = true;

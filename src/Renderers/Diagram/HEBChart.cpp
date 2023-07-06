@@ -127,8 +127,17 @@ void HEBChart::addScalarField(int _selectedFieldIdx, const std::string& _scalarF
     fieldData->separateColorVarianceAndCorrelation = separateColorVarianceAndCorrelation;
     fieldData->setColorMapVariance(colorMapVariance);
 
+    std::shared_ptr<HEBChartFieldData> fieldData2;
+    //bool isTwoFieldMode = false;
     const std::vector<std::string>& fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
     if (fieldData->selectedFieldIdx >= int(fieldNames.size())) {
+        /*isTwoFieldMode = true;
+        fieldData2 = std::make_shared<HEBChartFieldData>(this, &desaturateUnselectedRing);
+        fieldData2->selectedFieldIdx = _selectedFieldIdx;
+        fieldData2->selectedScalarFieldName = _scalarFieldName;
+        fieldData2->separateColorVarianceAndCorrelation = separateColorVarianceAndCorrelation;
+        fieldData2->setColorMapVariance(colorMapVariance);*/
+
         uint32_t m = uint32_t(fieldData->selectedFieldIdx) - uint32_t(fieldNames.size());
         uint32_t mp = 0;
         for (size_t i = 0; i < fieldNames.size(); i++) {
@@ -156,12 +165,18 @@ void HEBChart::addScalarField(int _selectedFieldIdx, const std::string& _scalarF
     for (size_t i = 0; i < fieldDataArray.size(); i++) {
         if (fieldDataArray.at(i)->selectedFieldIdx > _selectedFieldIdx) {
             fieldDataArray.insert(fieldDataArray.begin() + ptrdiff_t(i), fieldData);
+            //if (isTwoFieldMode) {
+            //    fieldDataArray.insert(fieldDataArray.begin() + ptrdiff_t(i + 1), fieldData2);
+            //}
             foundInsertionPosition = true;
             break;
         }
     }
     if (!foundInsertionPosition) {
         fieldDataArray.push_back(fieldData);
+        //if (isTwoFieldMode) {
+        //    fieldDataArray.push_back(fieldData2);
+        //}
     }
     computeColorLegendHeight();
     clearFieldDeviceData();
@@ -252,11 +267,6 @@ void HEBChart::setDownscalingFactors(int _dfx, int _dfy, int _dfz) {
     dataDirty = true;
 }
 
-void HEBChart::setUse2DField(bool _use2dField) {
-    use2dField = _use2dField;
-    dataDirty = true;
-}
-
 void HEBChart::setUseCorrelationComputationGpu(bool _useGpu) {
     useCorrelationComputationGpu = _useGpu;
     dataDirty = true;
@@ -339,52 +349,23 @@ void HEBChart::computeDownscaledField(
         const float* field = fieldEntry->data<float>();
         auto* downscaledField = new float[numPoints];
 
-        if (!use2dField) {
-            for (int zd = 0; zd < zsd; zd++) {
-                for (int yd = 0; yd < ysd; yd++) {
-                    for (int xd = 0; xd < xsd; xd++) {
-                        float valueMean = 0.0f;
-                        int numValid = 0;
-                        for (int zo = 0; zo < dfz; zo++) {
-                            for (int yo = 0; yo < dfy; yo++) {
-                                for (int xo = 0; xo < dfx; xo++) {
-                                    int x = r.xoff + xd * dfx + xo;
-                                    int y = r.yoff + yd * dfy + yo;
-                                    int z = r.zoff + zd * dfz + zo;
-                                    if (x <= r.xmax && y <= r.ymax && z <= r.zmax) {
-                                        float val = field[IDXS(x, y, z)];
-                                        if (!std::isnan(val)) {
-                                            valueMean += val;
-                                            numValid++;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        if (numValid > 0) {
-                            valueMean = valueMean / float(numValid);
-                        } else {
-                            valueMean = std::numeric_limits<float>::quiet_NaN();
-                        }
-                        downscaledField[IDXSD(xd, yd, zd)] = valueMean;
-                    }
-                }
-            }
-        } else {
-            int zCenter = zs / 2;
+        for (int zd = 0; zd < zsd; zd++) {
             for (int yd = 0; yd < ysd; yd++) {
                 for (int xd = 0; xd < xsd; xd++) {
                     float valueMean = 0.0f;
                     int numValid = 0;
-                    for (int yo = 0; yo < dfy; yo++) {
-                        for (int xo = 0; xo < dfx; xo++) {
-                            int x = r.xoff + xd * dfx + xo;
-                            int y = r.yoff + yd * dfy + yo;
-                            if (x <= r.xmax && y <= r.ymax) {
-                                float val = field[IDXS(x, y, zCenter)];
-                                if (!std::isnan(val)) {
-                                    valueMean += val;
-                                    numValid++;
+                    for (int zo = 0; zo < dfz; zo++) {
+                        for (int yo = 0; yo < dfy; yo++) {
+                            for (int xo = 0; xo < dfx; xo++) {
+                                int x = r.xoff + xd * dfx + xo;
+                                int y = r.yoff + yd * dfy + yo;
+                                int z = r.zoff + zd * dfz + zo;
+                                if (x <= r.xmax && y <= r.ymax && z <= r.zmax) {
+                                    float val = field[IDXS(x, y, z)];
+                                    if (!std::isnan(val)) {
+                                        valueMean += val;
+                                        numValid++;
+                                    }
                                 }
                             }
                         }
@@ -394,7 +375,7 @@ void HEBChart::computeDownscaledField(
                     } else {
                         valueMean = std::numeric_limits<float>::quiet_NaN();
                     }
-                    downscaledField[IDXSD(xd, yd, 0)] = valueMean;
+                    downscaledField[IDXSD(xd, yd, zd)] = valueMean;
                 }
             }
         }
@@ -447,54 +428,18 @@ void HEBChart::computeDownscaledFieldVariance(HEBChartFieldData* fieldData, int 
         int yd = (pointIdx / xsd) % ysd;
         int zd = pointIdx / (xsd * ysd);
 
-        if (!use2dField) {
-            for (int zo = 0; zo < dfz; zo++) {
-                for (int yo = 0; yo < dfy; yo++) {
-                    for (int xo = 0; xo < dfx; xo++) {
-                        int x = r.xoff + xd * dfx + xo;
-                        int y = r.yoff + yd * dfy + yo;
-                        int z = r.zoff + zd * dfz + zo;
-                        if (x <= r.xmax && y <= r.ymax && z <= r.zmax) {
-                            int numValid = 0;
-                            float fieldMean = 0.0f;
-                            for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
-                                const float* field = fields.at(fieldIdx);
-                                float val = field[IDXS(x, y, z)];
-                                if (!std::isnan(val)) {
-                                    fieldMean += val;
-                                    numValid++;
-                                }
-                            }
-                            if (numValid > 1) {
-                                fieldMean = fieldMean / float(numValid);
-                                float fieldVarianceSum = 0.0f;
-                                for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
-                                    const float* field = fields.at(fieldIdx);
-                                    float val = field[IDXS(x, y, z)];
-                                    if (!std::isnan(val)) {
-                                        float diff = fieldMean - val;
-                                        fieldVarianceSum += diff * diff;
-                                    }
-                                }
-                                gridVarianceSum += fieldVarianceSum / float(numValid - 1);
-                                gridNumValid += 1;
-                            }
-                        }
-                    }
-                }
-            }
-        } else {
-            int zCenter = zs / 2;
+        for (int zo = 0; zo < dfz; zo++) {
             for (int yo = 0; yo < dfy; yo++) {
                 for (int xo = 0; xo < dfx; xo++) {
                     int x = r.xoff + xd * dfx + xo;
                     int y = r.yoff + yd * dfy + yo;
-                    if (x <= r.xmax && y <= r.ymax) {
+                    int z = r.zoff + zd * dfz + zo;
+                    if (x <= r.xmax && y <= r.ymax && z <= r.zmax) {
                         int numValid = 0;
                         float fieldMean = 0.0f;
                         for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
                             const float* field = fields.at(fieldIdx);
-                            float val = field[IDXS(x, y, zCenter)];
+                            float val = field[IDXS(x, y, z)];
                             if (!std::isnan(val)) {
                                 fieldMean += val;
                                 numValid++;
@@ -505,7 +450,7 @@ void HEBChart::computeDownscaledFieldVariance(HEBChartFieldData* fieldData, int 
                             float fieldVarianceSum = 0.0f;
                             for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
                                 const float* field = fields.at(fieldIdx);
-                                float val = field[IDXS(x, y, zCenter)];
+                                float val = field[IDXS(x, y, z)];
                                 if (!std::isnan(val)) {
                                     float diff = fieldMean - val;
                                     fieldVarianceSum += diff * diff;
@@ -662,19 +607,22 @@ void HEBChart::disableForcedUseMeanFields() {
 void HEBChart::updateData() {
     int cs = getCorrelationMemberCount();
     updateRegion();
-    int numPoints = xsd0 * ysd0 * zsd0 + (regionsEqual ? 0 : xsd1 * ysd1 * zsd1);
 
     if (selectedLineIdx >= 0 || selectedPointIndices[0] >= 0 || selectedPointIndices[1] >= 0) {
         needsReRender = true;
     }
     resetSelectedPrimitives();
 
-    if (use2dField) {
-        numPoints = xsd0 * ysd0;
-        zsd0 = zsd1 = 1;
+    std::vector<HEBChartFieldUpdateData> updateDataArray;
+    if (diagramMode == DiagramMode::CHORD) {
+        updateDataArray.resize(fieldDataArray.size());
+    } else {
+        curvePoints = {};
+        correlationValuesArray = {};
+        connectedPointsArray = {};
+        lineFieldIndexArray = {};
     }
-
-    std::vector<HEBChartFieldUpdateData> updateDataArray(fieldDataArray.size());
+    correlationMatrix = {};
     numLinesTotal = 0;
     auto numFields = int(fieldDataArray.size());
     for (int i = 0; i < numFields; i++) {
@@ -747,71 +695,118 @@ void HEBChart::updateData() {
             fieldData->maxStdDev2 = maxVal2;
         }
 
-        int maxNumLines = numPoints * MAX_NUM_LINES / 100;
-        int numLinesLocal = std::min(maxNumLines, int(miFieldEntries.size()));
-        numLinesTotal += numLinesLocal;
-        std::vector<glm::vec2>& curvePointsLocal = updateDataArray.at(i).curvePoints;
-        std::vector<float>& correlationValuesArrayLocal = updateDataArray.at(i).correlationValuesArray;
-        std::vector<std::pair<int, int>>& connectedPointsArrayLocal = updateDataArray.at(i).connectedPointsArray;
-        curvePointsLocal.resize(numLinesLocal * NUM_SUBDIVISIONS);
-        correlationValuesArrayLocal.resize(numLinesLocal);
-        connectedPointsArrayLocal.resize(numLinesLocal);
-
-        if (!miFieldEntries.empty() && numLinesLocal > 0) {
-            fieldData->minCorrelationValue = miFieldEntries.at(numLinesLocal - 1).correlationValue;
-            fieldData->maxCorrelationValue = miFieldEntries.at(0).correlationValue;
+        if (diagramMode == DiagramMode::CHORD) {
+            updateDataVarChord(fieldData, miFieldEntries, updateDataArray.at(i));
         } else {
-            fieldData->minCorrelationValue = std::numeric_limits<float>::max();
-            fieldData->maxCorrelationValue = std::numeric_limits<float>::lowest();
+            updateDataVarMatrix(fieldData, miFieldEntries);
+            break;
         }
+    }
+
+    if (diagramMode == DiagramMode::CHORD) {
+        updateDataChord(updateDataArray);
+    }
+}
+
+void HEBChart::updateDataVarMatrix(
+        HEBChartFieldData* fieldData, const std::vector<MIFieldEntry>& miFieldEntries) {
+    if (!regionsEqual) {
+        correlationMatrix = std::make_shared<FullCorrelationMatrix>(xsd0 * ysd0 * zsd0, xsd1 * ysd1 * zsd1);
+    } else if (fieldData->useTwoFields) {
+        correlationMatrix = std::make_shared<FullCorrelationMatrix>(xsd0 * ysd0 * zsd0, xsd0 * ysd0 * zsd0);
+    } else {
+        correlationMatrix = std::make_shared<SymmetricCorrelationMatrix>(xsd0 * ysd0 * zsd0);
+    }
+
+    if (!miFieldEntries.empty()) {
+        fieldData->minCorrelationValue = miFieldEntries.back().correlationValue;
+        fieldData->maxCorrelationValue = miFieldEntries.front().correlationValue;
+    } else {
+        fieldData->minCorrelationValue = std::numeric_limits<float>::max();
+        fieldData->maxCorrelationValue = std::numeric_limits<float>::lowest();
+    }
+    minCorrelationValueGlobal = fieldData->minCorrelationValue;
+    maxCorrelationValueGlobal = fieldData->maxCorrelationValue;
+
+    for (const MIFieldEntry& entry : miFieldEntries) {
+        int idx0 = int(pointToNodeIndexMap0.at(entry.pointIndex0) - leafIdxOffset);
+        int idx1 = int(pointToNodeIndexMap1.at(entry.pointIndex1) - leafIdxOffset1);
+        //correlationMatrix->set(int(entry.pointIndex0), int(entry.pointIndex1), entry.correlationValue);
+        correlationMatrix->set(idx0, idx1, entry.correlationValue);
+    }
+}
+
+void HEBChart::updateDataVarChord(
+        HEBChartFieldData* fieldData, const std::vector<MIFieldEntry>& miFieldEntries,
+        HEBChartFieldUpdateData& updateData) {
+    int numPoints = xsd0 * ysd0 * zsd0 + (regionsEqual ? 0 : xsd1 * ysd1 * zsd1);
+    int maxNumLines = numPoints * MAX_NUM_LINES / 100;
+    int numLinesLocal = std::min(maxNumLines, int(miFieldEntries.size()));
+    numLinesTotal += numLinesLocal;
+    std::vector<glm::vec2>& curvePointsLocal = updateData.curvePoints;
+    std::vector<float>& correlationValuesArrayLocal = updateData.correlationValuesArray;
+    std::vector<std::pair<int, int>>& connectedPointsArrayLocal = updateData.connectedPointsArray;
+    curvePointsLocal.resize(numLinesLocal * NUM_SUBDIVISIONS);
+    correlationValuesArrayLocal.resize(numLinesLocal);
+    connectedPointsArrayLocal.resize(numLinesLocal);
+
+    if (!miFieldEntries.empty() && numLinesLocal > 0) {
+        fieldData->minCorrelationValue = miFieldEntries.at(numLinesLocal - 1).correlationValue;
+        fieldData->maxCorrelationValue = miFieldEntries.at(0).correlationValue;
+    } else {
+        fieldData->minCorrelationValue = std::numeric_limits<float>::max();
+        fieldData->maxCorrelationValue = std::numeric_limits<float>::lowest();
+    }
 
 #ifdef USE_TBB
-        tbb::parallel_for(tbb::blocked_range<int>(0, numLinesLocal), [&](auto const& r) {
+    tbb::parallel_for(tbb::blocked_range<int>(0, numLinesLocal), [&](auto const& r) {
             std::vector<glm::vec2> controlPoints;
             for (auto lineIdx = r.begin(); lineIdx != r.end(); lineIdx++) {
 #else
 #if _OPENMP >= 201107
-        #pragma omp parallel default(none) shared(miFieldEntries, numLinesLocal, i) \
+        #pragma omp parallel default(none) shared(miFieldEntries, numLinesLocal) \
         shared(curvePointsLocal, correlationValuesArrayLocal, connectedPointsArrayLocal)
 #endif
-        {
-            std::vector<glm::vec2> controlPoints;
+    {
+        std::vector<glm::vec2> controlPoints;
 #if _OPENMP >= 201107
-            #pragma omp for
+        #pragma omp for
 #endif
-            for (int lineIdx = 0; lineIdx < numLinesLocal; lineIdx++) {
+        for (int lineIdx = 0; lineIdx < numLinesLocal; lineIdx++) {
 #endif
-                // Use reverse order so lines are drawn from least to most important.
-                const auto& miEntry = miFieldEntries.at(numLinesLocal - lineIdx - 1);
-                correlationValuesArrayLocal.at(lineIdx) = miEntry.correlationValue;
+            // Use reverse order so lines are drawn from least to most important.
+            const auto& miEntry = miFieldEntries.at(numLinesLocal - lineIdx - 1);
+            correlationValuesArrayLocal.at(lineIdx) = miEntry.correlationValue;
 
-                auto idx0 = int(pointToNodeIndexMap0.at(miEntry.pointIndex0) - leafIdxOffset);
-                auto idx1 = int(pointToNodeIndexMap1.at(miEntry.pointIndex1) - leafIdxOffset);
-                connectedPointsArrayLocal.at(lineIdx) = std::make_pair(idx0, idx1);
+            auto idx0 = int(pointToNodeIndexMap0.at(miEntry.pointIndex0) - leafIdxOffset);
+            auto idx1 = int(pointToNodeIndexMap1.at(miEntry.pointIndex1) - leafIdxOffset);
+            connectedPointsArrayLocal.at(lineIdx) = std::make_pair(idx0, idx1);
 
-                controlPoints.clear();
-                getControlPoints(
-                        nodesList, pointToNodeIndexMap0, pointToNodeIndexMap1,
-                        miEntry.pointIndex0, miEntry.pointIndex1, controlPoints);
-                if (beta < 1.0f) {
-                    smoothControlPoints(controlPoints, beta);
-                }
-                for (int ptIdx = 0; ptIdx < NUM_SUBDIVISIONS; ptIdx++) {
-                    float t = float(ptIdx) / float(NUM_SUBDIVISIONS - 1);
-                    int k = 4;
-                    if (controlPoints.size() == 3) {
-                        k = 3;
-                    }
-                    curvePointsLocal.at(lineIdx * NUM_SUBDIVISIONS + ptIdx) = evaluateBSpline(t, k, controlPoints);
-                }
+            controlPoints.clear();
+            getControlPoints(
+                    nodesList, pointToNodeIndexMap0, pointToNodeIndexMap1,
+                    miEntry.pointIndex0, miEntry.pointIndex1, controlPoints);
+            if (beta < 1.0f) {
+                smoothControlPoints(controlPoints, beta);
             }
-#ifdef USE_TBB
-            });
-#else
+            for (int ptIdx = 0; ptIdx < NUM_SUBDIVISIONS; ptIdx++) {
+                float t = float(ptIdx) / float(NUM_SUBDIVISIONS - 1);
+                int k = 4;
+                if (controlPoints.size() == 3) {
+                    k = 3;
+                }
+                curvePointsLocal.at(lineIdx * NUM_SUBDIVISIONS + ptIdx) = evaluateBSpline(t, k, controlPoints);
+            }
         }
-#endif
+#ifdef USE_TBB
+        });
+#else
     }
+#endif
+}
 
+void HEBChart::updateDataChord(std::vector<HEBChartFieldUpdateData>& updateDataArray) {
+    auto numFields = int(fieldDataArray.size());
     curvePoints.resize(numLinesTotal * NUM_SUBDIVISIONS);
     correlationValuesArray.resize(numLinesTotal);
     connectedPointsArray.resize(numLinesTotal);
@@ -841,6 +836,7 @@ void HEBChart::updateData() {
         }
     }
 }
+
 
 bool HEBChart::getIsRegionSelected(int idx) {
     return selectedPointIndices[idx] >= 0;
@@ -875,20 +871,11 @@ sgl::AABB3 HEBChart::getSelectedRegion(int idx) {
     uint32_t yd = (pointIdx / uint32_t(xsd)) % uint32_t(ysd);
     uint32_t zd = pointIdx / uint32_t(xsd * ysd);
     sgl::AABB3 aabb;
-    if (use2dField) {
-        int zCenter = zs / 2;
-        aabb.min = glm::vec3(r.xoff + xd * dfx, r.yoff + yd * dfy, zCenter);
-        aabb.max = glm::vec3(
-                float(std::min(r.xoff + int(xd + 1) * dfx, r.xmax + 1)),
-                float(std::min(r.yoff + int(yd + 1) * dfy, r.ymax + 1)),
-                float(std::min(zCenter + 1, zs)));
-    } else {
-        aabb.min = glm::vec3(r.xoff + xd * dfx, r.yoff + yd * dfy, r.zoff + zd * dfz);
-        aabb.max = glm::vec3(
-                float(std::min(r.xoff + int(xd + 1) * dfx, r.xmax + 1)),
-                float(std::min(r.yoff + int(yd + 1) * dfy, r.ymax + 1)),
-                float(std::min(r.zoff + int(zd + 1) * dfz, r.zmax + 1)));
-    }
+    aabb.min = glm::vec3(r.xoff + xd * dfx, r.yoff + yd * dfy, r.zoff + zd * dfz);
+    aabb.max = glm::vec3(
+            float(std::min(r.xoff + int(xd + 1) * dfx, r.xmax + 1)),
+            float(std::min(r.yoff + int(yd + 1) * dfy, r.ymax + 1)),
+            float(std::min(r.zoff + int(zd + 1) * dfz, r.zmax + 1)));
     aabb.min /= glm::vec3(xs, ys, zs);
     aabb.max /= glm::vec3(xs, ys, zs);
     sgl::AABB3 volumeAABB = volumeData->getBoundingBoxRendering();
@@ -997,22 +984,11 @@ GridRegion HEBChart::getGridRegionPointIdx(int idx, uint32_t pointIdx) {
     int yd = int((pointIdx / uint32_t(xsd)) % uint32_t(ysd));
     int zd = int(pointIdx / uint32_t(xsd * ysd));
     GridRegion r = idx == 0 ? r0 : r1;
-
-    GridRegion rf;
-    if (use2dField) {
-        int zCenter = zs / 2;
-        rf = GridRegion(
-                r.xoff + xd * dfx, r.yoff + yd * dfy, zCenter,
-                std::min((xd + 1) * dfx, r.xsr) - xd * dfx,
-                std::min((yd + 1) * dfy, r.ysr) - yd * dfy,
-                1);
-    } else {
-        rf = GridRegion(
-                r.xoff + xd * dfx, r.yoff + yd * dfy, r.zoff + zd * dfz,
-                std::min((xd + 1) * dfx, r.xsr) - xd * dfx,
-                std::min((yd + 1) * dfy, r.ysr) - yd * dfy,
-                std::min((zd + 1) * dfz, r.zsr) - zd * dfz);
-    }
+    GridRegion rf = GridRegion(
+            r.xoff + xd * dfx, r.yoff + yd * dfy, r.zoff + zd * dfz,
+            std::min((xd + 1) * dfx, r.xsr) - xd * dfx,
+            std::min((yd + 1) * dfy, r.ysr) - yd * dfy,
+            std::min((zd + 1) * dfz, r.zsr) - zd * dfz);
     return rf;
 }
 

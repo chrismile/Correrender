@@ -121,6 +121,7 @@ int main(int argc, char *argv[]) {
 #endif
 
     // Load the file containing the app settings
+    ImVector<ImWchar> fontRanges;
     if (isHeadlessMode) {
         sgl::AppSettings::get()->setSaveSettings(false);
         sgl::AppSettings::get()->getSettings().addKeyValue("window-debugContext", true);
@@ -138,7 +139,6 @@ int main(int argc, char *argv[]) {
         sgl::AppSettings::get()->getSettings().addKeyValue("window-savePosition", true);
         //sgl::AppSettings::get()->setVulkanDebugPrintfEnabled();
 
-        ImVector<ImWchar> fontRanges;
         ImFontGlyphRangesBuilder builder;
         builder.AddChar(L'\u03BB'); // lambda
         builder.BuildRanges(&fontRanges);
