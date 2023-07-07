@@ -762,7 +762,7 @@ void MainApp::endFrameMarker() {
 
 void MainApp::render() {
     // Debug Code.
-    /*static bool isFirstFrame = true;
+    static bool isFirstFrame = true;
     if (isFirstFrame) {
         selectedDataSetIndex = 0;
         customDataSetFileName = "/home/christoph/datasets/Toy/chord/linear_4x4.nc";
@@ -775,7 +775,7 @@ void MainApp::render() {
     frameNum++;
     if (frameNum == 10) {
         quit();
-    }*/
+    }
 
     if (usePerformanceMeasurementMode) {
         performanceMeasurer->beginRenderFunction();
@@ -1474,9 +1474,9 @@ void MainApp::addNewDataView() {
 void MainApp::initializeFirstDataView() {
     DataViewPtr dataView = dataViews.back();
     addNewRenderer(RENDERING_MODE_DOMAIN_OUTLINE_RENDERER);
-    addNewRenderer(RENDERING_MODE_DIRECT_VOLUME_RENDERING);
+    //addNewRenderer(RENDERING_MODE_DIRECT_VOLUME_RENDERING);
     // Debug Code.
-    //addNewRenderer(RENDERING_MODE_DIAGRAM_RENDERER);
+    addNewRenderer(RENDERING_MODE_DIAGRAM_RENDERER);
     prepareVisualizationPipeline();
 }
 
