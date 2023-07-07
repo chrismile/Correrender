@@ -57,11 +57,17 @@ public:
     ~FullCorrelationMatrix() override = default;
     [[nodiscard]] bool getIsSymmetric() const override { return false; }
     void set(int i, int j, float value) override {
-        assert(i < rows && j < columns);
+        //assert(i < rows && j < columns);
+        if (i >= rows || j >= columns) {
+            throw std::runtime_error("Error: Invalid row or column index in symmetric correlation matrix.");
+        }
         data[i + j * rows] = value;
     }
     [[nodiscard]] float get(int i, int j) const override {
-        assert(i < rows && j < columns);
+        //assert(i < rows && j < columns);
+        if (i >= rows || j >= columns) {
+            throw std::runtime_error("Error: Invalid row or column index in symmetric correlation matrix.");
+        }
         return data[i + j * rows];
     }
 };
@@ -76,12 +82,28 @@ public:
     ~SymmetricCorrelationMatrix() override = default;
     [[nodiscard]] bool getIsSymmetric() const override { return true; }
     void set(int i, int j, float value) override {
-        assert(i > j && i < rows && j < columns);
+        //assert(i > j && i < rows && j < columns);
+        if (i >= rows || j >= columns) {
+            throw std::runtime_error("Error: Invalid row or column index in symmetric correlation matrix.");
+        }
+        if (i <= j) {
+            int tmp = i;
+            i = j;
+            j = tmp;
+        }
         int linearIdx = i * (i - 1) / 2 + j;
         data[linearIdx] = value;
     }
     [[nodiscard]] float get(int i, int j) const override {
-        assert(i > j && i < rows && j < columns);
+        //assert(i > j && i < rows && j < columns);
+        if (i >= rows || j >= columns) {
+            throw std::runtime_error("Error: Invalid row or column index in symmetric correlation matrix.");
+        }
+        if (i <= j) {
+            int tmp = i;
+            i = j;
+            j = tmp;
+        }
         int linearIdx = i * (i - 1) / 2 + j;
         return data[linearIdx];
     }

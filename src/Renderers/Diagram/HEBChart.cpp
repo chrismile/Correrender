@@ -107,13 +107,19 @@ void HEBChart::setRegions(const std::pair<GridRegion, GridRegion>& _rs) {
 void HEBChart::resetSelectedPrimitives() {
     hoveredPointIdx = -1;
     clickedPointIdx = -1;
+    clickedPointIdxOld = -1;
     selectedPointIndices[0] = -1;
     selectedPointIndices[1] = -1;
+
     hoveredLineIdx = -1;
     clickedLineIdx = -1;
-    selectedLineIdx = -1;
     clickedLineIdxOld = -1;
-    clickedPointIdxOld = -1;
+    selectedLineIdx = -1;
+
+    hoveredGridIdx = {};
+    clickedGridIdx = {};
+    clickedGridIdxOld = {};
+    selectedGridIdx = {};
 }
 
 void HEBChart::clearScalarFields() {
@@ -608,7 +614,8 @@ void HEBChart::updateData() {
     int cs = getCorrelationMemberCount();
     updateRegion();
 
-    if (selectedLineIdx >= 0 || selectedPointIndices[0] >= 0 || selectedPointIndices[1] >= 0) {
+    if (selectedLineIdx >= 0 || selectedPointIndices[0] >= 0 || selectedPointIndices[1] >= 0
+            || selectedGridIdx.has_value()) {
         needsReRender = true;
     }
     resetSelectedPrimitives();
@@ -936,6 +943,7 @@ glm::vec3 HEBChart::getLineDirection() {
 
 void HEBChart::resetFocusSelection() {
     clickedLineIdxOld = -1;
+    clickedGridIdxOld = {};
     clickedPointIdxOld = -1;
     isFocusSelectionReset = true;
 }
@@ -947,7 +955,8 @@ bool HEBChart::getHasNewFocusSelection(bool& isDeselection) {
     }
     bool hasNewFocusSelection =
             (clickedPointIdx >= 0 && clickedPointIdx != clickedPointIdxOld)
-            || (clickedLineIdx >= 0 && clickedLineIdx != clickedLineIdxOld);
+            || (clickedLineIdx >= 0 && clickedLineIdx != clickedLineIdxOld)
+            || (clickedGridIdx.has_value() && clickedGridIdx != clickedGridIdxOld);
     if (hasNewFocusSelection) {
         std::pair<GridRegion, GridRegion> regions = getFocusSelection();
         if (regions.first.getNumCells() <= 1 && regions.second.getNumCells() <= 1) {
@@ -955,9 +964,12 @@ bool HEBChart::getHasNewFocusSelection(bool& isDeselection) {
         }
     }
     isDeselection =
-            !hasNewFocusSelection && (clickedPointIdx != clickedPointIdxOld || clickedLineIdx != clickedLineIdxOld);
+            !hasNewFocusSelection
+            && (clickedPointIdx != clickedPointIdxOld || clickedLineIdx != clickedLineIdxOld
+                    || clickedGridIdx != clickedGridIdxOld);
     clickedPointIdxOld = clickedPointIdx;
     clickedLineIdxOld = clickedLineIdx;
+    clickedGridIdxOld = clickedGridIdx;
     return hasNewFocusSelection;
 }
 
@@ -966,13 +978,19 @@ std::pair<GridRegion, GridRegion> HEBChart::getFocusSelection() {
         uint32_t pointIdx = getPointIndexGrid(clickedPointIdx);
         auto pointRegion = getGridRegionPointIdx(getLeafIdxGroup(clickedPointIdx), pointIdx);
         return std::make_pair(pointRegion, pointRegion);
-    } else {
+    } else if (diagramMode == DiagramMode::CHORD) {
         auto points = connectedPointsArray.at(clickedLineIdx);
         uint32_t pointIdx0 = getPointIndexGrid(points.first);
         uint32_t pointIdx1 = getPointIndexGrid(points.second);
         return std::make_pair(
                 getGridRegionPointIdx(getLeafIdxGroup(points.first), pointIdx0),
                 getGridRegionPointIdx(getLeafIdxGroup(points.second), pointIdx1));
+    } else if (diagramMode == DiagramMode::MATRIX) {
+        uint32_t pointIdx0 = getPointIndexGrid(clickedGridIdx->x);
+        uint32_t pointIdx1 = getPointIndexGrid(clickedGridIdx->y);
+        return std::make_pair(
+                getGridRegionPointIdx(getLeafIdxGroup(clickedGridIdx->x), pointIdx0),
+                getGridRegionPointIdx(getLeafIdxGroup(clickedGridIdx->y), pointIdx1));
     }
 }
 
@@ -1000,9 +1018,13 @@ int HEBChart::getLeafIdxGroup(int leafIdx) const {
 }
 
 bool HEBChart::getHasFocusSelectionField() {
-    return clickedLineIdx >= 0;
+    return clickedLineIdx >= 0 || clickedGridIdx.has_value();
 }
 
 int HEBChart::getFocusSelectionFieldIndex() {
-    return fieldDataArray.at(lineFieldIndexArray.at(clickedLineIdx))->selectedFieldIdx;
+    if (diagramMode == DiagramMode::CHORD) {
+        return fieldDataArray.at(lineFieldIndexArray.at(clickedLineIdx))->selectedFieldIdx;
+    } else {
+        return fieldDataArray.front()->selectedFieldIdx;
+    }
 }

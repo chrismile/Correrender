@@ -81,6 +81,7 @@ void setFileDescriptorLimit() {
 
 int main(int argc, char *argv[]) {
     // Initialize the filesystem utilities.
+    std::setlocale(LC_ALL, "en_US.UTF-8"); // For font rendering with VKVG.
     sgl::FileUtils::get()->initialize("Correrender", argc, argv);
 
     // Parse the arguments.
@@ -141,6 +142,7 @@ int main(int argc, char *argv[]) {
 
         ImFontGlyphRangesBuilder builder;
         builder.AddChar(L'\u03BB'); // lambda
+        builder.AddChar(L'\u03C3'); // sigma
         builder.BuildRanges(&fontRanges);
         bool useMultiViewport = false;
         if (sgl::AppSettings::get()->getSettings().getValueOpt("useDockSpaceMode", useMultiViewport)) {

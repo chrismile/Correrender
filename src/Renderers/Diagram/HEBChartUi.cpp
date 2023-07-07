@@ -479,7 +479,11 @@ void HEBChart::update(float dt) {
             hoveredLineIdx = -1;
             needsReRender = true;
         }
-    } else {
+        if (hoveredGridIdx.has_value()) {
+            hoveredGridIdx = {};
+            needsReRender = true;
+        }
+    } else if (diagramMode == DiagramMode::CHORD) {
         //auto startTime = std::chrono::system_clock::now();
         glm::vec2 centeredMousePos = mousePosition - glm::vec2(windowWidth / 2.0f, windowHeight / 2.0f);
         float radiusMouse = std::sqrt(centeredMousePos.x * centeredMousePos.x + centeredMousePos.y * centeredMousePos.y);
@@ -572,17 +576,45 @@ void HEBChart::update(float dt) {
         //auto endTime = std::chrono::system_clock::now();
         //auto elapsedTime = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
         //std::cout << "Elapsed time update: " << elapsedTime.count() << "ms" << std::endl;
+    } else {
+        float startX = windowWidth / 2.0f - chartRadius;
+        float startY = windowHeight / 2.0f - chartRadius;
+        float matrixWidth = 2.0f * chartRadius;
+        float matrixHeight = 2.0f * chartRadius;
+        glm::vec2 pctMousePos = (mousePosition - glm::vec2(startX, startY)) / glm::vec2(matrixWidth, matrixHeight);
+        glm::vec2 gridMousePos = pctMousePos * glm::vec2(correlationMatrix->getNumRows(), correlationMatrix->getNumColumns());
+        auto gridPosition = glm::ivec2(gridMousePos);
+        int i = gridPosition.x;
+        int j = gridPosition.y;
+
+        if (pctMousePos.x >= 0.0f && pctMousePos.y >= 0.0f && pctMousePos.x < 1.0f && pctMousePos.y < 1.0f
+                && (!correlationMatrix->getIsSymmetric() || i > j)) {
+            if (!regionsEqual) {
+                gridPosition.y += int(leafIdxOffset1 - leafIdxOffset);
+            }
+            hoveredGridIdx = gridPosition;
+        } else {
+            hoveredGridIdx = {};
+        }
+
+        hoveredPointIdx = -1;
+        hoveredLineIdx = -1;
+        selectedLineIdx = -1;
     }
 
     if (isMouseInWindow && (sgl::Mouse->buttonReleased(1) || sgl::Mouse->buttonReleased(3))
             && !windowMoveOrResizeJustFinished) {
         bool showCorrelationForClickedPointNew = false;
         clickedLineIdx = -1;
+        clickedGridIdx = {};
         clickedPointIdx = -1;
         bool showCorrelationForClickedPointChanged = false;
-        if (hoveredLineIdx >= 0) {
+        if (diagramMode == DiagramMode::CHORD && hoveredLineIdx >= 0) {
             clickedLineIdx = hoveredLineIdx;
             // Don't reset lines for clicked point if one of those lines was selected.
+            showCorrelationForClickedPointNew = showCorrelationForClickedPoint;
+        } else if (diagramMode == DiagramMode::MATRIX && hoveredGridIdx.has_value()) {
+            clickedGridIdx = hoveredGridIdx;
             showCorrelationForClickedPointNew = showCorrelationForClickedPoint;
         } else if (hoveredPointIdx >= 0) {
             clickedPointIdx = hoveredPointIdx;
@@ -602,22 +634,31 @@ void HEBChart::update(float dt) {
         isFocusSelectionReset = !sgl::Mouse->buttonReleased(1) || showCorrelationForClickedPointChanged;
         if (isFocusSelectionReset) {
             clickedLineIdxOld = -1;
+            clickedGridIdxOld = {};
             clickedPointIdxOld = -1;
         }
     }
 
     int newSelectedLineIdx = -1;
     int newSelectedPointIndices[2] = { -1, -1 };
+    std::optional<glm::ivec2> newSelectedGridIdx{};
     if (hoveredLineIdx >= 0) {
         newSelectedLineIdx = hoveredLineIdx;
+    } else if (hoveredGridIdx.has_value()) {
+        newSelectedGridIdx = hoveredGridIdx;
     } else if (clickedLineIdx >= 0 && hoveredPointIdx < 0) {
         newSelectedLineIdx = clickedLineIdx;
+    } else if (clickedGridIdx.has_value() && hoveredPointIdx < 0) {
+        newSelectedGridIdx = clickedGridIdx;
     }
 
     if (newSelectedLineIdx >= 0) {
         const auto& points = connectedPointsArray.at(newSelectedLineIdx);
         newSelectedPointIndices[0] = points.first;
         newSelectedPointIndices[1] = points.second;
+    } else if (newSelectedGridIdx.has_value()) {
+        newSelectedPointIndices[0] = newSelectedGridIdx->x;
+        newSelectedPointIndices[1] = newSelectedGridIdx->y;
     } else if (hoveredPointIdx >= 0) {
         newSelectedPointIndices[0] = hoveredPointIdx;
     } else if (clickedPointIdx >= 0) {
@@ -625,10 +666,11 @@ void HEBChart::update(float dt) {
     }
 
     if (selectedPointIndices[0] != newSelectedPointIndices[0] || selectedPointIndices[1] != newSelectedPointIndices[1]
-            || selectedLineIdx != newSelectedLineIdx) {
+            || selectedLineIdx != newSelectedLineIdx || selectedGridIdx != newSelectedGridIdx) {
         needsReRender = true;
     }
     selectedLineIdx = newSelectedLineIdx;
+    selectedGridIdx = newSelectedGridIdx;
     selectedPointIndices[0] = newSelectedPointIndices[0];
     selectedPointIndices[1] = newSelectedPointIndices[1];
 }
@@ -648,6 +690,16 @@ std::pair<float, float> HEBChart::getMinMaxCorrelationValue() {
 }
 
 void HEBChart::renderCorrelationMatrix() {
+#ifdef SUPPORT_SKIA
+    SkPaint* paint = nullptr, *gradientPaint = nullptr;
+    if (canvas) {
+        paint = new SkPaint;
+        gradientPaint = new SkPaint;
+        static_cast<VectorBackendSkia*>(vectorBackend)->initializePaint(paint);
+        static_cast<VectorBackendSkia*>(vectorBackend)->initializePaint(gradientPaint);
+    }
+#endif
+
     auto [minMi, maxMi] = getMinMaxCorrelationValue();
     auto numFields = int(fieldDataArray.size());
     for (int fieldIdx = 0; fieldIdx < numFields; fieldIdx++) {
@@ -679,8 +731,8 @@ void HEBChart::renderCorrelationMatrix() {
                 //float x = startX + float(numRows - i - 1) * w;
                 float x = startX + float(i) * w;
                 float y = startY + float(j) * h;
-                w += 1e-2f;
-                h += 1e-2f;
+                w += 1e-1f;
+                h += 1e-1f;
 
                 if (vg) {
                     glm::vec4 color = fieldData->evalColorMapVec4(factor);
@@ -689,9 +741,19 @@ void HEBChart::renderCorrelationMatrix() {
                     nvgFillColor(vg, nvgRGBAf(color.x, color.y, color.z, 1.0f));
                     nvgFill(vg);
                 }
+#ifdef SUPPORT_SKIA
+                else if (canvas) {
+                    sgl::Color color = fieldData->evalColorMap(factor);
+                    color.setA(255);
+                    paint->setStroke(false);
+                    paint->setColor(toSkColor(color));
+                    canvas->drawRect(SkRect{x * s, y * s, (x + w) * s, (y + h) * s}, *paint);
+                }
+#endif
 #ifdef SUPPORT_VKVG
                 else if (context) {
                     sgl::Color color = fieldData->evalColorMap(factor);
+                    color.setA(255);
                     vkvg_rectangle(context, x * s, y * s, w * s, h * s);
                     vkvg_set_source_color(context, color.getColorRGBA());
                     vkvg_fill(context);
@@ -700,6 +762,42 @@ void HEBChart::renderCorrelationMatrix() {
             }
         }
 
+        // Draw the current selection.
+        if (selectedGridIdx.has_value()) {
+            int offset = regionsEqual ? 0 : int(leafIdxOffset1 - leafIdxOffset);
+            int i = selectedPointIndices[0];
+            int j = selectedPointIndices[1] - offset;
+            float w = matrixWidth * float(1) / float(numRows);
+            float h = matrixHeight * float(1) / float(numColumns);
+            float x = startX + float(i) * w;
+            float y = startY + float(j) * h;
+
+            sgl::Color strokeColor = isDarkMode ? circleStrokeColorDark : circleStrokeColorBright;
+            if (vg) {
+                nvgBeginPath(vg);
+                nvgRect(vg, x, y, w, h);
+                NVGcolor strokeColorNvg = nvgRGBA(
+                        strokeColor.getR(), strokeColor.getG(), strokeColor.getB(), strokeColor.getA());
+                nvgStrokeColor(vg, strokeColorNvg);
+                nvgStroke(vg);
+            }
+#ifdef SUPPORT_SKIA
+            else if (canvas) {
+                paint->setStroke(true);
+                paint->setStrokeWidth(1.0f * s);
+                paint->setColor(toSkColor(strokeColor));
+                canvas->drawRect(SkRect{x * s, y * s, (x + w) * s, (y + h) * s}, *paint);
+            }
+#endif
+#ifdef SUPPORT_VKVG
+            else if (context) {
+                vkvg_rectangle(context, x * s, y * s, w * s, h * s);
+                vkvg_set_source_color(context, strokeColor.getColorRGBA());
+                vkvg_set_line_width(context, 1.0f * s);
+                vkvg_stroke(context);
+            }
+#endif
+        }
 
         if (showRing) {
             std::pair<float, float> stdDevRange;
@@ -715,15 +813,11 @@ void HEBChart::renderCorrelationMatrix() {
 
             for (int dim = 0; dim < 2; dim++) {
                 std::vector<float>* leafStdDevArray = nullptr;
-                std::vector<uint32_t>* pointToNodeIndexMap = nullptr;
                 if (!regionsEqual) {
-                    pointToNodeIndexMap = dim == 0 ? &pointToNodeIndexMap0 : &pointToNodeIndexMap1;
                     leafStdDevArray = &fieldData->leafStdDevArray;
                 } else if (fieldData->useTwoFields) {
-                    pointToNodeIndexMap = &pointToNodeIndexMap0;
                     leafStdDevArray = dim == 0 ? &fieldData->leafStdDevArray : &fieldData->leafStdDevArray2;
                 } else {
-                    pointToNodeIndexMap = &pointToNodeIndexMap0;
                     leafStdDevArray = &fieldData->leafStdDevArray;
                 }
 
@@ -794,6 +888,16 @@ void HEBChart::renderCorrelationMatrix() {
                         nvgFillColor(vg, fillColor0);
                         nvgFill(vg);
                     }
+#ifdef SUPPORT_SKIA
+                    else if (canvas) {
+                        sgl::Color rgbColor0 = fieldData->evalColorMapVariance(t0, true);
+                        rgbColor0.setA(255);
+
+                        paint->setStroke(false);
+                        paint->setColor(toSkColor(rgbColor0));
+                        canvas->drawRect(SkRect{x * s, y * s, (x + w) * s, (y + h) * s}, *paint);
+                    }
+#endif
 #ifdef SUPPORT_VKVG
                     else if (context) {
                         sgl::Color rgbColor0 = fieldData->evalColorMapVariance(t0, true);
@@ -823,6 +927,14 @@ void HEBChart::renderCorrelationMatrix() {
                     nvgStrokeColor(vg, strokeColorNvg);
                     nvgStroke(vg);
                 }
+#ifdef SUPPORT_SKIA
+                else if (canvas) {
+                    paint->setStroke(true);
+                    paint->setStrokeWidth(1.0f * s);
+                    paint->setColor(toSkColor(strokeColor));
+                    canvas->drawRect(SkRect{barX * s, barY * s, (barX + barW) * s, (barY + barH) * s}, *paint);
+                }
+#endif
 #ifdef SUPPORT_VKVG
                 else if (context) {
                     vkvg_rectangle(context, barX * s, barY * s, barW * s, barH * s);
@@ -833,8 +945,81 @@ void HEBChart::renderCorrelationMatrix() {
 #endif
             }
         }
-        //renderStdDevRects();
     }
+
+    if (selectedPointIndices[0] >= 0) {
+        drawSelectionArrows();
+    } else if (!regionsEqual && showSelectedRegionsByColor && isFocusView && !fieldDataArray.empty()) {
+        for (int dim = 0; dim < 2; dim++) {
+            float x0, y0, x1, y1;
+            if (dim == 0) {
+                x0 = windowWidth / 2.0f - chartRadius;
+                y0 = windowHeight / 2.0f - totalRadius;
+                x1 = windowWidth / 2.0f + chartRadius;
+                y1 = y0;
+            } else {
+                x0 = windowWidth / 2.0f - totalRadius;
+                y0 = windowHeight / 2.0f - chartRadius;
+                x1 = x0;
+                y1 = windowHeight / 2.0f + chartRadius;
+            }
+            const sgl::Color& circleFillColorSelected = getColorSelected(dim);
+            if (vg) {
+                auto circleFillColorSelectedNvg = nvgRGBA(
+                        circleFillColorSelected.getR(), circleFillColorSelected.getG(),
+                        circleFillColorSelected.getB(), circleFillColorSelected.getA());
+                nvgBeginPath(vg);
+                nvgMoveTo(vg, x0, y0);
+                nvgLineTo(vg, x1, y1);
+                nvgStrokeWidth(vg, 3.0f);
+                nvgStrokeColor(vg, circleFillColorSelectedNvg);
+                nvgStroke(vg);
+            }
+#ifdef SUPPORT_SKIA
+            else if (canvas) {
+                paint->setStroke(true);
+                paint->setStrokeWidth(3.0f * s);
+                paint->setColor(toSkColor(circleFillColorSelected));
+                canvas->drawLine(x0 * s, y0 * s, x1 * s, y1 * s, *paint);
+            }
+#endif
+#ifdef SUPPORT_VKVG
+            else if (context) {
+                vkvg_move_to(context, x0 * s, y0 * s);
+                vkvg_line_to(context, x1 * s, y1 * s);
+                vkvg_set_line_width(context, 3.0f * s);
+                vkvg_set_source_color(context, circleFillColorSelected.getColorRGBA());
+                vkvg_stroke(context);
+            }
+#endif
+        }
+    }
+
+
+    // Render buttons.
+    for (auto& button : buttons) {
+        button.render(
+                vg,
+#ifdef SUPPORT_SKIA
+                canvas, paint,
+#endif
+#ifdef SUPPORT_VKVG
+                context,
+#endif
+                isDarkMode, s);
+    }
+
+    // Draw color legend.
+    if (shallDrawColorLegend) {
+        drawColorLegends();
+    }
+
+#ifdef SUPPORT_SKIA
+    if (canvas) {
+        delete paint;
+        delete gradientPaint;
+    }
+#endif
 }
 
 void HEBChart::renderBaseNanoVG() {
@@ -1765,54 +1950,129 @@ void HEBChart::drawSelectionArrows() {
     }
 #endif
 
-    // Draw wedges/arrows pointing at the selected points.
-    int numPointsSelected = selectedPointIndices[0] < 0 ? 0 : (selectedPointIndices[1] < 0 ? 1 : 2);
-    for (int idx = 0; idx < numPointsSelected; idx++) {
-        auto fillColor = showSelectedRegionsByColor && idx == 1 ? circleFillColorSelected1 : circleFillColorSelected0;
-        const auto& leaf = nodesList.at(int(leafIdxOffset) + selectedPointIndices[idx]);
+    if (diagramMode == DiagramMode::CHORD) {
+        // Draw wedges/arrows pointing at the selected points.
+        int numPointsSelected = selectedPointIndices[0] < 0 ? 0 : (selectedPointIndices[1] < 0 ? 1 : 2);
+        for (int idx = 0; idx < numPointsSelected; idx++) {
+            auto fillColor = showSelectedRegionsByColor && idx == 1 ? circleFillColorSelected1 : circleFillColorSelected0;
+            const auto& leaf = nodesList.at(int(leafIdxOffset) + selectedPointIndices[idx]);
 
-        glm::vec2 center(windowWidth / 2.0f, windowHeight / 2.0f);
-        glm::vec2 dir(leaf.normalizedPosition.x, leaf.normalizedPosition.y);
-        glm::vec2 orthoDir(-dir.y, dir.x);
-        float pointRadius = curveThickness * pointRadiusBase * borderSizeX / 10.0f;
-        float radius0 = totalRadius;
-        float radius1 = pointRadius * 4.0f;
-        float width = radius1;
-        glm::vec2 p0 = center + radius0 * dir;
-        glm::vec2 p1 = p0 + radius1 * dir - width * orthoDir;
-        glm::vec2 p2 = p0 + radius1 * dir + width * orthoDir;
+            glm::vec2 center(windowWidth / 2.0f, windowHeight / 2.0f);
+            glm::vec2 dir(leaf.normalizedPosition.x, leaf.normalizedPosition.y);
+            glm::vec2 orthoDir(-dir.y, dir.x);
+            float pointRadius = curveThickness * pointRadiusBase * borderSizeX / 10.0f;
+            float radius0 = totalRadius;
+            float radius1 = pointRadius * 4.0f;
+            float width = radius1;
+            glm::vec2 p0 = center + radius0 * dir;
+            glm::vec2 p1 = p0 + radius1 * dir - width * orthoDir;
+            glm::vec2 p2 = p0 + radius1 * dir + width * orthoDir;
 
-        if (vg) {
-            NVGcolor fillColorNvg = nvgRGBA(fillColor.getR(), fillColor.getG(), fillColor.getB(), 255);
-            nvgBeginPath(vg);
-            nvgMoveTo(vg, p0.x, p0.y);
-            nvgLineTo(vg, p1.x, p1.y);
-            nvgLineTo(vg, p2.x, p2.y);
-            nvgClosePath(vg);
-            nvgFillColor(vg, fillColorNvg);
-            nvgFill(vg);
-        }
+            if (vg) {
+                NVGcolor fillColorNvg = nvgRGBA(fillColor.getR(), fillColor.getG(), fillColor.getB(), 255);
+                nvgBeginPath(vg);
+                nvgMoveTo(vg, p0.x, p0.y);
+                nvgLineTo(vg, p1.x, p1.y);
+                nvgLineTo(vg, p2.x, p2.y);
+                nvgClosePath(vg);
+                nvgFillColor(vg, fillColorNvg);
+                nvgFill(vg);
+            }
 #ifdef SUPPORT_SKIA
-        else if (canvas) {
-            SkPath path;
-            path.moveTo(p0.x * s, p0.y * s);
-            path.lineTo(p1.x * s, p1.y * s);
-            path.lineTo(p2.x * s, p2.y * s);
-            path.close();
-            paint->setColor(toSkColor(fillColor));
-            canvas->drawPath(path, *paint);
-        }
+            else if (canvas) {
+                SkPath path;
+                path.moveTo(p0.x * s, p0.y * s);
+                path.lineTo(p1.x * s, p1.y * s);
+                path.lineTo(p2.x * s, p2.y * s);
+                path.close();
+                paint->setColor(toSkColor(fillColor));
+                canvas->drawPath(path, *paint);
+            }
 #endif
 #ifdef SUPPORT_VKVG
-        else if (context) {
-            vkvg_move_to(context, p0.x * s, p0.y * s);
-            vkvg_line_to(context, p1.x * s, p1.y * s);
-            vkvg_line_to(context, p2.x * s, p2.y * s);
-            vkvg_close_path(context);
-            vkvg_set_source_color(context, fillColor.getColorRGBA());
-            vkvg_fill(context);
-        }
+            else if (context) {
+                vkvg_move_to(context, p0.x * s, p0.y * s);
+                vkvg_line_to(context, p1.x * s, p1.y * s);
+                vkvg_line_to(context, p2.x * s, p2.y * s);
+                vkvg_close_path(context);
+                vkvg_set_source_color(context, fillColor.getColorRGBA());
+                vkvg_fill(context);
+            }
 #endif
+        }
+    } else {
+        // Draw wedges/arrows pointing at the selected points.
+        float matrixWidth = 2.0f * chartRadius;
+        float matrixHeight = 2.0f * chartRadius;
+        int numPointsSelected = selectedPointIndices[0] < 0 ? 0 : (selectedPointIndices[1] < 0 ? 1 : 2);
+        for (int idx = 0; idx < numPointsSelected; idx++) {
+            auto fillColor = showSelectedRegionsByColor && idx == 1 ? circleFillColorSelected1 : circleFillColorSelected0;
+            //const auto& leaf = nodesList.at(int(leafIdxOffset) + selectedPointIndices[idx]);
+
+            auto lower = int(leafIdxOffset);
+            auto upper = int(nodesList.size());
+            if (!regionsEqual) {
+                if (idx == 0) {
+                    upper = int(leafIdxOffset1);
+                } else {
+                    lower = int(leafIdxOffset1);
+                }
+            }
+            glm::vec2 dir, orthoDir;
+            if (idx == 0) {
+                dir = glm::vec2(0.0f, -1.0f);
+                orthoDir = glm::vec2(1.0f, 0.0f);
+            } else {
+                dir = glm::vec2(-1.0f, 0.0f);
+                orthoDir = glm::vec2(0.0f, 1.0f);
+            }
+
+            int offset = regionsEqual || idx == 0 ? 0 : int(leafIdxOffset1 - leafIdxOffset);
+            float pct = (float(selectedPointIndices[idx] - offset) + 0.5f) / float(upper - lower);
+            glm::vec2 upperLeft(
+                    windowWidth / 2.0f - (idx == 0 ? chartRadius : totalRadius),
+                    windowHeight / 2.0f - (idx == 0 ? totalRadius : chartRadius));
+
+            float pointRadius = curveThickness * pointRadiusBase * borderSizeX / 10.0f;
+            float radius1 = pointRadius * 4.0f;
+            float width = radius1;
+            // + totalRadius * dir for top/bottom
+            glm::vec2 p0 = upperLeft + pct * orthoDir * (idx == 0 ? matrixWidth : matrixHeight);
+            glm::vec2 p1 = p0 + radius1 * dir - width * orthoDir;
+            glm::vec2 p2 = p0 + radius1 * dir + width * orthoDir;
+
+            if (vg) {
+                NVGcolor fillColorNvg = nvgRGBA(fillColor.getR(), fillColor.getG(), fillColor.getB(), 255);
+                nvgBeginPath(vg);
+                nvgMoveTo(vg, p0.x, p0.y);
+                nvgLineTo(vg, p1.x, p1.y);
+                nvgLineTo(vg, p2.x, p2.y);
+                nvgClosePath(vg);
+                nvgFillColor(vg, fillColorNvg);
+                nvgFill(vg);
+            }
+#ifdef SUPPORT_SKIA
+            else if (canvas) {
+                SkPath path;
+                path.moveTo(p0.x * s, p0.y * s);
+                path.lineTo(p1.x * s, p1.y * s);
+                path.lineTo(p2.x * s, p2.y * s);
+                path.close();
+                paint->setColor(toSkColor(fillColor));
+                canvas->drawPath(path, *paint);
+            }
+#endif
+#ifdef SUPPORT_VKVG
+            else if (context) {
+                vkvg_move_to(context, p0.x * s, p0.y * s);
+                vkvg_line_to(context, p1.x * s, p1.y * s);
+                vkvg_line_to(context, p2.x * s, p2.y * s);
+                vkvg_close_path(context);
+                vkvg_set_source_color(context, fillColor.getColorRGBA());
+                vkvg_fill(context);
+            }
+#endif
+        }
     }
 
 #ifdef SUPPORT_SKIA

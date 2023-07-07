@@ -447,12 +447,16 @@ private:
     float chartRadius{};
     float totalRadius{};
     int hoveredPointIdx = -1;
-    int hoveredLineIdx = -1;
+    int hoveredLineIdx = -1; // Chord mode
+    std::optional<glm::ivec2> hoveredGridIdx{}; // Matrix mode
     int clickedPointIdx = -1;
-    int clickedLineIdx = -1;
+    int clickedLineIdx = -1; // Chord mode
+    std::optional<glm::ivec2> clickedGridIdx{}; // Matrix mode
     int selectedPointIndices[2] = { -1, -1 };
-    int selectedLineIdx = -1;
+    int selectedLineIdx = -1; // Chord mode
+    std::optional<glm::ivec2> selectedGridIdx{}; // Matrix mode
     int clickedPointIdxOld = -1, clickedLineIdxOld = -1; //< For getHasNewFocusSelection.
+    std::optional<glm::ivec2> clickedGridIdxOld{}; // Matrix mode, for getHasNewFocusSelection.
     bool showCorrelationForClickedPoint = false;
     uint32_t clickedPointGridIdx = 0;
     bool isFocusSelectionReset = false;
