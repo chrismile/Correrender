@@ -42,6 +42,7 @@ build_with_skia_support=false
 skia_link_dynamically=true
 build_with_vkvg_support=true
 build_with_osqp_support=true
+build_with_zink_support=false
 
 # Process command line arguments.
 custom_glslang=false
@@ -579,6 +580,46 @@ if [ ! -d "${PROJECTPATH}/third_party/limbo" ]; then
     echo "    downloading limbo   "
     echo "------------------------"
     git clone --recursive https://github.com/resibots/limbo.git "${PROJECTPATH}/third_party/limbo" 
+fi
+
+if $build_with_zink_support; then
+    if [ ! -d "./mesa" ]; then
+        # Download libdrm and Mesa.
+        LIBDRM_VERSION=libdrm-2.4.115
+        MESA_VERSION=mesa-23.1.3
+        wget https://dri.freedesktop.org/libdrm/${LIBDRM_VERSION}.tar.xz
+        wget https://archive.mesa3d.org/${MESA_VERSION}.tar.xz
+        tar -xvf ${LIBDRM_VERSION}.tar.xz
+        tar -xvf ${MESA_VERSION}.tar.xz
+
+        # Install all dependencies.
+        pip3 install --user meson mako
+        # TODO: Add support for other operating systems.
+        sudo apt-get -y build-dep mesa
+        sudo apt install -y ninja libxcb-dri3-dev libxcb-present-dev libxshmfence-dev
+
+        pushd ${LIBDRM_VERSION} >/dev/null
+        meson builddir/ --prefix="${PROJECTPATH}/third_party/mesa"
+        ninja -C builddir/ install
+        popd >/dev/null
+
+        pushd ${MESA_VERSION} >/dev/null
+        PKG_CONFIG_PATH="${PROJECTPATH}/third_party/mesa/lib/x86_64-linux-gnu/pkgconfig" \
+        meson setup builddir/ -Dprefix="${PROJECTPATH}/third_party/mesa" \
+        -Dgallium-drivers=zink,swrast -Dvulkan-drivers= -Dbuildtype=release \
+        -Dgallium-va=disabled -Dglx=dri -Dplatforms=x11 -Degl=enabled -Dglvnd=true
+        meson install -C builddir/
+        popd >/dev/null
+    fi
+    if [[ -z "${LD_LIBRARY_PATH+x}" ]]; then
+        export LD_LIBRARY_PATH="${PROJECTPATH}/third_party/mesa/lib/x86_64-linux-gnu"
+    else
+        export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:${PROJECTPATH}/third_party/mesa/lib/x86_64-linux-gnu"
+    fi
+    export __GLX_VENDOR_LIBRARY_NAME=mesa
+    export MESA_LOADER_DRIVER_OVERRIDE=zink
+    export GALLIUM_DRIVER=zink
+    params+=(-DUSE_ZINK=ON)
 fi
 
 popd >/dev/null # back to project root

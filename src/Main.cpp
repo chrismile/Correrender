@@ -234,7 +234,14 @@ int main(int argc, char *argv[]) {
     sgl::OffscreenContext* offscreenContext = nullptr;
     if (!isHeadlessMode) {
 #ifdef SUPPORT_OPENGL
-        offscreenContext = sgl::createOffscreenContext(device, false);
+        sgl::OffscreenContextParams params{};
+#ifdef USE_ZINK
+        params.tryUseZinkIfAvailable = true;
+        setenv("__GLX_VENDOR_LIBRARY_NAME", "mesa", 0);
+        setenv("MESA_LOADER_DRIVER_OVERRIDE", "zink", 0);
+        setenv("GALLIUM_DRIVER", "zink", 0);
+#endif
+        offscreenContext = sgl::createOffscreenContext(device, params, false);
         if (offscreenContext && offscreenContext->getIsInitialized()) {
             //offscreenContext->makeCurrent(); //< This is called by createOffscreenContext to check interop extensions.
             sgl::AppSettings::get()->setOffscreenContext(offscreenContext);

@@ -62,6 +62,7 @@ option(USE_STATIC_STD_LIBRARIES "Link with standard libraries statically (only s
 option(USE_GLIBCXX_DEBUG "Use the -D_GLIBCXX_DEBUG flag when compiling with GCC." OFF)
 option(USE_TBB "Build with TBB threading support instead of using OpenMP." ${DEFAULT_USE_TBB})
 option(USE_PYTHON "Build with Python 3 support for replay scripts." ON)
+option(USE_ZINK "Use the Zink OpenGL wrapper if available." OFF)
 option(SUPPORT_PYTORCH "Build the PyTorch correlation calculator module." ON)
 option(SUPPORT_TINY_CUDA_NN "Build the tiny-cuda-nn correlation calculator module." ON)
 option(SUPPORT_QUICK_MLP "Build the QuickMLP correlation calculator module." ON)
@@ -397,6 +398,10 @@ if (TARGET jsoncpp_object)
     target_link_libraries(Correrender PRIVATE jsoncpp_object)
 endif()
 target_include_directories(Correrender PRIVATE ${jsoncpp_INCLUDES})
+
+if (${USE_ZINK})
+    target_compile_definitions(Correrender PRIVATE USE_ZINK)
+endif()
 
 if (Python3_FOUND AND USE_PYTHON)
     target_compile_definitions(Correrender PRIVATE USE_PYTHON)
