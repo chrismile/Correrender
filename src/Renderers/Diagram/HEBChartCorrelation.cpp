@@ -656,17 +656,24 @@ void HEBChart::computeCorrelationsSamplingCpu(
     HEBChartFieldData *fieldData, std::vector<MIFieldEntry> &miFieldEntries) {
     int cs = getCorrelationMemberCount();
 
+    const std::string& fieldName1 =
+            fieldData->isSecondFieldMode
+            ? fieldData->selectedScalarFieldName2 : fieldData->selectedScalarFieldName1;
+    const std::string& fieldName2 =
+            fieldData->isSecondFieldMode
+            ? fieldData->selectedScalarFieldName1 : fieldData->selectedScalarFieldName2;
+
     float minFieldVal = std::numeric_limits<float>::max();
     float maxFieldVal = std::numeric_limits<float>::lowest();
     std::vector<VolumeData::HostCacheEntry> fieldEntries;
     std::vector<const float*> fields;
     for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
-        VolumeData::HostCacheEntry fieldEntry = getFieldEntryCpu(fieldData->selectedScalarFieldName1, fieldIdx);
+        VolumeData::HostCacheEntry fieldEntry = getFieldEntryCpu(fieldName1, fieldIdx);
         const float *field = fieldEntry->data<float>();
         fieldEntries.push_back(fieldEntry);
         fields.push_back(field);
         if (isMeasureBinnedMI(correlationMeasureType)) {
-            auto [minVal, maxVal] = getMinMaxScalarFieldValue(fieldData->selectedScalarFieldName1, fieldIdx);
+            auto [minVal, maxVal] = getMinMaxScalarFieldValue(fieldName1, fieldIdx);
             minFieldVal = std::min(minFieldVal, minVal);
             maxFieldVal = std::max(maxFieldVal, maxVal);
         }
@@ -678,12 +685,12 @@ void HEBChart::computeCorrelationsSamplingCpu(
     std::vector<const float*> fields2;
     if (fieldData->useTwoFields) {
         for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
-            VolumeData::HostCacheEntry fieldEntry2 = getFieldEntryCpu(fieldData->selectedScalarFieldName2, fieldIdx);
+            VolumeData::HostCacheEntry fieldEntry2 = getFieldEntryCpu(fieldName2, fieldIdx);
             const float *field2 = fieldEntry2->data<float>();
             fieldEntries2.push_back(fieldEntry2);
             fields2.push_back(field2);
             if (isMeasureBinnedMI(correlationMeasureType)) {
-                auto [minVal2, maxVal2] = getMinMaxScalarFieldValue(fieldData->selectedScalarFieldName2, fieldIdx);
+                auto [minVal2, maxVal2] = getMinMaxScalarFieldValue(fieldName2, fieldIdx);
                 minFieldVal2 = std::min(minFieldVal2, minVal2);
                 maxFieldVal2 = std::max(maxFieldVal2, maxVal2);
             }
@@ -714,8 +721,12 @@ void HEBChart::correlationSamplingExecuteCpuDefault(
     int numPairsDownsampled;
     if (isSubselection) {
         numPairsDownsampled = int(subselectionBlockPairs.size());
+    } else if (regionsEqual && fieldData->isSecondFieldMode) {
+        numPairsDownsampled = (numPoints0 * numPoints0 + numPoints0) / 2;
+    } else if (regionsEqual && !fieldData->isSecondFieldMode) {
+        numPairsDownsampled = (numPoints0 * numPoints0 - numPoints0) / 2;
     } else {
-        numPairsDownsampled = regionsEqual ? (numPoints0 * numPoints0 - numPoints0) / 2 : numPoints0 * numPoints1;
+        numPairsDownsampled = numPoints0 * numPoints1;
     }
     std::vector<float> samples(6 * numSamples);
     generateSamples(samples.data(), numSamples, samplingMethodType, isSubselection);
@@ -731,7 +742,7 @@ void HEBChart::correlationSamplingExecuteCpuDefault(
 #else
     miFieldEntries.reserve(numPairsDownsampled);
 #if _OPENMP >= 201107
-    #pragma omp parallel default(none) shared(miFieldEntries, numPoints0, numPoints1, cs, k, numBins) \
+    #pragma omp parallel default(none) shared(miFieldEntries, numPoints0, numPoints1, cs, k, numBins, fieldData) \
     shared(numPairsDownsampled, minFieldVal, maxFieldVal, fields, minFieldVal2, maxFieldVal2, fields2, numSamples, samples)
 #endif
     {
@@ -747,8 +758,11 @@ void HEBChart::correlationSamplingExecuteCpuDefault(
                 uint32_t i, j;
                 if (isSubselection) {
                     std::tie(i, j) = subselectionBlockPairs.at(m);
-                } else if (regionsEqual) {
-                    i = (1 + sgl::uisqrt(1 + 8 * uint32_t(m))) / 2;
+                } else if (regionsEqual && fieldData->isSecondFieldMode) {
+                    i = (-1 + sgl::uisqrt(1 + 8 * m)) / 2;
+                    j = uint32_t(m) - i * (i + 1) / 2;
+                } else if (regionsEqual && !fieldData->isSecondFieldMode) {
+                    i = (1 + sgl::uisqrt(1 + 8 * m)) / 2;
                     j = uint32_t(m) - i * (i - 1) / 2;
                 } else {
                     i = uint32_t(m / numPoints1);
@@ -875,8 +889,12 @@ void HEBChart::correlationSamplingExecuteCpuBayesian(
     int numPairsDownsampled;
     if (isSubselection) {
         numPairsDownsampled = int(subselectionBlockPairs.size());
+    } else if (regionsEqual && fieldData->isSecondFieldMode) {
+        numPairsDownsampled = (numPoints0 * numPoints0 + numPoints0) / 2;
+    } else if (regionsEqual && !fieldData->isSecondFieldMode) {
+        numPairsDownsampled = (numPoints0 * numPoints0 - numPoints0) / 2;
     } else {
-        numPairsDownsampled = regionsEqual ? (numPoints0 * numPoints0 - numPoints0) / 2 : numPoints0 * numPoints1;
+        numPairsDownsampled = numPoints0 * numPoints1;
     }
 
     miFieldEntries.reserve(numPairsDownsampled);
@@ -892,8 +910,11 @@ void HEBChart::correlationSamplingExecuteCpuBayesian(
             uint32_t i, j;
             if (isSubselection) {
                 std::tie(i, j) = subselectionBlockPairs.at(p);
-            } else if (regionsEqual) {
-                i = (1 + sgl::uisqrt(1 + 8 * uint32_t(p))) / 2;
+            } else if (regionsEqual && fieldData->isSecondFieldMode) {
+                i = (-1 + sgl::uisqrt(1 + 8 * p)) / 2;
+                j = uint32_t(p) - i * (i + 1) / 2;
+            } else if (regionsEqual && !fieldData->isSecondFieldMode) {
+                i = (1 + sgl::uisqrt(1 + 8 * p)) / 2;
                 j = uint32_t(p) - i * (i - 1) / 2;
             } else {
                 i = uint32_t(p / numPoints1);
@@ -989,12 +1010,16 @@ std::shared_ptr<HEBChartFieldCache> HEBChart::getFieldCache(HEBChartFieldData* f
         fieldCache->fieldBuffers.reserve(cs);
     }
     fieldCache->useTwoFields = fieldData->useTwoFields;
-    if (fieldData->useTwoFields) {
+    fieldCache->isSecondFieldMode = fieldData->isSecondFieldMode;
+    if (useMeanFields || fieldData->useTwoFields) {
         if (useImageArray) {
-            fieldCache->fieldImageViews2.reserve(cs);
+            fieldCache->fieldImageViewsR1.reserve(cs);
         } else {
-            fieldCache->fieldBuffers2.reserve(cs);
+            fieldCache->fieldBuffersR1.reserve(cs);
         }
+    }
+    if (fieldData->useTwoFields && !useMeanFields) {
+        fieldCache->fieldEntries2.reserve(cs);
     }
 
     if (useMeanFields) {
@@ -1002,13 +1027,33 @@ std::shared_ptr<HEBChartFieldCache> HEBChart::getFieldCache(HEBChartFieldData* f
                 volumeData.get(), regionsEqual, r0, r1, mdfx, mdfy, mdfz, isEnsembleMode, dataMode, useBufferTiling);
         for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
             if (useImageArray) {
-                auto& fieldImageView = fieldData->fieldImageViews.at(fieldIdx);
+                auto& fieldImageView =
+                        fieldCache->isSecondFieldMode ? fieldData->fieldImageViews2.at(fieldIdx) : fieldData->fieldImageViews.at(fieldIdx);
                 fieldCache->fieldImageViews.push_back(fieldImageView);
                 if (fieldImageView->getImage()->getVkImageLayout() != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
                     fieldImageView->getImage()->transitionImageLayout(
                             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, computeRenderer->getVkCommandBuffer());
                 }
-                if (!regionsEqual) {
+
+                if (fieldData->useTwoFields) {
+                    if (regionsEqual) {
+                        auto& fieldImageViewR1 =
+                                fieldCache->isSecondFieldMode ? fieldData->fieldImageViews.at(fieldIdx) : fieldData->fieldImageViews2.at(fieldIdx);
+                        fieldCache->fieldImageViewsR1.push_back(fieldImageViewR1);
+                        if (fieldImageViewR1->getImage()->getVkImageLayout() != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+                            fieldImageViewR1->getImage()->transitionImageLayout(
+                                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, computeRenderer->getVkCommandBuffer());
+                        }
+                    } else {
+                        auto& fieldImageViewR1 =
+                                fieldCache->isSecondFieldMode ? fieldData->fieldImageViewsR1.at(fieldIdx) : fieldData->fieldImageViewsR12.at(fieldIdx);
+                        fieldCache->fieldImageViewsR1.push_back(fieldImageViewR1);
+                        if (fieldImageViewR1->getImage()->getVkImageLayout() != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+                            fieldImageViewR1->getImage()->transitionImageLayout(
+                                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, computeRenderer->getVkCommandBuffer());
+                        }
+                    }
+                } else if (!regionsEqual) {
                     auto& fieldImageViewR1 = fieldData->fieldImageViewsR1.at(fieldIdx);
                     fieldCache->fieldImageViewsR1.push_back(fieldImageViewR1);
                     if (fieldImageViewR1->getImage()->getVkImageLayout() != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
@@ -1016,50 +1061,41 @@ std::shared_ptr<HEBChartFieldCache> HEBChart::getFieldCache(HEBChartFieldData* f
                                 VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, computeRenderer->getVkCommandBuffer());
                     }
                 }
-
-                if (fieldData->useTwoFields) {
-                    auto& fieldImageView2 = fieldData->fieldImageViews2.at(fieldIdx);
-                    fieldCache->fieldImageViews2.push_back(fieldImageView2);
-                    if (fieldImageView2->getImage()->getVkImageLayout() != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
-                        fieldImageView2->getImage()->transitionImageLayout(
-                                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, computeRenderer->getVkCommandBuffer());
-                    }
-                    if (!regionsEqual) {
-                        auto& fieldImageViewR12 = fieldData->fieldImageViewsR12.at(fieldIdx);
-                        fieldCache->fieldImageViewsR12.push_back(fieldImageViewR12);
-                        if (fieldImageViewR12->getImage()->getVkImageLayout() != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
-                            fieldImageViewR12->getImage()->transitionImageLayout(
-                                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, computeRenderer->getVkCommandBuffer());
-                        }
-                    }
-                }
             } else {
-                fieldCache->fieldBuffers.push_back(fieldData->fieldBuffers.at(fieldIdx));
-                if (!regionsEqual) {
-                    fieldCache->fieldBuffersR1.push_back(fieldData->fieldBuffersR1.at(fieldIdx));
-                }
+                fieldCache->fieldBuffers.push_back(
+                        fieldCache->isSecondFieldMode ? fieldData->fieldBuffers2.at(fieldIdx) : fieldData->fieldBuffers.at(fieldIdx));
 
                 if (fieldData->useTwoFields) {
-                    fieldCache->fieldBuffers2.push_back(fieldData->fieldBuffers2.at(fieldIdx));
-                    if (!regionsEqual) {
-                        fieldCache->fieldBuffersR12.push_back(fieldData->fieldBuffersR12.at(fieldIdx));
+                    if (regionsEqual) {
+                        fieldCache->fieldBuffersR1.push_back(
+                                fieldCache->isSecondFieldMode ? fieldData->fieldBuffers.at(fieldIdx) : fieldData->fieldBuffers2.at(fieldIdx));
+                    } else {
+                        fieldCache->fieldBuffersR1.push_back(
+                                fieldCache->isSecondFieldMode ? fieldData->fieldBuffersR1.at(fieldIdx) : fieldData->fieldBuffersR12.at(fieldIdx));
                     }
+                } else if (!regionsEqual) {
+                    fieldCache->fieldBuffersR1.push_back(fieldData->fieldBuffersR1.at(fieldIdx));
                 }
             }
         }
         if (isMeasureBinnedMI(correlationMeasureType)) {
-            fieldCache->minFieldVal = fieldData->minFieldVal;
-            fieldCache->maxFieldVal = fieldData->maxFieldVal;
+            fieldCache->minFieldVal = fieldCache->isSecondFieldMode ? fieldData->minFieldVal2 : fieldData->minFieldVal;
+            fieldCache->maxFieldVal = fieldCache->isSecondFieldMode ? fieldData->maxFieldVal2 : fieldData->maxFieldVal;
 
             if (fieldData->useTwoFields) {
-                fieldCache->minFieldVal2 = fieldData->minFieldVal2;
-                fieldCache->maxFieldVal2 = fieldData->maxFieldVal2;
+                fieldCache->minFieldVal2 = fieldCache->isSecondFieldMode ? fieldData->minFieldVal : fieldData->minFieldVal2;
+                fieldCache->maxFieldVal2 = fieldCache->isSecondFieldMode ? fieldData->maxFieldVal : fieldData->maxFieldVal2;
             }
         }
     } else {
         for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
-            VolumeData::DeviceCacheEntry fieldEntry = getFieldEntryDevice(
-                    fieldData->selectedScalarFieldName1, fieldIdx, useImageArray);
+            const std::string& fieldName1 =
+                    fieldCache->isSecondFieldMode
+                    ? fieldData->selectedScalarFieldName2 : fieldData->selectedScalarFieldName1;
+            const std::string& fieldName2 =
+                    fieldCache->isSecondFieldMode
+                    ? fieldData->selectedScalarFieldName1 : fieldData->selectedScalarFieldName2;
+            VolumeData::DeviceCacheEntry fieldEntry = getFieldEntryDevice(fieldName1, fieldIdx, useImageArray);
             fieldCache->fieldEntries.push_back(fieldEntry);
             if (useImageArray) {
                 fieldCache->fieldImageViews.push_back(fieldEntry->getVulkanImageView());
@@ -1071,26 +1107,25 @@ std::shared_ptr<HEBChartFieldCache> HEBChart::getFieldCache(HEBChartFieldData* f
                 fieldCache->fieldBuffers.push_back(fieldEntry->getVulkanBuffer());
             }
             if (isMeasureBinnedMI(correlationMeasureType)) {
-                auto [minVal, maxVal] = getMinMaxScalarFieldValue(fieldData->selectedScalarFieldName1, fieldIdx);
+                auto [minVal, maxVal] = getMinMaxScalarFieldValue(fieldName1, fieldIdx);
                 fieldCache->minFieldVal = std::min(fieldCache->minFieldVal, minVal);
                 fieldCache->maxFieldVal = std::max(fieldCache->maxFieldVal, maxVal);
             }
 
             if (fieldData->useTwoFields) {
-                VolumeData::DeviceCacheEntry fieldEntry2 = getFieldEntryDevice(
-                        fieldData->selectedScalarFieldName2, fieldIdx, useImageArray);
+                VolumeData::DeviceCacheEntry fieldEntry2 = getFieldEntryDevice(fieldName2, fieldIdx, useImageArray);
                 fieldCache->fieldEntries2.push_back(fieldEntry2);
                 if (useImageArray) {
-                    fieldCache->fieldImageViews2.push_back(fieldEntry2->getVulkanImageView());
+                    fieldCache->fieldImageViewsR1.push_back(fieldEntry2->getVulkanImageView());
                     if (fieldEntry2->getVulkanImage()->getVkImageLayout() != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
                         fieldEntry2->getVulkanImage()->transitionImageLayout(
                                 VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, computeRenderer->getVkCommandBuffer());
                     }
                 } else {
-                    fieldCache->fieldBuffers2.push_back(fieldEntry2->getVulkanBuffer());
+                    fieldCache->fieldBuffersR1.push_back(fieldEntry2->getVulkanBuffer());
                 }
                 if (isMeasureBinnedMI(correlationMeasureType)) {
-                    auto [minVal2, maxVal2] = getMinMaxScalarFieldValue(fieldData->selectedScalarFieldName2, fieldIdx);
+                    auto [minVal2, maxVal2] = getMinMaxScalarFieldValue(fieldName2, fieldIdx);
                     fieldCache->minFieldVal2 = std::min(fieldCache->minFieldVal2, minVal2);
                     fieldCache->maxFieldVal2 = std::max(fieldCache->maxFieldVal2, maxVal2);
                 }
@@ -1147,18 +1182,26 @@ sgl::vk::BufferPtr HEBChart::computeCorrelationsForRequests(
         } else {
             correlationComputePass->setFieldBuffers(fieldCache->fieldBuffers);
         }
-        if (useMeanFields) {
-            correlationComputePass->overrideGridSize(
-                    sgl::iceil(r0.xsr, mdfx), sgl::iceil(r0.ysr, mdfy), sgl::iceil(r0.zsr, mdfz),
-                    sgl::iceil(r1.xsr, mdfx), sgl::iceil(r1.ysr, mdfy), sgl::iceil(r1.zsr, mdfz));
-            correlationComputePass->setUseSecondaryFields(!regionsEqual);
-            if (!regionsEqual) {
+        if (useMeanFields || fieldCache->useTwoFields) {
+            if (useMeanFields) {
+                correlationComputePass->overrideGridSize(
+                        sgl::iceil(r0.xsr, mdfx), sgl::iceil(r0.ysr, mdfy), sgl::iceil(r0.zsr, mdfz),
+                        sgl::iceil(r1.xsr, mdfx), sgl::iceil(r1.ysr, mdfy), sgl::iceil(r1.zsr, mdfz));
+            } else {
+                correlationComputePass->overrideGridSize(
+                        volumeData->getGridSizeX(), volumeData->getGridSizeY(), volumeData->getGridSizeZ(),
+                        volumeData->getGridSizeX(), volumeData->getGridSizeY(), volumeData->getGridSizeZ());
+            }
+            correlationComputePass->setUseSecondaryFields(!regionsEqual || fieldCache->useTwoFields);
+            if (!regionsEqual || fieldCache->useTwoFields) {
                 if (dataMode == CorrelationDataMode::IMAGE_3D_ARRAY) {
                     correlationComputePass->setFieldImageViewsSecondary(fieldCache->fieldImageViewsR1);
                 } else {
                     correlationComputePass->setFieldBuffersSecondary(fieldCache->fieldBuffersR1);
                 }
             }
+        } else {
+            correlationComputePass->setUseSecondaryFields(false);
         }
         correlationComputePass->buildIfNecessary();
     }
@@ -1261,8 +1304,12 @@ void HEBChart::correlationSamplingExecuteGpuDefault(
     int numPairsDownsampled;
     if (isSubselection) {
         numPairsDownsampled = int(subselectionBlockPairs.size());
+    } else if (regionsEqual && fieldData->isSecondFieldMode) {
+        numPairsDownsampled = (numPoints0 * numPoints0 + numPoints0) / 2;
+    } else if (regionsEqual && !fieldData->isSecondFieldMode) {
+        numPairsDownsampled = (numPoints0 * numPoints0 - numPoints0) / 2;
     } else {
-        numPairsDownsampled = regionsEqual ? (numPoints0 * numPoints0 - numPoints0) / 2 : numPoints0 * numPoints1;
+        numPairsDownsampled = numPoints0 * numPoints1;
     }
 
     std::vector<float> samples(6 * numSamples);
@@ -1304,7 +1351,7 @@ void HEBChart::correlationSamplingExecuteGpuDefault(
 #else
 #if _OPENMP >= 201107
         #pragma omp parallel default(none) shared(requests, numPoints0, numPoints1) \
-        shared(cellIdxOffset, loopMax, numSamples, samples)
+        shared(cellIdxOffset, loopMax, numSamples, samples, fieldData)
 #endif
         {
             std::vector<CorrelationRequestData> requestsThread;
@@ -1317,7 +1364,10 @@ void HEBChart::correlationSamplingExecuteGpuDefault(
                     uint32_t i, j;
                     if (isSubselection) {
                         std::tie(i, j) = subselectionBlockPairs.at(m);
-                    } else if (regionsEqual) {
+                    } else if (regionsEqual && fieldData->isSecondFieldMode) {
+                        i = (-1 + sgl::uisqrt(1 + 8 * m)) / 2;
+                        j = uint32_t(m) - i * (i + 1) / 2;
+                    } else if (regionsEqual && !fieldData->isSecondFieldMode) {
                         i = (1 + sgl::uisqrt(1 + 8 * m)) / 2;
                         j = uint32_t(m) - i * (i - 1) / 2;
                     } else {
@@ -1496,8 +1546,12 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData *fieldDat
     int numPairsDownsampled;
     if (isSubselection) {
         numPairsDownsampled = int(subselectionBlockPairs.size());
+    } else if (regionsEqual && fieldData->isSecondFieldMode) {
+        numPairsDownsampled = (numPoints0 * numPoints0 + numPoints0) / 2;
+    } else if (regionsEqual && !fieldData->isSecondFieldMode) {
+        numPairsDownsampled = (numPoints0 * numPoints0 - numPoints0) / 2;
     } else {
-        numPairsDownsampled = regionsEqual ? (numPoints0 * numPoints0 - numPoints0) / 2 : numPoints0 * numPoints1;
+        numPairsDownsampled = numPoints0 * numPoints1;
     }
 
     uint32_t gpu_max_sample_count{};
@@ -1535,7 +1589,10 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData *fieldDat
             uint32_t i, j;
             if (isSubselection) {
                 std::tie(i, j) = subselectionBlockPairs.at(q);
-            } else if (regionsEqual) {
+            } else if (regionsEqual && fieldData->isSecondFieldMode) {
+                i = (-1 + sgl::uisqrt(1 + 8 * q)) / 2;
+                j = uint32_t(q) - i * (i + 1) / 2;
+            } else if (regionsEqual && !fieldData->isSecondFieldMode) {
                 i = (1 + sgl::uisqrt(1 + 8 * q)) / 2;
                 j = uint32_t(q) - i * (i - 1) / 2;
             } else {
@@ -1690,7 +1747,10 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData *fieldDat
                 uint32_t i, j, q = global_pair_base_index + p;
                 if (isSubselection) {
                     std::tie(i, j) = subselectionBlockPairs.at(q);
-                } else if (regionsEqual) {
+                } else if (regionsEqual && fieldData->isSecondFieldMode) {
+                    i = (-1 + sgl::uisqrt(1 + 8 * q)) / 2;
+                    j = uint32_t(q) - i * (i + 1) / 2;
+                } else if (regionsEqual && !fieldData->isSecondFieldMode) {
                     i = (1 + sgl::uisqrt(1 + 8 * q)) / 2;
                     j = uint32_t(q) - i * (i - 1) / 2;
                 } else {
@@ -1790,6 +1850,19 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData *fieldDat
 
     for (auto &t : threads)
         t.join();
+
+    // Use filtering?
+    if (correlationRange.x > correlationRangeTotal.x || correlationRange.y < correlationRangeTotal.y) {
+        std::vector<MIFieldEntry> miFieldEntriesUnfiltered;
+        std::swap(miFieldEntries, miFieldEntriesUnfiltered);
+        miFieldEntries.reserve(miFieldEntriesUnfiltered.size());
+        for (const auto& entry : miFieldEntriesUnfiltered) {
+            if (entry.correlationValue >= correlationRange.x && entry.correlationValue <= correlationRange.y) {
+                miFieldEntries.push_back(entry);
+            }
+        }
+    }
+
     thread_end = std::chrono::system_clock::now();
     thread_time += std::chrono::duration<double>(thread_end - thread_start).count();
 

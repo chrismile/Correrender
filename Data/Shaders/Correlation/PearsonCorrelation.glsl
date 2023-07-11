@@ -105,7 +105,7 @@ void main() {
     }
     float stdDevX = sqrt(varX);
     float stdDevY = sqrt(varY);
-    correlationValue /= stdDevX * stdDevY;
+    correlationValue /= (stdDevX * stdDevY + 1e-6);
 
 #ifdef CALCULATE_ABSOLUTE_VALUE
     correlationValue = abs(correlationValue);

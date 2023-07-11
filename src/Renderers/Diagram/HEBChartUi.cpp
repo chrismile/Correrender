@@ -576,7 +576,7 @@ void HEBChart::update(float dt) {
         //auto endTime = std::chrono::system_clock::now();
         //auto elapsedTime = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
         //std::cout << "Elapsed time update: " << elapsedTime.count() << "ms" << std::endl;
-    } else {
+    } else if (diagramMode == DiagramMode::MATRIX && correlationMatrix) {
         float startX = windowWidth / 2.0f - chartRadius;
         float startY = windowHeight / 2.0f - chartRadius;
         float matrixWidth = 2.0f * chartRadius;
@@ -702,7 +702,9 @@ void HEBChart::renderCorrelationMatrix() {
 
     auto [minMi, maxMi] = getMinMaxCorrelationValue();
     auto numFields = int(fieldDataArray.size());
-    for (int fieldIdx = 0; fieldIdx < numFields; fieldIdx++) {
+    //for (int fieldIdx = 0; fieldIdx < numFields; fieldIdx++) {
+    if (numFields > 0) {
+        int fieldIdx = 0;
         float startX = windowWidth / 2.0f - chartRadius;
         float startY = windowHeight / 2.0f - chartRadius;
         float matrixWidth = 2.0f * chartRadius;
@@ -800,22 +802,20 @@ void HEBChart::renderCorrelationMatrix() {
         }
 
         if (showRing) {
-            std::pair<float, float> stdDevRange;
-            if (useGlobalStdDevRange) {
-                if (!fieldData->useTwoFields) {
-                    stdDevRange = getGlobalStdDevRange(fieldData->selectedFieldIdx, 0);
-                } else {
-                    stdDevRange = getGlobalStdDevRange(fieldData->selectedFieldIdx, 1);
-                }
-            } else {
-                stdDevRange = std::make_pair(fieldData->minStdDev, fieldData->maxStdDev);
-            }
-
             for (int dim = 0; dim < 2; dim++) {
+                std::pair<float, float> stdDevRange;
+                if (useGlobalStdDevRange) {
+                    if (!fieldData->useTwoFields) {
+                        stdDevRange = getGlobalStdDevRange(fieldData->selectedFieldIdx, 0);
+                    } else {
+                        stdDevRange = getGlobalStdDevRange(fieldData->selectedFieldIdx, dim);
+                    }
+                } else {
+                    stdDevRange = std::make_pair(fieldData->minStdDev, fieldData->maxStdDev);
+                }
+
                 std::vector<float>* leafStdDevArray = nullptr;
-                if (!regionsEqual) {
-                    leafStdDevArray = &fieldData->leafStdDevArray;
-                } else if (fieldData->useTwoFields) {
+                if (fieldData->useTwoFields) {
                     leafStdDevArray = dim == 0 ? &fieldData->leafStdDevArray : &fieldData->leafStdDevArray2;
                 } else {
                     leafStdDevArray = &fieldData->leafStdDevArray;
@@ -1356,7 +1356,17 @@ void HEBChart::renderChordDiagramSkia() {
         drawSelectionArrows();
     } if (!regionsEqual && showSelectedRegionsByColor && isFocusView && !fieldDataArray.empty()) {
         glm::vec2 center(windowWidth / 2.0f * s, windowHeight / 2.0f * s);
-        auto* fieldData = fieldDataArray.front().get();
+        HEBChartFieldData* fieldData = nullptr;
+        if (limitedFieldIdx >= 0) {
+            for (auto& fieldDataIt : fieldDataArray) {
+                if (limitedFieldIdx == fieldDataIt->selectedFieldIdx) {
+                    fieldData = fieldDataIt.get();
+                    break;
+                }
+            }
+        } else {
+            fieldData = fieldDataArray.front().get();
+        }
         float rhi = (totalRadius + std::max(totalRadius * 0.015f, 4.0f)) * s;
         SkPath path;
         paint.setStroke(true);
@@ -1544,7 +1554,17 @@ void HEBChart::renderChordDiagramVkvg() {
         drawSelectionArrows();
     } else if (!regionsEqual && showSelectedRegionsByColor && isFocusView && !fieldDataArray.empty()) {
         glm::vec2 center(windowWidth / 2.0f * s, windowHeight / 2.0f * s);
-        auto* fieldData = fieldDataArray.front().get();
+        HEBChartFieldData* fieldData = nullptr;
+        if (limitedFieldIdx >= 0) {
+            for (auto& fieldDataIt : fieldDataArray) {
+                if (limitedFieldIdx == fieldDataIt->selectedFieldIdx) {
+                    fieldData = fieldDataIt.get();
+                    break;
+                }
+            }
+        } else {
+            fieldData = fieldDataArray.front().get();
+        }
         float rhi = (totalRadius + std::max(totalRadius * 0.015f, 4.0f)) * s;
         for (int i = 0; i < 2; i++) {
             float angle0 = i == 0 ? fieldData->a00 : fieldData->a10;
@@ -1594,9 +1614,18 @@ void HEBChart::renderRings() {
     for (int i = 0; i < numFields; i++) {
         numFieldsReal += fieldDataArray.at(i)->useTwoFields ? 2 : 1;
     }
+    int limitedFieldDataIdx = -1;
+    if (limitedFieldIdx >= 0) {
+        for (int i = 0; i < numFields; i++) {
+            if (fieldDataArray.at(i)->selectedFieldIdx == limitedFieldIdx) {
+                limitedFieldDataIdx = i;
+                break;
+            }
+        }
+    }
     auto numFieldsSize =
-            limitedFieldIdx >= 0
-            ? std::min(numFieldsReal, fieldDataArray.at(limitedFieldIdx)->useTwoFields ? 2 : 1)
+            limitedFieldIdx >= 0 && limitedFieldDataIdx >= 0
+            ? std::min(numFieldsReal, fieldDataArray.at(limitedFieldDataIdx)->useTwoFields ? 2 : 1)
             : numFieldsReal;
     int i = 0;
     bool secondField = false;
@@ -1611,6 +1640,8 @@ void HEBChart::renderRings() {
         int ip = ix;
         if (limitedFieldIdx >= 0) {
             if (limitedFieldIdx != fieldData->selectedFieldIdx) {
+                i++;
+                secondField = false;
                 continue;
             } else {
                 ip = secondField ? 1 : 0;
@@ -1823,6 +1854,8 @@ void HEBChart::renderRings() {
         auto* fieldData = fieldDataArray.at(fieldIdx).get();
         if (limitedFieldIdx >= 0) {
             if (limitedFieldIdx != fieldData->selectedFieldIdx) {
+                i++;
+                secondField = false;
                 continue;
             } else {
                 ip = 0;

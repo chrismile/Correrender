@@ -66,10 +66,13 @@ class MultivariateGaussian;
 struct MIFieldEntry {
     float correlationValue{};
     uint32_t pointIndex0{}, pointIndex1{};
+    bool isSecondField;
 
     MIFieldEntry() = default;
     MIFieldEntry(float correlationValue, uint32_t pointIndex0, uint32_t pointIndex1)
-            : correlationValue(correlationValue), pointIndex0(pointIndex0), pointIndex1(pointIndex1) {}
+            : correlationValue(correlationValue), pointIndex0(pointIndex0), pointIndex1(pointIndex1), isSecondField(false) {}
+    MIFieldEntry(float correlationValue, uint32_t pointIndex0, uint32_t pointIndex1, bool isSecondField)
+            : correlationValue(correlationValue), pointIndex0(pointIndex0), pointIndex1(pointIndex1), isSecondField(isSecondField) {}
     bool operator<(const MIFieldEntry& rhs) const { return correlationValue > rhs.correlationValue; }
 };
 
@@ -141,6 +144,7 @@ struct HEBChartFieldData {
 
     // For comparing two different fields.
     bool useTwoFields = false;
+    bool isSecondFieldMode = false; // Whether to use field 1 -> 2 or 2 -> 1.
     int selectedFieldIdx1 = 0, selectedFieldIdx2 = 0;
     std::string selectedScalarFieldName1, selectedScalarFieldName2;
     std::vector<float> leafStdDevArray2;
@@ -173,14 +177,10 @@ struct HEBChartFieldCache {
 
     // For comparing two different fields.
     bool useTwoFields = false;
+    bool isSecondFieldMode = false; // Whether to use field 1 -> 2 or 2 -> 1.
     // Data.
     float minFieldVal2 = std::numeric_limits<float>::max(), maxFieldVal2 = std::numeric_limits<float>::lowest();
     std::vector<VolumeData::DeviceCacheEntry> fieldEntries2;
-    std::vector<sgl::vk::ImageViewPtr> fieldImageViews2;
-    std::vector<sgl::vk::BufferPtr> fieldBuffers2;
-    // Optional, if separate regions and downscaled fields are used.
-    std::vector<sgl::vk::ImageViewPtr> fieldImageViewsR12;
-    std::vector<sgl::vk::BufferPtr> fieldBuffersR12;
 };
 
 /**

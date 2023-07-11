@@ -26,6 +26,8 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <ImGui/Widgets/TransferFunctionWindow.hpp>
+
 #include "DiagramColorMap.hpp"
 
 std::vector<sgl::Color> defaultColors = {
@@ -33,6 +35,15 @@ std::vector<sgl::Color> defaultColors = {
         sgl::Color(255, 60, 50),   // NEON_RED
         sgl::Color(0, 170, 255),   // NEON_BLUE
         sgl::Color(255, 148, 60),  // NEON_ORANGE
+};
+
+std::vector<sgl::Color> blackColorMapColors = {
+        sgl::Color(255, 255, 100), // Yellow
+        sgl::Color(252, 127,   0), // Orange
+        sgl::Color(0,   255, 127), // Green
+        sgl::Color(0,   127, 255), // Blue
+        sgl::Color(0,   255, 255), // Cyan
+        sgl::Color(255, 0,   255), // Purple
 };
 
 std::vector<glm::vec3> getColorPoints(DiagramColorMap colorMap) {
@@ -245,12 +256,34 @@ std::vector<glm::vec3> getColorPoints(DiagramColorMap colorMap) {
                 { 208.0f / 255.0f, 231.0f / 255.0f, 208.0f / 255.0f },
                 { 100.0f / 255.0f, 255.0f / 255.0f, 100.0f / 255.0f },
         };
-    } else {
+    } else if (int(colorMap) >= int(DiagramColorMap::NEON_GREEN) && int(colorMap) <= int(DiagramColorMap::NEON_ORANGE)) {
         sgl::Color color = defaultColors.at(int(colorMap) - int(DiagramColorMap::NEON_GREEN));
         colorPoints = {
                 { color.getFloatR(), color.getFloatG(), color.getFloatB() },
                 { color.getFloatR(), color.getFloatG(), color.getFloatB() },
         };
+    } else if (int(colorMap) >= int(DiagramColorMap::BLACK_YELLOW) && int(colorMap) <= int(DiagramColorMap::BLACK_PURPLE)) {
+        const float start = 0.3f;
+        const float stop = 1.0f;
+        const int numSteps = 5;
+        sgl::Color baseColor = blackColorMapColors.at(int(colorMap) - int(DiagramColorMap::BLACK_YELLOW));
+        glm::vec3 baseColorLinear = sgl::TransferFunctionWindow::sRGBToLinearRGB(baseColor.getFloatColorRGB());
+        for (int i = 0; i < numSteps; i++) {
+            float t = float(i) / float(numSteps - 1) * (stop - start) + start;
+            //colorPoints.push_back(sgl::TransferFunctionWindow::linearRGBTosRGB(t * baseColorLinear));
+            colorPoints.push_back(t * baseColor.getFloatColorRGB());
+        }
+    } else if (int(colorMap) >= int(DiagramColorMap::BLACK_NEON_GREEN) && int(colorMap) <= int(DiagramColorMap::BLACK_NEON_ORANGE)) {
+        const float start = 0.25f;
+        const float stop = 1.0f;
+        const int numSteps = 5;
+        sgl::Color baseColor = defaultColors.at(int(colorMap) - int(DiagramColorMap::BLACK_NEON_GREEN));
+        glm::vec3 baseColorLinear = sgl::TransferFunctionWindow::sRGBToLinearRGB(baseColor.getFloatColorRGB());
+        for (int i = 0; i < numSteps; i++) {
+            float t = float(i) / float(numSteps - 1) * (stop - start) + start;
+            //colorPoints.push_back(sgl::TransferFunctionWindow::linearRGBTosRGB(t * baseColorLinear));
+            colorPoints.push_back(t * baseColor.getFloatColorRGB());
+        }
     }
     return colorPoints;
 }

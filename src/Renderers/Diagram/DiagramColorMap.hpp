@@ -39,14 +39,18 @@ enum class DiagramColorMap {
     SPRING, SUMMER, AUTUMN, WINTER, COOL, WISTIA,
     COOL_TO_WARM, //< Diverging.
     PIYG, PRGN, BRBG, PUOR, RDGY, RDBU, RDYLBU, RDYLGN, SPECTRAL, COOLWARM, BWR, SEISMIC, //< Diverging from Matplotlib.
-    NEON_GREENS, NEON_GREEN, NEON_RED, NEON_BLUE, NEON_ORANGE
+    NEON_GREENS, NEON_GREEN, NEON_RED, NEON_BLUE, NEON_ORANGE,
+    BLACK_YELLOW, BLACK_ORANGE, BLACK_GREEN, BLACK_BLUE, BLACK_CYAN, BLACK_PURPLE,
+    BLACK_NEON_GREEN, BLACK_NEON_RED, BLACK_NEON_BLUE, BLACK_NEON_ORANGE
 };
 const char* const DIAGRAM_COLOR_MAP_NAMES[] = {
         "Viridis", "Heatmap", "Cividis", "Gray",
         "Spring", "Summer", "Autumn", "Winter", "Cool", "Wistia",
         "Cool to Warm",
         "PiYG", "PRGn", "BrBG", "PuOr", "RdGy", "RdBu", "RdYlBu", "RdYlGn", "Spectral", "Coolwarm", "bwr", "Seismic",
-        "Neon Greens", "Neon Green", "Neon Red", "Neon Blue", "Neon Orange"
+        "Neon Greens", "Neon Green", "Neon Red", "Neon Blue", "Neon Orange",
+        "Black-Yellow", "Black-Orange", "Black-Green", "Black-Blue", "Black-Cyan", "Black-Purple",
+        "Black-Neon Green", "Black-Neon Red", "Black-Neon Blue", "Black-Neon Orange",
 };
 const int NUM_COLOR_MAPS = ((int)(sizeof(DIAGRAM_COLOR_MAP_NAMES) / sizeof(*(DIAGRAM_COLOR_MAP_NAMES))));
 std::vector<glm::vec3> getColorPoints(DiagramColorMap colorMap);

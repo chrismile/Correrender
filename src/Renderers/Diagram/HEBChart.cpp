@@ -653,6 +653,16 @@ void HEBChart::updateData() {
         std::vector<MIFieldEntry> miFieldEntries;
         if (regionsEqual) {
             computeCorrelations(fieldData, downscaledFields0, downscaledFields0, miFieldEntries);
+            if (fieldData->useTwoFields && regionsEqual) {
+                std::vector<MIFieldEntry> miFieldEntries2;
+                fieldData->isSecondFieldMode = true;
+                computeCorrelations(fieldData, downscaledFields0, downscaledFields0, miFieldEntries2);
+                fieldData->isSecondFieldMode = false;
+                miFieldEntries.reserve(miFieldEntries.size() + miFieldEntries2.size());
+                for (const auto& entry : miFieldEntries2) {
+                    miFieldEntries.emplace_back(entry.correlationValue, entry.pointIndex1, entry.pointIndex0, true);
+                }
+            }
         } else {
             computeCorrelations(fieldData, downscaledFields0, downscaledFields1, miFieldEntries);
         }
@@ -738,6 +748,11 @@ void HEBChart::updateDataVarMatrix(
     for (const MIFieldEntry& entry : miFieldEntries) {
         int idx0 = int(pointToNodeIndexMap0.at(entry.pointIndex0) - leafIdxOffset);
         int idx1 = int(pointToNodeIndexMap1.at(entry.pointIndex1) - leafIdxOffset1);
+        if (regionsEqual && entry.isSecondField != (idx0 > idx1)) {
+            int tmp = idx0;
+            idx0 = idx1;
+            idx1 = tmp;
+        }
         //correlationMatrix->set(int(entry.pointIndex0), int(entry.pointIndex1), entry.correlationValue);
         correlationMatrix->set(idx0, idx1, entry.correlationValue);
     }
@@ -992,6 +1007,7 @@ std::pair<GridRegion, GridRegion> HEBChart::getFocusSelection() {
                 getGridRegionPointIdx(getLeafIdxGroup(clickedGridIdx->x), pointIdx0),
                 getGridRegionPointIdx(getLeafIdxGroup(clickedGridIdx->y), pointIdx1));
     }
+    return {};
 }
 
 GridRegion HEBChart::getGridRegionPointIdx(int idx, uint32_t pointIdx) {

@@ -83,10 +83,10 @@ public:
     [[nodiscard]] bool getIsSymmetric() const override { return true; }
     void set(int i, int j, float value) override {
         //assert(i > j && i < rows && j < columns);
-        if (i >= rows || j >= columns) {
+        if (i >= rows || j >= columns || i == j) {
             throw std::runtime_error("Error: Invalid row or column index in symmetric correlation matrix.");
         }
-        if (i <= j) {
+        if (i < j) {
             int tmp = i;
             i = j;
             j = tmp;
@@ -96,10 +96,10 @@ public:
     }
     [[nodiscard]] float get(int i, int j) const override {
         //assert(i > j && i < rows && j < columns);
-        if (i >= rows || j >= columns) {
+        if (i >= rows || j >= columns || i == j) {
             throw std::runtime_error("Error: Invalid row or column index in symmetric correlation matrix.");
         }
-        if (i <= j) {
+        if (i < j) {
             int tmp = i;
             i = j;
             j = tmp;

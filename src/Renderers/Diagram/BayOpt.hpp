@@ -161,7 +161,7 @@ struct Eval{
         auto start = std::chrono::system_clock::now();
         // converting the continuous indices do discrete ones with probabilistic reparametrization and filling the vectors a and b
         for(int i: i_range(6)){
-            double v = x[i] * (bounds_max[i] - bounds_min[i] - 1) + bounds_min[i];
+            double v = x[i] * (bounds_max[i] - bounds_min[i]) + bounds_min[i];
             dims[i] = pr(v);
         }
         
