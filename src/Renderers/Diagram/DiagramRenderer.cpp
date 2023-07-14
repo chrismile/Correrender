@@ -1452,6 +1452,9 @@ void DiagramRenderer::setSettings(const SettingsMap& settings) {
         selectedScalarFields.clear();
 
         for (size_t fieldIdx = 0; fieldIdx < scalarFieldSelectionString.size(); fieldIdx++) {
+            if (fieldIdx >= scalarFieldSelectionArray.size()) {
+                continue;
+            }
             bool useField = scalarFieldSelectionString.at(fieldIdx) != '0';
             scalarFieldSelectionArray.at(fieldIdx) = false;
             if (useField) {
