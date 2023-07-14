@@ -107,7 +107,7 @@ private:
     std::vector<std::string> availableFieldNames;
     int numFieldsBase = 0;
 
-    DiagramMode diagramMode = DiagramMode::MATRIX;
+    DiagramMode diagramMode = DiagramMode::CHORD;
     std::vector<bool> scalarFieldSelectionArray;
     std::string scalarFieldComboValue;
     std::vector<DiagramSelectedFieldData> selectedScalarFields;

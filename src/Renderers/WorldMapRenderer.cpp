@@ -283,7 +283,7 @@ void WorldMapRenderer::createWorldMapTexture() {
         sgl::Logfile::get()->throwError("Error: JBIG encoding is disabled to comply with the license of JBIG-KIT.");
     }
 
-    uint32 imageWidth, imageHeight;
+    uint32_t imageWidth, imageHeight;
     TIFFGetField(tif, TIFFTAG_IMAGEWIDTH, &imageWidth);
     TIFFGetField(tif, TIFFTAG_IMAGELENGTH, &imageHeight);
 
@@ -312,7 +312,7 @@ void WorldMapRenderer::createWorldMapTexture() {
     regionImageWidth = xu - xl + 1;
     regionImageHeight = yu - yl + 1;
 
-    auto* imageDataRgba = reinterpret_cast<uint32*>(_TIFFmalloc(imageWidth * imageHeight * sizeof(uint32)));
+    auto* imageDataRgba = reinterpret_cast<uint32_t*>(_TIFFmalloc(imageWidth * imageHeight * sizeof(uint32_t)));
     if (imageDataRgba == nullptr) {
         sgl::Logfile::get()->throwError("Error: _TIFFmalloc failed!");
     }
@@ -371,11 +371,11 @@ void WorldMapRenderer::createWorldMapTexture() {
         sgl::Logfile::get()->throwError("Error: JBIG encoding is disabled to comply with the license of JBIG-KIT.");
     }
 
-    uint32 imageWidth, imageHeight;
+    uint32_t imageWidth, imageHeight;
 
     TIFFGetField(tif, TIFFTAG_IMAGEWIDTH, &imageWidth);
     TIFFGetField(tif, TIFFTAG_IMAGELENGTH, &imageHeight);
-    auto* imageDataRgba = reinterpret_cast<uint32*>(_TIFFmalloc(imageWidth * imageHeight * sizeof(uint32)));
+    auto* imageDataRgba = reinterpret_cast<uint32_t*>(_TIFFmalloc(imageWidth * imageHeight * sizeof(uint32_t)));
     if (imageDataRgba == nullptr) {
         sgl::Logfile::get()->throwError("Error: _TIFFmalloc failed!");
     }

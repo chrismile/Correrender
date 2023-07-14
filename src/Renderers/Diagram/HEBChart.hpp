@@ -31,6 +31,7 @@
 
 #include <string>
 #include <vector>
+#include <optional>
 #include <mutex>
 
 #include <glm/vec2.hpp>
@@ -126,6 +127,7 @@ struct HEBChartFieldData {
     std::pair<float, float> getMinMaxScalarFieldValue(const std::string& fieldName, int fieldIdx);
     std::mutex volumeDataMutex;
     VolumeData* volumeData = nullptr;
+    uint64_t elapsedTimeDownsampling = 0;
     bool cachedRegionsEqual = false;
     GridRegion cachedR0, cachedR1;
     int cachedMdfx = 0, cachedMdfy = 0, cachedMdfz = 0;
@@ -320,7 +322,7 @@ private:
     bool isFocusView = false;
     bool dataDirty = true;
     bool isHeadlessMode = false;
-    DiagramMode diagramMode = DiagramMode::MATRIX;
+    DiagramMode diagramMode = DiagramMode::CHORD;
 
     int getCorrelationMemberCount();
     HostCacheEntry getFieldEntryCpu(const std::string& fieldName, int fieldIdx);

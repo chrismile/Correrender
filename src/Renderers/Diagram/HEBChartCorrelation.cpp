@@ -131,6 +131,7 @@ void HEBChartFieldData::createFieldCache(
         }
     }
 
+    elapsedTimeDownsampling = 0;
     for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
         computeDownscaledFields(0, 0, fieldIdx);
         if (!regionsEqual) {
@@ -150,6 +151,7 @@ void HEBChartFieldData::createFieldCache(
             maxFieldVal2 = std::max(maxFieldVal2, maxVal2);
         }
     }
+    std::cout << "Elapsed time downsampling: " << elapsedTimeDownsampling << "ms" << std::endl;
 }
 
 void HEBChartFieldData::clearMemoryTokens() {
@@ -218,7 +220,8 @@ void HEBChartFieldData::computeDownscaledFields(int idx, int varNum, int fieldId
     const float* field = fieldEntry->data<float>();
     auto* downscaledField = new float[numPoints];
 
-#define DOWNSAMPLING_MAX
+//#define DOWNSAMPLING_MAX
+    std::chrono::time_point<std::chrono::system_clock> startTime = std::chrono::system_clock::now();
 
     for (int zd = 0; zd < zsd; zd++) {
         for (int yd = 0; yd < ysd; yd++) {
@@ -377,6 +380,10 @@ void HEBChartFieldData::computeDownscaledFields(int idx, int varNum, int fieldId
             deviceMemoryTokensR12.at(fieldIdx) = token;
         }
     }
+
+    auto endTime = std::chrono::system_clock::now();
+    auto elapsedTime = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
+    elapsedTimeDownsampling += elapsedTime.count();
 
     delete[] downscaledField;
 }

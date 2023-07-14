@@ -1660,9 +1660,9 @@ void HEBChart::renderRings() {
         float pctLower = float(ip) / float(numFieldsSize);
         float pctMiddle = (float(ip) + 0.5f) / float(numFieldsSize);
         float pctUpper = float(ip + 1) / float(numFieldsSize);
-        float rlo = chartRadius + outerRingOffset + pctLower * outerRingWidth;
-        float rmi = chartRadius + outerRingOffset + pctMiddle * outerRingWidth;
-        float rhi = chartRadius + outerRingOffset + pctUpper * outerRingWidth;
+        float rlo = std::max(chartRadius + outerRingOffset + pctLower * outerRingWidth, 1e-6f);
+        float rmi = std::max(chartRadius + outerRingOffset + pctMiddle * outerRingWidth, 1e-6f);
+        float rhi = std::max(chartRadius + outerRingOffset + pctUpper * outerRingWidth, 1e-6f);
         bool isSaturated =
                 (separateColorVarianceAndCorrelation && getIsGrayscaleColorMap(colorMapVariance))
                 || !separateColorVarianceAndCorrelation || selectedLineIdx < 0
@@ -1863,8 +1863,8 @@ void HEBChart::renderRings() {
         }
         float pctLower = float(ip) / float(numFieldsSize);
         float pctUpper = float(ip + 1) / float(numFieldsSize);
-        float rlo = chartRadius + outerRingOffset + pctLower * outerRingWidth;
-        float rhi = chartRadius + outerRingOffset + pctUpper * outerRingWidth;
+        float rlo = std::max(chartRadius + outerRingOffset + pctLower * outerRingWidth, 1e-6f);
+        float rhi = std::max(chartRadius + outerRingOffset + pctUpper * outerRingWidth, 1e-6f);
 
         if (vg) {
             nvgBeginPath(vg);
