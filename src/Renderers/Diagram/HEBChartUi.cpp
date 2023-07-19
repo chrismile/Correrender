@@ -2187,9 +2187,13 @@ void HEBChart::drawColorLegends() {
                     - float(ix - 1) * colorLegendSpacing;
         }
 
+        float posY = windowHeight - borderSizeY - colorLegendHeight;
+        if (diagramMode == DiagramMode::MATRIX && outerRingSizePct > 0.0f) {
+            posY -= outerRingWidth + 5;
+        }
+
         drawColorLegend(
-                posX, windowHeight - borderSizeY - colorLegendHeight,
-                colorLegendWidth, colorLegendHeight, numLabels, numTicks, labelMap, colorMap, variableName);
+                posX, posY, colorLegendWidth, colorLegendHeight, numLabels, numTicks, labelMap, colorMap, variableName);
     }
 }
 

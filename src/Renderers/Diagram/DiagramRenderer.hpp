@@ -44,6 +44,7 @@ class DomainOutlineRasterPass;
 class DomainOutlineComputePass;
 class ConnectingLineRasterPass;
 class SelectionBoxRasterPass;
+class ShadowRectRasterPass;
 
 struct OutlineRenderData {
     sgl::vk::BufferPtr indexBuffer;
@@ -79,6 +80,7 @@ public:
 protected:
     void renderViewImpl(uint32_t viewIdx) override;
     void renderViewPreImpl(uint32_t viewIdx) override;
+    void renderViewPostOpaqueImpl(uint32_t viewIdx) override;
     void addViewImpl(uint32_t viewIdx) override;
     void removeViewImpl(uint32_t viewIdx) override;
     void renderGuiImpl(sgl::PropertyEditor& propertyEditor) override;
@@ -160,6 +162,7 @@ private:
     std::vector<std::shared_ptr<ConnectingLineRasterPass>> connectingLineRasterPass;
     // Opaque selection boxes as an alternative to the outline raster passes.
     std::vector<std::shared_ptr<SelectionBoxRasterPass>> selectionBoxRasterPasses[2];
+    std::vector<std::shared_ptr<ShadowRectRasterPass>> shadowRectRasterPasses[2];
     bool useOpaqueSelectionBoxes = true;
 
     // Camera alignment rotation.

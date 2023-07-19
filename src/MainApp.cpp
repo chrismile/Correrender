@@ -1191,13 +1191,20 @@ void MainApp::renderGui() {
 
                         if (volumeData) {
                             volumeData->renderViewCalculator(viewIdx);
-                        }
-                        if (volumeData.get() != nullptr) {
                             for (auto& volumeRenderer : volumeRenderers) {
                                 volumeRenderer->renderViewPre(viewIdx);
                             }
+                            int rendererIdx = 0;
                             for (auto& volumeRenderer : volumeRenderers) {
                                 volumeRenderer->renderView(viewIdx);
+                                if (rendererIdx != int(volumeRenderers.size() - 1) && volumeRenderer->getIsOpaqueRenderer()
+                                        && !volumeRenderers.at(rendererIdx + 1)->getIsOpaqueRenderer()) {
+                                    volumeData->renderViewCalculatorPostOpaque(viewIdx);
+                                    for (auto& volumeRendererPostOpaque : volumeRenderers) {
+                                        volumeRendererPostOpaque->renderViewPostOpaque(viewIdx);
+                                    }
+                                }
+                                rendererIdx++;
                             }
                         }
 

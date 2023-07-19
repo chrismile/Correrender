@@ -99,6 +99,7 @@ public:
     void renderGuiCalculators(sgl::PropertyEditor& propertyEditor);
     void renderGuiNewCalculators();
     void renderViewCalculator(uint32_t viewIdx);
+    void renderViewCalculatorPostOpaque(uint32_t viewIdx);
     /**
      * For rendering secondary ImGui windows (e.g., for transfer function widgets).
      * @return true if the gather shader needs to be reloaded.

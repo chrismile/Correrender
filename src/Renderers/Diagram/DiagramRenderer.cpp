@@ -45,6 +45,7 @@
 
 #include "ConnectingLineRasterPass.hpp"
 #include "SelectionBoxRasterPass.hpp"
+#include "ShadowRectRasterPass.hpp"
 #include "RadarBarChart.hpp"
 #include "HEBChart.hpp"
 
@@ -313,6 +314,7 @@ void DiagramRenderer::recreateSwapchainView(uint32_t viewIdx, uint32_t width, ui
         domainOutlineRasterPasses[idx].at(viewIdx)->recreateSwapchain(width, height);
         domainOutlineComputePasses[idx].at(viewIdx)->recreateSwapchain(width, height);
         selectionBoxRasterPasses[idx].at(viewIdx)->recreateSwapchain(width, height);
+        shadowRectRasterPasses[idx].at(viewIdx)->recreateSwapchain(width, height);
     }
     connectingLineRasterPass.at(viewIdx)->recreateSwapchain(width, height);
 }
@@ -714,7 +716,7 @@ void DiagramRenderer::renderViewPreImpl(uint32_t viewIdx) {
         }
     }
     if (twoRegionsSelected) {
-        connectingLineRasterPass.at(viewIdx)->setLineSettings(diagram->getLinePositions(), lineWidth * 2.0f);
+        connectingLineRasterPass.at(viewIdx)->setLineSettings(diagram->getLinePositions(), lineWidth * 4.0f);
         if (diagram->getShowSelectedRegionsByColor()) {
             connectingLineRasterPass.at(viewIdx)->setCustomColors(
                     diagram->getColorSelected0().getFloatColorRGBA(),
@@ -723,6 +725,38 @@ void DiagramRenderer::renderViewPreImpl(uint32_t viewIdx) {
             connectingLineRasterPass.at(viewIdx)->resetCustomColors();
         }
         connectingLineRasterPass.at(viewIdx)->render();
+    }
+}
+
+void DiagramRenderer::renderViewPostOpaqueImpl(uint32_t viewIdx) {
+    if ((viewIdx == contextDiagramViewIdx || viewIdx == focusDiagramViewIdx) && alignWithParentWindow) {
+        return;
+    }
+
+    HEBChart* diagram = nullptr;
+    for (auto it = diagrams.rbegin(); it != diagrams.rend(); it++) {
+        diagram = it->get();
+        if (diagram->getIsRegionSelected(0)) {
+            break;
+        }
+        diagram = nullptr;
+    }
+    if (!diagram) {
+        return;
+    }
+
+    for (int idx = 0; idx < 2; idx++) {
+        if (diagram->getIsRegionSelected(idx)) {
+            const float epsilon = 1e-4f;
+            sgl::AABB3 r = diagram->getSelectedRegion(idx);
+            sgl::AABB3 volumeAABB = volumeData->getBoundingBoxRendering();
+            glm::vec3 lower(r.min.x, r.min.y, volumeAABB.min.z + epsilon);
+            glm::vec3 upper(r.max.x, r.max.y, volumeAABB.min.z + epsilon);
+            shadowRectRasterPasses[idx].at(viewIdx)->setRectangle(lower, upper);
+            //glm::vec4 shadowColor = diagram->getColorSelected(idx).getFloatColorRGBA();
+            //shadowRectRasterPasses[idx].at(viewIdx)->setShadowColor(shadowColor);
+            shadowRectRasterPasses[idx].at(viewIdx)->render();
+        }
     }
 }
 
@@ -751,6 +785,9 @@ void DiagramRenderer::addViewImpl(uint32_t viewIdx) {
         domainOutlineComputePasses[idx].push_back(domainOutlineComputePass);
 
         selectionBoxRasterPasses[idx].push_back(std::make_shared<SelectionBoxRasterPass>(
+                renderer, viewManager->getViewSceneData(viewIdx)));
+
+        shadowRectRasterPasses[idx].push_back(std::make_shared<ShadowRectRasterPass>(
                 renderer, viewManager->getViewSceneData(viewIdx)));
     }
 
@@ -790,6 +827,7 @@ void DiagramRenderer::removeViewImpl(uint32_t viewIdx) {
         domainOutlineRasterPasses[idx].erase(domainOutlineRasterPasses[idx].begin() + viewIdx);
         domainOutlineComputePasses[idx].erase(domainOutlineComputePasses[idx].begin() + viewIdx);
         selectionBoxRasterPasses[idx].erase(selectionBoxRasterPasses[idx].begin() + viewIdx);
+        shadowRectRasterPasses[idx].erase(shadowRectRasterPasses[idx].begin() + viewIdx);
     }
 }
 

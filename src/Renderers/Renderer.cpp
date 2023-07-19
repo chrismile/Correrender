@@ -94,6 +94,12 @@ void Renderer::renderViewPre(uint32_t viewIdx) {
     }
 }
 
+void Renderer::renderViewPostOpaque(uint32_t viewIdx) {
+    if (viewVisibilityArray.at(viewIdx)) {
+        renderViewPostOpaqueImpl(viewIdx);
+    }
+}
+
 void Renderer::addView(uint32_t viewIdx) {
     viewVisibilityArray.resize(viewIdx + 1);
     if (viewIdx == 0) {

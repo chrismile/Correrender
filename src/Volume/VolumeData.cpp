@@ -1440,6 +1440,19 @@ void VolumeData::renderViewCalculator(uint32_t viewIdx) {
     }
 }
 
+void VolumeData::renderViewCalculatorPostOpaque(uint32_t viewIdx) {
+    auto varIdx = uint32_t(typeToFieldNamesMapBase[FieldType::SCALAR].size());
+    for (const CalculatorPtr& calculator : calculators) {
+        auto calculatorRenderer = calculator->getCalculatorRenderer();
+        if (calculatorRenderer && getIsScalarFieldUsedInView(viewIdx, varIdx, calculator.get())) {
+            calculatorRenderer->renderViewPostOpaqueImpl(viewIdx);
+        }
+        if (calculator->getOutputFieldType() == FieldType::SCALAR) {
+            varIdx++;
+        }
+    }
+}
+
 void VolumeData::addView(uint32_t viewIdx) {
     for (const CalculatorPtr& calculator : calculators) {
         auto calculatorRenderer = calculator->getCalculatorRenderer();
