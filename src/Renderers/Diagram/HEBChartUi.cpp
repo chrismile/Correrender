@@ -159,10 +159,10 @@ HEBChart::HEBChart() {
 #endif
 #if defined(__linux__) && defined(SUPPORT_VKVG)
     // OpenGL interop seems to results in kernel soft lockups as of 2023-07-06 on NVIDIA hardware.
-    sgl::vk::Device* device = sgl::AppSettings::get()->getPrimaryDevice();
-    if (device->getDeviceDriverId() == VK_DRIVER_ID_NVIDIA_PROPRIETARY) {
-        defaultBackendId = VectorBackendVkvg::getClassID();
-    }
+    //sgl::vk::Device* device = sgl::AppSettings::get()->getPrimaryDevice();
+    //if (device->getDeviceDriverId() == VK_DRIVER_ID_NVIDIA_PROPRIETARY) {
+    //    defaultBackendId = VectorBackendVkvg::getClassID();
+    //}
 #endif
     setDefaultBackendId(defaultBackendId);
 }
