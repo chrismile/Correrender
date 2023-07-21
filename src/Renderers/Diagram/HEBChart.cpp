@@ -300,8 +300,17 @@ void HEBChart::setShowVariablesForFieldIdxOnly(int _limitedFieldIdx) {
 }
 
 void HEBChart::setOctreeMethod(OctreeMethod _octreeMethod) {
-    octreeMethod = _octreeMethod;
-    dataDirty = true;
+    if (octreeMethod != _octreeMethod) {
+        octreeMethod = _octreeMethod;
+        dataDirty = true;
+    }
+}
+
+void HEBChart::setRegionWinding(RegionWinding _regionWinding) {
+    if (regionWinding != _regionWinding) {
+        regionWinding = _regionWinding;
+        dataDirty = true;
+    }
 }
 
 
@@ -688,7 +697,8 @@ void HEBChart::updateData() {
         pointToNodeIndexMap0.clear();
         pointToNodeIndexMap1.clear();
         buildHebTree(
-                octreeMethod, nodesList, pointToNodeIndexMap0, pointToNodeIndexMap1, leafIdxOffset, leafIdxOffset1,
+                octreeMethod, regionWinding,
+                nodesList, pointToNodeIndexMap0, pointToNodeIndexMap1, leafIdxOffset, leafIdxOffset1,
                 regionsEqual, xsd0, ysd0, zsd0, xsd1, ysd1, zsd1);
 
         // Compute the standard deviation inside the downscaled grids.

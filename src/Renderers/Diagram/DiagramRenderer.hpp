@@ -153,6 +153,7 @@ private:
     bool useBufferTiling = true;
     bool showOnlySelectedVariableInFocusDiagrams = true;
     OctreeMethod octreeMethod = OctreeMethod::TOP_DOWN_POT;
+    RegionWinding regionWinding = RegionWinding::WINDING_POINT_SYMMETRIC;
 
     // Selected region.
     float lineWidth = 0.001f;

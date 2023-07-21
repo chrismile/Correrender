@@ -250,7 +250,7 @@ void buildHebTreeIterativeTopDownZOrder(
 }
 
 void buildHebTree(
-        OctreeMethod octreeMethod, std::vector<HEBNode>& nodesList,
+        OctreeMethod octreeMethod, RegionWinding regionWinding, std::vector<HEBNode>& nodesList,
         std::vector<uint32_t>& pointToNodeIndexMap0, std::vector<uint32_t>& pointToNodeIndexMap1,
         uint32_t& leafIdxOffset0, uint32_t& leafIdxOffset1,
         bool regionsEqual, int xsd0, int ysd0, int zsd0, int xsd1, int ysd1, int zsd1) {
@@ -396,7 +396,11 @@ void buildHebTree(
             if (numLeaves1 == 1) {
                 angle = sgl::PI * 1.5f;
             } else {
-                angle = angleOffset1 + float(leafCounter1) / float(numLeaves1 - 1) * angleRangeHalf;
+                if (regionWinding == RegionWinding::WINDING_POINT_SYMMETRIC) {
+                    angle = angleOffset1 + float(leafCounter1) / float(numLeaves1 - 1) * angleRangeHalf;
+                } else {
+                    angle = angleOffset1 + float(numLeaves1 - 1 - leafCounter1) / float(numLeaves1 - 1) * angleRangeHalf;
+                }
             }
             nodesList[leafIdx].angle = angle;
             nodesList[leafIdx].normalizedPosition = glm::vec2(std::cos(angle), std::sin(angle));

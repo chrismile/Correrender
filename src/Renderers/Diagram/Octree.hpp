@@ -41,6 +41,13 @@ const char* const OCTREE_METHOD_NAMES[] = {
         "Top Down (ceil)", "Top Down (PoT)"
 };
 
+enum class RegionWinding {
+    WINDING_POINT_SYMMETRIC, WINDING_AXIS_SYMMETRIC
+};
+const char* const REGION_WINDING_NAMES[] = {
+        "Point Symmetric", "Axis Symmetric"
+};
+
 struct HEBNode {
     HEBNode() {
         parentIdx = std::numeric_limits<uint32_t>::max();
@@ -56,7 +63,7 @@ struct HEBNode {
 };
 
 void buildHebTree(
-        OctreeMethod octreeMethod, std::vector<HEBNode>& nodesList,
+        OctreeMethod octreeMethod, RegionWinding regionWinding, std::vector<HEBNode>& nodesList,
         std::vector<uint32_t>& pointToNodeIndexMap0, std::vector<uint32_t>& pointToNodeIndexMap1,
         uint32_t& leafIdxOffset0, uint32_t& leafIdxOffset1,
         bool regionsEqual, int xsd0, int ysd0, int zsd0, int xsd1, int ysd1, int zsd1);

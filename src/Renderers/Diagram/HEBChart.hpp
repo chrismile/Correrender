@@ -239,6 +239,7 @@ public:
     void setUseBufferTiling(bool _useBufferTiling);
     void setShowVariablesForFieldIdxOnly(int _limitedFieldIdx);
     void setOctreeMethod(OctreeMethod _octreeMethod);
+    void setRegionWinding(RegionWinding _regionWinding);
 
     // Selection query.
     void resetSelectedPrimitives();
@@ -367,6 +368,7 @@ private:
             HEBChartFieldUpdateData& updateData);
     void updateDataChord(std::vector<HEBChartFieldUpdateData>& updateDataArray);
     OctreeMethod octreeMethod = OctreeMethod::TOP_DOWN_POT;
+    RegionWinding regionWinding = RegionWinding::WINDING_POINT_SYMMETRIC;
     int numLinesTotal = 0;
     int MAX_NUM_LINES = 100;
     const int NUM_SUBDIVISIONS = 50;
@@ -475,6 +477,8 @@ private:
     bool separateColorVarianceAndCorrelation = true;
     bool desaturateUnselectedRing = true;
     bool useNeonSelectionColors = true;
+    bool useRingArrows = true;
+    const float arrowAngleRad = 0.01f;
 
     // Outer ring.
     void renderRings();

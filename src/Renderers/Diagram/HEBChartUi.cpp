@@ -1191,12 +1191,13 @@ void HEBChart::renderChordDiagramNanoVG() {
         for (int i = 0; i < 2; i++) {
             float angle0 = i == 0 ? fieldData->a00 : fieldData->a10;
             float angle1 = i == 0 ? fieldData->a01 : fieldData->a11;
+            bool isAnglePositive = angle1 - angle0 > 0.0f;
             const sgl::Color& circleFillColorSelected = getColorSelected(i);
             circleFillColorSelectedNvg = nvgRGBA(
                     circleFillColorSelected.getR(), circleFillColorSelected.getG(),
                     circleFillColorSelected.getB(), circleFillColorSelected.getA());
             nvgBeginPath(vg);
-            nvgArc(vg, center.x, center.y, rhi, angle0, angle1, NVG_CW);
+            nvgArc(vg, center.x, center.y, rhi, angle0, angle1, isAnglePositive ? NVG_CW : NVG_CCW);
             nvgStrokeWidth(vg, 3.0f);
             nvgStrokeColor(vg, circleFillColorSelectedNvg);
             nvgStroke(vg);
@@ -1569,8 +1570,13 @@ void HEBChart::renderChordDiagramVkvg() {
         for (int i = 0; i < 2; i++) {
             float angle0 = i == 0 ? fieldData->a00 : fieldData->a10;
             float angle1 = i == 0 ? fieldData->a01 : fieldData->a11;
+            bool isAnglePositive = angle1 - angle0 > 0.0f;
             const sgl::Color& circleFillColorSelected = getColorSelected(i);
-            vkvg_arc(context, center.x, center.y, rhi, angle0, angle1);
+            if (isAnglePositive) {
+                vkvg_arc(context, center.x, center.y, rhi, angle0, angle1);
+            } else {
+                vkvg_arc_negative(context, center.x, center.y, rhi, angle0, angle1);
+            }
             vkvg_set_line_width(context, 3.0f * s);
             vkvg_set_source_color(context, circleFillColorSelected.getColorRGBA());
             vkvg_stroke(context);
@@ -1696,8 +1702,10 @@ void HEBChart::renderRings() {
             }
             const auto &leafCurr = nodesList.at(leafIdx);
             const auto &leafNext = nodesList.at(nextIdx);
+            bool isAnglePositive = regionsEqual || leafNext.angle - leafCurr.angle > 0.0f;
+            float deltaAngleSign = isAnglePositive ? 1.0f : -1.0f;
             float angle0 = leafCurr.angle;
-            float angle1 = leafNext.angle + 0.01f;
+            float angle1 = leafNext.angle + deltaAngleSign * 0.005f;
             if (isSingleElementRegion) {
                 const float angleRangeHalf = sgl::PI * 0.92f;
                 angle0 = leafCurr.angle - 0.5f * angleRangeHalf;
@@ -1705,23 +1713,33 @@ void HEBChart::renderRings() {
             }
             float angleMid0 = angle0;
             float angleMid1 = angle1;
+            bool isStartSegment = false;
+            bool isEndSegment = false;
             if (!regionsEqual && (leafIdx == int(leafIdxOffset) || leafIdx == int(leafIdxOffset1))) {
-                float deltaAngle = std::min(angle1 - angle0, 0.1f);
+                float deltaAngle = angle1 - angle0;
+                if (std::abs(deltaAngle) > 0.1f) {
+                    deltaAngle = deltaAngleSign * 0.1f;
+                }
                 angle0 -= deltaAngle * 0.5f;
                 if (leafIdx == int(leafIdxOffset)) {
                     fieldData->a00 = angle0;
                 } else {
                     fieldData->a10 = angle0;
                 }
+                isStartSegment = true;
             }
             if (!regionsEqual && (nextIdx == int(leafIdxOffset1) - 1 || nextIdx == int(nodesList.size()) - 1)) {
-                float deltaAngle = std::min(angle1 - angle0, 0.1f);
+                float deltaAngle = angle1 - angle0;
+                if (std::abs(deltaAngle) > 0.1f) {
+                    deltaAngle = deltaAngleSign * 0.1f;
+                }
                 angle1 += deltaAngle * 0.5f;
                 if (nextIdx == int(leafIdxOffset1) - 1) {
                     fieldData->a01 = angle1;
                 } else {
                     fieldData->a11 = angle1;
                 }
+                isEndSegment = true;
             }
             float cos0 = std::cos(angle0), sin0 = std::sin(angle0);
             float cos1 = std::cos(angle1), sin1 = std::sin(angle1);
@@ -1748,9 +1766,17 @@ void HEBChart::renderRings() {
                 NVGcolor fillColor1 = nvgRGBAf(rgbColor1.x, rgbColor1.y, rgbColor1.z, rgbColor1.w);
 
                 nvgBeginPath(vg);
-                nvgArc(vg, center.x, center.y, rlo, angle1, angle0, NVG_CCW);
+                nvgArc(vg, center.x, center.y, rlo, angle1, angle0, isAnglePositive ? NVG_CCW : NVG_CW);
+                if (isStartSegment) {
+                    float angleMid = angle0 + arrowAngleRad * deltaAngleSign;
+                    nvgLineTo(vg, center.x + rmi * std::cos(angleMid), center.y + rmi * std::sin(angleMid));
+                }
                 nvgLineTo(vg, hi0.x, hi0.y);
-                nvgArc(vg, center.x, center.y, rhi, angle0, angle1, NVG_CW);
+                nvgArc(vg, center.x, center.y, rhi, angle0, angle1, isAnglePositive ? NVG_CW : NVG_CCW);
+                if (isEndSegment) {
+                    float angleMid = angle1 + arrowAngleRad * deltaAngleSign;
+                    nvgLineTo(vg, center.x + rmi * std::cos(angleMid), center.y + rmi * std::sin(angleMid));
+                }
                 nvgLineTo(vg, lo1.x, lo1.y);
                 nvgClosePath(vg);
 
@@ -1776,10 +1802,18 @@ void HEBChart::renderRings() {
                 path->addArc(
                         SkRect{(center.x - rlo) * s, (center.y - rlo) * s, (center.x + rlo) * s, (center.y + rlo) * s},
                         angle1Deg, angle0Deg - angle1Deg);
+                if (isStartSegment) {
+                    float angleMid = angle0 + arrowAngleRad * deltaAngleSign;
+                    path->lineTo((center.x + rmi * std::cos(angleMid)) * s, (center.y + rmi * std::sin(angleMid)) * s);
+                }
                 path->lineTo(hi0.x * s, hi0.y * s);
                 path->arcTo(
                         SkRect{(center.x - rhi) * s, (center.y - rhi) * s, (center.x + rhi) * s, (center.y + rhi) * s},
                         angle0Deg, angle1Deg - angle0Deg, false);
+                if (isEndSegment) {
+                    float angleMid = angle1 + arrowAngleRad * deltaAngleSign;
+                    path->lineTo((center.x + rmi * std::cos(angleMid)) * s, (center.y + rmi * std::sin(angleMid)) * s);
+                }
                 //path.lineTo(lo1.x * s, lo1.y * s);
                 path->close();
 
@@ -1791,9 +1825,25 @@ void HEBChart::renderRings() {
                 glm::vec4 rgbColor0 = fieldData->evalColorMapVec4Variance(t0, isSaturated);
                 glm::vec4 rgbColor1 = fieldData->evalColorMapVec4Variance(t1, isSaturated);
 
-                vkvg_arc_negative(context, center.x * s, center.y * s, rlo * s, angle1, angle0);
+                if (isAnglePositive) {
+                    vkvg_arc_negative(context, center.x * s, center.y * s, rlo * s, angle1, angle0);
+                } else {
+                    vkvg_arc(context, center.x * s, center.y * s, rlo * s, angle1, angle0);
+                }
+                if (isStartSegment) {
+                    float angleMid = angle0 + arrowAngleRad * deltaAngleSign;
+                    vkvg_line_to(context, (center.x + rmi * std::cos(angleMid)) * s, (center.y + rmi * std::sin(angleMid)) * s);
+                }
                 vkvg_line_to(context, hi0.x * s, hi0.y * s);
-                vkvg_arc(context, center.x * s, center.y * s, rhi * s, angle0, angle1);
+                if (isAnglePositive) {
+                    vkvg_arc(context, center.x * s, center.y * s, rhi * s, angle0, angle1);
+                } else {
+                    vkvg_arc_negative(context, center.x * s, center.y * s, rhi * s, angle0, angle1);
+                }
+                if (isEndSegment) {
+                    float angleMid = angle1 + arrowAngleRad * deltaAngleSign;
+                    vkvg_line_to(context, (center.x + rmi * std::cos(angleMid)) * s, (center.y + rmi * std::sin(angleMid)) * s);
+                }
                 vkvg_line_to(context, lo1.x * s, lo1.y * s);
 
                 auto pattern = vkvg_pattern_create_linear(mi0.x * s, mi0.y * s, mi1.x * s, mi1.y * s);
@@ -1839,7 +1889,7 @@ void HEBChart::renderRings() {
         int ip = ix;
         bool isSelectedRing = false;
         if (separateColorVarianceAndCorrelation && getIsGrayscaleColorMap(colorMapVariance) && numFieldsSize > 1
-            && selectedLineIdx >= 0 && limitedFieldIdx < 0) {
+                && selectedLineIdx >= 0 && limitedFieldIdx < 0) {
             int selectedLineFieldIdx = lineFieldIndexArray.at(selectedLineIdx);
             if (i == numFields - 1) {
                 fieldIdx = selectedLineFieldIdx;
@@ -1862,8 +1912,10 @@ void HEBChart::renderRings() {
             }
         }
         float pctLower = float(ip) / float(numFieldsSize);
+        float pctMiddle = (float(ip) + 0.5f) / float(numFieldsSize);
         float pctUpper = float(ip + 1) / float(numFieldsSize);
         float rlo = std::max(chartRadius + outerRingOffset + pctLower * outerRingWidth, 1e-6f);
+        float rmi = std::max(chartRadius + outerRingOffset + pctMiddle * outerRingWidth, 1e-6f);
         float rhi = std::max(chartRadius + outerRingOffset + pctUpper * outerRingWidth, 1e-6f);
 
         if (vg) {
@@ -1874,14 +1926,33 @@ void HEBChart::renderRings() {
                     nvgCircle(vg, center.x, center.y, rhi);
                 }
             } else {
-                nvgArc(vg, center.x, center.y, rlo, fieldData->a00, fieldData->a01, NVG_CW);
+                bool isAnglePos0 = fieldData->a01 - fieldData->a00 > 0.0f;
+                nvgArc(vg, center.x, center.y, rlo, fieldData->a00, fieldData->a01, isAnglePos0 ? NVG_CW : NVG_CCW);
+                if (useRingArrows) {
+                    float angleMid = fieldData->a01 + arrowAngleRad * (isAnglePos0 ? 1.0f : -1.0f);
+                    nvgLineTo(vg, center.x + rmi * std::cos(angleMid), center.y + rmi * std::sin(angleMid));
+                }
                 nvgLineTo(vg, center.x + rhi * std::cos(fieldData->a01), center.y + rhi * std::sin(fieldData->a01));
-                nvgArc(vg, center.x, center.y, rhi, fieldData->a01, fieldData->a00, NVG_CCW);
+                nvgArc(vg, center.x, center.y, rhi, fieldData->a01, fieldData->a00, isAnglePos0 ? NVG_CCW : NVG_CW);
+                if (useRingArrows) {
+                    float angleMid = fieldData->a00 + arrowAngleRad * (isAnglePos0 ? 1.0f : -1.0f);
+                    nvgLineTo(vg, center.x + rmi * std::cos(angleMid), center.y + rmi * std::sin(angleMid));
+                }
                 nvgLineTo(vg, center.x + rlo * std::cos(fieldData->a00), center.y + rlo * std::sin(fieldData->a00));
+
+                bool isAnglePos1 = fieldData->a11 - fieldData->a10 > 0.0f;
                 nvgMoveTo(vg, center.x + rlo * std::cos(fieldData->a10), center.y + rlo * std::sin(fieldData->a10));
-                nvgArc(vg, center.x, center.y, rlo, fieldData->a10, fieldData->a11, NVG_CW);
+                nvgArc(vg, center.x, center.y, rlo, fieldData->a10, fieldData->a11, isAnglePos1 ? NVG_CW : NVG_CCW);
+                if (useRingArrows) {
+                    float angleMid = fieldData->a11 + arrowAngleRad * (isAnglePos1 ? 1.0f : -1.0f);
+                    nvgLineTo(vg, center.x + rmi * std::cos(angleMid), center.y + rmi * std::sin(angleMid));
+                }
                 nvgLineTo(vg, center.x + rhi * std::cos(fieldData->a11), center.y + rhi * std::sin(fieldData->a11));
-                nvgArc(vg, center.x, center.y, rhi, fieldData->a11, fieldData->a10, NVG_CCW);
+                nvgArc(vg, center.x, center.y, rhi, fieldData->a11, fieldData->a10, isAnglePos1 ? NVG_CCW : NVG_CW);
+                if (useRingArrows) {
+                    float angleMid = fieldData->a10 + arrowAngleRad * (isAnglePos1 ? 1.0f : -1.0f);
+                    nvgLineTo(vg, center.x + rmi * std::cos(angleMid), center.y + rmi * std::sin(angleMid));
+                }
                 nvgLineTo(vg, center.x + rlo * std::cos(fieldData->a10), center.y + rlo * std::sin(fieldData->a10));
             }
             nvgStrokeWidth(vg, 1.0f);
@@ -1906,24 +1977,43 @@ void HEBChart::renderRings() {
                 float a01Deg = fieldData->a01 / sgl::PI * 180.0f;
                 float a10Deg = fieldData->a10 / sgl::PI * 180.0f;
                 float a11Deg = fieldData->a11 / sgl::PI * 180.0f;
+                bool isAnglePos0 = fieldData->a01 - fieldData->a00 > 0.0f;
+                bool isAnglePos1 = fieldData->a11 - fieldData->a10 > 0.0f;
                 path->reset();
                 path->arcTo(
                         SkRect{(center.x - rlo) * s, (center.y - rlo) * s, (center.x + rlo) * s, (center.y + rlo) * s},
                         a00Deg, a01Deg - a00Deg, false);
+                if (useRingArrows) {
+                    float angleMid = fieldData->a01 + arrowAngleRad * (isAnglePos0 ? 1.0f : -1.0f);
+                    path->lineTo((center.x + rmi * std::cos(angleMid)) * s, (center.y + rmi * std::sin(angleMid)) * s);
+                }
                 path->lineTo((center.x + rhi * std::cos(fieldData->a01)) * s, (center.y + rhi * std::sin(fieldData->a01)) * s);
                 path->arcTo(
                         SkRect{(center.x - rhi) * s, (center.y - rhi) * s, (center.x + rhi) * s, (center.y + rhi) * s},
                         a01Deg, a00Deg - a01Deg, false);
+                if (useRingArrows) {
+                    float angleMid = fieldData->a00 + arrowAngleRad * (isAnglePos0 ? 1.0f : -1.0f);
+                    path->lineTo((center.x + rmi * std::cos(angleMid)) * s, (center.y + rmi * std::sin(angleMid)) * s);
+                }
                 path->close();
                 canvas->drawPath(*path, *paint);
+
                 path->reset();
                 path->arcTo(
                         SkRect{(center.x - rlo) * s, (center.y - rlo) * s, (center.x + rlo) * s, (center.y + rlo) * s},
                         a10Deg, a11Deg - a10Deg, false);
+                if (useRingArrows) {
+                    float angleMid = fieldData->a11 + arrowAngleRad * (isAnglePos1 ? 1.0f : -1.0f);
+                    path->lineTo((center.x + rmi * std::cos(angleMid)) * s, (center.y + rmi * std::sin(angleMid)) * s);
+                }
                 path->lineTo((center.x + rhi * std::cos(fieldData->a11)) * s, (center.y + rhi * std::sin(fieldData->a11)) * s);
                 path->arcTo(
                         SkRect{(center.x - rhi) * s, (center.y - rhi) * s, (center.x + rhi) * s, (center.y + rhi) * s},
                         a11Deg, a10Deg - a11Deg, false);
+                if (useRingArrows) {
+                    float angleMid = fieldData->a10 + arrowAngleRad * (isAnglePos1 ? 1.0f : -1.0f);
+                    path->lineTo((center.x + rmi * std::cos(angleMid)) * s, (center.y + rmi * std::sin(angleMid)) * s);
+                }
                 path->close();
                 canvas->drawPath(*path, *paint);
             }
@@ -1937,14 +2027,49 @@ void HEBChart::renderRings() {
                     vkvg_arc(context, center.x * s, center.y * s, rhi * s, 0.0f, sgl::TWO_PI);
                 }
             } else {
-                vkvg_arc(context, center.x * s, center.y * s, rlo * s, fieldData->a00, fieldData->a01);
+                bool isAnglePos0 = fieldData->a01 - fieldData->a00 > 0.0f;
+                if (isAnglePos0) {
+                    vkvg_arc(context, center.x * s, center.y * s, rlo * s, fieldData->a00, fieldData->a01);
+                } else {
+                    vkvg_arc_negative(context, center.x * s, center.y * s, rlo * s, fieldData->a00, fieldData->a01);
+                }
+                if (useRingArrows) {
+                    float angleMid = fieldData->a01 + arrowAngleRad * (isAnglePos0 ? 1.0f : -1.0f);
+                    vkvg_line_to(context, (center.x + rmi * std::cos(angleMid)) * s, (center.y + rmi * std::sin(angleMid)) * s);
+                }
                 vkvg_line_to(context, (center.x + rhi * std::cos(fieldData->a01)) * s, (center.y + rhi * std::sin(fieldData->a01)) * s);
-                vkvg_arc_negative(context, center.x * s, center.y * s, rhi * s, fieldData->a01, fieldData->a00);
+                if (isAnglePos0) {
+                    vkvg_arc_negative(context, center.x * s, center.y * s, rhi * s, fieldData->a01, fieldData->a00);
+                } else {
+                    vkvg_arc(context, center.x * s, center.y * s, rhi * s, fieldData->a01, fieldData->a00);
+                }
+                if (useRingArrows) {
+                    float angleMid = fieldData->a00 + arrowAngleRad * (isAnglePos0 ? 1.0f : -1.0f);
+                    vkvg_line_to(context, (center.x + rmi * std::cos(angleMid)) * s, (center.y + rmi * std::sin(angleMid)) * s);
+                }
                 vkvg_line_to(context, (center.x + rlo * std::cos(fieldData->a00)) * s, (center.y + rlo * std::sin(fieldData->a00)) * s);
+
+                bool isAnglePos1 = fieldData->a11 - fieldData->a10 > 0.0f;
                 vkvg_move_to(context, (center.x + rlo * std::cos(fieldData->a10)) * s, (center.y + rlo * std::sin(fieldData->a10)) * s);
-                vkvg_arc(context, center.x * s, center.y * s, rlo * s, fieldData->a10, fieldData->a11);
+                if (isAnglePos1) {
+                    vkvg_arc(context, center.x * s, center.y * s, rlo * s, fieldData->a10, fieldData->a11);
+                } else {
+                    vkvg_arc_negative(context, center.x * s, center.y * s, rlo * s, fieldData->a10, fieldData->a11);
+                }
+                if (useRingArrows) {
+                    float angleMid = fieldData->a11 + arrowAngleRad * (isAnglePos1 ? 1.0f : -1.0f);
+                    vkvg_line_to(context, (center.x + rmi * std::cos(angleMid)) * s, (center.y + rmi * std::sin(angleMid)) * s);
+                }
                 vkvg_line_to(context, (center.x + rhi * std::cos(fieldData->a11)) * s, (center.y + rhi * std::sin(fieldData->a11)) * s);
-                vkvg_arc_negative(context, center.x * s, center.y * s, rhi * s, fieldData->a11, fieldData->a10);
+                if (isAnglePos1) {
+                    vkvg_arc_negative(context, center.x * s, center.y * s, rhi * s, fieldData->a11, fieldData->a10);
+                } else {
+                    vkvg_arc(context, center.x * s, center.y * s, rhi * s, fieldData->a11, fieldData->a10);
+                }
+                if (useRingArrows) {
+                    float angleMid = fieldData->a10 + arrowAngleRad * (isAnglePos1 ? 1.0f : -1.0f);
+                    vkvg_line_to(context, (center.x + rmi * std::cos(angleMid)) * s, (center.y + rmi * std::sin(angleMid)) * s);
+                }
                 vkvg_line_to(context, (center.x + rlo * std::cos(fieldData->a10)) * s, (center.y + rlo * std::sin(fieldData->a10)) * s);
             }
             vkvg_set_line_width(context, 1.0f * s);

@@ -101,6 +101,7 @@ void DiagramRenderer::initialize() {
         parentDiagram->setUseNeonSelectionColors(useNeonSelectionColors);
         parentDiagram->setUseGlobalStdDevRange(useGlobalStdDevRange);
         parentDiagram->setOctreeMethod(octreeMethod);
+        parentDiagram->setRegionWinding(regionWinding);
         parentDiagram->setColorByValue(colorByValue);
         parentDiagram->setClearColor(viewManager->getClearColor());
         parentDiagram->setUseCorrelationComputationGpu(useCorrelationComputationGpu);
@@ -229,6 +230,7 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
         parentDiagram->setUseNeonSelectionColors(useNeonSelectionColors);
         parentDiagram->setUseGlobalStdDevRange(useGlobalStdDevRange);
         parentDiagram->setOctreeMethod(octreeMethod);
+        parentDiagram->setRegionWinding(regionWinding);
         parentDiagram->setColorByValue(colorByValue);
         parentDiagram->setClearColor(viewManager->getClearColor());
         parentDiagram->setUseCorrelationComputationGpu(useCorrelationComputationGpu);
@@ -416,6 +418,7 @@ void DiagramRenderer::resetSelections(int idx) {
             diagram->setUseNeonSelectionColors(useNeonSelectionColors);
             diagram->setUseGlobalStdDevRange(useGlobalStdDevRange);
             diagram->setOctreeMethod(octreeMethod);
+            diagram->setRegionWinding(regionWinding);
             diagram->setColorByValue(colorByValue);
             diagram->setClearColor(viewManager->getClearColor());
             diagram->setUseCorrelationComputationGpu(useCorrelationComputationGpu);
@@ -1370,6 +1373,15 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
                 "Octree Method", (int*)&octreeMethod, OCTREE_METHOD_NAMES, IM_ARRAYSIZE(OCTREE_METHOD_NAMES))) {
             for (auto& diagram : diagrams) {
                 diagram->setOctreeMethod(octreeMethod);
+            }
+            reRender = true;
+            reRenderTriggeredByDiagram = true;
+        }
+
+        if (propertyEditor.addCombo(
+                "Region Winding", (int*)&regionWinding, REGION_WINDING_NAMES, IM_ARRAYSIZE(REGION_WINDING_NAMES))) {
+            for (auto& diagram : diagrams) {
+                diagram->setRegionWinding(regionWinding);
             }
             reRender = true;
             reRenderTriggeredByDiagram = true;
