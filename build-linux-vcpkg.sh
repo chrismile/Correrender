@@ -448,7 +448,8 @@ if $build_with_zarr_support; then
         -Dxtensor_DIR="${xtensor_CMAKE_DIR}" \
         -Dxsimd_DIR="${PROJECTPATH}/third_party/xsimd/lib/cmake/xsimd" \
         -DBUILD_Z5PY=OFF -DWITH_ZLIB=ON -DWITH_LZ4=ON -DWITH_BLOSC=ON \
-        -DCMAKE_INSTALL_PREFIX="${PROJECTPATH}/third_party/z5" ..
+        -DCMAKE_INSTALL_PREFIX="${PROJECTPATH}/third_party/z5" \
+        -DCMAKE_TOOLCHAIN_FILE="$PROJECTPATH/third_party/vcpkg/scripts/buildsystems/vcpkg.cmake" ..
         make install
         popd >/dev/null
     fi

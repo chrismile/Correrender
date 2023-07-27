@@ -165,8 +165,10 @@ void TFOptimizerOLSTyped<Real>::clearCache() {
     cache->A = {};
     cache->b = {};
     cache->x = {};
+#ifdef CUDA_ENABLED
     cache->cudaInputImageGT = {};
     cache->cudaInputImageOpt = {};
+#endif
     cache->inputImageGT = {};
     cache->inputImageOpt = {};
     cache->csrVals = {};
@@ -246,8 +248,10 @@ void TFOptimizerOLSTyped<Real>::onRequestQueued(VolumeData* volumeData) {
         CopyFieldImageDestinationData copyFieldImageDestinationData{};
         copyFieldImageDestinationData.inputImageGT = &cache->inputImageGT;
         copyFieldImageDestinationData.inputImageOpt = &cache->inputImageOpt;
+#ifdef CUDA_ENABLED
         copyFieldImageDestinationData.cudaInputImageGT = &cache->cudaInputImageGT;
         copyFieldImageDestinationData.cudaInputImageOpt = &cache->cudaInputImageOpt;
+#endif
         copyFieldImages(
                 parentRenderer->getDevice(),
                 uint32_t(volumeData->getGridSizeX()),
@@ -270,10 +274,13 @@ void TFOptimizerOLSTyped<Real>::onRequestQueued(VolumeData* volumeData) {
         //            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, commandBufferCompute);
         //}
         //device->endSingleTimeCommands(commandBufferCompute, device->getGraphicsQueueIndex());
-    } else {
+    }
+#ifdef CUDA_ENABLED
+    else {
         cache->cudaInputImageGT = {};
         cache->cudaInputImageOpt = {};
     }
+#endif
 
     if (settings.backend == OLSBackend::CPU) {
         cache->inputImageGT = {};
@@ -380,12 +387,14 @@ void TFOptimizerOLSTyped<Real>::buildSystemSparse() {
     float maxOpt = cache->minMaxOpt.second;
 
     if (settings.backend == OLSBackend::CUDA && settings.useCudaMatrixSetup) {
+#ifdef CUDA_ENABLED
         createSystemMatrixCudaSparse(
                 int(cache->cachedXs), int(cache->cachedYs), int(cache->cachedZs), int(cache->cachedTfSize),
                 minGT, maxGT, minOpt, maxOpt,
                 cache->cudaInputImageGT->getCudaTextureObject(), cache->cudaInputImageOpt->getCudaTextureObject(),
                 reinterpret_cast<float*>(cache->tfGT.data()), cache->cudaNumRows, cache->cudaNumNnz,
                 cache->cudaCsrVals, cache->cudaCsrRowPtr, cache->cudaCsrColInd, cache->cudaBSparse);
+#endif
         return;
     }
 
