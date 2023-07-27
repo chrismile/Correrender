@@ -515,7 +515,7 @@ if $build_with_vkvg_support; then
         if [ -d "./vkvg-src" ]; then
             rm -rf "./vkvg-src"
         fi
-        git clone --recursive https://github.com/jpbruyere/vkvg.git vkvg-src
+        git clone --recursive https://github.com/chrismile/vkvg vkvg-src
         mkdir -p vkvg-src/build
         pushd vkvg-src/build >/dev/null
         cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="${PROJECTPATH}/third_party/vkvg" \

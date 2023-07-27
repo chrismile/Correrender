@@ -15,6 +15,16 @@ jobs:
       fail-fast: false
       matrix:
         os: [ ubuntu-20.04 ]
+        linking: [ dynamic, static ]
+        exclude:
+          # dynamic linking fails for SDL2_image and python3 compilation on macOS as of 2022-08-30.
+          - os: macos-latest
+            linking: dynamic
+          # Windows always worked without a problem with both dynamic and static linking, no need to test.
+          - os: windows-2019
+            linking: static
+          - os: windows-2022
+            linking: static
 
     runs-on: ${{ matrix.os }}
     name: "${{ github.workflow }}: ${{ matrix.os }}"

@@ -39,7 +39,8 @@ destination_dir="Shipping"
 build_with_zarr_support=true
 build_with_skia_support=false
 skia_link_dynamically=true
-build_with_vkvg_support=true
+# VKVG support is disabled due to: https://github.com/jpbruyere/vkvg/issues/140
+build_with_vkvg_support=false
 build_with_osqp_support=true
 
 # Process command line arguments.
@@ -304,7 +305,7 @@ if $build_with_vkvg_support; then
         if [ -d "./vkvg-src" ]; then
             rm -rf "./vkvg-src"
         fi
-        git clone --recursive https://github.com/jpbruyere/vkvg.git vkvg-src
+        git clone --recursive https://github.com/chrismile/vkvg vkvg-src
         mkdir -p vkvg-src/build
         pushd vkvg-src/build >/dev/null
         cmake .. -G "MSYS Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="${PROJECTPATH}/third_party/vkvg" \
