@@ -442,6 +442,14 @@ if $build_with_zarr_support; then
         fi
         git clone https://github.com/constantinpape/z5.git z5-src
         sed -i '/^SET(Boost_NO_SYSTEM_PATHS ON)$/s/^/#/' z5-src/CMakeLists.txt
+        cat > z5-src/vcpkg.json <<EOF
+{
+    "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg/master/scripts/vcpkg.schema.json",
+    "name": "z5",
+    "version": "0.1.0",
+    "dependencies": [ "boost-core", "boost-filesystem" ]
+}
+        EOF
         mkdir -p z5-src/build
         pushd z5-src/build >/dev/null
         cmake -Dxtl_DIR="${PROJECTPATH}/third_party/xtl/share/cmake/xtl" \

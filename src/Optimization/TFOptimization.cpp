@@ -35,7 +35,9 @@
 #include "Volume/VolumeData.hpp"
 #include "TFOptimizer.hpp"
 #include "Optimization/OLS/TFOptimizerOLS.hpp"
+#ifdef CUDA_ENABLED
 #include "Optimization/OLS/CudaSolver.hpp"
+#endif
 #include "Optimization/GD/TFOptimizerGD.hpp"
 #include "Optimization/DiffDVR/TFOptimizerDiffDvr.hpp"
 #include "TFOptimization.hpp"

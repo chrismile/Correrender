@@ -51,6 +51,8 @@ class ImageCudaExternalMemoryVk;
 typedef std::shared_ptr<ImageCudaExternalMemoryVk> ImageCudaExternalMemoryVkPtr;
 class TextureCudaExternalMemoryVk;
 typedef std::shared_ptr<TextureCudaExternalMemoryVk> TextureCudaExternalMemoryVkPtr;
+class Buffer;
+typedef std::shared_ptr<Buffer> BufferPtr;
 }}
 
 std::string getImageFormatGlslString(const sgl::vk::ImagePtr& image);
