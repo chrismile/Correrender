@@ -371,7 +371,12 @@ void buildHebTree(
     } else {
         // Start with placing the leaves on a unit circle.
         const float angleRangeHalf = sgl::PI * 0.92f;
-        const float angleOffset0 = 0.5f * (sgl::PI - angleRangeHalf);
+        float angleOffset0;
+        if (regionWinding == RegionWinding::WINDING_POINT_SYMMETRIC) {
+            angleOffset0 = 0.5f * (sgl::PI - angleRangeHalf);
+        } else {
+            angleOffset0 = sgl::PI + 0.5f * (sgl::PI - angleRangeHalf);
+        }
         auto numLeaves0 = int(pointToNodeIndexMap0.size());
         uint32_t leafCounter0 = 0;
         for (uint32_t leafIdx = leafIdxOffset0; leafIdx < leafIdxOffset1; leafIdx++) {
@@ -388,7 +393,12 @@ void buildHebTree(
             }
             leafCounter0++;
         }
-        const float angleOffset1 = sgl::PI + angleOffset0;
+        float angleOffset1;
+        if (regionWinding == RegionWinding::WINDING_POINT_SYMMETRIC) {
+            angleOffset1 = sgl::PI + 0.5f * (sgl::PI - angleRangeHalf);
+        } else {
+            angleOffset1 = 0.5f * (sgl::PI - angleRangeHalf);
+        }
         auto numLeaves1 = int(pointToNodeIndexMap1.size());
         uint32_t leafCounter1 = 0;
         for (uint32_t leafIdx = leafIdxOffset1; leafIdx < uint32_t(nodesList.size()); leafIdx++) {

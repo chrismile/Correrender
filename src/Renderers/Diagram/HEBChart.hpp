@@ -368,7 +368,7 @@ private:
             HEBChartFieldUpdateData& updateData);
     void updateDataChord(std::vector<HEBChartFieldUpdateData>& updateDataArray);
     OctreeMethod octreeMethod = OctreeMethod::TOP_DOWN_POT;
-    RegionWinding regionWinding = RegionWinding::WINDING_POINT_SYMMETRIC;
+    RegionWinding regionWinding = RegionWinding::WINDING_AXIS_SYMMETRIC;
     int numLinesTotal = 0;
     int MAX_NUM_LINES = 100;
     const int NUM_SUBDIVISIONS = 50;

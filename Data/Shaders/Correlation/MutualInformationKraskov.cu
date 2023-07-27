@@ -254,8 +254,11 @@ __device__ float averageDigamma(float* kthNeighborDistances, float* valueArray) 
 const uint INVALID_NODE = 0xFFFFu;
 #define FLT_MAX 3.402823466e+38
 
+//#define KD_TREE_ITERATIVE_WITH_STACK
+
 struct KdNode {
     __device__ KdNode() {}
+#ifdef KD_TREE_ITERATIVE_WITH_STACK
     __device__ KdNode(float x, float y, uint axis, uint leftRightIdx) : axis(axis), leftRightIdx(leftRightIdx) {
         this->point[0] = x;
         this->point[1] = y;
@@ -263,6 +266,13 @@ struct KdNode {
     float point[2];
     uint axis;
     uint leftRightIdx;
+#else
+    __device__ KdNode(float x, float y) {
+        this->point[0] = x;
+        this->point[1] = y;
+    }
+    float point[2];
+#endif
 };
 
 struct StackEntryBuild {
@@ -273,6 +283,7 @@ struct StackEntryBuild {
     uint depth;
 };
 
+#ifdef KD_TREE_ITERATIVE_WITH_STACK
 __device__ void buildKdTree(KdNode* nodes, float* referenceValues, float* queryValues) {
     uint nodeCounter = 0;
     StackEntryBuild stack[MAX_STACK_SIZE_BUILD];
@@ -312,7 +323,49 @@ __device__ void buildKdTree(KdNode* nodes, float* referenceValues, float* queryV
         nodeCounter++;
     }
 }
+#else
+__device__ void buildKdTree(KdNode* nodes, float* referenceValues, float* queryValues) {
+    StackEntryBuild stack[MAX_STACK_SIZE_BUILD];
+    uint stackSize = 1u;
+    stack[0] = StackEntryBuild(0u, MEMBER_COUNT, 0u);
+    StackEntryBuild stackEntry;
+    while (stackSize > 0u) {
+        stackSize--;
+        stackEntry = stack[stackSize];
 
+        uint curr = stackEntry.depth;
+        uint axis = (31 - __clz(curr + 1)) % 2u;
+        //uint axis = uint(findMSB(curr + 1)) % 2u;
+        heapSort2D(
+                referenceValues, queryValues, axis == 0u ? referenceValues : queryValues,
+                stackEntry.startIdx, stackEntry.endIdx);
+
+        int n = int(stackEntry.endIdx - stackEntry.startIdx);
+        //int H = getTreeHeight(n);
+        int H = 32 - __clz(n);
+        //int H = findMSB(n) + 1;
+        uint medianIndex = stackEntry.startIdx;
+        if (n > 1) {
+            medianIndex += uint((1 << (H - 2)) - 1 + min(1 << (H - 2), n - (1 << (H - 1)) + 1));
+        }
+        //uint medianIndex = stackEntry.startIdx + (stackEntry.endIdx - stackEntry.startIdx) / 2u;
+
+        if (medianIndex - stackEntry.startIdx != 0u) {
+            stack[stackSize] = StackEntryBuild(stackEntry.startIdx, medianIndex, curr * 2u + 1u);
+            stackSize++;
+        }
+
+        if (stackEntry.endIdx - medianIndex - 1 != 0u) {
+            stack[stackSize] = StackEntryBuild(medianIndex + 1, stackEntry.endIdx, curr * 2u + 2u);
+            stackSize++;
+        }
+
+        nodes[curr] = KdNode(referenceValues[medianIndex], queryValues[medianIndex]);
+    }
+}
+#endif
+
+#ifdef KD_TREE_ITERATIVE_WITH_STACK
 __device__ float findKNearestNeighbors(KdNode* nodes, float point[2], uint e) {
     float distances[k + 1];
     #pragma unroll
@@ -367,8 +420,76 @@ __device__ float findKNearestNeighbors(KdNode* nodes, float point[2], uint e) {
             currNodeIdx = INVALID_NODE;
         }
     }
+
     return distances[k];
 }
+#else
+__device__ float findKNearestNeighbors(KdNode* nodes, float point[2], uint e) {
+    float distances[k + 1];
+    #pragma unroll
+    for (int i = 0; i <= k; i++) {
+        distances[i] = FLT_MAX;
+    }
+
+    int curr = 0;
+    int prev = -1;
+    KdNode currNode;
+    while (true) {
+        int parent = (curr + 1) / 2 - 1;
+        if (curr >= MEMBER_COUNT) {
+            prev = curr;
+            curr = parent;
+            continue;
+        }
+        currNode = nodes[curr];
+
+        bool prevIsParent = prev < curr;
+        if (prevIsParent) {
+            // Compute the distance of this node to the point.
+            vec2 diff = make_float2(fabs(point[0] - currNode.point[0]), fabs(point[1] - currNode.point[1]));
+            float newDistance = max(diff.x, diff.y);
+            if (newDistance < distances[k]) {
+                float tempDistance;
+                for (int i = 0; i <= k; i++) {
+                    if (newDistance < distances[i]) {
+                        tempDistance = newDistance;
+                        newDistance = distances[i];
+                        distances[i] = tempDistance;
+                    }
+                }
+            }
+        }
+
+        int splitDim = (31 - __clz(curr + 1)) % 2;
+        //int splitDim = findMSB(curr + 1) % 2;
+        float splitPos = currNode.point[splitDim];
+        float signedDist = point[splitDim] - splitPos;
+        int closeSide = int(signedDist > 0.0);
+        int closeChild = 2 * curr + 1 + closeSide;
+        int farChild = 2 * curr + 2 - closeSide;
+        bool farInRange = abs(signedDist) <= distances[k];
+
+        int next;
+        if (prevIsParent) {
+            next = closeChild;
+        } else if (prev == closeChild) {
+            next = farInRange ? farChild : parent;
+        } else {
+            next = parent;
+        }
+        if (next == -1) {
+            break;
+        }
+
+        prev = curr;
+        curr = next;
+    }
+
+    return distances[k];
+}
+#endif
+
+
 // ----------------------------------------------------------------------------------
 
 #ifdef SUPPORT_TILING

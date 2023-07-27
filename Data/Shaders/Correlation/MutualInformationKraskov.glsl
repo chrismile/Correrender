@@ -217,10 +217,14 @@ float kthNeighborDistances[MEMBER_COUNT];
 const uint INVALID_NODE = 0xFFFFu;
 #define FLT_MAX 3.402823466e+38
 
+//#define KD_TREE_ITERATIVE_WITH_STACK
+
 struct KdNode {
     vec2 point;
+#ifdef KD_TREE_ITERATIVE_WITH_STACK
     uint axis;
     uint leftRightIdx;
+#endif
 };
 KdNode nodes[MEMBER_COUNT];
 
@@ -232,6 +236,7 @@ struct StackEntryBuild {
 
 #import ".Sort2D"
 
+#ifdef KD_TREE_ITERATIVE_WITH_STACK
 void buildKdTree() {
     uint nodeCounter = 0;
     StackEntryBuild stack[MAX_STACK_SIZE_BUILD];
@@ -269,7 +274,48 @@ void buildKdTree() {
         nodeCounter++;
     }
 }
+#else
+void buildKdTree() {
+    StackEntryBuild stack[MAX_STACK_SIZE_BUILD];
+    uint stackSize = 1u;
+    stack[0] = StackEntryBuild(0u, MEMBER_COUNT, 0u);
+    StackEntryBuild stackEntry;
+    while (stackSize > 0u) {
+        stackSize--;
+        stackEntry = stack[stackSize];
 
+        uint curr = stackEntry.depth;
+        //uint axis = (31 - __clz(curr + 1)) % 2u;
+        uint axis = uint(findMSB(curr + 1)) % 2u;
+        heapSort2D(stackEntry.startIdx, stackEntry.endIdx, axis);
+
+        int n = int(stackEntry.endIdx - stackEntry.startIdx);
+        //int H = getTreeHeight(n);
+        //int H = 32 - __clz(n);
+        int H = findMSB(n) + 1;
+        uint medianIndex = stackEntry.startIdx;
+        if (n > 1) {
+            medianIndex += uint((1 << (H - 2)) - 1 + min(1 << (H - 2), n - (1 << (H - 1)) + 1));
+        }
+        //uint medianIndex = stackEntry.startIdx + (stackEntry.endIdx - stackEntry.startIdx) / 2u;
+
+        if (medianIndex - stackEntry.startIdx != 0u) {
+            stack[stackSize] = StackEntryBuild(stackEntry.startIdx, medianIndex, curr * 2u + 1u);
+            stackSize++;
+        }
+
+        if (stackEntry.endIdx - medianIndex - 1 != 0u) {
+            stack[stackSize] = StackEntryBuild(medianIndex + 1, stackEntry.endIdx, curr * 2u + 2u);
+            stackSize++;
+        }
+
+        nodes[curr] = KdNode(vec2(referenceValues[medianIndex], queryValues[medianIndex]));
+    }
+}
+#endif
+
+
+#ifdef KD_TREE_ITERATIVE_WITH_STACK
 float findKNearestNeighbors(vec2 point, uint c) {
     float distances[k + 1];
     [[unroll]] for (int i = 0; i <= k; i++) {
@@ -323,9 +369,78 @@ float findKNearestNeighbors(vec2 point, uint c) {
             currNodeIdx = INVALID_NODE;
         }
     }
+
     return distances[k];
 }
+#else
+/*
+ * Stack-free kd-tree traversal based on the following paper:
+ * "A Stack-Free Traversal Algorithm for Left-Balanced k-d Trees", Ingo Wald (2022).
+ * https://arxiv.org/pdf/2210.12859.pdf
+ */
+float findKNearestNeighbors(vec2 point, uint c) {
+    float distances[k + 1];
+    [[unroll]] for (int i = 0; i <= k; i++) {
+        distances[i] = FLT_MAX;
+    }
 
+    int curr = 0;
+    int prev = -1;
+    KdNode currNode;
+    while (true) {
+        int parent = (curr + 1) / 2 - 1;
+        if (curr >= MEMBER_COUNT) {
+            prev = curr;
+            curr = parent;
+            continue;
+        }
+        currNode = nodes[curr];
+
+        bool prevIsParent = prev < curr;
+        if (prevIsParent) {
+            // Compute the distance of this node to the point.
+            vec2 diff = abs(point - currNode.point);
+            float newDistance = max(diff.x, diff.y);
+            if (newDistance < distances[k]) {
+                float tempDistance;
+                for (int i = 0; i <= k; i++) {
+                    if (newDistance < distances[i]) {
+                        tempDistance = newDistance;
+                        newDistance = distances[i];
+                        distances[i] = tempDistance;
+                    }
+                }
+            }
+        }
+
+        //int splitDim = (31 - __clz(curr + 1)) % 2;
+        int splitDim = findMSB(curr + 1) % 2;
+        float splitPos = currNode.point[splitDim];
+        float signedDist = point[splitDim] - splitPos;
+        int closeSide = int(signedDist > 0.0);
+        int closeChild = 2 * curr + 1 + closeSide;
+        int farChild = 2 * curr + 2 - closeSide;
+        bool farInRange = abs(signedDist) <= distances[k];
+
+        int next;
+        if (prevIsParent) {
+            next = closeChild;
+        } else if (prev == closeChild) {
+            next = farInRange ? farChild : parent;
+        } else {
+            next = parent;
+        }
+        if (next == -1) {
+            break;
+        }
+
+        prev = curr;
+        curr = next;
+    }
+
+    return distances[k];
+}
+#endif
 
 /**
  * Lanczos approximation of digamma function using weights by Viktor T. Toth.
