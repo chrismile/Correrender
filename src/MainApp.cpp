@@ -36,7 +36,6 @@
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtx/rotate_vector.hpp>
 #include <boost/algorithm/string.hpp>
-#include <curl/curl.h>
 
 #ifdef USE_ZEROMQ
 #include <zmq.h>
@@ -82,6 +81,7 @@
 #include "Renderers/SliceRenderer.hpp"
 #include "Renderers/WorldMapRenderer.hpp"
 #include "Renderers/Diagram/DiagramRenderer.hpp"
+#include "Utils/CurlWrapper.hpp"
 #include "Utils/AutomaticPerformanceMeasurer.hpp"
 #include "Optimization/TFOptimization.hpp"
 
@@ -334,7 +334,7 @@ MainApp::MainApp()
             float& standardZoom) {
     });
 
-    curl_global_init(CURL_GLOBAL_ALL);
+    curlInitWrapper();
 
     useDockSpaceMode = true;
     sgl::AppSettings::get()->getSettings().getValueOpt("useDockSpaceMode", useDockSpaceMode);
@@ -461,7 +461,7 @@ MainApp::~MainApp() {
     }
 #endif
 
-    curl_global_cleanup();
+    curlFreeWrapper();
 
     for (int i = 0; i < int(nonBlockingMsgBoxHandles.size()); i++) {
         auto& handle = nonBlockingMsgBoxHandles.at(i);

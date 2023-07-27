@@ -26,6 +26,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <Graphics/Vulkan/Utils/SyncObjects.hpp>
 #include <Graphics/Vulkan/Render/Renderer.hpp>
 
 #include "EigenSolver.hpp"
