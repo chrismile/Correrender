@@ -30,6 +30,7 @@
 #define CORRERENDER_CORRELATION_HPP
 
 #include <vector>
+#include <cstdint>
 #include <cstddef>
 
 template<class T>
