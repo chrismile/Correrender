@@ -1,0 +1,74 @@
+name: Build using vcpkg
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  BUILD_TYPE: Release
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-20.04 ]
+
+    runs-on: ${{ matrix.os }}
+    name: "${{ github.workflow }}: ${{ matrix.os }}"
+
+    env:
+      VCPKG_ROOT: ${{ github.workspace }}/third_party/vcpkg
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/third_party/vcpkg/bincache
+
+    steps:
+      - name: Set up vcpkg environment variables
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" == "Linux" ]; then
+            echo "VCPKG_COPY_TRIPLET=x64-linux" >> $GITHUB_ENV
+            echo "VCPKG_DEFAULT_TRIPLET=x64-linux-${{matrix.linking}}-release-only" >> $GITHUB_ENV
+          elif [ "$RUNNER_OS" == "Windows" ]; then
+            echo "VCPKG_COPY_TRIPLET=x64-windows" >> $GITHUB_ENV
+            echo "VCPKG_DEFAULT_TRIPLET=x64-windows-${{matrix.linking}}-release-only" >> $GITHUB_ENV
+          elif [ "$RUNNER_OS" == "macOS" ]; then
+            echo "VCPKG_COPY_TRIPLET=x64-osx" >> $GITHUB_ENV
+            echo "VCPKG_DEFAULT_TRIPLET=x64-osx-${{matrix.linking}}-release-only" >> $GITHUB_ENV
+          else
+            echo "$RUNNER_OS is not supported."
+          exit 1
+          fi
+
+      - uses: actions/checkout@v2
+        with:
+          submodules: true
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v10
+        with:
+          vcpkgGitCommitId: '638b1588be3a265a9c7ad5b212cef72a1cad336a'
+          doNotCacheOnWorkflowFailure: true
+
+      - name: Create custom vcpkg triplet
+        shell: bash
+        run: |
+          cp "${{env.VCPKG_ROOT}}/triplets/${{env.VCPKG_COPY_TRIPLET}}.cmake" "${{env.VCPKG_ROOT}}/triplets/community/${{env.VCPKG_DEFAULT_TRIPLET}}.cmake"
+          echo "set(VCPKG_BUILD_TYPE release)" >> "${{env.VCPKG_ROOT}}/triplets/community/${{env.VCPKG_DEFAULT_TRIPLET}}.cmake"
+          sed -i -e 's/.*VCPKG_LIBRARY_LINKAGE.*/set(VCPKG_LIBRARY_LINKAGE ${{matrix.linking}})/g' "${{env.VCPKG_ROOT}}/triplets/community/${{env.VCPKG_DEFAULT_TRIPLET}}.cmake"
+          if [ "$RUNNER_OS" == "Linux" ] && [ "${{matrix.linking}}" == "dynamic" ]; then
+           echo "set(VCPKG_FIXUP_ELF_RPATH ON)" >> "${{env.VCPKG_ROOT}}/triplets/community/${{env.VCPKG_DEFAULT_TRIPLET}}.cmake"
+          fi
+
+      - name: Build
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" == "Linux" ]; then
+            ./build-linux-vcpkg.sh --vcpkg-triplet ${{env.VCPKG_DEFAULT_TRIPLET}}
+          elif [ "$RUNNER_OS" == "Windows" ]; then
+            ./build-windows.bat --vcpkg-triplet ${{env.VCPKG_DEFAULT_TRIPLET}}
+          elif [ "$RUNNER_OS" == "macOS" ]; then
+            ./build-macos-vcpkg.sh --vcpkg-triplet ${{env.VCPKG_DEFAULT_TRIPLET}}
+          fi
+          cmake "${{env.sgl_REPO_DIR}}" -B "${{env.sgl_REPO_DIR}}/build" -DCMAKE_TOOLCHAIN_FILE="${{env.VCPKG_ROOT}}/scripts/buildsystems/vcpkg.cmake" -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} -DVCPKG_TARGET_TRIPLET=${{env.VCPKG_DEFAULT_TRIPLET}} -DCMAKE_INSTALL_PREFIX="${{env.sgl_DIR}}"

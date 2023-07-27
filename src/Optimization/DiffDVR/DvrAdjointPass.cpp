@@ -27,6 +27,7 @@
  */
 
 #include <Math/Math.hpp>
+#include <Graphics/Vulkan/Utils/Device.hpp>
 #include <Graphics/Vulkan/Render/Renderer.hpp>
 #include <Graphics/Vulkan/Render/ComputePipeline.hpp>
 

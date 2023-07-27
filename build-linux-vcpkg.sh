@@ -36,9 +36,6 @@ debug=false
 glibcxx_debug=false
 link_dynamic=false
 params_link=()
-if [ $link_dynamic = true ]; then
-    params_link+=(-DVCPKG_TARGET_TRIPLET=x64-linux-dynamic)
-fi
 build_dir_debug=".build_debug"
 build_dir_release=".build_release"
 build_with_zarr_support=true
@@ -54,18 +51,18 @@ for ((i=1;i<=$#;i++));
 do
     if [ ${!i} = "--debug" ] || [ ${!i} = "debug" ]; then
         debug=true
-    fi
-    if [ ${!i} = "--glibcxx-debug" ]; then
+    elif [ ${!i} = "--glibcxx-debug" ]; then
         glibcxx_debug=true
-    fi
-    if [ ${!i} = "--custom-glslang" ]; then
+    elif [ ${!i} = "--custom-glslang" ]; then
         custom_glslang=true
-    fi
-    if [ ${!i} = "--link-static" ]; then
+    elif [ ${!i} = "--link-static" ]; then
         link_dynamic=false
-    fi
-    if [ ${!i} = "--link-dynamic" ]; then
+    elif [ ${!i} = "--link-dynamic" ]; then
         link_dynamic=true
+    elif [ ${!i} = "--vcpkg-triplet" ]; then
+        ((i++))
+        params_link+=(-DVCPKG_TARGET_TRIPLET=${!i})
+        continue
     fi
 done
 
@@ -75,6 +72,9 @@ if [ $debug = true ]; then
 else
     cmake_config="Release"
     build_dir=$build_dir_release
+fi
+if [ $link_dynamic = true ]; then
+    params_link+=(-DVCPKG_TARGET_TRIPLET=x64-linux-dynamic)
 fi
 destination_dir="Shipping"
 
