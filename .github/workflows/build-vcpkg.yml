@@ -134,8 +134,8 @@ jobs:
         if: runner.os == 'Windows'
         shell: cmd
         run: |
-          for /D %F in (C:\VulkanSDK\*) do (
-            set VULKAN_SDK=%F
+          for /D %%F in (C:\VulkanSDK\*) do (
+            set VULKAN_SDK=%%F
             goto vulkan_finished
           )
           :vulkan_finished
