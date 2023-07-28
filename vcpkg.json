@@ -36,6 +36,7 @@
         "vulkan-headers",
         "shaderc",
         "opencl",
+        "glew",
         "glm",
         "tbb",
         "eigen3",

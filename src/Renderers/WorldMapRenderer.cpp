@@ -28,7 +28,6 @@
 
 #include <boost/algorithm/string/replace.hpp>
 #include <tiffio.h>
-#include <curl/curl.h>
 
 #include <Utils/AppSettings.hpp>
 #include <Utils/File/Archive.hpp>
@@ -43,6 +42,9 @@
 #include "Volume/VolumeData.hpp"
 #include "RenderingModes.hpp"
 #include "WorldMapRenderer.hpp"
+
+// Include Curl after Renderer.hpp, as NaNHandling::IGNORE conflicts with windows.h.
+#include <curl/curl.h>
 
 static size_t writeDataCallbackCurl(void *pointer, size_t size, size_t numMembers, void *stream) {
     size_t written = fwrite(pointer, size, numMembers, (FILE*)stream);
