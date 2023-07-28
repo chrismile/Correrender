@@ -31,6 +31,11 @@
 #include <cassert>
 #include <cstring>
 
+#ifdef USE_TBB
+#include <tbb/parallel_for.h>
+#include <tbb/blocked_range.h>
+#endif
+
 #include <netcdf.h>
 
 #include <Utils/StringUtils.hpp>

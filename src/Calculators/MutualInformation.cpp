@@ -31,6 +31,13 @@
 
 #include <boost/math/special_functions/digamma.hpp>
 
+#ifdef USE_TBB
+#include <tbb/parallel_for.h>
+#include <tbb/parallel_reduce.h>
+#include <tbb/blocked_range.h>
+#include <Utils/Parallel/Reduction.hpp>
+#endif
+
 #include <Utils/Random/Xorshift.hpp>
 
 #include "MutualInformation.hpp"

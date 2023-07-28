@@ -895,9 +895,12 @@ void CorrelationCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float
             std::vector<std::pair<float, float>> jointArray;
             std::vector<float> ordinalRankArray;
             std::vector<float> y;
+            std::vector<float> sortArray;
+            std::vector<std::pair<int, int>> stack;
             jointArray.reserve(cs);
             ordinalRankArray.reserve(cs);
             y.reserve(cs);
+            sortArray.reserve(cs);
             for (auto gridPointIdx = r.begin(); gridPointIdx != r.end(); gridPointIdx++) {
 #else
 #if _OPENMP >= 200805

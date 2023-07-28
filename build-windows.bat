@@ -43,6 +43,9 @@ IF NOT "%1"=="" (
     IF "%1"=="--do-not-run" (
         SET run_program=true
     )
+    IF "%1"=="--debug" (
+        SET debug=true
+    )
     IF "%1"=="--vcpkg-triplet" (
         SET vcpkg_triplet=%2
         SHIFT
@@ -117,10 +120,14 @@ if not exist .\sgl\install (
             -DCMAKE_TOOLCHAIN_FILE=../../vcpkg/scripts/buildsystems/vcpkg.cmake ^
             -DVCPKG_TARGET_TRIPLET=%vcpkg_triplet% ^
             -DCMAKE_INSTALL_PREFIX=../install -DCMAKE_CXX_FLAGS="/MP" || exit /b 1
-   cmake --build . --config Debug   -- /m            || exit /b 1
-   cmake --build . --config Debug   --target install || exit /b 1
-   cmake --build . --config Release -- /m            || exit /b 1
-   cmake --build . --config Release --target install || exit /b 1
+   if x%vcpkg_triplet:release=%==x%str1% (
+      cmake --build . --config Debug   -- /m            || exit /b 1
+      cmake --build . --config Debug   --target install || exit /b 1
+   )
+   if x%vcpkg_triplet:debug=%==x%str1% (
+      cmake --build . --config Release -- /m            || exit /b 1
+      cmake --build . --config Release --target install || exit /b 1
+   )
 
    popd
 )
@@ -190,10 +197,14 @@ if %use_eccodes% == true if not exist ".\eccodes-%eccodes_version%" (
     if not exist .\build\ mkdir .\build\
     pushd build
     cmake .. %cmake_generator% -DCMAKE_INSTALL_PREFIX=../../eccodes-%eccodes_version% -DCMAKE_CXX_FLAGS="/MP" || exit /b 1
-    cmake --build . --config Debug   -- /m            || exit /b 1
-    cmake --build . --config Debug   --target install || exit /b 1
-    cmake --build . --config Release -- /m            || exit /b 1
-    cmake --build . --config Release --target install || exit /b 1
+    if x%vcpkg_triplet:release=%==x%str1% (
+        cmake --build . --config Debug   -- /m            || exit /b 1
+        cmake --build . --config Debug   --target install || exit /b 1
+    )
+    if x%vcpkg_triplet:debug=%==x%str1% (
+        cmake --build . --config Release -- /m            || exit /b 1
+        cmake --build . --config Release --target install || exit /b 1
+    )
     popd
     popd
 )

@@ -27,6 +27,7 @@
  */
 
 #include <algorithm>
+#include <functional>
 #include <cmath>
 
 #ifdef USE_TBB
@@ -192,7 +193,7 @@ float computePearsonParallel(
             [&](tbb::blocked_range<int> const& r, std::pair<T, T> init) {
                 auto& meanX = init.first;
                 auto& meanY = init.second;
-                for (auto idx = r.begin(); idx != r.end(); idx++) {
+                for (auto e = r.begin(); e != r.end(); e++) {
 #else
     T meanX = 0;
     T meanY = 0;
@@ -218,7 +219,7 @@ float computePearsonParallel(
             [&](tbb::blocked_range<int> const& r, std::pair<T, T> init) {
                 auto& varX = init.first;
                 auto& varY = init.second;
-                for (auto idx = r.begin(); idx != r.end(); idx++) {
+                for (auto e = r.begin(); e != r.end(); e++) {
 #else
     T varX = 0;
     T varY = 0;
@@ -246,7 +247,7 @@ float computePearsonParallel(
     auto pearsonCorrelation = tbb::parallel_reduce(
             tbb::blocked_range<int>(0, es), T(0),
             [&](tbb::blocked_range<int> const& r, T pearsonCorrelation) {
-                for (auto idx = r.begin(); idx != r.end(); idx++) {
+                for (auto e = r.begin(); e != r.end(); e++) {
 #else
     T pearsonCorrelation = 0;
 #if _OPENMP >= 201107

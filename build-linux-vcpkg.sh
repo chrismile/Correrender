@@ -675,17 +675,10 @@ done
 #patchelf --replace-needed "$libstdcpp_so_filename_original" "$libstdcpp_so_filename_resolved" "$destination_dir/bin/Correrender"
 patchelf --set-rpath '$ORIGIN' "$destination_dir/bin/Correrender"
 
-# Install numpy if not done in a previous script run.
-python_lib_dir="vcpkg_installed/$(ls --ignore=vcpkg vcpkg_installed)/lib/$Python3_VERSION"
-if [ ! -d "$python_lib_dir/site-packages/numpy" ]; then
-    python_bin="vcpkg_installed/$(ls --ignore=vcpkg vcpkg_installed)/tools/python3/$Python3_VERSION"
-    "$python_bin" -m ensurepip --upgrade
-    "$python_bin" -m pip install -U numpy
-fi
-
 # Copy python3 to the destination directory.
 [ -d $destination_dir/bin/python3 ]     || mkdir $destination_dir/bin/python3
 [ -d $destination_dir/bin/python3/lib ] || mkdir $destination_dir/bin/python3/lib
+python_lib_dir="vcpkg_installed/$(ls --ignore=vcpkg vcpkg_installed)/lib/$Python3_VERSION"
 rsync -a "$python_lib_dir" $destination_dir/bin/python3/lib
 #rsync -a "$(eval echo "vcpkg_installed/$(ls --ignore=vcpkg vcpkg_installed)/lib/python*")" $destination_dir/python3/lib
 

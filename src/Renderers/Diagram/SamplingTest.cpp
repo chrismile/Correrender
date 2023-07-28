@@ -27,6 +27,7 @@
  */
 
 #include <random>
+#include <numeric>
 
 #include <Math/Math.hpp>
 #include <Utils/AppSettings.hpp>
