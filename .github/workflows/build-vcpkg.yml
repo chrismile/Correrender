@@ -76,10 +76,9 @@ jobs:
         shell: bash
         run: |
           if [ "$RUNNER_OS" == "Linux" ]; then
-            ./build-linux-vcpkg.sh --vcpkg-triplet ${{env.VCPKG_DEFAULT_TRIPLET}}
+            ./build-linux-vcpkg.sh --do-not-run --vcpkg-triplet ${{env.VCPKG_DEFAULT_TRIPLET}}
           elif [ "$RUNNER_OS" == "Windows" ]; then
-            ./build-windows.bat --vcpkg-triplet ${{env.VCPKG_DEFAULT_TRIPLET}}
+            ./build-windows.bat --do-not-run --vcpkg-triplet ${{env.VCPKG_DEFAULT_TRIPLET}}
           elif [ "$RUNNER_OS" == "macOS" ]; then
-            ./build-macos-vcpkg.sh --vcpkg-triplet ${{env.VCPKG_DEFAULT_TRIPLET}}
+            ./build-macos-vcpkg.sh --do-not-run --vcpkg-triplet ${{env.VCPKG_DEFAULT_TRIPLET}}
           fi
-          cmake "${{env.sgl_REPO_DIR}}" -B "${{env.sgl_REPO_DIR}}/build" -DCMAKE_TOOLCHAIN_FILE="${{env.VCPKG_ROOT}}/scripts/buildsystems/vcpkg.cmake" -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} -DVCPKG_TARGET_TRIPLET=${{env.VCPKG_DEFAULT_TRIPLET}} -DCMAKE_INSTALL_PREFIX="${{env.sgl_DIR}}"

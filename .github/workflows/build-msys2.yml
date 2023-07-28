@@ -25,4 +25,4 @@ jobs:
 
       - name: Build
         shell: msys2 {0}
-        run: ./build-windows-msys2.sh
+        run: ./build-windows-msys2.sh --do-not-run

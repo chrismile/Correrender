@@ -47,7 +47,9 @@ build_with_osqp_support=true
 custom_glslang=false
 for ((i=1;i<=$#;i++));
 do
-    if [ ${!i} = "--custom-glslang" ]; then
+    if [ ${!i} = "--do-not-run" ]; then
+            run_program=false
+    elif [ ${!i} = "--custom-glslang" ]; then
         custom_glslang=true
     fi
 done
@@ -341,7 +343,7 @@ if [ ! -d "${PROJECTPATH}/third_party/limbo" ]; then
     echo "------------------------"
     echo "    downloading limbo   "
     echo "------------------------"
-    git clone --recursive https://github.com/resibots/limbo.git "${PROJECTPATH}/third_party/limbo"
+    git clone --recursive https://github.com/chrismile/limbo.git "${PROJECTPATH}/third_party/limbo"
 fi
 
 popd >/dev/null # back to project root

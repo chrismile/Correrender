@@ -32,6 +32,7 @@ SCRIPTPATH="$( cd "$(dirname "$0")" ; pwd -P )"
 PROJECTPATH="$SCRIPTPATH"
 pushd $SCRIPTPATH > /dev/null
 
+run_program=true
 debug=false
 glibcxx_debug=false
 build_dir_debug=".build_debug"
@@ -48,13 +49,13 @@ build_with_zink_support=false
 custom_glslang=false
 for ((i=1;i<=$#;i++));
 do
-    if [ ${!i} = "--debug" ] || [ ${!i} = "debug" ]; then
+    if [ ${!i} = "--do-not-run" ]; then
+        run_program=false
+    elif [ ${!i} = "--debug" ] || [ ${!i} = "debug" ]; then
         debug=true
-    fi
-    if [ ${!i} = "--glibcxx-debug" ]; then
+    elif [ ${!i} = "--glibcxx-debug" ]; then
         glibcxx_debug=true
-    fi
-    if [ ${!i} = "--custom-glslang" ]; then
+    elif [ ${!i} = "--custom-glslang" ]; then
         custom_glslang=true
     fi
 done
@@ -579,7 +580,7 @@ if [ ! -d "${PROJECTPATH}/third_party/limbo" ]; then
     echo "------------------------"
     echo "    downloading limbo   "
     echo "------------------------"
-    git clone --recursive https://github.com/resibots/limbo.git "${PROJECTPATH}/third_party/limbo" 
+    git clone --recursive https://github.com/chrismile/limbo.git "${PROJECTPATH}/third_party/limbo"
 fi
 
 if $build_with_zink_support; then
@@ -734,4 +735,7 @@ if [[ -z "${LD_LIBRARY_PATH+x}" ]]; then
 elif [[ ! "${LD_LIBRARY_PATH}" == *"${PROJECTPATH}/third_party/sgl/install/lib"* ]]; then
     export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:${PROJECTPATH}/third_party/sgl/install/lib"
 fi
-./Correrender
+
+if [ $run_program = true ]; then
+    ./Correrender
+fi

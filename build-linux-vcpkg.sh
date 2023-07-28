@@ -32,6 +32,7 @@ SCRIPTPATH="$( cd "$(dirname "$0")" ; pwd -P )"
 PROJECTPATH="$SCRIPTPATH"
 pushd $SCRIPTPATH > /dev/null
 
+run_program=true
 debug=false
 glibcxx_debug=false
 link_dynamic=false
@@ -49,7 +50,9 @@ build_with_osqp_support=true
 custom_glslang=false
 for ((i=1;i<=$#;i++));
 do
-    if [ ${!i} = "--debug" ] || [ ${!i} = "debug" ]; then
+    if [ ${!i} = "--do-not-run" ]; then
+        run_program=false
+    elif [ ${!i} = "--debug" ] || [ ${!i} = "debug" ]; then
         debug=true
     elif [ ${!i} = "--glibcxx-debug" ]; then
         glibcxx_debug=true
@@ -449,7 +452,7 @@ if $build_with_zarr_support; then
     "version": "0.1.0",
     "dependencies": [ "boost-core", "boost-filesystem" ]
 }
-        EOF
+EOF
         mkdir -p z5-src/build
         pushd z5-src/build >/dev/null
         cmake -Dxtl_DIR="${PROJECTPATH}/third_party/xtl/share/cmake/xtl" \
@@ -560,7 +563,7 @@ if [ ! -d "${PROJECTPATH}/third_party/limbo" ]; then
     echo "------------------------"
     echo "    downloading limbo   "
     echo "------------------------"
-    git clone --recursive https://github.com/resibots/limbo.git "${PROJECTPATH}/third_party/limbo"
+    git clone --recursive https://github.com/chrismile/limbo.git "${PROJECTPATH}/third_party/limbo"
 fi
 
 popd >/dev/null # back to project root

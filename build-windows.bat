@@ -310,7 +310,7 @@ if not exist ".\limbo" (
     echo ------------------------
     echo     downloading limbo
     echo ------------------------
-    git clone --recursive https://github.com/resibots/limbo.git limbo
+    git clone --recursive https://github.com/chrismile/limbo.git limbo
 )
 
 popd
