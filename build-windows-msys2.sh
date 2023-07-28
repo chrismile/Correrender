@@ -374,16 +374,11 @@ echo "------------------------"
 echo "      generating        "
 echo "------------------------"
 pushd $build_dir >/dev/null
-Python3_VERSION="$(find "$MSYSTEM_PREFIX/lib/" -maxdepth 1 -type d -name 'python*' -printf "%f" -quit)"
 cmake .. \
     -G "MSYS Makefiles" \
-    -DPython3_FIND_REGISTRY=NEVER \
     -DCMAKE_BUILD_TYPE=$cmake_config \
     -Dsgl_DIR="$PROJECTPATH/third_party/sgl/install/lib/cmake/sgl/" \
-    -DPYTHONHOME="./python3" \
-    -DPYTHONPATH="./python3/lib/$Python3_VERSION" \
     "${params[@]}"
-Python3_VERSION=$(cat pythonversion.txt)
 popd >/dev/null
 
 echo "------------------------"
@@ -419,18 +414,7 @@ do
     then
         cp "$library" "$destination_dir/bin"
     fi
-    if [[ $library == libpython* ]] ;
-    then
-        tmp=${library#*lib}
-        Python3_VERSION=${tmp%.dll}
-    fi
 done
-
-# Copy python3 to the destination directory.
-if [ ! -d "$destination_dir/bin/python3" ]; then
-    mkdir -p "$destination_dir/bin/python3/lib"
-    cp -r "$MSYSTEM_PREFIX/lib/$Python3_VERSION" "$destination_dir/bin/python3/lib"
-fi
 
 # Copy the docs to the destination directory.
 cp "README.md" "$destination_dir"
@@ -457,7 +441,6 @@ if [[ -z "${PATH+x}" ]]; then
 elif [[ ! "${PATH}" == *"${PROJECTPATH}/third_party/sgl/install/bin"* ]]; then
     export PATH="${PROJECTPATH}/third_party/sgl/install/bin:$PATH"
 fi
-export PYTHONHOME="/mingw64"
 
 if [ $run_program = true ]; then
     ./Correrender

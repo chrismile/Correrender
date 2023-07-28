@@ -164,8 +164,7 @@ elif command -v pacman &> /dev/null; then
             || ! is_installed_pacman "sdl2" || ! is_installed_pacman "sdl2_image" \
             || ! is_installed_pacman "glew" || ! is_installed_pacman "vulkan-devel" \
             || ! is_installed_pacman "shaderc" || ! is_installed_pacman "opencl-headers" \
-            || ! is_installed_pacman "ocl-icd" \
-            || ! is_installed_pacman "python3" || ! is_installed_pacman "python-numpy" \
+            || ! is_installed_pacman "ocl-icd" || ! is_installed_pacman "python3" \
             || ! is_installed_pacman "nlohmann-json" || ! is_installed_pacman "jsoncpp" \
             || ! is_installed_pacman "blosc" || ! is_installed_pacman "netcdf" \
             || ! is_installed_pacman "eigen" || ! is_installed_pacman "nlopt" \
@@ -174,7 +173,7 @@ elif command -v pacman &> /dev/null; then
         echo "installing dependencies "
         echo "------------------------"
         sudo pacman -S boost libarchive glm tinyxml2 sdl2 sdl2_image glew vulkan-devel shaderc opencl-headers ocl-icd \
-        python3 python-numpy nlohmann-json jsoncpp blosc netcdf eigen nlopt libtiff
+        python3 nlohmann-json jsoncpp blosc netcdf eigen nlopt libtiff
     fi
     if command -v yay &> /dev/null && ! is_installed_yay "eccodes"; then
         yay -S eccodes
@@ -196,7 +195,7 @@ elif command -v yum &> /dev/null; then
             || ! is_installed_rpm "libpng-devel" || ! is_installed_rpm "glew-devel" \
             || ! is_installed_rpm "vulkan-headers" || ! is_installed_rpm "libshaderc-devel" \
             || ! is_installed_rpm "opencl-headers" || ! is_installed_rpm "ocl-icd" \
-            || ! is_installed_rpm "python3-devel" || ! is_installed_rpm "python3-numpy" \
+            || ! is_installed_rpm "python3-devel" \
             || ! is_installed_rpm "json-devel" || ! is_installed_rpm "jsoncpp-devel" \
             || ! is_installed_rpm "blosc-devel" || ! is_installed_rpm "netcdf-devel" \
             || ! is_installed_rpm "eccodes-devel" || ! is_installed_rpm "libeigen3-devel" \
@@ -206,7 +205,7 @@ elif command -v yum &> /dev/null; then
         echo "installing dependencies "
         echo "------------------------"
         sudo yum install -y boost-devel libarchive-devel glm-devel tinyxml2-devel SDL2-devel SDL2_image-devel \
-        libpng-devel glew-devel vulkan-headers libshaderc-devel opencl-headers ocl-icd python3-devel python3-numpy \
+        libpng-devel glew-devel vulkan-headers libshaderc-devel opencl-headers ocl-icd python3-devel \
         json-devel jsoncpp-devel blosc-devel netcdf-devel eccodes-devel libeigen3-devel NLopt libcurl-devel \
         libtiff-devel
     fi
@@ -707,9 +706,6 @@ do
     #patchelf --set-rpath '$ORIGIN' "$destination_dir/bin/$(basename "$library")"
 done
 patchelf --set-rpath '$ORIGIN' "$destination_dir/bin/Correrender"
-
-# Copy python3 to the destination directory.
-# TODO
 
 # Copy the docs to the destination directory.
 cp "README.md" "$destination_dir"

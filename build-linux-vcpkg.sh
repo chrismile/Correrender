@@ -604,11 +604,9 @@ echo "------------------------"
 pushd $build_dir >/dev/null
 cmake .. \
       -DCMAKE_TOOLCHAIN_FILE="$PROJECTPATH/third_party/vcpkg/scripts/buildsystems/vcpkg.cmake" \
-      -DPYTHONHOME="./python3" \
       -DCMAKE_BUILD_TYPE=$cmake_config \
       -Dsgl_DIR="$PROJECTPATH/third_party/sgl/install/lib/cmake/sgl/" \
       -DUSE_STATIC_STD_LIBRARIES=On "${params_link[@]}" "${params[@]}"
-Python3_VERSION=$(cat pythonversion.txt)
 popd >/dev/null
 
 echo "------------------------"
@@ -678,13 +676,6 @@ done
 #patchelf --replace-needed "$libstdcpp_so_filename_original" "$libstdcpp_so_filename_resolved" "$destination_dir/bin/Correrender"
 patchelf --set-rpath '$ORIGIN' "$destination_dir/bin/Correrender"
 
-# Copy python3 to the destination directory.
-[ -d $destination_dir/bin/python3 ]     || mkdir $destination_dir/bin/python3
-[ -d $destination_dir/bin/python3/lib ] || mkdir $destination_dir/bin/python3/lib
-python_lib_dir="vcpkg_installed/$(ls --ignore=vcpkg vcpkg_installed)/lib/$Python3_VERSION"
-rsync -a "$python_lib_dir" $destination_dir/bin/python3/lib
-#rsync -a "$(eval echo "vcpkg_installed/$(ls --ignore=vcpkg vcpkg_installed)/lib/python*")" $destination_dir/python3/lib
-
 # Copy the docs to the destination directory.
 cp "README.md" "$destination_dir"
 if [ ! -d "$destination_dir/LICENSE" ]; then
@@ -712,5 +703,4 @@ if [[ -z "${LD_LIBRARY_PATH+x}" ]]; then
 elif [[ ! "${LD_LIBRARY_PATH}" == *"${PROJECTPATH}/third_party/sgl/install/lib"* ]]; then
     export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:${PROJECTPATH}/third_party/sgl/install/lib"
 fi
-export PYTHONHOME="../Shipping/bin/python3"
 ./Correrender

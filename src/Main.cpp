@@ -28,10 +28,6 @@
 
 #include <unordered_map>
 
-#ifdef USE_PYTHON
-#include <Utils/Python/PythonInit.hpp>
-#endif
-
 #include <Utils/StringUtils.hpp>
 #include <Utils/AppSettings.hpp>
 #include <Utils/AppLogic.hpp>
@@ -257,10 +253,6 @@ int main(int argc, char *argv[]) {
     sgl::AppSettings::get()->setPrimaryDevice(device);
     sgl::AppSettings::get()->initializeSubsystems();
 
-#ifdef USE_PYTHON
-    sgl::pythonInit(argc, argv);
-#endif
-
     if (!isHeadlessMode) {
         auto app = new MainApp();
         app->run();
@@ -285,10 +277,6 @@ int main(int argc, char *argv[]) {
         sgl::destroyOffscreenContext(offscreenContext);
         offscreenContext = nullptr;
     }
-#endif
-
-#ifdef USE_PYTHON
-    Py_Finalize();
 #endif
 
     return 0;
