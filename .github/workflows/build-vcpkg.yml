@@ -27,7 +27,7 @@ jobs:
             linking: static
 
     runs-on: ${{ matrix.os }}
-    name: "${{ github.workflow }}: ${{ matrix.os }}"
+    name: "${{ github.workflow }}: ${{ matrix.os }} (${{ matrix.linking }})"
 
     env:
       VCPKG_ROOT: ${{ github.workspace }}/third_party/vcpkg
@@ -133,4 +133,10 @@ jobs:
       - name: Build (Windows)
         if: runner.os == 'Windows'
         shell: cmd
-        run: ./build-windows.bat --do-not-run --vcpkg-triplet ${{env.VCPKG_DEFAULT_TRIPLET}}
+        run: |
+          for /D %F in (C:\VulkanSDK\*) do (
+            set VULKAN_SDK=%F
+            goto vulkan_finished
+          )
+          :vulkan_finished
+          ./build-windows.bat --do-not-run --vcpkg-triplet ${{env.VCPKG_DEFAULT_TRIPLET}}
