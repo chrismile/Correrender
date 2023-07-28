@@ -41,6 +41,18 @@ If you are using a different Linux distribution and face difficulties when build
 open a [bug report](https://github.com/chrismile/Correrender/issues). In theory, the build scripts should also work on other
 Linux distributions as long as the Vulkan SDK is installed manually beforehand.
 
+#### CUDA Support
+
+The program can use CUDA to enable optional features. If the build scripts are not able to find your CUDA installation
+on Linux, add the following lines to the end of `$HOME/.profile` and log out of and then back into your user account.
+`cuda-12.1` needs to be adapted depending on the CUDA version installed.
+
+```sh
+export CPATH=/usr/local/cuda-12.1/targets/x86_64-linux/include:$CPATH
+export LD_LIBRARY_PATH=/usr/local/cuda-12.1/targets/x86_64-linux/lib:$LD_LIBRARY_PATH
+export PATH=/usr/local/cuda-12.1/bin:$PATH
+```
+
 
 ### Windows
 

@@ -703,4 +703,7 @@ if [[ -z "${LD_LIBRARY_PATH+x}" ]]; then
 elif [[ ! "${LD_LIBRARY_PATH}" == *"${PROJECTPATH}/third_party/sgl/install/lib"* ]]; then
     export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:${PROJECTPATH}/third_party/sgl/install/lib"
 fi
-./Correrender
+
+if [ $run_program = true ]; then
+    ./Correrender
+fi

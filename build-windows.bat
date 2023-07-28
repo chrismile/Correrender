@@ -28,6 +28,7 @@
 setlocal
 pushd %~dp0
 
+set VSLANG=1033
 set run_program=true
 set debug=false
 set build_dir=".build"
@@ -404,4 +405,6 @@ pushd %destination_dir%
 
 if %run_program% == true (
    Correrender.exe
+) else (
+   echo Build finished.
 )

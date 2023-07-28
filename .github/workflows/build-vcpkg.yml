@@ -104,7 +104,7 @@ jobs:
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v10
         with:
-          vcpkgGitCommitId: '638b1588be3a265a9c7ad5b212cef72a1cad336a'
+          vcpkgGitCommitId: '8b04a7bd93bef991818fc372bb83ce00ec1c1c16'
           vcpkgDirectory: ${{env.VCPKG_ROOT}}
           doNotCacheOnWorkflowFailure: true
 
