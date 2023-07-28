@@ -120,11 +120,11 @@ if not exist .\sgl\install (
             -DCMAKE_TOOLCHAIN_FILE=../../vcpkg/scripts/buildsystems/vcpkg.cmake ^
             -DVCPKG_TARGET_TRIPLET=%vcpkg_triplet% ^
             -DCMAKE_INSTALL_PREFIX=../install -DCMAKE_CXX_FLAGS="/MP" || exit /b 1
-   if x%vcpkg_triplet:release=%==x%str1% (
+   if x%vcpkg_triplet:release=%==x%vcpkg_triplet% (
       cmake --build . --config Debug   -- /m            || exit /b 1
       cmake --build . --config Debug   --target install || exit /b 1
    )
-   if x%vcpkg_triplet:debug=%==x%str1% (
+   if x%vcpkg_triplet:debug=%==x%vcpkg_triplet% (
       cmake --build . --config Release -- /m            || exit /b 1
       cmake --build . --config Release --target install || exit /b 1
    )
@@ -137,6 +137,9 @@ set cmake_args=-DCMAKE_TOOLCHAIN_FILE="third_party/vcpkg/scripts/buildsystems/vc
                -DPYTHONHOME="./python3"                                                    ^
                -DCMAKE_CXX_FLAGS="/MP"                                                     ^
                -Dsgl_DIR="third_party/sgl/install/lib/cmake/sgl/"
+
+set cmake_args_general=-DCMAKE_TOOLCHAIN_FILE="%~dp0/third_party/vcpkg/scripts/buildsystems/vcpkg.cmake" ^
+               -DVCPKG_TARGET_TRIPLET=%vcpkg_triplet%
 
 set eccodes_version=2.26.0
 if not exist ".\eccodes-%eccodes_version%-Source" (
@@ -224,8 +227,7 @@ if %build_with_zarr_support% == true (
         git clone https://github.com/xtensor-stack/xtl.git xtl-src
         if not exist .\xtl-src\build\ mkdir .\xtl-src\build\
         pushd "xtl-src\build"
-        cmake %cmake_generator% -DCMAKE_TOOLCHAIN_FILE="%~dp0/third_party/vcpkg/scripts/buildsystems/vcpkg.cmake" ^
-        -DVCPKG_TARGET_TRIPLET=%vcpkg_triplet% ^
+        cmake %cmake_generator% %cmake_args_general% ^
         -DCMAKE_INSTALL_PREFIX="%~dp0/third_party/xtl" ..
         cmake --build . --config Release --target install || exit /b 1
         popd
@@ -241,8 +243,7 @@ if %build_with_zarr_support% == true (
         git clone https://github.com/xtensor-stack/xtensor.git xtensor-src
         if not exist .\xtensor-src\build\ mkdir .\xtensor-src\build\
         pushd "xtensor-src\build"
-        cmake %cmake_generator% -DCMAKE_TOOLCHAIN_FILE="%~dp0/third_party/vcpkg/scripts/buildsystems/vcpkg.cmake" ^
-        -DVCPKG_TARGET_TRIPLET=%vcpkg_triplet% ^
+        cmake %cmake_generator% %cmake_args_general% ^
         -Dxtl_DIR="%~dp0/third_party/xtl/share/cmake/xtl" ^
         -DCMAKE_INSTALL_PREFIX="%~dp0/third_party/xtensor" ..
         cmake --build . --config Release --target install || exit /b 1
@@ -259,8 +260,7 @@ if %build_with_zarr_support% == true (
         git clone https://github.com/xtensor-stack/xsimd.git xsimd-src
         if not exist .\xsimd-src\build\ mkdir .\xsimd-src\build\
         pushd "xsimd-src\build"
-        cmake %cmake_generator% -DCMAKE_TOOLCHAIN_FILE="%~dp0/third_party/vcpkg/scripts/buildsystems/vcpkg.cmake" ^
-        -DVCPKG_TARGET_TRIPLET=%vcpkg_triplet% ^
+        cmake %cmake_generator% %cmake_args_general% ^
         -Dxtl_DIR="%~dp0/third_party/xtl/share/cmake/xtl" ^
         -DENABLE_XTL_COMPLEX=ON ^
         -DCMAKE_INSTALL_PREFIX="%~dp0/third_party/xsimd" ..
@@ -293,8 +293,7 @@ if %build_with_zarr_support% == true (
         echo }>> %~dp0/third_party/z5-src/vcpkg.json
         if not exist .\z5-src\build\ mkdir .\z5-src\build\
         pushd "z5-src\build"
-        cmake %cmake_generator% -DCMAKE_TOOLCHAIN_FILE="%~dp0/third_party/vcpkg/scripts/buildsystems/vcpkg.cmake" ^
-        -DVCPKG_TARGET_TRIPLET=%vcpkg_triplet% ^
+        cmake %cmake_generator% %cmake_args_general% ^
         -Dxtl_DIR="%~dp0/third_party/xtl/share/cmake/xtl" ^
         -Dxtensor_DIR="%~dp0/third_party/xtensor/share/cmake/xtensor" ^
         -Dxsimd_DIR="%~dp0/third_party/xsimd/lib/cmake/xsimd" ^
@@ -339,8 +338,7 @@ if %build_with_osqp_support% == true (
         git clone https://github.com/osqp/osqp osqp-src
         if not exist .\osqp-src\build\ mkdir .\osqp-src\build\
         pushd "osqp-src\build"
-        cmake %cmake_generator% -DCMAKE_TOOLCHAIN_FILE="%~dp0/third_party/vcpkg/scripts/buildsystems/vcpkg.cmake" ^
-        -DVCPKG_TARGET_TRIPLET=%vcpkg_triplet% ^
+        cmake %cmake_generator% %cmake_args_general% ^
         -DCMAKE_INSTALL_PREFIX="%~dp0/third_party/osqp" ..
         cmake --build . --config Release --target install || exit /b 1
         popd
