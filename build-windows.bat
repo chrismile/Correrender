@@ -41,7 +41,7 @@ set build_with_osqp_support=true
 :loop
 IF NOT "%1"=="" (
     IF "%1"=="--do-not-run" (
-        SET run_program=true
+        SET run_program=false
     )
     IF "%1"=="--debug" (
         SET debug=true
