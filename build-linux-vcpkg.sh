@@ -447,10 +447,10 @@ if $build_with_zarr_support; then
         sed -i '/^SET(Boost_NO_SYSTEM_PATHS ON)$/s/^/#/' z5-src/CMakeLists.txt
         cat > z5-src/vcpkg.json <<EOF
 {
-    "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg/master/scripts/vcpkg.schema.json",
+    "\$schema": "https://raw.githubusercontent.com/microsoft/vcpkg/master/scripts/vcpkg.schema.json",
     "name": "z5",
     "version": "0.1.0",
-    "dependencies": [ "boost-core", "boost-filesystem" ]
+    "dependencies": [ "boost-core", "boost-filesystem", "nlohmann-json", "blosc" ]
 }
 EOF
         mkdir -p z5-src/build

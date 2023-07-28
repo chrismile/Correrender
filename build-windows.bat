@@ -28,12 +28,28 @@
 setlocal
 pushd %~dp0
 
+set run_program=true
 set debug=false
 set build_dir=".build"
 set destination_dir="Shipping"
+set vcpkg_triplet="x64-windows"
 set build_with_cuda_support=true
 set build_with_zarr_support=true
 set build_with_osqp_support=true
+set build_with_osqp_support=true
+
+:loop
+IF NOT "%1"=="" (
+    IF "%1"=="--do-not-run" (
+        SET run_program=true
+    )
+    IF "%1"=="--vcpkg-triplet" (
+        SET vcpkg_triplet=%2
+        SHIFT
+    )
+    SHIFT
+    GOTO :loop
+)
 
 :: Leave empty to let cmake try to find the correct paths
 set optix_install_dir=""
@@ -72,7 +88,7 @@ if not exist .\vcpkg (
    echo ------------------------
    git clone --depth 1 https://github.com/Microsoft/vcpkg.git || exit /b 1
    call vcpkg\bootstrap-vcpkg.bat -disableMetrics             || exit /b 1
-   vcpkg\vcpkg install --triplet=x64-windows                  || exit /b 1
+   vcpkg\vcpkg install --triplet=%vcpkg_triplet%              || exit /b 1
 )
 
 if not exist .\sgl (
@@ -91,6 +107,7 @@ if not exist .\sgl\install (
 
    cmake .. %cmake_generator% ^
             -DCMAKE_TOOLCHAIN_FILE=../../vcpkg/scripts/buildsystems/vcpkg.cmake ^
+            -DVCPKG_TARGET_TRIPLET=%vcpkg_triplet% ^
             -DCMAKE_INSTALL_PREFIX=../install -DCMAKE_CXX_FLAGS="/MP" || exit /b 1
    cmake --build . --config Debug   -- /m            || exit /b 1
    cmake --build . --config Debug   --target install || exit /b 1
@@ -101,6 +118,7 @@ if not exist .\sgl\install (
 )
 
 set cmake_args=-DCMAKE_TOOLCHAIN_FILE="third_party/vcpkg/scripts/buildsystems/vcpkg.cmake" ^
+               -DVCPKG_TARGET_TRIPLET=%vcpkg_triplet%                                      ^
                -DPYTHONHOME="./python3"                                                    ^
                -DCMAKE_CXX_FLAGS="/MP"                                                     ^
                -Dsgl_DIR="third_party/sgl/install/lib/cmake/sgl/"
@@ -188,6 +206,7 @@ if %build_with_zarr_support% == true (
         if not exist .\xtl-src\build\ mkdir .\xtl-src\build\
         pushd "xtl-src\build"
         cmake %cmake_generator% -DCMAKE_TOOLCHAIN_FILE="%~dp0/third_party/vcpkg/scripts/buildsystems/vcpkg.cmake" ^
+        -DVCPKG_TARGET_TRIPLET=%vcpkg_triplet% ^
         -DCMAKE_INSTALL_PREFIX="%~dp0/third_party/xtl" ..
         cmake --build . --config Release --target install || exit /b 1
         popd
@@ -204,6 +223,7 @@ if %build_with_zarr_support% == true (
         if not exist .\xtensor-src\build\ mkdir .\xtensor-src\build\
         pushd "xtensor-src\build"
         cmake %cmake_generator% -DCMAKE_TOOLCHAIN_FILE="%~dp0/third_party/vcpkg/scripts/buildsystems/vcpkg.cmake" ^
+        -DVCPKG_TARGET_TRIPLET=%vcpkg_triplet% ^
         -Dxtl_DIR="%~dp0/third_party/xtl/share/cmake/xtl" ^
         -DCMAKE_INSTALL_PREFIX="%~dp0/third_party/xtensor" ..
         cmake --build . --config Release --target install || exit /b 1
@@ -221,6 +241,7 @@ if %build_with_zarr_support% == true (
         if not exist .\xsimd-src\build\ mkdir .\xsimd-src\build\
         pushd "xsimd-src\build"
         cmake %cmake_generator% -DCMAKE_TOOLCHAIN_FILE="%~dp0/third_party/vcpkg/scripts/buildsystems/vcpkg.cmake" ^
+        -DVCPKG_TARGET_TRIPLET=%vcpkg_triplet% ^
         -Dxtl_DIR="%~dp0/third_party/xtl/share/cmake/xtl" ^
         -DENABLE_XTL_COMPLEX=ON ^
         -DCMAKE_INSTALL_PREFIX="%~dp0/third_party/xsimd" ..
@@ -254,6 +275,7 @@ if %build_with_zarr_support% == true (
         if not exist .\z5-src\build\ mkdir .\z5-src\build\
         pushd "z5-src\build"
         cmake %cmake_generator% -DCMAKE_TOOLCHAIN_FILE="%~dp0/third_party/vcpkg/scripts/buildsystems/vcpkg.cmake" ^
+        -DVCPKG_TARGET_TRIPLET=%vcpkg_triplet% ^
         -Dxtl_DIR="%~dp0/third_party/xtl/share/cmake/xtl" ^
         -Dxtensor_DIR="%~dp0/third_party/xtensor/share/cmake/xtensor" ^
         -Dxsimd_DIR="%~dp0/third_party/xsimd/lib/cmake/xsimd" ^
@@ -299,6 +321,7 @@ if %build_with_osqp_support% == true (
         if not exist .\osqp-src\build\ mkdir .\osqp-src\build\
         pushd "osqp-src\build"
         cmake %cmake_generator% -DCMAKE_TOOLCHAIN_FILE="%~dp0/third_party/vcpkg/scripts/buildsystems/vcpkg.cmake" ^
+        -DVCPKG_TARGET_TRIPLET=%vcpkg_triplet% ^
         -DCMAKE_INSTALL_PREFIX="%~dp0/third_party/osqp" ..
         cmake --build . --config Release --target install || exit /b 1
         popd
@@ -366,4 +389,7 @@ echo.
 echo All done!
 
 pushd %destination_dir%
-Correrender.exe
+
+if %run_program% == true (
+   Correrender.exe
+)

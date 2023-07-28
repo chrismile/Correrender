@@ -32,6 +32,7 @@ SCRIPTPATH="$( cd "$(dirname "$0")" ; pwd -P )"
 PROJECTPATH="$SCRIPTPATH"
 pushd $SCRIPTPATH > /dev/null
 
+run_program=true
 debug=false
 build_dir_debug=".build_debug"
 build_dir_release=".build_release"
@@ -465,5 +466,7 @@ elif [[ ! "${PATH}" == *"${PROJECTPATH}/third_party/sgl/install/bin"* ]]; then
     export PATH="${PROJECTPATH}/third_party/sgl/install/bin:$PATH"
 fi
 export PYTHONHOME="/mingw64"
-./Correrender
 
+if [ $run_program = true ]; then
+    ./Correrender
+fi
