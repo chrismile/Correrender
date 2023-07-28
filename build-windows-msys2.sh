@@ -423,17 +423,6 @@ do
     fi
 done
 
-# Copy libopenblas (needed by numpy) and its dependencies to the destination directory.
-cp "$MSYSTEM_PREFIX/bin/libopenblas.dll" "$destination_dir/bin"
-ldd_output="$(ldd "$MSYSTEM_PREFIX/bin/libopenblas.dll")"
-for library in $ldd_output
-do
-    if [[ $library == "$MSYSTEM_PREFIX"* ]] ;
-    then
-        cp "$library" "$destination_dir/bin"
-    fi
-done
-
 # Copy python3 to the destination directory.
 if [ ! -d "$destination_dir/bin/python3" ]; then
     mkdir -p "$destination_dir/bin/python3/lib"
