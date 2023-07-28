@@ -126,7 +126,7 @@ struct TFOptimizationWorkerSettings {
     OLSBackend backend = OLSBackend::VULKAN;
     bool useSparseSolve = true;
     bool useNormalEquations = true;
-    float relaxationLambda = 1e-3; //< Only used when useNormalEquations == true.
+    float relaxationLambda = 1e-3f; //< Only used when useNormalEquations == true.
 
     // For DiffDVR and OLS_GRAD.
     OptimizerType optimizerType = OptimizerType::ADAM;

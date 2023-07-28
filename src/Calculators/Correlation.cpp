@@ -179,7 +179,6 @@ template
 float computePearson2<double>(
         const float* referenceValues, const float* queryValues, int es);
 
-
 template<class T>
 float computePearsonParallel(
         const float* referenceValues, const float* queryValues, int es) {
@@ -262,7 +261,7 @@ float computePearsonParallel(
     }
 #ifdef USE_TBB
                 return pearsonCorrelation;
-            }, std::plus<>);
+            }, std::plus<>{});
 #endif
 
     return (float)pearsonCorrelation;

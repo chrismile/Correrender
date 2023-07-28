@@ -1097,7 +1097,7 @@ VolumeData::DeviceCacheEntry VolumeData::getFieldEntryDevice(
                     bufferPadded[iPadded] = bufferIn[iIn];
                     bufferPadded[iPadded + 1] = bufferIn[iIn + 1];
                     bufferPadded[iPadded + 2] = bufferIn[iIn + 2];
-                    bufferPadded[iPadded + 3] = 0.0f;
+                    bufferPadded[iPadded + 3] = 0;
                 }
 #ifdef USE_TBB
                 });

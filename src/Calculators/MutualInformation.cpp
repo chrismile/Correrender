@@ -281,8 +281,8 @@ Real averageDigammaParallel(
 
 #ifdef USE_TBB
     auto meanDigammaValue = tbb::parallel_reduce(
-            tbb::blocked_range<int>(0, es), T(0),
-            [&](tbb::blocked_range<int> const& r, T meanDigammaValue) {
+            tbb::blocked_range<int>(0, es), Real(0),
+            [&](tbb::blocked_range<int> const& r, Real meanDigammaValue) {
                 for (auto e = r.begin(); e != r.end(); e++) {
 #else
     Real meanDigammaValue = 0;
@@ -344,7 +344,7 @@ Real averageDigammaParallel(
     }
 #ifdef USE_TBB
                 return meanDigammaValue;
-            }, std::plus<>);
+            }, std::plus<>{});
 #endif
 
     return meanDigammaValue;

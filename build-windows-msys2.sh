@@ -345,6 +345,9 @@ if [ ! -d "${PROJECTPATH}/third_party/limbo" ]; then
     echo "    downloading limbo   "
     echo "------------------------"
     git clone --recursive https://github.com/chrismile/limbo.git "${PROJECTPATH}/third_party/limbo"
+    pushd limbo >/dev/null
+    git checkout fixes
+    popd >/dev/null
 fi
 
 popd >/dev/null # back to project root

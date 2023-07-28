@@ -59,7 +59,7 @@ bool downloadFile(const std::string &url, const std::string &localFileName) {
     }
     CURLcode curlErrorCode = CURLE_OK;
 
-    char* compressedUrl = curl_easy_escape(curlHandle, url.c_str(), url.size());
+    char* compressedUrl = curl_easy_escape(curlHandle, url.c_str(), int(url.size()));
     std::string fixedUrl = compressedUrl;
     boost::replace_all(fixedUrl, "%3A", ":");
     boost::replace_all(fixedUrl, "%2F", "/");
