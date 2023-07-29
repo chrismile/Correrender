@@ -70,29 +70,32 @@ __device__ float getRandomFloatNorm(uvec3& rngState) {
  * - digamma = d/dx ln(Gamma(x)) = Gamma'(x) / Gamma(x) (https://en.wikipedia.org/wiki/Digamma_function)
  * - Lanczos approximation: https://www.rskey.org/CMS/index.php/the-library/11
  * - Weights: https://www.rskey.org/CMS/index.php/the-library/11
- * - GLSL implementation by: https://www.shadertoy.com/view/3lfGD7
+ *
+ * This function could be extended for values < 1 by:
+ * - float z = 1 - iz;
+ * - if (iz < 1) return digammaValue - M_PI * cosf(M_PI * iz) / sinf(M_PI * iz);
  */
-#define M_PI 3.14159265358979323846
-#define LG 5.65
-#define P0 2.50662827563479526904
-#define P1 225.525584619175212544
-#define P2 (-268.295973841304927459)
-#define P3 80.9030806934622512966
-#define P4 (-5.00757863970517583837)
-#define P5 0.0114684895434781459556
-__device__ float digamma(uint ix) {
-    if (ix == 1u) {
-        return -0.57721566490153287;
+#define G (5.15f)
+#define P0 (2.50662827563479526904f)
+#define P1 (225.525584619175212544f)
+#define P2 (-268.295973841304927459f)
+#define P3 (80.9030806934622512966f)
+#define P4 (-5.00757863970517583837f)
+#define P5 (0.0114684895434781459556f)
+__device__ float digamma(uint iz) {
+    if (iz == 1u) {
+        return -0.57721566490153287f;
     }
-    float x = float(ix);
-    float xx = x > 1.0 ? x : 1.0 - x;
-    float sum1 =
-            P1 / ((xx + 1.0) * (xx + 1.0)) + P2/((xx + 2.0) * (xx + 2.0)) + P3 / ((xx + 3.0) * (xx + 3.0))
-            + P4 / ((xx + 4.0) * (xx + 4.0)) + P5 / ((xx + 5.0) * (xx + 5.0));
-    float sum2 = P0 + P1 / (xx + 1.0) + P2 / (xx + 2.0) + P3/(xx + 3.0) + P4 / (xx + 4.0) + P5 / (xx + 5.0);
-    float xh = xx + LG;
-    float y = logf(xh) - (xh + (LG - 0.5) * xx) / (xx * xh) - sum1 / sum2;
-    return x > 1.0 ? y : y - M_PI * cosf(M_PI * x) / sinf(M_PI * x);
+    float z = float(iz);
+    float zh = z - 0.5f;
+    float z1 = z + 1.0f;
+    float z2 = z + 2.0f;
+    float z3 = z + 3.0f;
+    float z4 = z + 4.0f;
+    float ZP = P0 + P1 / z + P2 / z1 + P3 / z2 + P4 / z3 + P5 / z4;
+    float dZP = P1 / (z * z) + P2 / (z1 * z1) + P3 / (z2 * z2) + P4 / (z3 * z3) + P5 / (z4 * z4);
+    float digammaValue = logf(zh + G) + zh / (zh + G) - dZP / ZP - 1.0f;
+    return digammaValue;
 }
 
 
