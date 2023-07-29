@@ -44,7 +44,9 @@
 #include "WorldMapRenderer.hpp"
 
 // Include Curl after Renderer.hpp, as NaNHandling::IGNORE conflicts with windows.h.
+#ifndef NOMINMAX
 #define NOMINMAX
+#endif
 #include <curl/curl.h>
 
 static size_t writeDataCallbackCurl(void *pointer, size_t size, size_t numMembers, void *stream) {

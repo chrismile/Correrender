@@ -497,9 +497,9 @@ void solveLeastSquaresEigenSparse(
         solveLeastSquaresEigenLSQR(A, b, x, 100);
     } else if (solverType == EigenSparseSolverType::CGLS) {
         bool quiet = false;
-        float tol = 1e-6f;
         int maxit = 100;
-        float s = lambdaL;
+        double tol = 1e-6;
+        auto s = double(lambdaL);
         solveLeastSquaresEigenCGLS(A, b, x, s, tol, maxit, quiet);
     }
 }

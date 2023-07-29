@@ -267,7 +267,7 @@ std::vector<glm::vec3> getColorPoints(DiagramColorMap colorMap) {
         const float stop = 1.0f;
         const int numSteps = 5;
         sgl::Color baseColor = blackColorMapColors.at(int(colorMap) - int(DiagramColorMap::BLACK_YELLOW));
-        glm::vec3 baseColorLinear = sgl::TransferFunctionWindow::sRGBToLinearRGB(baseColor.getFloatColorRGB());
+        //glm::vec3 baseColorLinear = sgl::TransferFunctionWindow::sRGBToLinearRGB(baseColor.getFloatColorRGB());
         for (int i = 0; i < numSteps; i++) {
             float t = float(i) / float(numSteps - 1) * (stop - start) + start;
             //colorPoints.push_back(sgl::TransferFunctionWindow::linearRGBTosRGB(t * baseColorLinear));
@@ -278,7 +278,7 @@ std::vector<glm::vec3> getColorPoints(DiagramColorMap colorMap) {
         const float stop = 1.0f;
         const int numSteps = 5;
         sgl::Color baseColor = defaultColors.at(int(colorMap) - int(DiagramColorMap::BLACK_NEON_GREEN));
-        glm::vec3 baseColorLinear = sgl::TransferFunctionWindow::sRGBToLinearRGB(baseColor.getFloatColorRGB());
+        //glm::vec3 baseColorLinear = sgl::TransferFunctionWindow::sRGBToLinearRGB(baseColor.getFloatColorRGB());
         for (int i = 0; i < numSteps; i++) {
             float t = float(i) / float(numSteps - 1) * (stop - start) + start;
             //colorPoints.push_back(sgl::TransferFunctionWindow::linearRGBTosRGB(t * baseColorLinear));
