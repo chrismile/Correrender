@@ -1083,7 +1083,9 @@ void HEBChart::renderChordDiagramNanoVG() {
         }
 
         if (selectedLineIdx >= 0) {
-            nvgStrokeWidth(vg, curveThickness * 2.0f);
+            // Background color outline.
+            sgl::Color outlineColor = isDarkMode ? backgroundFillColorDark : backgroundFillColorBright;
+            nvgStrokeWidth(vg, curveThickness * 3.0f);
             nvgBeginPath(vg);
             glm::vec2 pt0 = curvePoints.at(selectedLineIdx * NUM_SUBDIVISIONS + 0);
             pt0.x = windowWidth / 2.0f + pt0.x * chartRadius;
@@ -1095,7 +1097,20 @@ void HEBChart::renderChordDiagramNanoVG() {
                 pt.y = windowHeight / 2.0f + pt.y * chartRadius;
                 nvgLineTo(vg, pt.x, pt.y);
             }
+            nvgStrokeColor(vg, nvgRGBA(
+                    outlineColor.getR(), outlineColor.getG(), outlineColor.getB(), outlineColor.getA()));
+            nvgStroke(vg);
 
+            // Line itself.
+            nvgStrokeWidth(vg, curveThickness * 2.0f);
+            nvgBeginPath(vg);
+            nvgMoveTo(vg, pt0.x, pt0.y);
+            for (int ptIdx = 1; ptIdx < NUM_SUBDIVISIONS; ptIdx++) {
+                glm::vec2 pt = curvePoints.at(selectedLineIdx * NUM_SUBDIVISIONS + ptIdx);
+                pt.x = windowWidth / 2.0f + pt.x * chartRadius;
+                pt.y = windowHeight / 2.0f + pt.y * chartRadius;
+                nvgLineTo(vg, pt.x, pt.y);
+            }
             if (colorByValue) {
                 float factor = 1.0f;
                 if (correlationValuesArray.size() > 1) {
@@ -1290,6 +1305,8 @@ void HEBChart::renderChordDiagramSkia() {
         }
 
         if (selectedLineIdx >= 0) {
+            // Background color outline.
+            sgl::Color outlineColor = isDarkMode ? backgroundFillColorDark : backgroundFillColorBright;
             path.reset();
             glm::vec2 pt0 = curvePoints.at(selectedLineIdx * NUM_SUBDIVISIONS + 0);
             pt0.x = windowWidth / 2.0f + pt0.x * chartRadius;
@@ -1301,7 +1318,19 @@ void HEBChart::renderChordDiagramSkia() {
                 pt.y = windowHeight / 2.0f + pt.y * chartRadius;
                 path.lineTo(pt.x * s, pt.y * s);
             }
+            paint.setColor(toSkColor(outlineColor));
+            paint.setStrokeWidth(curveThickness * 3.0f * s);
+            canvas->drawPath(path, paint);
 
+            // Line itself.
+            path.reset();
+            path.moveTo(pt0.x * s, pt0.y * s);
+            for (int ptIdx = 1; ptIdx < NUM_SUBDIVISIONS; ptIdx++) {
+                glm::vec2 pt = curvePoints.at(selectedLineIdx * NUM_SUBDIVISIONS + ptIdx);
+                pt.x = windowWidth / 2.0f + pt.x * chartRadius;
+                pt.y = windowHeight / 2.0f + pt.y * chartRadius;
+                path.lineTo(pt.x * s, pt.y * s);
+            }
             if (colorByValue) {
                 float factor = 1.0f;
                 if (correlationValuesArray.size() > 1) {
@@ -1486,18 +1515,11 @@ void HEBChart::renderChordDiagramVkvg() {
         }
 
         if (selectedLineIdx >= 0) {
-            vkvg_set_line_width(context, curveThickness * 2.0f * s);
-            if (colorByValue) {
-                float factor = 1.0f;
-                if (correlationValuesArray.size() > 1) {
-                    factor = (correlationValuesArray.at(selectedLineIdx) - minMi) / (maxMi - minMi);
-                }
-                HEBChartFieldData* fieldData = fieldDataArray.at(lineFieldIndexArray.at(selectedLineIdx)).get();
-                auto color = fieldData->evalColorMap(factor);
-                vkvg_set_source_color(context, color.getColorRGB());
-            }
+            // Background color outline.
+            sgl::Color outlineColor = isDarkMode ? backgroundFillColorDark : backgroundFillColorBright;
+            vkvg_set_line_width(context, curveThickness * 3.0f * s);
+            vkvg_set_source_color(context, outlineColor.getColorRGB());
             vkvg_set_opacity(context, 1.0f);
-
             glm::vec2 pt0 = curvePoints.at(selectedLineIdx * NUM_SUBDIVISIONS + 0);
             pt0.x = windowWidth / 2.0f + pt0.x * chartRadius;
             pt0.y = windowHeight / 2.0f + pt0.y * chartRadius;
@@ -1508,7 +1530,26 @@ void HEBChart::renderChordDiagramVkvg() {
                 pt.y = windowHeight / 2.0f + pt.y * chartRadius;
                 vkvg_line_to(context, pt.x * s, pt.y * s);
             }
+            vkvg_stroke(context);
 
+            // Line itself.
+            vkvg_set_line_width(context, curveThickness * 2.0f * s);
+            if (colorByValue) {
+                float factor = 1.0f;
+                if (correlationValuesArray.size() > 1) {
+                    factor = (correlationValuesArray.at(selectedLineIdx) - minMi) / (maxMi - minMi);
+                }
+                HEBChartFieldData* fieldData = fieldDataArray.at(lineFieldIndexArray.at(selectedLineIdx)).get();
+                auto color = fieldData->evalColorMap(factor);
+                vkvg_set_source_color(context, color.getColorRGB());
+            }
+            vkvg_move_to(context, pt0.x * s, pt0.y * s);
+            for (int ptIdx = 1; ptIdx < NUM_SUBDIVISIONS; ptIdx++) {
+                glm::vec2 pt = curvePoints.at(selectedLineIdx * NUM_SUBDIVISIONS + ptIdx);
+                pt.x = windowWidth / 2.0f + pt.x * chartRadius;
+                pt.y = windowHeight / 2.0f + pt.y * chartRadius;
+                vkvg_line_to(context, pt.x * s, pt.y * s);
+            }
             vkvg_stroke(context);
         }
     }
