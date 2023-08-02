@@ -33,6 +33,33 @@ typedef unsigned uint32_t;
 typedef uint3 uvec3;
 typedef float2 vec2;
 
+#define HEAP_SORT
+//#define INSERTION_SORT
+//#define QUICKSORT_HYBRID
+
+#ifdef QUICKSORT_HYBRID
+#define STACK_SIZE_QUICKSORT (MAX_STACK_SIZE_BUILD + 4)
+__device__ void stackPush(int* stackMemory, int& stackCounter, int value) {
+    //assert(stackCounter < STACK_SIZE_QUICKSORT);
+    if (stackCounter < STACK_SIZE_QUICKSORT) {
+        stackMemory[stackCounter] = value;
+        stackCounter++;
+    }
+}
+__device__ int stackPop(int* stackMemory, int& stackCounter) {
+    //assert(stackCounter > 0);
+    if (stackCounter > 0) {
+        stackCounter--;
+        return stackMemory[stackCounter];
+    } else {
+        return 0;
+    }
+}
+__device__ bool stackEmpty(int* stackMemory, int& stackCounter) {
+    return stackCounter == 0;
+}
+#endif
+
 /*
  * For more details, please refer to:
  * - https://journals.aps.org/pre/abstract/10.1103/PhysRevE.69.066138
@@ -112,6 +139,7 @@ __device__ void swapElements2D(float* referenceValues, float* queryValues, uint 
     queryValues[j] = temp;
 }
 
+#ifdef HEAP_SORT
 __device__ void heapify2D(
         float* referenceValues, float* queryValues, float* valuesAxis,
         uint startIdx, uint i, uint numElements) {
@@ -151,6 +179,98 @@ __device__ void heapSort2D(
         heapify2D(referenceValues, queryValues, valuesAxis, startIdx, 0, numElements - i);
     }
 }
+#elif defined(INSERTION_SORT)
+__device__ void heapSort2D(
+        float* referenceValues, float* queryValues, float* valuesAxis,
+        uint startIdx, uint endIdx) {
+    float currVal, currRef, currQuery;
+    uint i, j;
+    for (i = startIdx + 1; i < endIdx; i++) {
+        currVal = valuesAxis[i];
+        currRef = referenceValues[i];
+        currQuery = queryValues[i];
+
+        j = i;
+        while (j > startIdx && valuesAxis[j - 1] > currVal) {
+            referenceValues[j] = referenceValues[j - 1];
+            queryValues[j] = queryValues[j - 1];
+            j--;
+        }
+
+        referenceValues[j] = currRef;
+        queryValues[j] = currQuery;
+    }
+}
+#elif defined(QUICKSORT_HYBRID)
+__device__ int partitionQuicksortHoare2D(float* referenceValues, float* queryValues, float* valuesAxis, int low, int high) {
+    // Take first, middle, and last element. Then, use the median as the pivot element.
+    float e0 = valuesAxis[low];
+    float e1 = valuesAxis[(low + high) / 2];
+    float e2 = valuesAxis[high];
+    float pivotElement = e0 < e1 ? (e2 < e0 ? e0 : min(e1, e2)) : (e2 < e1 ? e1 : min(e0, e2));
+
+    int i = low - 1;
+    int j = high + 1;
+    while (true) {
+        do {
+            i = i + 1;
+        } while (valuesAxis[i] < pivotElement);
+        do {
+            j = j - 1;
+        } while (valuesAxis[j] > pivotElement);
+        if (i >= j) {
+            return j;
+        }
+        swapElements2D(referenceValues, queryValues, i, j);
+    }
+    return 0;
+}
+__device__ void heapSort2D(
+        float* referenceValues, float* queryValues, float* valuesAxis,
+        uint startIdx, uint endIdx) {
+    if (endIdx - startIdx > 16u) {
+        int stackMemory[STACK_SIZE_QUICKSORT];
+        int stackCounter = 0;
+        stackPush(stackMemory, stackCounter, int(startIdx));
+        stackPush(stackMemory, stackCounter, int(endIdx) - 1);
+        while (!stackEmpty(stackMemory, stackCounter)) {
+            int high = stackPop(stackMemory, stackCounter);
+            int low = stackPop(stackMemory, stackCounter);
+
+            int pivot = partitionQuicksortHoare2D(referenceValues, queryValues, valuesAxis, low, high);
+
+            if (low + 16 < pivot) {
+                stackPush(stackMemory, stackCounter, low);
+                stackPush(stackMemory, stackCounter, pivot - 1);
+            }
+
+            if (pivot + 16 < high) {
+                stackPush(stackMemory, stackCounter, pivot + 1);
+                stackPush(stackMemory, stackCounter, high);
+            }
+        }
+    }
+
+    // Insertion sort.
+    float currVal, currRef, currQuery;
+    uint i, j;
+    for (i = startIdx + 1; i < endIdx; i++) {
+        currVal = valuesAxis[i];
+        currRef = referenceValues[i];
+        currQuery = queryValues[i];
+
+        j = i;
+        while (j > startIdx && valuesAxis[j - 1] > currVal) {
+            referenceValues[j] = referenceValues[j - 1];
+            queryValues[j] = queryValues[j - 1];
+            j--;
+        }
+
+        referenceValues[j] = currRef;
+        queryValues[j] = currQuery;
+    }
+}
+#endif
 // ----------------------------------------------------------------------------------
 
 
@@ -168,6 +288,7 @@ __device__ void swapElements(
     kthNeighborDistances[j] = temp;
 }
 
+#ifdef HEAP_SORT
 __device__ void heapify(
         float* kthNeighborDistances, float* valueArray,
         uint i, uint numElements) {
@@ -202,6 +323,92 @@ __device__ void heapSort(float* kthNeighborDistances, float* valueArray) {
         heapify(kthNeighborDistances, valueArray, 0, MEMBER_COUNT - i);
     }
 }
+#elif defined(INSERTION_SORT)
+__device__ void heapSort(float* kthNeighborDistances, float* valueArray) {
+    float currValue, currDistance;
+    uint i, j;
+    for (i = 1; i < MEMBER_COUNT; i++) {
+        currValue = valueArray[i];
+        currDistance = kthNeighborDistances[i];
+
+        j = i;
+        while (j >= 1 && valueArray[j - 1] > currValue) {
+            valueArray[j] = valueArray[j - 1];
+            kthNeighborDistances[j] = kthNeighborDistances[j - 1];
+            j--;
+        }
+
+        valueArray[j] = currValue;
+        kthNeighborDistances[j] = currDistance;
+    }
+}
+#elif defined(QUICKSORT_HYBRID)
+__device__ int partitionQuicksortHoare(float* kthNeighborDistances, float* valueArray, int low, int high) {
+    // Take first, middle, and last element. Then, use the median as the pivot element.
+    float e0 = valueArray[low];
+    float e1 = valueArray[(low + high) / 2];
+    float e2 = valueArray[high];
+    float pivotElement = e0 < e1 ? (e2 < e0 ? e0 : min(e1, e2)) : (e2 < e1 ? e1 : min(e0, e2));
+
+    int i = low - 1;
+    int j = high + 1;
+    while (true) {
+        do {
+            i = i + 1;
+        } while (valueArray[i] < pivotElement);
+        do {
+            j = j - 1;
+        } while (valueArray[j] > pivotElement);
+        if (i >= j) {
+            return j;
+        }
+        swapElements(kthNeighborDistances, valueArray, i, j);
+    }
+    return 0;
+}
+__device__ void heapSort(float* kthNeighborDistances, float* valueArray) {
+    if (MEMBER_COUNT > 16) {
+        int stackMemory[STACK_SIZE_QUICKSORT];
+        int stackCounter = 0;
+        stackPush(stackMemory, stackCounter, 0);
+        stackPush(stackMemory, stackCounter, int(MEMBER_COUNT) - 1);
+        while (!stackEmpty(stackMemory, stackCounter)) {
+            int high = stackPop(stackMemory, stackCounter);
+            int low = stackPop(stackMemory, stackCounter);
+
+            int pivot = partitionQuicksortHoare(kthNeighborDistances, valueArray, low, high);
+
+            if (low + 16 < pivot) {
+                stackPush(stackMemory, stackCounter, low);
+                stackPush(stackMemory, stackCounter, pivot - 1);
+            }
+
+            if (pivot + 16 < high) {
+                stackPush(stackMemory, stackCounter, pivot + 1);
+                stackPush(stackMemory, stackCounter, high);
+            }
+        }
+    }
+
+    // Insertion sort.
+    float currValue, currDistance;
+    uint i, j;
+    for (i = 1; i < MEMBER_COUNT; i++) {
+        currValue = valueArray[i];
+        currDistance = kthNeighborDistances[i];
+
+        j = i;
+        while (j >= 1 && valueArray[j - 1] > currValue) {
+            valueArray[j] = valueArray[j - 1];
+            kthNeighborDistances[j] = kthNeighborDistances[j - 1];
+            j--;
+        }
+
+        valueArray[j] = currValue;
+        kthNeighborDistances[j] = currDistance;
+    }
+}
+#endif
 
 __device__ float averageDigamma(float* kthNeighborDistances, float* valueArray) {
     heapSort(kthNeighborDistances, valueArray);
