@@ -183,9 +183,9 @@ void runSamplingTests(const std::string& dataSetPath, int testIdx) {
     //constexpr int dfx = 10;
     //constexpr int dfy = 10;
     //constexpr int dfz = 10;
-    const int dfx = testIdx == TEST_CASE_DATA_ERROR ? 10 : 32;
-    const int dfy = testIdx == TEST_CASE_DATA_ERROR ? 10 : 32;
-    const int dfz = testIdx == TEST_CASE_DATA_ERROR ? 10 : (isSyntheticTestCase ? 32 : 20);
+    const int dfx = testIdx == TEST_CASE_DATA_ERROR ? 8 : 32;
+    const int dfy = testIdx == TEST_CASE_DATA_ERROR ? 8 : 32;
+    const int dfz = testIdx == TEST_CASE_DATA_ERROR ? 5 : (isSyntheticTestCase ? 32 : 20);
     const int numRuns = testIdx == TEST_CASE_DATA_ERROR ? 10 : 100;
     int numPairsToCheck = 1000;
     int numLogSteps = 3;
