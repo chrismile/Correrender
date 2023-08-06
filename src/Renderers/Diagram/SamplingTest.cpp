@@ -65,6 +65,11 @@ void runTestCase(
         const std::vector<std::vector<float>>& allValuesSortedArray,
         const std::vector<float*>& downscaledFields) {
     chart->setSamplingMethodType(testCase.samplingMethodType);
+    if (testCase.samplingMethodType == SamplingMethodType::BAYESIAN_OPTIMIZATION) {
+        chart->setUseCorrelationComputationGpu(false);
+    } else {
+        chart->setUseCorrelationComputationGpu(true);
+    }
     chart->setNumSamples(testCase.numSamples);
     chart->setNumInitSamples(testCase.numInitSamples);
     chart->setNumBOIterations(testCase.numBOIterations);
@@ -204,7 +209,6 @@ void runSamplingTests(const std::string& dataSetPath, int testIdx) {
     //if (numLogSteps == 2) {
     //    numSamplesArray.push_back(200);
     //}
-    bool computeMean = !isSyntheticTestCase && testIdx != TEST_CASE_DATA_MAX_SUBSAMPLED;
     bool runTestsOptimizers = false;
     bool computeGroundTruth = modeGT;
 
@@ -281,16 +285,15 @@ void runSamplingTests(const std::string& dataSetPath, int testIdx) {
 
     // Compute the downscaled field.
     std::vector<float*> downscaledFields;
-    if (computeMean) {
-        downscaledFields.resize(cs);
-        chart->computeDownscaledFieldPerfTest(downscaledFields);
-    }
+    //if (computeMean) {
+    //    downscaledFields.resize(cs);
+    //    chart->computeDownscaledFieldPerfTest(downscaledFields);
+    //}
 
     // Add the test cases.
     std::vector<TestCase> testCases;
     if (testIdx != TEST_CASE_DATA_MAX_SUBSAMPLED) {
-        SamplingMethodType firstSamplingMethodType =
-                computeMean ? SamplingMethodType::MEAN : SamplingMethodType::RANDOM_UNIFORM;
+        SamplingMethodType firstSamplingMethodType = SamplingMethodType::RANDOM_UNIFORM;
         //firstSamplingMethodType = SamplingMethodType::BAYESIAN_OPTIMIZATION; // Just for testing, remove this line.
         for (int samplingMethodTypeIdx = int(firstSamplingMethodType);
              samplingMethodTypeIdx <= int(SamplingMethodType::QUASIRANDOM_PLASTIC);

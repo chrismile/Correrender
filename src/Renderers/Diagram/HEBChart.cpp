@@ -274,8 +274,10 @@ void HEBChart::setDownscalingFactors(int _dfx, int _dfy, int _dfz) {
 }
 
 void HEBChart::setUseCorrelationComputationGpu(bool _useGpu) {
-    useCorrelationComputationGpu = _useGpu;
-    dataDirty = true;
+    if (useCorrelationComputationGpu != _useGpu) {
+        useCorrelationComputationGpu = _useGpu;
+        dataDirty = true;
+    }
 }
 
 void HEBChart::setDataMode(CorrelationDataMode _dataMode) {

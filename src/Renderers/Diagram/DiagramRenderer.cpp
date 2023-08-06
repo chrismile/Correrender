@@ -968,6 +968,15 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         for (auto& diagram : diagrams) {
             diagram->setSamplingMethodType(samplingMethodType);
         }
+        if (samplingMethodType == SamplingMethodType::BAYESIAN_OPTIMIZATION) {
+            useCorrelationComputationGpu = false;
+        } else {
+            useCorrelationComputationGpu = true;
+        }
+        for (auto& diagram : diagrams) {
+            diagram->setUseCorrelationComputationGpu(useCorrelationComputationGpu);
+        }
+
         correlationRangeTotal = correlationRange = parentDiagram->getCorrelationRangeTotal();
         for (auto& diagram : diagrams) {
             diagram->setCorrelationRange(correlationRangeTotal);
