@@ -293,7 +293,7 @@ void runSamplingTests(const std::string& dataSetPath, int testIdx) {
     // Add the test cases.
     std::vector<TestCase> testCases;
     if (testIdx != TEST_CASE_DATA_MAX_SUBSAMPLED) {
-        SamplingMethodType firstSamplingMethodType = SamplingMethodType::BAYESIAN_OPTIMIZATION;
+        SamplingMethodType firstSamplingMethodType = SamplingMethodType::RANDOM_UNIFORM;
         //firstSamplingMethodType = SamplingMethodType::BAYESIAN_OPTIMIZATION; // Just for testing, remove this line.
         for (int samplingMethodTypeIdx = int(firstSamplingMethodType);
              samplingMethodTypeIdx <= int(SamplingMethodType::QUASIRANDOM_PLASTIC);
