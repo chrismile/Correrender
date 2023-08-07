@@ -186,8 +186,8 @@ void runSamplingTests(const std::string& dataSetPath, int testIdx) {
     const int dfx = testIdx == TEST_CASE_DATA_ERROR ? 8 : 32;
     const int dfy = testIdx == TEST_CASE_DATA_ERROR ? 8 : 32;
     const int dfz = testIdx == TEST_CASE_DATA_ERROR ? 5 : (isSyntheticTestCase ? 32 : 20);
-    const int numRuns = 10;//testIdx == TEST_CASE_DATA_ERROR ? 10 : 100;
-    int numPairsToCheck = 3000;
+    const int numRuns = 1;//testIdx == TEST_CASE_DATA_ERROR ? 10 : 100;
+    int numPairsToCheck = 3828;
     int numLogSteps = 3;
     std::vector<int> numSamplesArray;
     for (int l = 0; l < numLogSteps; l++) {
@@ -288,7 +288,7 @@ void runSamplingTests(const std::string& dataSetPath, int testIdx) {
     // Add the test cases.
     std::vector<TestCase> testCases;
     if (testIdx != TEST_CASE_DATA_MAX_SUBSAMPLED) {
-        SamplingMethodType firstSamplingMethodType = SamplingMethodType::RANDOM_UNIFORM;
+        SamplingMethodType firstSamplingMethodType = SamplingMethodType::BAYESIAN_OPTIMIZATION;
         //firstSamplingMethodType = SamplingMethodType::BAYESIAN_OPTIMIZATION; // Just for testing, remove this line.
         for (int samplingMethodTypeIdx = int(firstSamplingMethodType);
              samplingMethodTypeIdx <= int(SamplingMethodType::QUASIRANDOM_PLASTIC);
@@ -399,7 +399,7 @@ void runSamplingTests(const std::string& dataSetPath, int testIdx) {
             }
 
             TestCase& testCase = testCases.at(testCaseIdxReal);
-            if (testCase.samplingMethodType == SamplingMethodType::BAYESIAN_OPTIMIZATION && testCase.numSamples > 100) {
+            if (testCase.samplingMethodType == SamplingMethodType::BAYESIAN_OPTIMIZATION && testCase.numSamples > 200) {
                 continue;
             }
             std::cout << "Test case: " << testCase.testCaseName;

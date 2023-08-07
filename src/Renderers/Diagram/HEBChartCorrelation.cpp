@@ -47,6 +47,7 @@
 #include "Calculators/Correlation.hpp"
 #include "Calculators/CorrelationCalculator.hpp"
 #include "Calculators/MutualInformation.hpp"
+#include "Calculators/DeviceThreadInfo.hpp"
 #include "Test/MultivariateGaussian.hpp"
 #include "HEBChart.hpp"
 #include "BayOpt.hpp"
@@ -1243,7 +1244,7 @@ sgl::vk::BufferPtr HEBChart::computeCorrelationsForRequests(
     return correlationOutputStagingBuffer;
 }
 
-void HEBChart::createBatchCacheData(uint32_t &batchSizeSamplesMax) {
+void HEBChart::createBatchCacheData(uint32_t& batchSizeSamplesMax) {
     int cs = getCorrelationMemberCount();
     const uint32_t batchSizeSamplesMaxAllCs = 1 << 17; // Up to 131072 samples per batch.
     batchSizeSamplesMax = batchSizeSamplesMaxAllCs;
@@ -1254,6 +1255,9 @@ void HEBChart::createBatchCacheData(uint32_t &batchSizeSamplesMax) {
     }
 
     sgl::vk::Device* device = sgl::AppSettings::get()->getPrimaryDevice();
+    DeviceThreadInfo deviceCoresInfo = getDeviceThreadInfo(device);
+    batchSizeSamplesMax = std::max(batchSizeSamplesMax, deviceCoresInfo.numCudaCoresEquivalent);
+
     if (!computeRenderer) {
         computeRenderer = new sgl::vk::Renderer(device, 100);
         if (device->getGraphicsQueue() == device->getComputeQueue()) {
@@ -1357,8 +1361,8 @@ void HEBChart::correlationSamplingExecuteGpuDefault(
             {
                 std::vector<float> samplesLocal;
                 if (isSubselection) {
-                    samplesLocal.reserve(6 * numSamples);
-                    generateSamples(samplesGlobal.data(), numSamples, samplingMethodType, true);
+                    samplesLocal.resize(6 * numSamples);
+                    generateSamples(samplesLocal.data(), numSamples, samplingMethodType, true);
                 }
                 std::vector<float>& samples = isSubselection ? samplesLocal : samplesGlobal;
                 for (int m = r.begin(); m != r.end(); m++)
@@ -1372,8 +1376,8 @@ void HEBChart::correlationSamplingExecuteGpuDefault(
             std::vector<CorrelationRequestData> requestsThread;
             std::vector<float> samplesLocal;
             if (isSubselection) {
-                samplesLocal.reserve(6 * numSamples);
-                generateSamples(samplesGlobal.data(), numSamples, samplingMethodType, true);
+                samplesLocal.resize(6 * numSamples);
+                generateSamples(samplesLocal.data(), numSamples, samplingMethodType, true);
             }
             std::vector<float>& samples = isSubselection ? samplesLocal : samplesGlobal;
 
@@ -1556,8 +1560,9 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData *fieldDat
 
     using model_t = limbo::model::GP<BayOpt::Params>;
 
-    // TODO: Variable
-    const int NUM_SAMPLES_PER_IT = 10;
+    // TODO: Make 10 variable.
+    const int numSamplesBos = numSamples - numInitSamples;
+    const int NUM_SAMPLES_PER_IT = std::clamp(numSamplesBos, 1, 10);
 
     const auto function_start = std::chrono::system_clock::now();
     int numPoints0 = xsd0 * ysd0 * zsd0;
@@ -1566,8 +1571,6 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData *fieldDat
     BayOpt::Params::stop_maxiterations::set_iterations(bayOptIterationCount);
     BayOpt::Params::init_randomsampling::set_samples(numInitSamples);
     BayOpt::Params::opt_nloptnograd::set_iterations(numBOIterations);
-
-    // TODO: Move
     const int MAX_SAMPLE_COUNT = std::max(numInitSamples, NUM_SAMPLES_PER_IT);
 
     int numPairsDownsampled;
@@ -1583,7 +1586,7 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData *fieldDat
 
     uint32_t gpu_max_sample_count{};
     createBatchCacheData(gpu_max_sample_count);
-    uint32_t max_pairs_count = std::max(gpu_max_sample_count / numInitSamples, uint32_t(1));
+    uint32_t max_pairs_count = std::max(gpu_max_sample_count / std::max(numInitSamples, NUM_SAMPLES_PER_IT), uint32_t(1));
     //uint32_t numBatches = sgl::uiceil(uint32_t(numPairsDownsampled), max_pairs_count);
 
     auto fieldCache = getFieldCache(fieldData);
