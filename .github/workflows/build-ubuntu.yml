@@ -26,4 +26,6 @@ jobs:
 
       - name: Build
         shell: bash
-        run: ./build-linux.sh --do-not-run
+        run: |
+          sudo apt-get update
+          ./build-linux.sh --do-not-run
