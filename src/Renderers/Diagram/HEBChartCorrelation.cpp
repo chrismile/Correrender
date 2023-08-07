@@ -1624,12 +1624,12 @@ void HEBChart::correlationSamplingExecuteGpuBayesian(HEBChartFieldData *fieldDat
             CorrelationRequestData request;
             for (int sampleIdx : BayOpt::i_range(samples_per_pair)) {
                 sampleIdx += (q - start_pair_index) * samples_per_pair;
-                int xi = std::clamp(int(BayOpt::pr(sample_positions[sampleIdx * 6 + 0] * float(region0.xsr) - 0.5f)), 0, region0.xsr - 1) + region0.xoff;
-                int yi = std::clamp(int(BayOpt::pr(sample_positions[sampleIdx * 6 + 1] * float(region0.ysr) - 0.5f)), 0, region0.ysr - 1) + region0.yoff;
-                int zi = std::clamp(int(BayOpt::pr(sample_positions[sampleIdx * 6 + 2] * float(region0.zsr) - 0.5f)), 0, region0.zsr - 1) + region0.zoff;
-                int xj = std::clamp(int(BayOpt::pr(sample_positions[sampleIdx * 6 + 3] * float(region1.xsr) - 0.5f)), 0, region1.xsr - 1) + region1.xoff;
-                int yj = std::clamp(int(BayOpt::pr(sample_positions[sampleIdx * 6 + 4] * float(region1.ysr) - 0.5f)), 0, region1.ysr - 1) + region1.yoff;
-                int zj = std::clamp(int(BayOpt::pr(sample_positions[sampleIdx * 6 + 5] * float(region1.zsr) - 0.5f)), 0, region1.zsr - 1) + region1.zoff;
+                int xi = std::clamp(int(BayOpt::pr(sample_positions[sampleIdx * 6 + 0] * float(region0.xsr))), 0, region0.xsr - 1) + region0.xoff;
+                int yi = std::clamp(int(BayOpt::pr(sample_positions[sampleIdx * 6 + 1] * float(region0.ysr))), 0, region0.ysr - 1) + region0.yoff;
+                int zi = std::clamp(int(BayOpt::pr(sample_positions[sampleIdx * 6 + 2] * float(region0.zsr))), 0, region0.zsr - 1) + region0.zoff;
+                int xj = std::clamp(int(BayOpt::pr(sample_positions[sampleIdx * 6 + 3] * float(region1.xsr))), 0, region1.xsr - 1) + region1.xoff;
+                int yj = std::clamp(int(BayOpt::pr(sample_positions[sampleIdx * 6 + 4] * float(region1.ysr))), 0, region1.ysr - 1) + region1.yoff;
+                int zj = std::clamp(int(BayOpt::pr(sample_positions[sampleIdx * 6 + 5] * float(region1.zsr))), 0, region1.zsr - 1) + region1.zoff;
                 if (useMeanFields) {
                     xi = (xi - r0.xoff) / mdfx;
                     yi = (yi - r0.yoff) / mdfy;

@@ -122,8 +122,11 @@ private:
     int numBins = 80; ///< For CorrelationMeasureType::MUTUAL_INFORMATION_BINNED.
     int k = 3; ///< For CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV.
     int kMax = 20; ///< For CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV.
-    SamplingMethodType samplingMethodType = SamplingMethodType::QUASIRANDOM_PLASTIC;
-    int numSamples = 100;
+    SamplingMethodType samplingMethodTypeContext = SamplingMethodType::QUASIRANDOM_PLASTIC;
+    SamplingMethodType samplingMethodTypeFocus = SamplingMethodType::QUASIRANDOM_PLASTIC;
+    bool useSeparateSamplingMethodFocus = true;
+    int numSamplesContext = 100;
+    int numSamplesFocus = 100;
     int numInitSamples = 20;
     int numBOIterations = 100;
     float beta = 0.75f;
@@ -148,7 +151,8 @@ private:
     bool showSelectedRegionsByColor = true;
     bool useNeonSelectionColors = true;
     bool useGlobalStdDevRange = true;
-    bool useCorrelationComputationGpu = true;
+    bool useCorrelationComputationGpuContext = true;
+    bool useCorrelationComputationGpuFocus = true;
     CorrelationDataMode dataMode = CorrelationDataMode::BUFFER_ARRAY;
     bool useBufferTiling = true;
     bool showOnlySelectedVariableInFocusDiagrams = true;

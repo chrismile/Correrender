@@ -85,8 +85,8 @@ void DiagramRenderer::initialize() {
         parentDiagram->setUseAbsoluteCorrelationMeasure(useAbsoluteCorrelationMeasure);
         parentDiagram->setNumBins(numBins);
         parentDiagram->setKraskovNumNeighbors(k);
-        parentDiagram->setSamplingMethodType(samplingMethodType);
-        parentDiagram->setNumSamples(numSamples);
+        parentDiagram->setSamplingMethodType(samplingMethodTypeContext);
+        parentDiagram->setNumSamples(numSamplesContext);
         parentDiagram->setBeta(beta);
         parentDiagram->setDownscalingFactors(downscalingFactorX, downscalingFactorY, downscalingFactorZ);
         parentDiagram->setLineCountFactor(lineCountFactorContext);
@@ -104,7 +104,7 @@ void DiagramRenderer::initialize() {
         parentDiagram->setRegionWinding(regionWinding);
         parentDiagram->setColorByValue(colorByValue);
         parentDiagram->setClearColor(viewManager->getClearColor());
-        parentDiagram->setUseCorrelationComputationGpu(useCorrelationComputationGpu);
+        parentDiagram->setUseCorrelationComputationGpu(useCorrelationComputationGpuContext);
         parentDiagram->setDataMode(dataMode);
         parentDiagram->setUseBufferTiling(useBufferTiling);
     }
@@ -214,8 +214,8 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
         parentDiagram->setUseAbsoluteCorrelationMeasure(useAbsoluteCorrelationMeasure);
         parentDiagram->setNumBins(numBins);
         parentDiagram->setKraskovNumNeighbors(k);
-        parentDiagram->setSamplingMethodType(samplingMethodType);
-        parentDiagram->setNumSamples(numSamples);
+        parentDiagram->setSamplingMethodType(samplingMethodTypeContext);
+        parentDiagram->setNumSamples(numSamplesContext);
         parentDiagram->setBeta(beta);
         parentDiagram->setDownscalingFactors(downscalingFactorX, downscalingFactorY, downscalingFactorZ);
         parentDiagram->setLineCountFactor(lineCountFactorContext);
@@ -233,7 +233,7 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
         parentDiagram->setRegionWinding(regionWinding);
         parentDiagram->setColorByValue(colorByValue);
         parentDiagram->setClearColor(viewManager->getClearColor());
-        parentDiagram->setUseCorrelationComputationGpu(useCorrelationComputationGpu);
+        parentDiagram->setUseCorrelationComputationGpu(useCorrelationComputationGpuContext);
         parentDiagram->setDataMode(dataMode);
         parentDiagram->setUseBufferTiling(useBufferTiling);
 
@@ -401,8 +401,15 @@ void DiagramRenderer::resetSelections(int idx) {
             diagram->setUseAbsoluteCorrelationMeasure(useAbsoluteCorrelationMeasure);
             diagram->setNumBins(numBins);
             diagram->setKraskovNumNeighbors(k);
-            diagram->setSamplingMethodType(samplingMethodType);
-            diagram->setNumSamples(numSamples);
+            if (useSeparateSamplingMethodFocus) {
+                diagram->setSamplingMethodType(samplingMethodTypeFocus);
+                diagram->setNumSamples(numSamplesFocus);
+                diagram->setUseCorrelationComputationGpu(useCorrelationComputationGpuFocus);
+            } else {
+                diagram->setSamplingMethodType(samplingMethodTypeContext);
+                diagram->setNumSamples(numSamplesContext);
+                diagram->setUseCorrelationComputationGpu(useCorrelationComputationGpuContext);
+            }
             diagram->setBeta(beta);
             diagram->setLineCountFactor(lineCountFactorFocus);
             diagram->setCurveThickness(curveThickness);
@@ -421,7 +428,6 @@ void DiagramRenderer::resetSelections(int idx) {
             diagram->setRegionWinding(regionWinding);
             diagram->setColorByValue(colorByValue);
             diagram->setClearColor(viewManager->getClearColor());
-            diagram->setUseCorrelationComputationGpu(useCorrelationComputationGpu);
             diagram->setDataMode(dataMode);
             diagram->setUseBufferTiling(useBufferTiling);
             diagram->getCorrelationRangeTotal();
@@ -962,21 +968,48 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         reRenderTriggeredByDiagram = true;
     }
 
-    if (propertyEditor.addCombo(
-            "Sampling Method", (int*)&samplingMethodType,
-            SAMPLING_METHOD_TYPE_NAMES, IM_ARRAYSIZE(SAMPLING_METHOD_TYPE_NAMES))) {
-        for (auto& diagram : diagrams) {
-            diagram->setSamplingMethodType(samplingMethodType);
-        }
-        if (samplingMethodType == SamplingMethodType::BAYESIAN_OPTIMIZATION) {
-            useCorrelationComputationGpu = false;
+    if (propertyEditor.addCheckbox("Separate Sampling F/C", &useSeparateSamplingMethodFocus)) {
+        if (useSeparateSamplingMethodFocus) {
+            samplingMethodTypeFocus = samplingMethodTypeContext;
+            numSamplesFocus = numSamplesContext;
+            useCorrelationComputationGpuFocus = useCorrelationComputationGpuContext;
         } else {
-            useCorrelationComputationGpu = true;
+            for (size_t i = 1; i < diagrams.size(); i++) {
+                auto& diagram = diagrams.at(i);
+                diagram->setSamplingMethodType(samplingMethodTypeContext);
+                diagram->setNumSamples(numSamplesContext);
+            }
         }
-        for (auto& diagram : diagrams) {
-            diagram->setUseCorrelationComputationGpu(useCorrelationComputationGpu);
+    }
+    const char* samplingMethodName = useSeparateSamplingMethodFocus ? "Sampling Method (C)" : "Sampling Method";
+    const char* numSamplesName = useSeparateSamplingMethodFocus ? "#Samples (C)" : "#Samples";
+    if (propertyEditor.addCombo(
+            samplingMethodName, (int*)&samplingMethodTypeContext,
+            SAMPLING_METHOD_TYPE_NAMES, IM_ARRAYSIZE(SAMPLING_METHOD_TYPE_NAMES))) {
+        if (useSeparateSamplingMethodFocus) {
+            if (parentDiagram) {
+                parentDiagram->setSamplingMethodType(samplingMethodTypeContext);
+            }
+        } else {
+            for (auto& diagram : diagrams) {
+                diagram->setSamplingMethodType(samplingMethodTypeContext);
+            }
         }
 
+        if (samplingMethodTypeContext == SamplingMethodType::BAYESIAN_OPTIMIZATION) {
+            useCorrelationComputationGpuContext = false;
+        } else {
+            useCorrelationComputationGpuContext = true;
+        }
+        if (useSeparateSamplingMethodFocus) {
+            if (parentDiagram) {
+                parentDiagram->setUseCorrelationComputationGpu(useCorrelationComputationGpuContext);
+            }
+        } else {
+            for (auto& diagram : diagrams) {
+                diagram->setUseCorrelationComputationGpu(useCorrelationComputationGpuContext);
+            }
+        }
         correlationRangeTotal = correlationRange = parentDiagram->getCorrelationRangeTotal();
         for (auto& diagram : diagrams) {
             diagram->setCorrelationRange(correlationRangeTotal);
@@ -987,17 +1020,52 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         reRender = true;
         reRenderTriggeredByDiagram = true;
     }
-
-    if (samplingMethodType != SamplingMethodType::MEAN && propertyEditor.addSliderIntEdit(
-            "#Samples", &numSamples, 1, 1000) == ImGui::EditMode::INPUT_FINISHED) {
-        for (auto& diagram : diagrams) {
-            diagram->setNumSamples(numSamples);
+    if (propertyEditor.addSliderIntEdit(numSamplesName, &numSamplesContext, 1, 1000) == ImGui::EditMode::INPUT_FINISHED) {
+        if (useSeparateSamplingMethodFocus) {
+            if (parentDiagram) {
+                parentDiagram->setNumSamples(numSamplesContext);
+            }
+        } else {
+            for (auto& diagram : diagrams) {
+                diagram->setNumSamples(numSamplesContext);
+            }
         }
         reRender = true;
         reRenderTriggeredByDiagram = true;
     }
+    if (useSeparateSamplingMethodFocus) {
+        if (propertyEditor.addCombo(
+                "Sampling Method (F)", (int*)&samplingMethodTypeFocus,
+                SAMPLING_METHOD_TYPE_NAMES, IM_ARRAYSIZE(SAMPLING_METHOD_TYPE_NAMES))) {
+            if (samplingMethodTypeFocus == SamplingMethodType::BAYESIAN_OPTIMIZATION) {
+                useCorrelationComputationGpuFocus = false;
+            } else {
+                useCorrelationComputationGpuFocus = true;
+            }
+            for (size_t i = 1; i < diagrams.size(); i++) {
+                auto& diagram = diagrams.at(i);
+                diagram->setSamplingMethodType(samplingMethodTypeFocus);
+                diagram->setUseCorrelationComputationGpu(useCorrelationComputationGpuFocus);
+            }
+            resetSelections();
+            dirty = true;
+            reRender = true;
+            reRenderTriggeredByDiagram = true;
+        }
+        if (propertyEditor.addSliderIntEdit("#Samples (F)", &numSamplesFocus, 1, 1000) == ImGui::EditMode::INPUT_FINISHED) {
+            for (size_t i = 1; i < diagrams.size(); i++) {
+                auto& diagram = diagrams.at(i);
+                diagram->setNumSamples(numSamplesFocus);
+            }
+            reRender = true;
+            reRenderTriggeredByDiagram = true;
+        }
+    }
 
-    if (samplingMethodType == SamplingMethodType::BAYESIAN_OPTIMIZATION && propertyEditor.addSliderIntEdit(
+    bool usesBos =
+            samplingMethodTypeContext == SamplingMethodType::BAYESIAN_OPTIMIZATION
+            || samplingMethodTypeFocus == SamplingMethodType::BAYESIAN_OPTIMIZATION;
+    if (usesBos && propertyEditor.addSliderIntEdit(
             "#numInitSamples", &numInitSamples, 1, 100) == ImGui::EditMode::INPUT_FINISHED) {
         for (auto& diagram : diagrams) {
             diagram->setNumInitSamples(numInitSamples);
@@ -1005,8 +1073,7 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         reRender = true;
         reRenderTriggeredByDiagram = true;
     }
-
-    if (samplingMethodType == SamplingMethodType::BAYESIAN_OPTIMIZATION && propertyEditor.addSliderIntEdit(
+    if (usesBos && propertyEditor.addSliderIntEdit(
             "#numBOIterations", &numBOIterations, 1, 1000) == ImGui::EditMode::INPUT_FINISHED) {
         for (auto& diagram : diagrams) {
             diagram->setNumBOIterations(numBOIterations);
@@ -1308,12 +1375,28 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
     }
 
     if (propertyEditor.beginNode("Advanced Settings")) {
-        if (propertyEditor.addCheckbox("Use GPU Computations", &useCorrelationComputationGpu)) {
-            for (auto& diagram : diagrams) {
-                diagram->setUseCorrelationComputationGpu(useCorrelationComputationGpu);
+        if (separateColorVarianceAndCorrelation) {
+            if (propertyEditor.addCheckbox("Use GPU Computations (C)", &useCorrelationComputationGpuContext)) {
+                parentDiagram->setUseCorrelationComputationGpu(useCorrelationComputationGpuContext);
+                reRender = true;
+                reRenderTriggeredByDiagram = true;
             }
-            reRender = true;
-            reRenderTriggeredByDiagram = true;
+            if (propertyEditor.addCheckbox("Use GPU Computations (F)", &useCorrelationComputationGpuFocus)) {
+                for (size_t i = 1; i < diagrams.size(); i++) {
+                    auto& diagram = diagrams.at(i);
+                    diagram->setUseCorrelationComputationGpu(useCorrelationComputationGpuFocus);
+                }
+                reRender = true;
+                reRenderTriggeredByDiagram = true;
+            }
+        } else {
+            if (propertyEditor.addCheckbox("Use GPU Computations", &useCorrelationComputationGpuContext)) {
+                for (auto& diagram : diagrams) {
+                    diagram->setUseCorrelationComputationGpu(useCorrelationComputationGpuContext);
+                }
+                reRender = true;
+                reRenderTriggeredByDiagram = true;
+            }
         }
 
         if (getSupportsBufferMode() && propertyEditor.addCombo(
@@ -1471,21 +1554,58 @@ void DiagramRenderer::setSettings(const SettingsMap& settings) {
         correlationRange = parentDiagram->getCorrelationRangeTotal();
     }
     std::string samplingMethodTypeString;
-    if (settings.getValueOpt("sampling_method_type", samplingMethodTypeString)) {
+    if (!settings.getValueOpt("use_separate_sampling_method_focus", useSeparateSamplingMethodFocus)) {
+        useSeparateSamplingMethodFocus = false;
+    }
+    if (settings.getValueOpt("sampling_method_type_focus", samplingMethodTypeString)) {
         for (int i = 0; i < IM_ARRAYSIZE(SAMPLING_METHOD_TYPE_NAMES); i++) {
             if (samplingMethodTypeString == SAMPLING_METHOD_TYPE_NAMES[i]) {
-                samplingMethodType = SamplingMethodType(i);
+                samplingMethodTypeFocus = SamplingMethodType(i);
                 break;
             }
         }
-        for (auto& diagram : diagrams) {
-            diagram->setSamplingMethodType(samplingMethodType);
+        if (useSeparateSamplingMethodFocus) {
+            for (size_t i = 1; i < diagrams.size(); i++) {
+                auto& diagram = diagrams.at(i);
+                diagram->setSamplingMethodType(samplingMethodTypeFocus);
+            }
+        }
+    }
+    if (settings.getValueOpt("num_samples_focus", numSamplesFocus)) {
+        if (useSeparateSamplingMethodFocus) {
+            for (size_t i = 1; i < diagrams.size(); i++) {
+                auto& diagram = diagrams.at(i);
+                diagram->setNumSamples(numSamplesFocus);
+            }
+        }
+    }
+    if (settings.getValueOpt("sampling_method_type", samplingMethodTypeString)) {
+        for (int i = 0; i < IM_ARRAYSIZE(SAMPLING_METHOD_TYPE_NAMES); i++) {
+            if (samplingMethodTypeString == SAMPLING_METHOD_TYPE_NAMES[i]) {
+                samplingMethodTypeContext = SamplingMethodType(i);
+                break;
+            }
+        }
+        if (useSeparateSamplingMethodFocus) {
+            if (parentDiagram) {
+                parentDiagram->setSamplingMethodType(samplingMethodTypeContext);
+            }
+        } else {
+            for (auto& diagram : diagrams) {
+                diagram->setSamplingMethodType(samplingMethodTypeContext);
+            }
         }
         correlationRange = parentDiagram->getCorrelationRangeTotal();
     }
-    if (settings.getValueOpt("num_samples", numSamples)) {
-        for (auto& diagram : diagrams) {
-            diagram->setNumSamples(numSamples);
+    if (settings.getValueOpt("num_samples", numSamplesContext)) {
+        if (useSeparateSamplingMethodFocus) {
+            if (parentDiagram) {
+                parentDiagram->setNumSamples(numSamplesContext);
+            }
+        } else {
+            for (auto& diagram : diagrams) {
+                diagram->setNumSamples(numSamplesContext);
+            }
         }
     }
     if (settings.getValueOpt("num_init_samples", numInitSamples)) {
@@ -1651,9 +1771,21 @@ void DiagramRenderer::setSettings(const SettingsMap& settings) {
     }
 
     // Advanced settings.
-    if (settings.getValueOpt("use_correlation_computation_gpu", useCorrelationComputationGpu)) {
-        for (auto& diagram : diagrams) {
-            diagram->setUseCorrelationComputationGpu(useCorrelationComputationGpu);
+    if (settings.getValueOpt("use_correlation_computation_gpu", useCorrelationComputationGpuContext)) {
+        if (useCorrelationComputationGpuContext) {
+            parentDiagram->setUseCorrelationComputationGpu(useCorrelationComputationGpuContext);
+        } else {
+            for (auto& diagram : diagrams) {
+                diagram->setUseCorrelationComputationGpu(useCorrelationComputationGpuContext);
+            }
+        }
+    }
+    if (settings.getValueOpt("use_correlation_computation_gpu_focus", useCorrelationComputationGpuFocus)) {
+        if (useCorrelationComputationGpuContext) {
+            for (size_t i = 1; i < diagrams.size(); i++) {
+                auto& diagram = diagrams.at(i);
+                diagram->setUseCorrelationComputationGpu(useCorrelationComputationGpuFocus);
+            }
         }
     }
     std::string dataModeString;
@@ -1734,8 +1866,13 @@ void DiagramRenderer::getSettings(SettingsMap& settings) {
     settings.addKeyValue("use_absolute_correlation_measure", useAbsoluteCorrelationMeasure);
     settings.addKeyValue("mi_bins", numBins);
     settings.addKeyValue("kmi_neighbors", k);
-    settings.addKeyValue("sampling_method_type", SAMPLING_METHOD_TYPE_NAMES[int(samplingMethodType)]);
-    settings.addKeyValue("num_samples", numSamples);
+    settings.addKeyValue("use_separate_sampling_method_focus", useSeparateSamplingMethodFocus);
+    settings.addKeyValue("sampling_method_type", SAMPLING_METHOD_TYPE_NAMES[int(samplingMethodTypeContext)]);
+    settings.addKeyValue("num_samples", numSamplesContext);
+    if (useSeparateSamplingMethodFocus) {
+        settings.addKeyValue("sampling_method_type_focus", SAMPLING_METHOD_TYPE_NAMES[int(samplingMethodTypeFocus)]);
+        settings.addKeyValue("num_samples_focus", numSamplesFocus);
+    }
     settings.addKeyValue("num_init_samples", numInitSamples);
     settings.addKeyValue("num_bo_iterations", numBOIterations);
 
@@ -1777,7 +1914,10 @@ void DiagramRenderer::getSettings(SettingsMap& settings) {
     settings.addKeyValue("align_with_parent_window", alignWithParentWindow);
 
     // Advanced settings.
-    settings.addKeyValue("use_correlation_computation_gpu", useCorrelationComputationGpu);
+    settings.addKeyValue("use_correlation_computation_gpu", useCorrelationComputationGpuContext);
+    if (useSeparateSamplingMethodFocus) {
+        settings.addKeyValue("use_correlation_computation_gpu_focus", useCorrelationComputationGpuFocus);
+    }
     settings.addKeyValue("data_mode", DATA_MODE_NAMES[int(dataMode)]);
     settings.addKeyValue("use_buffer_tiling", useBufferTiling);
     settings.addKeyValue("show_only_selected_variable_in_focus_diagrams", showOnlySelectedVariableInFocusDiagrams);

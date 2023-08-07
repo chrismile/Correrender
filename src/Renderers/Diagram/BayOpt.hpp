@@ -164,17 +164,23 @@ struct Eval{
             double v = x[i] * (bounds_max[i] - bounds_min[i]) + bounds_min[i];
             dims[i] = pr(v);
         }
-        
+
+        bool isNan = false;
         int64_t lin_pos_a = IDXS(dims[0], dims[1], dims[2]);
         int64_t lin_pos_b = IDXS(dims[3], dims[4], dims[5]);
-        for(int i: i_range(num_members))
+        for(int i: i_range(num_members)) {
             a[i] = d1.at(i)[lin_pos_a];
-        for(int i: i_range(num_members))
             b[i] = d2.at(i)[lin_pos_b];
+            if (std::isnan(a[i]) || std::isnan(b[i])) {
+                isNan = true;
+                break;
+            }
+        }
 
         auto middle = std::chrono::system_clock::now();
         
-        float y = std::abs(f(a.data(), b.data(), num_members));
+        float y = isNan ? 0.0f : std::abs(f(a.data(), b.data(), num_members));
+
         //float y = computeMutualInformationKraskov(a.data(), b.data(), k, num_members, cache);
         auto end = std::chrono::system_clock::now();
         ++execution_count;
