@@ -41,7 +41,7 @@ build_with_zarr_support=true
 build_with_cuda_support=true
 build_with_skia_support=false
 skia_link_dynamically=true
-build_with_vkvg_support=true
+build_with_vkvg_support=false
 build_with_osqp_support=true
 build_with_zink_support=false
 
