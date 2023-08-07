@@ -996,11 +996,6 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
             }
         }
 
-        if (samplingMethodTypeContext == SamplingMethodType::BAYESIAN_OPTIMIZATION) {
-            useCorrelationComputationGpuContext = false;
-        } else {
-            useCorrelationComputationGpuContext = true;
-        }
         if (useSeparateSamplingMethodFocus) {
             if (parentDiagram) {
                 parentDiagram->setUseCorrelationComputationGpu(useCorrelationComputationGpuContext);

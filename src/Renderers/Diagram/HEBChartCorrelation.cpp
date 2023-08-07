@@ -1319,8 +1319,10 @@ void HEBChart::correlationSamplingExecuteGpuDefault(
         numPairsDownsampled = numPoints0 * numPoints1;
     }
 
-    std::vector<float> samples(6 * numSamples);
-    generateSamples(samples.data(), numSamples, samplingMethodType, isSubselection);
+    std::vector<float> samplesGlobal(6 * numSamples);
+    if (!isSubselection) {
+        generateSamples(samplesGlobal.data(), numSamples, samplingMethodType, false);
+    }
 
     uint32_t batchSizeSamplesMax{};
     createBatchCacheData(batchSizeSamplesMax);
@@ -1353,15 +1355,27 @@ void HEBChart::correlationSamplingExecuteGpuDefault(
             tbb::blocked_range<uint32_t>(cellIdxOffset, loopMax), std::vector<CorrelationRequestData>(),
             [&](tbb::blocked_range<uint32_t> const &r, std::vector<CorrelationRequestData> requestsThread) -> std::vector<CorrelationRequestData>
             {
+                std::vector<float> samplesLocal;
+                if (isSubselection) {
+                    samplesLocal.reserve(6 * numSamples);
+                    generateSamples(samplesGlobal.data(), numSamples, samplingMethodType, true);
+                }
+                std::vector<float>& samples = isSubselection ? samplesLocal : samplesGlobal;
                 for (int m = r.begin(); m != r.end(); m++)
                 {
 #else
 #if _OPENMP >= 201107
         #pragma omp parallel default(none) shared(requests, numPoints0, numPoints1) \
-        shared(cellIdxOffset, loopMax, numSamples, samples, fieldData)
+        shared(cellIdxOffset, loopMax, numSamples, samplesGlobal, fieldData)
 #endif
         {
             std::vector<CorrelationRequestData> requestsThread;
+            std::vector<float> samplesLocal;
+            if (isSubselection) {
+                samplesLocal.reserve(6 * numSamples);
+                generateSamples(samplesGlobal.data(), numSamples, samplingMethodType, true);
+            }
+            std::vector<float>& samples = isSubselection ? samplesLocal : samplesGlobal;
 
 #if _OPENMP >= 201107
             #pragma omp for schedule(dynamic)
