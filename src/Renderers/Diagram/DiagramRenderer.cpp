@@ -168,7 +168,7 @@ void DiagramRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) 
 
         downscalingFactorUniform = fx == fy && fy == fz;
 
-        int dsw = int(std::ceil(std::cbrt(float(xs * ys * zs) / 100.0f)));
+        int dsw = int(std::ceil(std::cbrt(float(xs * ys * zs) / 128.0f)));
         dsw = std::max(dsw, 1);
         if (!sgl::isPowerOfTwo(dsw)) {
             dsw = sgl::nextPowerOfTwo(dsw);
@@ -898,7 +898,7 @@ void DiagramRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         reRenderTriggeredByDiagram = true;
     }
 
-    if (volumeData->getEnsembleMemberCount() > 1 && volumeData->getTimeStepCount() > 1) {
+    if (volumeData && volumeData->getEnsembleMemberCount() > 1 && volumeData->getTimeStepCount() > 1) {
         int modeIdx = isEnsembleMode ? 0 : 1;
         if (propertyEditor.addCombo("Correlation Mode", &modeIdx, CORRELATION_MODE_NAMES, 2)) {
             isEnsembleMode = modeIdx == 0;

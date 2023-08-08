@@ -64,7 +64,7 @@ HEBChartFieldData::~HEBChartFieldData() {
 void HEBChartFieldData::createFieldCache(
         VolumeData* _volumeData, bool regionsEqual, GridRegion r0, GridRegion r1, int mdfx, int mdfy, int mdfz,
         bool isEnsembleMode, CorrelationDataMode dataMode, bool useBufferTiling) {
-    if (regionsEqual == cachedRegionsEqual && r0 != cachedR0 && r1 == cachedR1
+    if (regionsEqual == cachedRegionsEqual && r0 == cachedR0 && r1 == cachedR1
             && mdfx == cachedMdfx && mdfy == cachedMdfy && mdfz == cachedMdfz
             && isEnsembleMode == cachedIsEnsembleMode && dataMode == cachedDataMode
             && useBufferTiling == cachedUseBufferTiling) {
