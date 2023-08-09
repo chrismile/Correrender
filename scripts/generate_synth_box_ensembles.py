@@ -26,6 +26,15 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+# Script for generating a synthetic ensemble data set. How to run:
+# - Install all dependencies, e.g., using conda:
+# conda install -c numba numba
+# conda install -c anaconda numpy
+# conda install -c conda-forge matplotlib netcdf4
+# - When launching this program with Python, it will create the file Data/VolumeDataSets/linear_4x4.nc.
+# - In Correrender, this file can be opened via "File > Open Dataset".
+# - Then, a correlation diagram renderer can be created via "Window > New Renderer... > Diagram Renderer".
+
 from numba import jit
 import numpy as np
 import matplotlib as mpl
