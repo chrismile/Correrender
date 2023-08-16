@@ -188,7 +188,7 @@ void TFOptimizerOLSTyped<Real>::onRequestQueued(VolumeData* volumeData) {
     cache->fieldEntryOpt = volumeData->getFieldEntryCpu(FieldType::SCALAR, fieldNameOpt);
     cache->minMaxGT = tfWindow.getSelectedRangePair(settings.fieldIdxGT);
     cache->minMaxOpt = tfWindow.getSelectedRangePair(settings.fieldIdxOpt);
-    cache->tfGT = tfWindow.getTransferFunctionMap_sRGBDownscaled(settings.fieldIdxGT, int(settings.tfSize));
+    cache->tfGT = tfWindow.getTransferFunctionMap_sRGBPremulDownscaled(settings.fieldIdxGT, int(settings.tfSize));
     uint32_t numVoxels =
             uint32_t(volumeData->getGridSizeX())
             * uint32_t(volumeData->getGridSizeY())

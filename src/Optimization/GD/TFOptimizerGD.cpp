@@ -109,12 +109,12 @@ void TFOptimizerGD::onRequestQueued(VolumeData* volumeData) {
 
     cachedTfSize = settings.tfSize;
 
-    std::vector<glm::vec4> tfGT = volumeData->getMultiVarTransferFunctionWindow().getTransferFunctionMap_sRGBDownscaled(
-            settings.fieldIdxGT, int(settings.tfSize));
+    std::vector<glm::vec4> tfGT = tfWindow.getTransferFunctionMap_sRGBPremulDownscaled(
+                    settings.fieldIdxGT, int(settings.tfSize));
     tfGTBuffer->uploadData(sizeof(glm::vec4) * tfGT.size(), tfGT.data());
 
-    std::vector<glm::vec4> tfOpt = volumeData->getMultiVarTransferFunctionWindow().getTransferFunctionMap_sRGBDownscaled(
-            settings.fieldIdxOpt, int(settings.tfSize));
+    std::vector<glm::vec4> tfOpt = tfWindow.getTransferFunctionMap_sRGBPremulDownscaled(
+                    settings.fieldIdxOpt, int(settings.tfSize));
     tfOptBuffer->uploadData(sizeof(glm::vec4) * tfOpt.size(), tfOpt.data());
 
     CopyFieldImageDestinationData copyFieldImageDestinationData{};

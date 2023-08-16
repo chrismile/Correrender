@@ -264,8 +264,11 @@ void TFOptimization::renderGuiDialog() {
         colorPoints.reserve(tfArrayOpt.size());
         for (size_t i = 0; i < tfArrayOpt.size(); i++) {
             float t = float(i) / float(tfArrayOpt.size() - 1);
-            const glm::vec4& color = tfArrayOpt.at(i);
+            glm::vec4 color = tfArrayOpt.at(i);
             opacityPoints.emplace_back(color.a, t);
+            color.r = color.r / std::max(color.a, 1e-7f);
+            color.g = color.g / std::max(color.a, 1e-7f);
+            color.b = color.b / std::max(color.a, 1e-7f);
             auto color16 = sgl::color16FromVec4(color);
             color16.setA(0xFFFFu);
             colorPoints.emplace_back(color16, t);
