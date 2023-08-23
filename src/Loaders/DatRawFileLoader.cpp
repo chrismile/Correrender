@@ -193,7 +193,24 @@ bool DatRawFileLoader::setInputFiles(
     ys = int(sgl::fromString<int>(resolutionSplit.at(1)));
     zs = int(sgl::fromString<int>(resolutionSplit.at(2)));
     float maxDimension = float(std::max(xs - 1, std::max(ys - 1, zs - 1)));
-    cellStep = 1.0f / maxDimension;
+    float cellStep = 1.0f / maxDimension;
+    dx = dy = dz = cellStep;
+
+    auto itSliceThickness = datDict.find("slicethickness");
+    if (itSliceThickness != datDict.end()) {
+        std::vector<std::string> sliceThicknessList;
+        sgl::splitStringWhitespace(itSliceThickness->second, sliceThicknessList);
+        if (sliceThicknessList.size() != 3) {
+            sgl::Logfile::get()->throwError(
+                    "Error in DatRawFileLoader::load: Inconsistent entry 'SliceThickness' in \"" + datFilePath + "\".");
+        }
+        auto tx = sgl::fromString<float>(sliceThicknessList.at(0));
+        auto ty = sgl::fromString<float>(sliceThicknessList.at(1));
+        auto tz = sgl::fromString<float>(sliceThicknessList.at(2));
+        dx *= tx;
+        dy *= ty;
+        dz *= tz;
+    }
 
     auto itFormat = datDict.find("format");
     if (itFormat == datDict.end()) {
@@ -246,7 +263,7 @@ bool DatRawFileLoader::setInputFiles(
         fieldNameMap[FieldType::SCALAR].emplace_back("Helicity");
     }
 
-    volumeData->setGridExtent(xs, ys, zs, cellStep, cellStep, cellStep);
+    volumeData->setGridExtent(xs, ys, zs, dx, dy, dz);
     if (!timeSteps.empty()) {
         volumeData->setTimeSteps(timeSteps);
     }
@@ -398,7 +415,7 @@ bool DatRawFileLoader::getFieldEntry(
 
     if (numComponents > 1) {
         computeVectorMagnitudeField(velocityField, velocityMagnitudeField, xs, ys, zs);
-        computeVorticityField(velocityField, vorticityField, xs, ys, zs, cellStep, cellStep, cellStep);
+        computeVorticityField(velocityField, vorticityField, xs, ys, zs, dx, dy, dz);
         computeVectorMagnitudeField(vorticityField, vorticityMagnitudeField, xs, ys, zs);
         computeHelicityFieldNormalized(
                 velocityField, vorticityField, helicityField, xs, ys, zs,

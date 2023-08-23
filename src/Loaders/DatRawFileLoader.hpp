@@ -68,7 +68,8 @@ private:
     std::string datFilePath;
     std::vector<std::string> rawFilePaths;
     int xs = 0, ys = 0, zs = 0;
-    float cellStep = 0.0f;
+    float dx = 0.0f, dy = 0.0f, dz = 0.0f;
+    //float cellStep = 0.0f;
     int numComponents = 0;
     size_t bytesPerEntry = 0;
     std::string formatString;
