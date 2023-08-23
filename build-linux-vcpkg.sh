@@ -199,7 +199,7 @@ if [[ $cmake_version_major < 3 || ($cmake_version_major == 3 && $cmake_version_m
         echo "    downloading cmake   "
         echo "------------------------"
         curl --silent --show-error --fail -OL "https://github.com/Kitware/CMake/releases/download/v${cmake_download_version}/cmake-${cmake_download_version}-linux-x86_64.tar.gz"
-        tar -xzf cmake-${cmake_download_version}-linux-x86_64.tar.gz -C .
+        tar -xf cmake-${cmake_download_version}-linux-x86_64.tar.gz -C .
     fi
     PATH="${PROJECTPATH}/third_party/cmake-${cmake_download_version}-linux-x86_64/bin:$PATH"
 fi
@@ -248,7 +248,7 @@ if [[ ! -v VULKAN_SDK ]]; then
     if ! $found_vulkan; then
         curl --silent --show-error --fail -O https://sdk.lunarg.com/sdk/download/latest/linux/vulkan-sdk.tar.gz
         mkdir -p VulkanSDK
-        tar -xzf vulkan-sdk.tar.gz -C VulkanSDK
+        tar -xf vulkan-sdk.tar.gz -C VulkanSDK
         VK_LAYER_PATH=""
         source "VulkanSDK/$(ls VulkanSDK)/setup-env.sh"
 
