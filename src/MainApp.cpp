@@ -792,6 +792,7 @@ void MainApp::renderGui() {
                     || boost::ends_with(filenameLower, ".bin")
                     || boost::ends_with(filenameLower, ".field")
                     || boost::ends_with(filenameLower, ".cvol")
+                    || boost::ends_with(filenameLower, ".nii")
 #ifdef USE_ECCODES
                     || boost::ends_with(filenameLower, ".grib")
                     || boost::ends_with(filenameLower, ".grb")
