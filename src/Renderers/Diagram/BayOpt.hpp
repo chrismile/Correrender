@@ -151,7 +151,7 @@ struct Eval{
     // number of input dimension (x.size())
     BO_PARAM(size_t, dim_in, 6);
     // number of dimensions of the result (res.size())
-    BO_PARAM(size_t, dim_out, 6);
+    BO_PARAM(size_t, dim_out, 1);
 
     // the function to be optimized
     // limbo is set to bounded mode, meaning that the values in x are always in 0-1
