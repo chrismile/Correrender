@@ -34,12 +34,19 @@
 struct TinyCudaNNModuleWrapper;
 struct TinyCudaNNCacheWrapper;
 
+enum class TinyCudaNNNetworkImplementation {
+    FULLY_FUSED_MLP, CUTLASS_MLP
+};
+
 class TinyCudaNNCorrelationCalculator : public DeepLearningCudaCorrelationCalculator {
 public:
     explicit TinyCudaNNCorrelationCalculator(sgl::vk::Renderer* renderer);
     ~TinyCudaNNCorrelationCalculator() override;
     [[nodiscard]] CalculatorType getCalculatorType() const override { return CalculatorType::TINY_CUDA_NN; }
     void setVolumeData(VolumeData* _volumeData, bool isNewData) override;
+
+    void setSettings(const SettingsMap& settings) override;
+    void getSettings(SettingsMap& settings) override;
 
 protected:
     void loadModelFromFile(const std::string& modelPath) override;
@@ -55,9 +62,13 @@ protected:
     uint32_t getInputChannelAlignment() override { return isInputEncodingIdentity ? 16 : 4; }
     uint32_t getSrnStride() override { return isInputEncodingIdentity ? 16 : 3; }
 
+    void renderGuiImplAdvanced(sgl::PropertyEditor& propertyEditor) override;
+
 private:
     uint32_t numLayersInEncoder = 0, numLayersOutEncoder = 0, numLayersInDecoder = 0, numLayersOutDecoder = 0;
     bool isInputEncodingIdentity = false;
+    bool deviceSupporsFullyFusedMlp = false;
+    TinyCudaNNNetworkImplementation networkImplementation = TinyCudaNNNetworkImplementation::FULLY_FUSED_MLP;
     std::shared_ptr<TinyCudaNNModuleWrapper> moduleWrapper;
     std::shared_ptr<TinyCudaNNCacheWrapper> cacheWrapper;
 };

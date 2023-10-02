@@ -304,6 +304,7 @@ void DeepLearningCudaCorrelationCalculator::renderGuiImplAdvanced(sgl::PropertyE
 void DeepLearningCudaCorrelationCalculator::setSettings(const SettingsMap& settings) {
     ICorrelationCalculator::setSettings(settings);
     if (settings.getValueOpt("model_file_path", modelFilePath)) {
+        loadModelFromFile(modelFilePath);
         dirty = true;
     }
     if (settings.getValueOpt("model_preset_index", modelPresetIndex)) {

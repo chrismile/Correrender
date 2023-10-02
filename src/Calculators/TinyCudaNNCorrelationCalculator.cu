@@ -38,7 +38,10 @@
 #include <Utils/File/Archive.hpp>
 #include <Utils/File/FileUtils.hpp>
 #include <Graphics/Vulkan/Utils/InteropCuda.hpp>
+#include <Graphics/Vulkan/Render/Renderer.hpp>
+#include <ImGui/Widgets/PropertyEditor.hpp>
 
+#include "Utils/InternalState.hpp"
 #include "Volume/VolumeData.hpp"
 #include "MutualInformation.cuh"
 #include "TinyCudaNNCorrelationCalculator.hpp"
@@ -88,6 +91,21 @@ struct TinyCudaNNDataHeader {
 TinyCudaNNCorrelationCalculator::TinyCudaNNCorrelationCalculator(sgl::vk::Renderer* renderer)
         : DeepLearningCudaCorrelationCalculator("tiny-cuda-nn", "tinyCudaNN", renderer) {
     cacheWrapper = std::make_shared<TinyCudaNNCacheWrapper>();
+
+    CUdevice cuDevice = 0;
+    bool foundDevice = sgl::vk::getMatchingCudaDevice(renderer->getDevice(), &cuDevice);
+    if (foundDevice) {
+        CUresult cuResult;
+        int computeCapabilityMajor = 7;
+        cuResult = sgl::vk::g_cudaDeviceApiFunctionTable.cuDeviceGetAttribute(
+                &computeCapabilityMajor, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, cuDevice);
+        sgl::vk::checkCUresult(cuResult, "Error in cuDeviceGetAttribute: ");
+        deviceSupporsFullyFusedMlp = computeCapabilityMajor >= 7;
+    }
+
+    if (!deviceSupporsFullyFusedMlp) {
+        networkImplementation = TinyCudaNNNetworkImplementation::CUTLASS_MLP;
+    }
 }
 
 TinyCudaNNCorrelationCalculator::~TinyCudaNNCorrelationCalculator() {
@@ -101,6 +119,48 @@ void TinyCudaNNCorrelationCalculator::setVolumeData(VolumeData* _volumeData, boo
     if (isNewData) {
         calculatorConstructorUseCount = volumeData->getNewCalculatorUseCount(CalculatorType::TINY_CUDA_NN);
     }
+}
+
+const char* const TINY_CUDA_NN_NETWORK_IMPLEMENTATION_NAMES[] = {
+        "FullyFusedMLP", "CutlassMLP"
+};
+const char* const TINY_CUDA_NN_NETWORK_IMPLEMENTATION_UI_NAMES[] = {
+        "Fully Fused", "CUTLASS"
+};
+
+void TinyCudaNNCorrelationCalculator::renderGuiImplAdvanced(sgl::PropertyEditor& propertyEditor) {
+    DeepLearningCudaCorrelationCalculator::renderGuiImplAdvanced(propertyEditor);
+    if (deviceSupporsFullyFusedMlp && propertyEditor.addCombo(
+            "Network", (int*)&networkImplementation,
+            TINY_CUDA_NN_NETWORK_IMPLEMENTATION_UI_NAMES, IM_ARRAYSIZE(TINY_CUDA_NN_NETWORK_IMPLEMENTATION_UI_NAMES))) {
+        if (sgl::FileUtils::get()->exists(modelFilePath) && !sgl::FileUtils::get()->isDirectory(modelFilePath)) {
+            loadModelFromFile(modelFilePath);
+        }
+        dirty = true;
+    }
+}
+
+void TinyCudaNNCorrelationCalculator::setSettings(const SettingsMap& settings) {
+    std::string networkImplementationString;
+    if (settings.getValueOpt("network_implementation", networkImplementationString)) {
+        for (int i = 0; i < IM_ARRAYSIZE(TINY_CUDA_NN_NETWORK_IMPLEMENTATION_NAMES); i++) {
+            if (networkImplementationString == TINY_CUDA_NN_NETWORK_IMPLEMENTATION_NAMES[i]) {
+                networkImplementation = TinyCudaNNNetworkImplementation(i);
+                break;
+            }
+        }
+        if (!deviceSupporsFullyFusedMlp) {
+            networkImplementation = TinyCudaNNNetworkImplementation::CUTLASS_MLP;
+        }
+        dirty = true;
+    }
+    DeepLearningCudaCorrelationCalculator::setSettings(settings);
+}
+
+void TinyCudaNNCorrelationCalculator::getSettings(SettingsMap& settings) {
+    DeepLearningCudaCorrelationCalculator::getSettings(settings);
+    settings.addKeyValue(
+            "network_implementation", TINY_CUDA_NN_NETWORK_IMPLEMENTATION_NAMES[int(networkImplementation)]);
 }
 
 template<class T, class PARAMS_T> static void loadNetwork(
@@ -300,6 +360,10 @@ void TinyCudaNNCorrelationCalculator::loadModelFromFile(const std::string& model
         uint32_t encoderOutputDims = moduleWrapper->configEncoder["network"].value("n_output_dims", 0);
         moduleWrapper->configDecoder["network"]["n_input_dims"] = encoderOutputDims * symmetrizerFactor;
     }
+
+    const char* networkTypeName = TINY_CUDA_NN_NETWORK_IMPLEMENTATION_NAMES[int(networkImplementation)];
+    moduleWrapper->configEncoder["network"]["otype"] = networkTypeName;
+    moduleWrapper->configDecoder["network"]["otype"] = networkTypeName;
 
     auto itNetworkEncoder = archiveFiles.find("network_encoder.bin");
     auto itNetworkDecoder = archiveFiles.find("network_decoder.bin");
