@@ -30,7 +30,7 @@
 #include <cuda_profiler_api.h>
 #endif
 
-#include <tiny-cuda-nn/trainer.h>
+#include <tiny-cuda-nn/evaluator.h>
 #include <tiny-cuda-nn/network_with_input_encoding.h>
 
 #include <Math/Math.hpp>
@@ -51,13 +51,13 @@ struct TinyCudaNNModuleWrapper {
     nlohmann::json configEncoder;
     nlohmann::json configDecoder;
     std::shared_ptr<tcnn::Network<float, precision_t>> networkEncoder;
-    std::shared_ptr<tcnn::Trainer<float, precision_t, precision_t>> trainerEncoder;
+    std::shared_ptr<tcnn::Evaluator<float, precision_t, precision_t>> evaluatorEncoder;
 #if TCNN_HALF_PRECISION
     std::shared_ptr<tcnn::Network<precision_t, precision_t>> networkEncoderHalf;
-    std::shared_ptr<tcnn::Trainer<precision_t, precision_t, precision_t>> trainerEncoderHalf;
+    std::shared_ptr<tcnn::Evaluator<precision_t, precision_t, precision_t>> evaluatorEncoderHalf;
 #endif
     std::shared_ptr<tcnn::Network<precision_t, precision_t>> networkDecoder;
-    std::shared_ptr<tcnn::Trainer<precision_t, precision_t, precision_t>> trainerDecoder;
+    std::shared_ptr<tcnn::Evaluator<precision_t, precision_t, precision_t>> evaluatorDecoder;
 };
 
 struct TinyCudaNNCacheWrapper {
@@ -105,7 +105,7 @@ void TinyCudaNNCorrelationCalculator::setVolumeData(VolumeData* _volumeData, boo
 
 template<class T, class PARAMS_T> static void loadNetwork(
         std::shared_ptr<tcnn::Network<T, PARAMS_T>>& network,
-        std::shared_ptr<tcnn::Trainer<T, PARAMS_T, PARAMS_T>>& trainer,
+        std::shared_ptr<tcnn::Evaluator<T, PARAMS_T, PARAMS_T>>& evaluator,
         const std::string& modelPath, const nlohmann::json& config, const sgl::ArchiveEntry& entry) {
     auto* header = reinterpret_cast<TinyCudaNNDataHeader*>(entry.bufferData.get());
     uint8_t* paramsData = entry.bufferData.get() + sizeof(TinyCudaNNDataHeader);
@@ -133,8 +133,8 @@ template<class T, class PARAMS_T> static void loadNetwork(
 
     uint32_t numInputDims = networkOpts["n_input_dims"];
     uint32_t numOutputDims = networkOpts["n_output_dims"];
-    std::shared_ptr<tcnn::Loss<precision_t>> loss{tcnn::create_loss<precision_t>(lossOpts)};
-    std::shared_ptr<tcnn::Optimizer<precision_t>> optimizer{tcnn::create_optimizer<precision_t>(optimizerOpts)};
+    //std::shared_ptr<tcnn::Loss<precision_t>> loss{tcnn::create_loss<precision_t>(lossOpts)};
+    //std::shared_ptr<tcnn::Optimizer<precision_t>> optimizer{tcnn::create_optimizer<precision_t>(optimizerOpts)};
     if (hasInputEncoding && !isInputEncodingIdentity) {
         std::shared_ptr<tcnn::NetworkWithInputEncoding<precision_t>> networkWithEnc =
                 std::make_shared<tcnn::NetworkWithInputEncoding<precision_t>>(
@@ -149,7 +149,7 @@ template<class T, class PARAMS_T> static void loadNetwork(
         }
     }
     //network->set_params();
-    trainer = std::make_shared<tcnn::Trainer<T, PARAMS_T, PARAMS_T>>(network, optimizer, loss);
+    evaluator = std::make_shared<tcnn::Evaluator<T, PARAMS_T, PARAMS_T>>(network);
 
     // Do we need padding because the output width is not a multiple of 16?
     if (network->output_width() != network->padded_output_width() && network->n_params() != numParams) {
@@ -171,13 +171,13 @@ template<class T, class PARAMS_T> static void loadNetwork(
 
 #if TCNN_HALF_PRECISION
     if (header->format == TINY_CUDA_NN_PARAMS_FORMAT_FLOAT) {
-        trainer->set_params_full_precision(reinterpret_cast<float*>(paramsData), numParams, false);
+        evaluator->set_params_full_precision(reinterpret_cast<float*>(paramsData), numParams, false);
     } else {
-        trainer->set_params(reinterpret_cast<precision_t*>(paramsData), numParams, false);
+        evaluator->set_params(reinterpret_cast<precision_t*>(paramsData), numParams, false);
     }
 #else
     if (header->format == TINY_CUDA_NN_PARAMS_FORMAT_FLOAT) {
-        trainer->set_params(reinterpret_cast<float*>(paramsData), numParams, false);
+        evaluator->set_params(reinterpret_cast<float*>(paramsData), numParams, false);
     } else {
         sgl::Logfile::get()->throwError(
                 "Error in TinyCudaNNCorrelationCalculator::loadNetwork: Half precision build was disabled.");
@@ -187,8 +187,6 @@ template<class T, class PARAMS_T> static void loadNetwork(
     if (network->output_width() != network->padded_output_width() && network->n_params() != numParams) {
         delete[] paramsData;
     }
-
-    // TODO: Support trainer->serialize()
 }
 
 void TinyCudaNNCorrelationCalculator::loadModelFromFile(const std::string& modelPath) {
@@ -318,28 +316,28 @@ void TinyCudaNNCorrelationCalculator::loadModelFromFile(const std::string& model
         return;
     }
     moduleWrapper->networkEncoder = {};
-    moduleWrapper->trainerEncoder = {};
+    moduleWrapper->evaluatorEncoder = {};
 #if TCNN_HALF_PRECISION
     moduleWrapper->networkEncoderHalf = {};
-    moduleWrapper->trainerEncoderHalf = {};
+    moduleWrapper->evaluatorEncoderHalf = {};
 #endif
     moduleWrapper->networkDecoder = {};
-    moduleWrapper->trainerDecoder = {};
+    moduleWrapper->evaluatorDecoder = {};
 #if TCNN_HALF_PRECISION
     if (hasInputEncoding && !isInputEncodingIdentity) {
 #endif
         loadNetwork(
-                moduleWrapper->networkEncoder, moduleWrapper->trainerEncoder, modelPath,
+                moduleWrapper->networkEncoder, moduleWrapper->evaluatorEncoder, modelPath,
                 moduleWrapper->configEncoder, itNetworkEncoder->second);
 #if TCNN_HALF_PRECISION
     } else {
         loadNetwork(
-                moduleWrapper->networkEncoderHalf, moduleWrapper->trainerEncoderHalf, modelPath,
+                moduleWrapper->networkEncoderHalf, moduleWrapper->evaluatorEncoderHalf, modelPath,
                 moduleWrapper->configEncoder, itNetworkEncoder->second);
     }
 #endif
     loadNetwork(
-            moduleWrapper->networkDecoder, moduleWrapper->trainerDecoder, modelPath,
+            moduleWrapper->networkDecoder, moduleWrapper->evaluatorDecoder, modelPath,
             moduleWrapper->configDecoder, itNetworkDecoder->second);
 
     // numLayersOutEncoder == numLayersInDecoder when symmetrizer is sum operation.
