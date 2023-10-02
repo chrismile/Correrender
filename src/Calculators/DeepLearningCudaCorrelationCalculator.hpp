@@ -111,7 +111,7 @@ protected:
     const int gpuBatchSize1DBase = 16384;
 
     /// For networkType == NetworkType::SRN_MINE.
-    const int srnGpuBatchSize1DBase = 131072;
+    int srnGpuBatchSize1DBase = 131072;
     size_t cachedVolumeDataSlice3dSize = 0;
     bool isMutualInformationData = true;
     bool calculateAbsoluteValue = false;

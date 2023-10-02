@@ -45,6 +45,7 @@
 #include "Utils/InternalState.hpp"
 #include "Volume/VolumeData.hpp"
 #include "Volume/Cache/DeviceCacheEntry.hpp"
+#include "Calculators/DeviceThreadInfo.hpp"
 #include "DeepLearningCudaCorrelationCalculator.hpp"
 
 #if CUDA_VERSION < 11020
@@ -68,6 +69,15 @@ DeepLearningCudaCorrelationCalculator::DeepLearningCudaCorrelationCalculator(
                 "Error in DeepLearningCudaCorrelationCalculator::DeepLearningCudaCorrelationCalculator: "
                 "sgl::vk::getIsCudaDeviceApiFunctionTableInitialized() returned false.");
     }
+
+    // e.g., 131072 for RTX 3090 (rounded up from 83968).
+    auto deviceThreadInfo = getDeviceThreadInfo(renderer->getDevice());
+    srnGpuBatchSize1DBase = int(deviceThreadInfo.numCoresTotal) * 8;
+    if (!sgl::isPowerOfTwo(srnGpuBatchSize1DBase)) {
+        srnGpuBatchSize1DBase = sgl::nextPowerOfTwo(srnGpuBatchSize1DBase);
+    }
+    srnGpuBatchSize1DBase = std::clamp(srnGpuBatchSize1DBase, 256, 131072);
+    // TODO: SmArch in cutlass_matmul.h seems to only support compute capability >= 7.0.
 
     std::string implNameKeyLower = boost::to_lower_copy(implNameKeyUpper);
     std::string modelPresetsJsonFilename =
