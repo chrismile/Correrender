@@ -64,8 +64,8 @@ __global__ void computeNnzKernel(
         float tOpt = (scalarOpt - minOpt) / (maxOpt - minOpt);
         float tOpt0 = clamp(floor(tOpt * Nj), 0.0f, Nj);
         float tOpt1 = clamp(ceil(tOpt * Nj), 0.0f, Nj);
-        uint jOpt0 = uint(tOpt0);
-        uint jOpt1 = uint(tOpt1);
+        uint32_t jOpt0 = uint32_t(tOpt0);
+        uint32_t jOpt1 = uint32_t(tOpt1);
         hasNonZero = 1;
         if (jOpt0 == jOpt1) {
             numNonZero = 1;
@@ -125,8 +125,8 @@ __global__ void writeCsrKernel(
     float tOpt0 = clamp(floor(tOpt * Nj), 0.0f, Nj);
     float tOpt1 = clamp(ceil(tOpt * Nj), 0.0f, Nj);
     auto fOpt = Real(tOpt * Nj - tOpt0);
-    uint jOpt0 = uint(tOpt0);
-    uint jOpt1 = uint(tOpt1);
+    uint32_t jOpt0 = uint32_t(tOpt0);
+    uint32_t jOpt1 = uint32_t(tOpt1);
 
     auto fOpt0 = Real(1) - Real(fOpt);
     int j0 = int(jOpt0) * 4;
