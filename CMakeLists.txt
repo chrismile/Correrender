@@ -262,6 +262,17 @@ if(MSVC)
         $<$<AND:$<CXX_COMPILER_ID:MSVC>,$<NOT:$<COMPILE_LANGUAGE:CUDA>>>:/MP>)
 endif()
 
+if(MSVC)
+	# Setting /bigobj globally will lead to problems with nvcc. Two of the errors I noticed:
+	# nvcc fatal   : Don't know what to do with 'C:/bigobj'
+	# nvcc fatal   : A single input file is required for a non-link phase when an outputfile is specified
+	#add_compile_options(/bigobj)
+
+	# Add /bigobj to these files, as otherwise cl.exe will complain during the debug build.
+	SET_SOURCE_FILES_PROPERTIES(${CMAKE_CURRENT_SOURCE_DIR}/src/Renderers/Diagram/HEBChartCorrelation.cpp PROPERTIES COMPILE_FLAGS /bigobj)
+	SET_SOURCE_FILES_PROPERTIES(${CMAKE_CURRENT_SOURCE_DIR}/src/Optimization/OLS/EigenSolver.cpp PROPERTIES COMPILE_FLAGS /bigobj)
+endif()
+
 add_subdirectory(submodules/IsosurfaceCpp)
 if("TRACY_ENABLE" IN_LIST SGL_INTERFACE_COMPILE_DEFINITIONS)
     target_compile_definitions(IsosurfaceCpp PUBLIC TRACY_ENABLE)
