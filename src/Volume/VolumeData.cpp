@@ -1026,7 +1026,19 @@ VolumeData::DeviceCacheEntry VolumeData::getFieldEntryDevice(
                 | VK_IMAGE_USAGE_STORAGE_BIT;
         imageSettings.memoryUsage = VMA_MEMORY_USAGE_GPU_ONLY;
         imageSettings.exportMemory = canUseCuda;
+        
+        /*
+         * https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkMemoryGetWin32HandleInfoKHR.html
+         * "If handleType is defined as an NT handle, vkGetMemoryWin32HandleKHR must be called no more than once for each valid
+         * unique combination of memory and handleType"
+         * TODO: On Windows the application can only use non-dedicated allocations when it has been figured out that the handle
+         * is only exported once.
+         */
+#ifdef _WIN32
+        imageSettings.useDedicatedAllocationForExportedMemory = true;
+#else
         imageSettings.useDedicatedAllocationForExportedMemory = false;
+#endif
 
         auto image = std::make_shared<sgl::vk::Image>(device, imageSettings);
         deviceCacheEntry = std::make_shared<DeviceCacheEntry::element_type>(image, imageSampler);
