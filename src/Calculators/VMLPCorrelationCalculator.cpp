@@ -26,17 +26,4 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef CORRERENDER_SYMMETRIZERTYPE_HPP
-#define CORRERENDER_SYMMETRIZERTYPE_HPP
-
-/// Symmetrizer operation used between encoder and decoder.
-enum class SymmetrizerType {
-    Add, AddDiff, Mul
-};
-
-/// Symmetrizer operation used between encoder and decoder (@see SymmetrizerType.hpp).
-const char* const SYMMETRIZER_TYPE_SHORT_NAMES[] = {
-        "Add", "AddDiff", "Mul"
-};
-
-#endif //CORRERENDER_SYMMETRIZERTYPE_HPP
+#include "VMLPCorrelationCalculator.hpp"

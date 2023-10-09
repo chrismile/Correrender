@@ -36,11 +36,6 @@
 #include "CorrelationCalculator.hpp"
 #include "SymmetrizerType.hpp"
 
-/// Symmetrizer operation used between encoder and decoder (@see SymmetrizerType.hpp).
-const char* const SYMMETRIZER_TYPE_SHORT_NAMES[] = {
-        "Add", "AddDiff", "Mul"
-};
-
 class DeepLearningCudaCorrelationCalculator : public ICorrelationCalculator {
 public:
     /**
