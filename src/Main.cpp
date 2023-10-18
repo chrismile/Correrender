@@ -81,15 +81,14 @@ int main(int argc, char *argv[]) {
     sgl::FileUtils::get()->initialize("Correrender", argc, argv);
 
     // Parse the arguments.
-    bool usePerfMode = false, useSamplingMode = false;
+    bool usePerfMode = false, useSamplingMode = false, useReplicabilityStampMode = false;
     std::string dataSetPath;
     int testIdx = -1;
     for (int i = 1; i < argc; i++) {
         std::string command = argv[i];
         if (command == "--perf") {
             usePerfMode = true;
-        }
-        if (command == "--sampling") {
+        } else if (command == "--sampling") {
             useSamplingMode = true;
             if (i + 1 < argc && !sgl::startsWith(argv[i + 1], "-")) {
                 i++;
@@ -99,6 +98,8 @@ int main(int argc, char *argv[]) {
                 i++;
                 testIdx = sgl::fromString<int>(argv[i]);
             }
+        } else if (command == "--replicability") {
+            useReplicabilityStampMode = true;
         }
     }
     bool isHeadlessMode = useSamplingMode;
@@ -195,7 +196,8 @@ int main(int argc, char *argv[]) {
     if (isHeadlessMode) {
         sgl::AppSettings::get()->getVulkanInstance()->setDebugCallback(&vulkanErrorCallbackHeadless);
     }
-    sgl::vk::Device* device = new sgl::vk::Device;
+    auto* device = new sgl::vk::Device;
+
     sgl::vk::DeviceFeatures requestedDeviceFeatures{};
     requestedDeviceFeatures.optionalPhysicalDeviceFeatures.sampleRateShading = VK_TRUE; // For MSAA.
     requestedDeviceFeatures.optionalPhysicalDeviceFeatures.geometryShader = VK_TRUE; // For Skia (if enabled).
@@ -215,6 +217,16 @@ int main(int argc, char *argv[]) {
     requestedDeviceFeatures.optionalVulkan12Features.runtimeDescriptorArray = VK_TRUE;
     requestedDeviceFeatures.optionalVulkan12Features.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
     requestedDeviceFeatures.optionalVulkan12Features.shaderStorageBufferArrayNonUniformIndexing = VK_TRUE;
+    // For VMLP.
+    requestedDeviceFeatures.optionalVulkan12Features.shaderFloat16 = VK_TRUE;
+    requestedDeviceFeatures.optionalVulkan11Features.storageBuffer16BitAccess = VK_TRUE;
+#ifdef VK_NV_cooperative_matrix
+    optionalDeviceExtensions.push_back(VK_NV_COOPERATIVE_MATRIX_EXTENSION_NAME);
+#endif
+#ifdef VK_KHR_cooperative_matrix
+    optionalDeviceExtensions.push_back(VK_KHR_COOPERATIVE_MATRIX_EXTENSION_NAME);
+#endif
+
     if (isHeadlessMode) {
         device->createDeviceHeadless(
                 instance, {
@@ -255,6 +267,9 @@ int main(int argc, char *argv[]) {
 
     if (!isHeadlessMode) {
         auto app = new MainApp();
+        if (useReplicabilityStampMode) {
+            app->loadReplicabilityStampState();
+        }
         app->run();
         delete app;
     }

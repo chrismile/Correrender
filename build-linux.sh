@@ -44,6 +44,9 @@ skia_link_dynamically=true
 build_with_vkvg_support=false
 build_with_osqp_support=true
 build_with_zink_support=false
+# Replicability Stamp (https://www.replicabilitystamp.org/) mode for replicating a figure from the corresponding paper.
+replicability=false
+
 
 # Process command line arguments.
 custom_glslang=false
@@ -57,6 +60,8 @@ do
         glibcxx_debug=true
     elif [ ${!i} = "--custom-glslang" ]; then
         custom_glslang=true
+    elif [ ${!i} = "--replicability" ]; then
+        replicability=true
     fi
 done
 
@@ -729,6 +734,24 @@ printf "#!/bin/bash\npushd \"\$(dirname \"\$0\")/bin\" >/dev/null\n./Correrender
 chmod +x "$destination_dir/run.sh"
 
 
+# Replicability Stamp mode.
+params_run=()
+if $replicability; then
+    if [ ! -f "./Data/VolumeDataSets/linear_4x4.nc" ]; then
+        echo "------------------------"
+        echo "generating synthetic data"
+        echo "------------------------"
+        pushd scripts >/dev/null
+        python3 generate_synth_box_ensembles.py
+        popd >/dev/null
+    fi
+    if [ ! -f "./Data/VolumeDataSets/datasets.json" ]; then
+        printf "{ \"datasets\": [ { \"name\": \"linear_4x4\", \"filename\": \"linear_4x4.nc\" } ] }" >> ./Data/VolumeDataSets/datasets.json
+    fi
+    params_run+=(--replicability)
+fi
+
+
 # Run the program as the last step.
 echo ""
 echo "All done!"
@@ -741,5 +764,5 @@ elif [[ ! "${LD_LIBRARY_PATH}" == *"${PROJECTPATH}/third_party/sgl/install/lib"*
 fi
 
 if [ $run_program = true ]; then
-    ./Correrender
+    ./Correrender "${params_run[@]}"
 fi

@@ -38,6 +38,7 @@
 #include "Volume/VolumeData.hpp"
 #include "Calculators/Calculator.hpp"
 #include "Renderers/Renderer.hpp"
+#include "Replicability/ReplicabilityState.hpp"
 #include "MainApp.hpp"
 
 static Json::Value settingsMapToJson(const SettingsMap& settings) {
@@ -197,15 +198,20 @@ void MainApp::loadStateFromFile(const std::string& stateFilePath) {
         return;
     }
     jsonFileStream.close();
+    loadStateFromJsonObject(root);
+}
 
+void MainApp::loadStateFromJsonObject(Json::Value root) {
     // Window size.
-    Json::Value& windowSizeNode = root["window_size"];
-    int windowWidth = windowSizeNode["x"].asInt();
-    int windowHeight = windowSizeNode["y"].asInt();
-    auto* window = sgl::AppSettings::get()->getMainWindow();
-    if (windowWidth != window->getPixelWidth() || windowHeight != window->getPixelHeight()) {
-        rendererVk->syncWithCpu();
-        window->setWindowPixelSize(windowWidth, windowHeight);
+    if (root.isMember("window_size")) {
+        Json::Value& windowSizeNode = root["window_size"];
+        int windowWidth = windowSizeNode["x"].asInt();
+        int windowHeight = windowSizeNode["y"].asInt();
+        auto* window = sgl::AppSettings::get()->getMainWindow();
+        if (windowWidth != window->getPixelWidth() || windowHeight != window->getPixelHeight()) {
+            rendererVk->syncWithCpu();
+            window->setWindowPixelSize(windowWidth, windowHeight);
+        }
     }
 
     const Json::Value& globalCameraNode = root["global_camera"];
@@ -424,4 +430,18 @@ void MainApp::loadStateFromFile(const std::string& stateFilePath) {
     reRender = true;
     hasMoved();
     onCameraReset();
+}
+
+void MainApp::loadReplicabilityStampState() {
+    Json::CharReaderBuilder builder;
+    const std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
+    JSONCPP_STRING errorString;
+    Json::Value root;
+    if (!reader->parse(
+            REPLICABILITY_STATE_STRING, REPLICABILITY_STATE_STRING + IM_ARRAYSIZE(REPLICABILITY_STATE_STRING),
+            &root, &errorString)) {
+        sgl::Logfile::get()->writeError(errorString);
+        return;
+    }
+    loadStateFromJsonObject(root);
 }

@@ -30,15 +30,15 @@
 # - Install all dependencies, e.g., using conda:
 # conda install -c numba numba
 # conda install -c anaconda numpy
-# conda install -c conda-forge matplotlib netcdf4
+# conda install -c conda-forge netcdf4
 # - When launching this program with Python, it will create the file Data/VolumeDataSets/linear_4x4.nc.
 # - In Correrender, this file can be opened via "File > Open Dataset".
 # - Then, a correlation diagram renderer can be created via "Window > New Renderer... > Diagram Renderer".
 
 from numba import jit
 import numpy as np
-import matplotlib as mpl
-import matplotlib.pyplot as plt
+#import matplotlib as mpl
+#import matplotlib.pyplot as plt
 from netCDF4 import Dataset
 
 xs = 128
@@ -136,13 +136,13 @@ for z in range(zs):
             data_out[:, z, y, x] = samples[:]
 
 
-def plot_corr(p0, p1):
-    fig, ax = plt.subplots()
-    data = ax.scatter(data_out[:, p0[0], p0[1], p0[2]], data_out[:, p1[0], p1[1], p1[2]])
-    ax.set_xlim([-3.1, 3.1])
-    ax.set_ylim([-3.1, 3.1])
-    fig.colorbar(data)
-    plt.show()
+#def plot_corr(p0, p1):
+#    fig, ax = plt.subplots()
+#    data = ax.scatter(data_out[:, p0[0], p0[1], p0[2]], data_out[:, p1[0], p1[1], p1[2]])
+#    ax.set_xlim([-3.1, 3.1])
+#    ax.set_ylim([-3.1, 3.1])
+#    fig.colorbar(data)
+#    plt.show()
 
 
 #plot_corr((zs // 2, half_width, half_width), (zs // 2, half_width, half_width * 3))

@@ -78,6 +78,13 @@ If you wish to build the program manually using Visual Studio and vcpkg, or usin
 the directory `docs/compilation`.
 
 
+## Replicability Stamp
+
+This repository takes part in the Graphics Replicability Stamp Initiative (GRSI).
+For more information, please refer to `replicability/README.md`.
+For more details on the Replicability Stamp itself, please refer to http://www.replicabilitystamp.org/.
+
+
 ## How to add new data sets
 
 Under `Data/VolumeDataSets/datasets.json`, loadable volume data sets can be specified. Additionally, the user can also

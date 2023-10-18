@@ -42,6 +42,8 @@
 #include <cuda.h>
 
 namespace sgl { namespace vk {
+class CommandBuffer;
+typedef std::shared_ptr<CommandBuffer> CommandBufferPtr;
 class SemaphoreVkCudaDriverApiInterop;
 typedef std::shared_ptr<SemaphoreVkCudaDriverApiInterop> SemaphoreVkCudaDriverApiInteropPtr;
 }}

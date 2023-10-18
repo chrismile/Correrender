@@ -62,6 +62,10 @@ class FileDialog;
 }
 typedef IGFD::FileDialog ImGuiFileDialog;
 
+namespace Json {
+class Value;
+}
+
 class Renderer;
 typedef std::shared_ptr<Renderer> RendererPtr;
 class VolumeData;
@@ -81,6 +85,9 @@ public:
 
     /// For changing performance measurement modes.
     void setNewState(const InternalState& newState);
+
+    /// Replicability stamp mode.
+    void loadReplicabilityStampState();
 
 protected:
     void renderGuiGeneralSettingsPropertyEditor() override;
@@ -149,6 +156,7 @@ private:
     void openSelectStateDialog();
     void saveStateToFile(const std::string& stateFilePath);
     void loadStateFromFile(const std::string& stateFilePath);
+    void loadStateFromJsonObject(Json::Value root);
     bool stateModeSave = false;
     std::string stateFileDirectory;
     // For field similarity computation.
