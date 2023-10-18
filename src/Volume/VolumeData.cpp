@@ -90,6 +90,7 @@
 #ifdef SUPPORT_QUICK_MLP
 #include "Calculators/QuickMLPCorrelationCalculator.hpp"
 #endif
+#include "Calculators/VMLPCorrelationCalculator.hpp"
 #include "Renderers/RenderingModes.hpp"
 #include "Renderers/Renderer.hpp"
 #include "Renderers/SceneData.hpp"
@@ -204,6 +205,8 @@ VolumeData::VolumeData(sgl::vk::Renderer* renderer) : renderer(renderer), multiV
 #endif
     }
 #endif
+    factoriesCalculator.emplace_back(
+            "VMLP Similarity Calculator", [renderer]() { return new VMLPCorrelationCalculator(renderer); });
 
     sgl::vk::ImageSamplerSettings samplerSettings{};
     imageSampler = std::make_shared<sgl::vk::ImageSampler>(device, samplerSettings, 0.0f);

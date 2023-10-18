@@ -27,25 +27,17 @@
  */
 
 #include <iostream>
-#include <boost/algorithm/string/case_conv.hpp>
-#include <json/json.h>
 
 #include <Math/Math.hpp>
-#include <Utils/AppSettings.hpp>
 #include <Utils/File/FileLoader.hpp>
 #include <Utils/File/Archive.hpp>
-#include <Utils/File/FileUtils.hpp>
 #include <Graphics/Vulkan/Utils/Swapchain.hpp>
+#include <Graphics/Vulkan/Utils/DeviceThreadInfo.hpp>
 #include <Graphics/Vulkan/Utils/InteropCuda.hpp>
 #include <Graphics/Vulkan/Render/Renderer.hpp>
-#include <ImGui/ImGuiWrapper.hpp>
-#include <ImGui/ImGuiFileDialog/ImGuiFileDialog.h>
-#include <ImGui/Widgets/PropertyEditor.hpp>
 
-#include "Utils/InternalState.hpp"
 #include "Volume/VolumeData.hpp"
 #include "Volume/Cache/DeviceCacheEntry.hpp"
-#include "Calculators/DeviceThreadInfo.hpp"
 #include "DeepLearningCudaCorrelationCalculator.hpp"
 
 #if CUDA_VERSION < 11020
@@ -54,14 +46,7 @@
 
 DeepLearningCudaCorrelationCalculator::DeepLearningCudaCorrelationCalculator(
         const std::string& implName, const std::string& implNameKey, sgl::vk::Renderer* renderer)
-        : ICorrelationCalculator(renderer), implName(implName), implNameKey(implNameKey) {
-    implNameKeyUpper = implNameKey;
-    std::string firstCharUpper = boost::to_upper_copy(implNameKeyUpper);
-    implNameKeyUpper.at(0) = firstCharUpper.at(0);
-    fileDialogKey = "Choose" + implNameKeyUpper + "ModelFile";
-    fileDialogDescription = "Choose " + implName + " Model File";
-    modelFilePathSettingsKey = implNameKey + "CorrelationCalculatorModelFilePath";
-
+        : DeepLearningCorrelationCalculator(implName, implNameKey, renderer) {
     sgl::vk::Device* device = renderer->getDevice();
     if (device->getDeviceDriverId() != VK_DRIVER_ID_NVIDIA_PROPRIETARY
             || !sgl::vk::getIsCudaDeviceApiFunctionTableInitialized()) {
@@ -71,48 +56,13 @@ DeepLearningCudaCorrelationCalculator::DeepLearningCudaCorrelationCalculator(
     }
 
     // e.g., 131072 for RTX 3090 (rounded up from 83968).
-    auto deviceThreadInfo = getDeviceThreadInfo(renderer->getDevice());
+    auto deviceThreadInfo = sgl::getDeviceThreadInfo(renderer->getDevice());
     srnGpuBatchSize1DBase = int(deviceThreadInfo.numCoresTotal) * 8;
     if (!sgl::isPowerOfTwo(srnGpuBatchSize1DBase)) {
         srnGpuBatchSize1DBase = sgl::nextPowerOfTwo(srnGpuBatchSize1DBase);
     }
     srnGpuBatchSize1DBase = std::clamp(srnGpuBatchSize1DBase, 256, 131072);
     // TODO: SmArch in cutlass_matmul.h seems to only support compute capability >= 7.0.
-
-    std::string implNameKeyLower = boost::to_lower_copy(implNameKeyUpper);
-    std::string modelPresetsJsonFilename =
-            sgl::AppSettings::get()->getDataDirectory() + "VolumeDataSets/models-" + implNameKeyLower + ".json";
-    if (sgl::FileUtils::get()->exists(modelPresetsJsonFilename)) {
-        parseModelPresetsFile(modelPresetsJsonFilename);
-    }
-}
-
-void DeepLearningCudaCorrelationCalculator::parseModelPresetsFile(const std::string& filename) {
-    // Parse the passed JSON file.
-    std::ifstream jsonFileStream(filename.c_str());
-    Json::CharReaderBuilder builder;
-    JSONCPP_STRING errorString;
-    Json::Value root;
-    if (!parseFromStream(builder, jsonFileStream, &root, &errorString)) {
-        sgl::Logfile::get()->writeError(errorString);
-        return;
-    }
-    jsonFileStream.close();
-
-    modelPresets.emplace_back("---");
-    modelPresetFilenames.emplace_back("---");
-
-    DataSetInformationPtr dataSetInformationRoot(new DataSetInformation);
-    Json::Value& modelsNode = root["models"];
-    for (Json::Value& model : modelsNode) {
-        modelPresets.push_back(model["name"].asString());
-        modelPresetFilenames.push_back(model["filename"].asString());
-    }
-
-    if (modelPresets.size() == 1) {
-        modelPresets.clear();
-        modelPresetFilenames.clear();
-    }
 }
 
 void DeepLearningCudaCorrelationCalculator::initialize() {
@@ -184,15 +134,10 @@ void DeepLearningCudaCorrelationCalculator::initialize() {
             "unpackStencilValues"), "Error in cuModuleGetFunction: ");
     delete[] moduleBuffer;
 
-    sgl::AppSettings::get()->getSettings().getValueOpt(modelFilePathSettingsKey.c_str(), modelFilePath);
-    if (sgl::FileUtils::get()->exists(modelFilePath) && !sgl::FileUtils::get()->isDirectory(modelFilePath)) {
-        loadModelFromFile(modelFilePath);
-    }
+    DeepLearningCorrelationCalculator::initialize();
 }
 
 DeepLearningCudaCorrelationCalculator::~DeepLearningCudaCorrelationCalculator() {
-    sgl::AppSettings::get()->getSettings().addKeyValue(modelFilePathSettingsKey, modelFilePath);
-
     if (permutationIndicesBufferCu != 0) {
         sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFree(
                 permutationIndicesBufferCu), "Error in cuMemFree: ");
@@ -223,148 +168,8 @@ DeepLearningCudaCorrelationCalculator::~DeepLearningCudaCorrelationCalculator() 
             stream), "Error in cuStreamDestroy: ");
 }
 
-void DeepLearningCudaCorrelationCalculator::renderGuiImplSub(sgl::PropertyEditor& propertyEditor) {
-    ICorrelationCalculator::renderGuiImplSub(propertyEditor);
-    if (IGFD_DisplayDialog(
-            fileDialogInstance,
-            fileDialogKey.c_str(), ImGuiWindowFlags_NoCollapse,
-            sgl::ImGuiWrapper::get()->getScaleDependentSize(1000, 580),
-            ImVec2(FLT_MAX, FLT_MAX))) {
-        if (IGFD_IsOk(fileDialogInstance)) {
-            std::string filePathName = IGFD_GetFilePathName(fileDialogInstance);
-            std::string filePath = IGFD_GetCurrentPath(fileDialogInstance);
-            std::string filter = IGFD_GetCurrentFilter(fileDialogInstance);
-            std::string userDatas;
-            if (IGFD_GetUserDatas(fileDialogInstance)) {
-                userDatas = std::string((const char*)IGFD_GetUserDatas(fileDialogInstance));
-            }
-            auto selection = IGFD_GetSelection(fileDialogInstance);
-
-            // Is this line data set or a volume data file for the scattering line tracer?
-            const char* currentPath = IGFD_GetCurrentPath(fileDialogInstance);
-            std::string filename = currentPath;
-            if (!filename.empty() && filename.back() != '/' && filename.back() != '\\') {
-                filename += "/";
-            }
-            filename += selection.table[0].fileName;
-            IGFD_Selection_DestroyContent(&selection);
-            if (currentPath) {
-                free((void*)currentPath);
-                currentPath = nullptr;
-            }
-
-            fileDialogDirectory = sgl::FileUtils::get()->getPathToFile(filename);
-
-            modelFilePath = filename;
-            loadModelFromFile(filename);
-            dirty = true;
-        }
-        IGFD_CloseDialog(fileDialogInstance);
-    }
-
-    propertyEditor.addInputAction("Model Path", &modelFilePath);
-    if (propertyEditor.addButton("", "Load")) {
-        loadModelFromFile(modelFilePath);
-        dirty = true;
-    }
-    ImGui::SameLine();
-    std::string buttonText = "Open from Disk...";
-    if (ImGui::Button(buttonText.c_str())) {
-        if (fileDialogDirectory.empty() || !sgl::FileUtils::get()->directoryExists(fileDialogDirectory)) {
-            fileDialogDirectory = sgl::AppSettings::get()->getDataDirectory() + implName + "/";
-            if (!sgl::FileUtils::get()->exists(fileDialogDirectory)) {
-                fileDialogDirectory = sgl::AppSettings::get()->getDataDirectory();
-            }
-        }
-        IGFD_OpenModal(
-                fileDialogInstance,
-                fileDialogKey.c_str(), fileDialogDescription.c_str(),
-                ".*,.zip,.7z,.tar,.tar.zip,.tar.gz,.tar.bz2,.tar.xz,.tar.lzma,.tar.7z",
-                fileDialogDirectory.c_str(),
-                "", 1, nullptr,
-                ImGuiFileDialogFlags_ConfirmOverwrite);
-    }
-
-    if (!modelPresets.empty() && propertyEditor.addCombo(
-            "Model Presets", &modelPresetIndex, modelPresets.data(), int(modelPresets.size()))) {
-        if (modelPresetIndex != 0) {
-            modelFilePath = modelPresetFilenames.at(modelPresetIndex);
-            loadModelFromFile(modelFilePath);
-            dirty = true;
-        }
-    }
-
-    if (!isMutualInformationData && propertyEditor.addCheckbox("Absolute Value", &calculateAbsoluteValue)) {
-        dirty = true;
-    }
-
-    // TODO
-    //propertyEditor.addText("Data type:", "Float");
-}
-
-void DeepLearningCudaCorrelationCalculator::renderGuiImplAdvanced(sgl::PropertyEditor& propertyEditor) {
-    ICorrelationCalculator::renderGuiImplAdvanced(propertyEditor);
-    if (networkType != NetworkType::MINE && propertyEditor.addCheckbox(
-            "Use Data NaN Stencil", &useDataNanStencil)) {
-        clearFieldDeviceData();
-        dirty = true;
-    }
-}
-
-void DeepLearningCudaCorrelationCalculator::setSettings(const SettingsMap& settings) {
-    ICorrelationCalculator::setSettings(settings);
-    if (settings.getValueOpt("model_file_path", modelFilePath)) {
-        loadModelFromFile(modelFilePath);
-        dirty = true;
-    }
-    if (settings.getValueOpt("model_preset_index", modelPresetIndex)) {
-        modelPresetIndex = std::clamp(modelPresetIndex, 0, int(modelPresetFilenames.size()) - 1);
-        modelFilePath = modelPresetFilenames.at(modelPresetIndex);
-        dirty = true;
-    }
-    if (settings.getValueOpt("calculate_absolute_value", calculateAbsoluteValue)) {
-        dirty = true;
-    }
-    if (settings.getValueOpt("use_data_nan_stencil", useDataNanStencil)) {
-        dirty = true;
-    }
-}
-
-void DeepLearningCudaCorrelationCalculator::getSettings(SettingsMap& settings) {
-    ICorrelationCalculator::getSettings(settings);
-    settings.addKeyValue("model_file_path", modelFilePath);
-    settings.addKeyValue("model_preset_index", modelPresetIndex);
-    settings.addKeyValue("calculate_absolute_value", calculateAbsoluteValue);
-    settings.addKeyValue("use_data_nan_stencil", useDataNanStencil);
-}
-
-bool DeepLearningCudaCorrelationCalculator::getSupportsSeparateFields() {
-    useSeparateFields = false;
-    return false;
-}
-
-void DeepLearningCudaCorrelationCalculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
-    ICorrelationCalculator::setVolumeData(_volumeData, isNewData);
-    if (isNewData) {
-        isNanStencilInitialized = false;
-    }
-}
-
 void DeepLearningCudaCorrelationCalculator::computeNanStencilBuffer() {
-    numNonNanValues = 0;
-    VolumeData::HostCacheEntry fieldEntry = getFieldEntryCpu(scalarFieldNames.at(fieldIndexGui), -1, -1, -1);
-    const auto* fieldData = fieldEntry->data<float>();
-    int xs = volumeData->getGridSizeX();
-    int ys = volumeData->getGridSizeY();
-    int zs = volumeData->getGridSizeZ();
-    std::vector<uint32_t> nonNanIndexBuffer;
-    uint32_t numCells = uint32_t(xs) * uint32_t(ys) * uint32_t(zs);
-    for (uint32_t cellIdx = 0; cellIdx < numCells; cellIdx++) {
-        if (!std::isnan(fieldData[cellIdx])) {
-            nonNanIndexBuffer.push_back(cellIdx);
-            numNonNanValues++;
-        }
-    }
+    std::vector<uint32_t> nonNanIndexBuffer = DeepLearningCorrelationCalculator::computeNanStencilBufferHost();
     if (nonNanIndexBufferCu != 0) {
         sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
                 nonNanIndexBufferCu, stream), "Error in cuMemFreeAsync: ");
@@ -381,17 +186,8 @@ void DeepLearningCudaCorrelationCalculator::computeNanStencilBuffer() {
 
 void DeepLearningCudaCorrelationCalculator::calculateDevice(
         int timeStepIdx, int ensembleIdx, const DeviceCacheEntry& deviceCacheEntry) {
-    renderer->insertImageMemoryBarrier(
-            deviceCacheEntry->getVulkanImage(),
-            VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
-            VK_ACCESS_NONE_KHR, VK_ACCESS_TRANSFER_WRITE_BIT);
-
+    DeepLearningCorrelationCalculator::calculateDevice(timeStepIdx, ensembleIdx, deviceCacheEntry);
     if (!getIsModuleLoaded()) {
-        deviceCacheEntry->getVulkanImage()->clearColor(glm::vec4(0.0f), renderer->getVkCommandBuffer());
-        sgl::Logfile::get()->writeWarning(
-                "Warning in DeepLearningCudaCorrelationCalculator::calculateDevice: Network modules are not loaded.",
-                true);
         return;
     }
 
@@ -446,8 +242,8 @@ void DeepLearningCudaCorrelationCalculator::calculateDevice(
         cachedVolumeDataSlice3dSizeUnpacked = 0;
     }
     if (useDataNanStencil && (recreatedUnpackBuffer || !isNanStencilInitialized)) {
-        const float fillValue = std::numeric_limits<float>::quiet_NaN();
-        const uint32_t fillValueUint = *reinterpret_cast<const uint32_t*>(&fillValue);
+        const uint32_t fillValueUint = sgl::convertBitRepresentationFloatToUint32(
+                std::numeric_limits<float>::quiet_NaN());
         sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemsetD32Async(
                 outputImageBufferUnpackedCu, fillValueUint, cachedVolumeDataSlice3dSizeUnpacked / sizeof(float),
                 stream), "Error in cuMemsetD32Async: ");
@@ -743,4 +539,3 @@ void DeepLearningCudaCorrelationCalculator::calculateDevice(
     //std::cout << "Elapsed time inference: " << elapsedInference.count() << "ms" << std::endl;
 #endif
 }
-

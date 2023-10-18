@@ -52,7 +52,7 @@ void main() {
     uint x = pointIdxReadOffset % xs;
     uint y = (pointIdxReadOffset / xs) % ys;
     uint z = pointIdxReadOffset / (xs * ys);
-    if (globalThreadIdx.x >= batchSize) {
+    if (globalThreadIdx >= batchSize) {
         return;
     }
     vec3 pointCoords = vec3(x, y, z) / vec3(xs - 1, ys - 1, zs - 1) * 2.0 - vec3(1.0);

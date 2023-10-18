@@ -29,11 +29,87 @@
 #ifndef CORRERENDER_VMLPCORRELATIONCALCULATOR_HPP
 #define CORRERENDER_VMLPCORRELATIONCALCULATOR_HPP
 
+#include "Volume/Cache/AuxiliaryMemoryToken.hpp"
+#include "VMLP/Format.hpp"
 #include "SymmetrizerType.hpp"
+#include "DeepLearningCorrelationCalculator.hpp"
 
-class VMLPCorrelationCalculator {
+struct VMLPModuleWrapper;
+struct VMLPCacheWrapper;
 
+class WriteGridPositionsPass;
+class WriteGridPositionsStencilPass;
+class WriteGridPositionReferencePass;
+class UnpackStencilValuesPass;
+class CopyDecoderOutputPass;
+
+namespace vmlp {
+class Matrix;
+}
+
+class VMLPCorrelationCalculator : public DeepLearningCorrelationCalculator {
+public:
+    explicit VMLPCorrelationCalculator(sgl::vk::Renderer* renderer);
+    void initialize() override;
+    ~VMLPCorrelationCalculator() override;
+    FilterDevice getFilterDevice() override { return FilterDevice::VULKAN; }
+    [[nodiscard]] CalculatorType getCalculatorType() const override { return CalculatorType::VMLP; }
+    void setVolumeData(VolumeData* _volumeData, bool isNewData) override;
+    void calculateDevice(int timeStepIdx, int ensembleIdx, const DeviceCacheEntry& deviceCacheEntry) override;
+
+    void setSettings(const SettingsMap& settings) override;
+    void getSettings(SettingsMap& settings) override;
+
+protected:
+    void computeNanStencilBuffer();
+    void clearFieldDeviceData() override {}
+    [[nodiscard]] bool getNeedsScalarFieldData() const override { return false; }
+
+    void loadModelFromFile(const std::string& modelPath) override;
+
+    // Inference steps to be implemented by subclasses.
+    bool getIsModuleLoaded() override { return moduleWrapper != nullptr; }
+    vmlp::Matrix createMatrix(size_t dim0, size_t dim1, VkBufferUsageFlags usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+    void recreateCache(int batchSize);
+    void runInferenceReference();
+    void runInferenceBatch(uint32_t batchOffset, uint32_t batchSize);
+    uint32_t getInputChannelAlignment() { return 1; }
+    uint32_t getSrnStride() { return 3; }
+
+    void renderGuiImplAdvanced(sgl::PropertyEditor& propertyEditor) override;
+
+    SymmetrizerType symmetrizerType = SymmetrizerType::Add;
+
+    // Internal settings.
+    void onFloatFormatChanged();
+    bool deviceSupporsFp16 = false;
+    vmlp::FloatFormat floatFormat = vmlp::FloatFormat::FLOAT32;
+
+    /// For networkType == NetworkType::SRN_MINE.
+    int srnGpuBatchSize1DBase = 131072;
+    size_t cachedVolumeDataSlice3dSize = 0;
+
+    /// NaN stencil for networkType == NetworkType::SRN_MINE.
+    sgl::vk::BufferPtr nonNanIndexBuffer{};
+    sgl::vk::BufferPtr outputImageBufferUnpacked{};
+    size_t cachedVolumeDataSlice3dSizeUnpacked = 0;
+
+    bool cacheNeedsRecreate = true;
+
+    // Network & cache.
+    std::shared_ptr<VMLPModuleWrapper> moduleWrapper;
+    std::shared_ptr<VMLPCacheWrapper> cacheWrapper;
+    uint32_t numLayersInEncoder = 0, numLayersOutEncoder = 0, numLayersInDecoder = 0, numLayersOutDecoder = 0;
+
+    sgl::vk::BufferPtr outputImageBuffer;
+    // For networkType == NetworkType::SRN_MINE.
+    std::shared_ptr<WriteGridPositionsPass> writeGridPositionsPass;
+    std::shared_ptr<WriteGridPositionsStencilPass> writeGridPositionsStencilPass;
+    std::shared_ptr<WriteGridPositionReferencePass> writeGridPositionReferencePass;
+    std::shared_ptr<UnpackStencilValuesPass> unpackStencilValuesPass;
+    std::shared_ptr<CopyDecoderOutputPass> copyDecoderOutputMutualInformationPass;
+    std::shared_ptr<CopyDecoderOutputPass> copyDecoderOutputCorrelationCoefficientPass;
+    std::shared_ptr<CopyDecoderOutputPass> copyDecoderOutputCorrelationCoefficientAbsPass;
 };
-
 
 #endif //CORRERENDER_VMLPCORRELATIONCALCULATOR_HPP

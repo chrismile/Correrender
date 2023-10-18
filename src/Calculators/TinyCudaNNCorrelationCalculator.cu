@@ -81,13 +81,6 @@ struct TinyCudaNNCacheWrapper {
     AuxiliaryMemoryToken auxMemoryToken{};
 };
 
-const uint32_t TINY_CUDA_NN_PARAMS_FORMAT_FLOAT = 0;
-const uint32_t TINY_CUDA_NN_PARAMS_FORMAT_HALF = 1;
-struct TinyCudaNNDataHeader {
-    uint32_t format = 0;
-    uint32_t numParams = 0;
-};
-
 TinyCudaNNCorrelationCalculator::TinyCudaNNCorrelationCalculator(sgl::vk::Renderer* renderer)
         : DeepLearningCudaCorrelationCalculator("tiny-cuda-nn", "tinyCudaNN", renderer) {
     cacheWrapper = std::make_shared<TinyCudaNNCacheWrapper>();
@@ -167,12 +160,12 @@ template<class T, class PARAMS_T> static void loadNetwork(
         std::shared_ptr<tcnn::Network<T, PARAMS_T>>& network,
         std::shared_ptr<tcnn::Evaluator<T, PARAMS_T, PARAMS_T>>& evaluator,
         const std::string& modelPath, const nlohmann::json& config, const sgl::ArchiveEntry& entry) {
-    auto* header = reinterpret_cast<TinyCudaNNDataHeader*>(entry.bufferData.get());
-    uint8_t* paramsData = entry.bufferData.get() + sizeof(TinyCudaNNDataHeader);
+    auto* header = reinterpret_cast<NetworkParametersHeader*>(entry.bufferData.get());
+    uint8_t* paramsData = entry.bufferData.get() + sizeof(NetworkParametersHeader);
     uint32_t numParams = header->numParams;
 
-    size_t sizePerEntry = header->format == TINY_CUDA_NN_PARAMS_FORMAT_FLOAT ? 4 : 2;
-    if (numParams * sizePerEntry + sizeof(TinyCudaNNDataHeader) != entry.bufferSize) {
+    size_t sizePerEntry = header->format == NETWORK_PARAMS_FORMAT_FLOAT ? 4 : 2;
+    if (numParams * sizePerEntry + sizeof(NetworkParametersHeader) != entry.bufferSize) {
         sgl::Logfile::get()->throwError(
                 "Error in loadNetwork: Invalid number of parameters for file size.");
     }
@@ -230,13 +223,13 @@ template<class T, class PARAMS_T> static void loadNetwork(
     }
 
 #if TCNN_HALF_PRECISION
-    if (header->format == TINY_CUDA_NN_PARAMS_FORMAT_FLOAT) {
+    if (header->format == NETWORK_PARAMS_FORMAT_FLOAT) {
         evaluator->set_params_full_precision(reinterpret_cast<float*>(paramsData), numParams, false);
     } else {
         evaluator->set_params(reinterpret_cast<precision_t*>(paramsData), numParams, false);
     }
 #else
-    if (header->format == TINY_CUDA_NN_PARAMS_FORMAT_FLOAT) {
+    if (header->format == NETWORK_PARAMS_FORMAT_FLOAT) {
         evaluator->set_params(reinterpret_cast<float*>(paramsData), numParams, false);
     } else {
         sgl::Logfile::get()->throwError(

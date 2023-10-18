@@ -748,7 +748,6 @@ if $replicability; then
         echo "------------------------"
         echo "downloading synthetic data"
         echo "------------------------"
-        wget https://zenodo.org/records/10018860/files/linear_4x4.nc?download=1
         curl --show-error --fail \
         https://zenodo.org/records/10018860/files/linear_4x4.nc --output "./Data/VolumeDataSets/linear_4x4.nc"
     fi

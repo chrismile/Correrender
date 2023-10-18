@@ -33,10 +33,11 @@
 #include <Graphics/Vulkan/Render/CommandBuffer.hpp>
 
 #include "Volume/Cache/AuxiliaryMemoryToken.hpp"
-#include "CorrelationCalculator.hpp"
+#include "VMLP/Format.hpp"
 #include "SymmetrizerType.hpp"
+#include "DeepLearningCorrelationCalculator.hpp"
 
-class DeepLearningCudaCorrelationCalculator : public ICorrelationCalculator {
+class DeepLearningCudaCorrelationCalculator : public DeepLearningCorrelationCalculator {
 public:
     /**
      * @param implName E.g., "tiny-cuda-nn" or "QuickMLP".
@@ -47,41 +48,17 @@ public:
             const std::string& implName, const std::string& implNameKey, sgl::vk::Renderer* renderer);
     void initialize() override;
     ~DeepLearningCudaCorrelationCalculator() override;
-    std::string getOutputFieldName() override {
-        std::string outputFieldName = "Correlation " + implName;
-        if (calculatorConstructorUseCount > 1) {
-            outputFieldName += " (" + std::to_string(calculatorConstructorUseCount) + ")";
-        }
-        return outputFieldName;
-    }
-    [[nodiscard]] bool getHasFixedRange() const override {
-        return !isMutualInformationData;
-    }
-    [[nodiscard]] std::pair<float, float> getFixedRange() const override {
-        if (calculateAbsoluteValue) {
-            return std::make_pair(0.0f, 1.0f);
-        } else {
-            return std::make_pair(-1.0f, 1.0f);
-        }
-    }
     FilterDevice getFilterDevice() override { return FilterDevice::CUDA; }
     void calculateDevice(int timeStepIdx, int ensembleIdx, const DeviceCacheEntry& deviceCacheEntry) override;
-    void setVolumeData(VolumeData* _volumeData, bool isNewData) override;
-
-    void setSettings(const SettingsMap& settings) override;
-    void getSettings(SettingsMap& settings) override;
 
 protected:
     void computeNanStencilBuffer();
-    virtual void loadModelFromFile(const std::string& modelPath) = 0;
     void clearFieldDeviceData() override {}
-    bool getSupportsSeparateFields() override;
     [[nodiscard]] bool getNeedsScalarFieldData() const override { return networkType == NetworkType::MINE; }
 
     // Inference steps to be implemented by subclasses.
     virtual void callbackBeginCompute() {}
     virtual void callbackEndCompute() {}
-    virtual bool getIsModuleLoaded() = 0;
     virtual void recreateCache(int batchSize) = 0;
     virtual bool getCacheNeedsRecreate() { return cacheNeedsRecreate; }
     virtual CUdeviceptr getReferenceInputPointer() = 0;
@@ -91,33 +68,19 @@ protected:
     virtual uint32_t getInputChannelAlignment() { return 1; }
     virtual uint32_t getSrnStride() { return 3; }
 
-    void renderGuiImplSub(sgl::PropertyEditor& propertyEditor) override;
-    void renderGuiImplAdvanced(sgl::PropertyEditor& propertyEditor) override;
-
-    std::string modelFilePath;
-    std::string fileDialogDirectory;
-    NetworkType networkType = NetworkType::MINE;
-    std::vector<std::string> modelPresets;
-    std::vector<std::string> modelPresetFilenames;
-    int modelPresetIndex = 0;
+    SymmetrizerType symmetrizerType = SymmetrizerType::Add;
 
     /// For networkType == NetworkType::MINE.
-    SymmetrizerType symmetrizerType = SymmetrizerType::Add;
     const int gpuBatchSize1DBase = 16384;
 
     /// For networkType == NetworkType::SRN_MINE.
     int srnGpuBatchSize1DBase = 131072;
     size_t cachedVolumeDataSlice3dSize = 0;
-    bool isMutualInformationData = true;
-    bool calculateAbsoluteValue = false;
 
     /// NaN stencil for networkType == NetworkType::SRN_MINE.
-    bool useDataNanStencil = true;
-    bool isNanStencilInitialized = false;
     CUdeviceptr nonNanIndexBufferCu{};
     CUdeviceptr outputImageBufferUnpackedCu{};
     size_t cachedVolumeDataSlice3dSizeUnpacked = 0;
-    uint32_t numNonNanValues = 0;
 
     size_t cachedCorrelationMemberCountDevice = std::numeric_limits<size_t>::max();
     bool cacheNeedsRecreate = false;
@@ -146,10 +109,6 @@ protected:
     CUfunction writeGridPositionsFunctionCu{}, writeGridPositionsStencilFunctionCu{};
     CUfunction writeGridPositionReferenceFunctionCu{};
     CUfunction unpackStencilValuesFunctionCu{};
-
-private:
-    void parseModelPresetsFile(const std::string& filename);
-    std::string implName, implNameKey, implNameKeyUpper, fileDialogKey, fileDialogDescription, modelFilePathSettingsKey;
 };
 
 #endif //CORRERENDER_DEEPLEARNINGCUDACORRELATIONCALCULATOR_HPP

@@ -35,6 +35,7 @@
 
 #include <Utils/AppSettings.hpp>
 #include <Graphics/Vulkan/Utils/Swapchain.hpp>
+#include <Graphics/Vulkan/Utils/DeviceThreadInfo.hpp>
 #include <Graphics/Vulkan/Render/Renderer.hpp>
 #include <Graphics/Vulkan/Render/CommandBuffer.hpp>
 #include <Graphics/Vulkan/Render/ComputePipeline.hpp>
@@ -51,7 +52,6 @@
 #include "MutualInformation.hpp"
 #include "ReferencePointSelectionRenderer.hpp"
 #include "CorrelationCalculator.hpp"
-#include "DeviceThreadInfo.hpp"
 
 ICorrelationCalculator::ICorrelationCalculator(sgl::vk::Renderer* renderer) : Calculator(renderer) {
 }
@@ -1616,7 +1616,7 @@ void CorrelationComputePass::_render() {
          * Estimated time: M * N * log2(N).
          * On a RTX 3090, M = 1.76 * 10^6 and N = 100 takes approx. 1s.
          */
-        DeviceThreadInfo deviceCoresInfo = getDeviceThreadInfo(device);
+        sgl::DeviceThreadInfo deviceCoresInfo = sgl::getDeviceThreadInfo(device);
         const uint32_t numCudaCoresRtx3090 = 10496;
         int M = xs * ys * zs;
         int N = cachedCorrelationMemberCount;
@@ -1891,7 +1891,7 @@ void CorrelationComputePass::computeCuda(
     sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuOccupancyMaxPotentialBlockSize(
             &minGridSize, &bestBlockSize, kernelCache->kernel, nullptr, 0, 0), "Error in cuOccupancyMaxPotentialBlockSize: ");
 
-    DeviceThreadInfo deviceCoresInfo = getDeviceThreadInfo(device);
+    sgl::DeviceThreadInfo deviceCoresInfo = sgl::getDeviceThreadInfo(device);
     int BLOCK_SIZE = sgl::lastPowerOfTwo(bestBlockSize);
     while (BLOCK_SIZE > int(deviceCoresInfo.warpSize)
            && sgl::iceil(int(M), BLOCK_SIZE) * 2 < int(deviceCoresInfo.numMultiprocessors)) {

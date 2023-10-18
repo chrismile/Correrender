@@ -61,14 +61,6 @@ struct QuickMLPCacheWrapper {
     AuxiliaryMemoryToken auxMemoryToken{};
 };
 
-const uint32_t QUICK_MLP_PARAMS_FORMAT_FLOAT = 0;
-const uint32_t QUICK_MLP_PARAMS_FORMAT_HALF = 1;
-struct QuickMLPDataHeader {
-    uint32_t format = 0;
-    uint32_t numParams = 0;
-};
-
-
 QuickMLPCorrelationCalculator::QuickMLPCorrelationCalculator(sgl::vk::Renderer* renderer)
         : DeepLearningCudaCorrelationCalculator("QuickMLP", "quickMLP", renderer) {
     cacheWrapper = std::make_shared<QuickMLPCacheWrapper>();
@@ -104,29 +96,29 @@ void loadNetwork(
         }
     }
 
-    auto* header = reinterpret_cast<QuickMLPDataHeader*>(entry.bufferData.get());
-    uint8_t* paramsDataHost = entry.bufferData.get() + sizeof(QuickMLPDataHeader);
+    auto* header = reinterpret_cast<NetworkParametersHeader*>(entry.bufferData.get());
+    uint8_t* paramsDataHost = entry.bufferData.get() + sizeof(NetworkParametersHeader);
     if (header->numParams != numParametersTotal) {
         sgl::Logfile::get()->throwError(
                 "Error in loadNetwork: Mismatching network parameter count (" + std::to_string(header->numParams)
                 + " vs. " + std::to_string(numParametersTotal) + ") for \"" + modelPath + "\".");
     }
-    if (header->format == QUICK_MLP_PARAMS_FORMAT_FLOAT && precision == qmlp::Tensor::Precision::HALF) {
+    if (header->format == NETWORK_PARAMS_FORMAT_FLOAT && precision == qmlp::Tensor::Precision::HALF) {
         float* dataOld = reinterpret_cast<float*>(paramsDataHost);
         half* dataNew = new half[header->numParams];
         for (uint32_t i = 0; i < header->numParams; i++) {
             dataNew[i] = half(dataOld[i]);
         }
         paramsDataHost = reinterpret_cast<uint8_t*>(dataNew);
-    } else if (header->format == QUICK_MLP_PARAMS_FORMAT_HALF && precision == qmlp::Tensor::Precision::FLOAT) {
+    } else if (header->format == NETWORK_PARAMS_FORMAT_HALF && precision == qmlp::Tensor::Precision::FLOAT) {
         half* dataOld = reinterpret_cast<half*>(paramsDataHost);
         float* dataNew = new float[header->numParams];
         for (uint32_t i = 0; i < header->numParams; i++) {
             dataNew[i] = float(dataOld[i]);
         }
         paramsDataHost = reinterpret_cast<uint8_t*>(dataNew);
-    } else if (header->format == QUICK_MLP_PARAMS_FORMAT_FLOAT && precision != qmlp::Tensor::Precision::FLOAT
-            || header->format == QUICK_MLP_PARAMS_FORMAT_HALF && precision != qmlp::Tensor::Precision::HALF) {
+    } else if (header->format == NETWORK_PARAMS_FORMAT_FLOAT && precision != qmlp::Tensor::Precision::FLOAT
+            || header->format == NETWORK_PARAMS_FORMAT_HALF && precision != qmlp::Tensor::Precision::HALF) {
         sgl::Logfile::get()->throwError(
                 "Error in loadNetwork: Precision mismatch between QuickMLP JSON configuration and binary data for \""
                 + modelPath + "\".");
@@ -157,8 +149,8 @@ void loadNetwork(
         }
     }
 
-    if (header->format == QUICK_MLP_PARAMS_FORMAT_FLOAT && precision == qmlp::Tensor::Precision::HALF
-            || header->format == QUICK_MLP_PARAMS_FORMAT_HALF && precision == qmlp::Tensor::Precision::FLOAT) {
+    if (header->format == NETWORK_PARAMS_FORMAT_FLOAT && precision == qmlp::Tensor::Precision::HALF
+            || header->format == NETWORK_PARAMS_FORMAT_HALF && precision == qmlp::Tensor::Precision::FLOAT) {
         delete[] paramsDataHost;
     }
 }

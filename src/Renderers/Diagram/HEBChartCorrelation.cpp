@@ -38,6 +38,7 @@
 
 #include <Math/Math.hpp>
 #include <Graphics/Vulkan/Utils/SyncObjects.hpp>
+#include <Graphics/Vulkan/Utils/DeviceThreadInfo.hpp>
 #include <Graphics/Vulkan/Render/Renderer.hpp>
 #include <Graphics/Vulkan/Render/ComputePipeline.hpp>
 #include <Utils/Semaphore.hpp>
@@ -47,7 +48,6 @@
 #include "Calculators/Correlation.hpp"
 #include "Calculators/CorrelationCalculator.hpp"
 #include "Calculators/MutualInformation.hpp"
-#include "Calculators/DeviceThreadInfo.hpp"
 #include "Test/MultivariateGaussian.hpp"
 #include "HEBChart.hpp"
 #include "BayOpt.hpp"
@@ -1255,7 +1255,7 @@ void HEBChart::createBatchCacheData(uint32_t& batchSizeSamplesMax) {
     }
 
     sgl::vk::Device* device = sgl::AppSettings::get()->getPrimaryDevice();
-    DeviceThreadInfo deviceCoresInfo = getDeviceThreadInfo(device);
+    sgl::DeviceThreadInfo deviceCoresInfo = sgl::getDeviceThreadInfo(device);
     batchSizeSamplesMax = std::max(batchSizeSamplesMax, deviceCoresInfo.numCudaCoresEquivalent);
 
     if (!computeRenderer) {

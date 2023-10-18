@@ -26,41 +26,32 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef CORRERENDER_DEVICETHREADINFO_HPP
-#define CORRERENDER_DEVICETHREADINFO_HPP
+#ifndef CORRERENDER_FORMAT_HPP
+#define CORRERENDER_FORMAT_HPP
 
 #include <cstdint>
 
-struct DeviceThreadInfo {
-    uint32_t numMultiprocessors;
-    uint32_t warpSize;
-    uint32_t numCoresPerMultiprocessor;
-    uint32_t numCoresTotal;
-    uint32_t numCudaCoresEquivalent;
+namespace vmlp {
+
+enum class FloatFormat {
+    FLOAT32 = 0, FLOAT16 = 1
+};
+const uint32_t FLOAT_FORMAT_SIZES_IN_BYTE[] = {
+        4, 2
+};
+const char* const FLOAT_FORMAT_UI_NAMES[] = { "Float", "Half" };
+const char* const FLOAT_FORMAT_GLSL_NAMES[] = { "float", "float16_t" };
+const char* const FLOAT2_FORMAT_GLSL_NAMES[] = { "vec2", "f16vec2" };
+const char* const FLOAT3_FORMAT_GLSL_NAMES[] = { "vec3", "f16vec3" };
+const char* const FLOAT4_FORMAT_GLSL_NAMES[] = { "vec4", "f16vec4" };
+
+}
+
+const uint32_t NETWORK_PARAMS_FORMAT_FLOAT = 0;
+const uint32_t NETWORK_PARAMS_FORMAT_HALF = 1;
+struct NetworkParametersHeader {
+    uint32_t format = 0;
+    uint32_t numParams = 0;
 };
 
-/*
- * Examples:
- * - NVIDIA RTX 3090: 82 SMs, 10496 CUDA Cores, Factor: 128
- * => numMultiprocessors = 82
- * => warpSize = 32
- * => numCoresPerMultiprocessor = 128
- * => numCoresTotal = 10496
- * - AMD Radeon RX 6900XT: 80 CUs, 5120 Stream Processors, Factor: 64
- * => numMultiprocessors = 80
- * => warpSize = 64
- * => numCoresPerMultiprocessor = 64
- * => numCoresTotal = 5120
- * => numCudaCoresEquivalent = 10240
- * - Intel HD Graphics 630: 192 FP32 ALUs, 24 EUs, 3 Subslices
- * (https://en.wikipedia.org/wiki/List_of_Intel_graphics_processing_units)
- */
-
-DeviceThreadInfo getDeviceThreadInfo(sgl::vk::Device* device);
-
-#ifdef SUPPORT_CUDA_INTEROP
-typedef int CUdevice;
-DeviceThreadInfo getCudaDeviceThreadInfo(CUdevice cuDevice);
-#endif
-
-#endif //CORRERENDER_DEVICETHREADINFO_HPP
+#endif //CORRERENDER_FORMAT_HPP
