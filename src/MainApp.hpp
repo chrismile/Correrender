@@ -159,6 +159,7 @@ private:
     void loadStateFromJsonObject(Json::Value root);
     void loadReplicabilityStampState();
     bool useReplicabilityStampMode = false;
+    int replicabilityFrameNumber = 0;
     bool stateModeSave = false;
     std::string stateFileDirectory;
     // For field similarity computation.

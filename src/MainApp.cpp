@@ -60,6 +60,7 @@
 #include <Math/Geometry/MatrixUtil.hpp>
 #include <Graphics/Window.hpp>
 #include <Graphics/Vulkan/Utils/Instance.hpp>
+#include <Graphics/Vulkan/Utils/Swapchain.hpp>
 #include <Graphics/Vulkan/Render/Renderer.hpp>
 #ifdef SUPPORT_OPENCL_INTEROP
 #include <Graphics/Vulkan/Utils/InteropOpenCL.hpp>
@@ -639,11 +640,6 @@ void MainApp::render() {
         quit();
     }*/
 
-    if (useReplicabilityStampMode) {
-        useReplicabilityStampMode = false;
-        loadReplicabilityStampState();
-    }
-
     if (usePerformanceMeasurementMode) {
         performanceMeasurer->beginRenderFunction();
     }
@@ -750,6 +746,17 @@ void MainApp::render() {
 void MainApp::renderGui() {
     focusedWindowIndex = -1;
     mouseHoverWindowIndex = -1;
+
+    if (useReplicabilityStampMode) {
+        const auto NUM_STEPS = int(sgl::AppSettings::get()->getSwapchain()->getNumImages());
+        if (replicabilityFrameNumber < NUM_STEPS) {
+            replicabilityFrameNumber++;
+        } else if (replicabilityFrameNumber == NUM_STEPS) {
+            useReplicabilityStampMode = false;
+            replicabilityFrameNumber++;
+            loadReplicabilityStampState();
+        }
+    }
 
     if (sgl::Keyboard->keyPressed(SDLK_o) && (sgl::Keyboard->getModifier() & (KMOD_LCTRL | KMOD_RCTRL)) != 0) {
         openFileDialog();
