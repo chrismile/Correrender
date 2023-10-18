@@ -24,7 +24,7 @@ Please execute the script `./build-linux.sh --replicability` in the repository f
 It will compile and install all requirements, download the synthetic test data set, build and execute the program
 reproducing Figure 9 from the paper.
 This process may take some time depending on your internet connection speed. Please note that superuser rights need to
-be given to parts of the program, as it will install some dependencies using the apt (Ubuntu) or Pacman (Arch Linux)
+be given to parts of the script, as it will install some dependencies using the apt (Ubuntu) or Pacman (Arch Linux)
 package managers.
 
 
