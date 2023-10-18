@@ -17,25 +17,15 @@ Manuscript ID: TVCG-2023-08-0438.R1
 
 ## Build Process
 
-While the build process is supported both on Linux and Windows, we only provide a script for Linux to not only build
-the application, but also reproduce a figure from the paper.
+While the build process is supported both on Linux and Windows, we currently only provide a script for Linux to not
+only build the application, but also reproduce a figure from the paper.
 
 Please execute the script `./build-linux.sh --replicability` in the repository folder on the command line.
-It will compile and install all requirements, generate the synthetic test data set, build and execute the program
-reproducing Figure 9 (left) from the paper.
+It will compile and install all requirements, download the synthetic test data set, build and execute the program
+reproducing Figure 9 from the paper.
 This process may take some time depending on your internet connection speed. Please note that superuser rights need to
 be given to parts of the program, as it will install some dependencies using the apt (Ubuntu) or Pacman (Arch Linux)
 package managers.
-
-When running the script the first time with the arguments `--replicability`, it will create the synthetic test data
-used to reproduce Figure 9. For this, Python is used (which is otherwise not necessary for running the program).
-
-Please make sure to install a version of Python beforehand that is able to run the Python script. The script has the
-dependencies `numpy`, `numba` and `netcdf4`, which can be installed, e.g., via Anaconda with the following command:
-
-```
-conda install -c numba numba -c anaconda numpy -c conda-forge netcdf4
-```
 
 
 ## Supported Operating Systems & Hardware
@@ -49,12 +39,9 @@ The program has been tested on the following hardware configurations:
 - Ubuntu 22.04 with an NVIDIA RTX 3090
 - Windows 10 with an AMD Radeon RX 6900 XT
 
-If you encounter any bugs on other hardware, please open an issue report
-(https://github.com/chrismile/Correrender/issues) for this project.
-
 
 ## Troubleshooting
 
-If an error occurs during the build process, please open an [issue report](https://github.com/chrismile/Correrender/issues)
+If an error occurs during the build process or when running the program, please open an [issue report](https://github.com/chrismile/Correrender/issues)
 or contact us by e-mail. After the bug was fixed, please pull the new code and delete the directory `third_party`
 before again calling `./build-linux.sh --replicability`.

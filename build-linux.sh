@@ -737,13 +737,20 @@ chmod +x "$destination_dir/run.sh"
 # Replicability Stamp mode.
 params_run=()
 if $replicability; then
+    mkdir -p "./Data/VolumeDataSets"
     if [ ! -f "./Data/VolumeDataSets/linear_4x4.nc" ]; then
+        #echo "------------------------"
+        #echo "generating synthetic data"
+        #echo "------------------------"
+        #pushd scripts >/dev/null
+        #python3 generate_synth_box_ensembles.py
+        #popd >/dev/null
         echo "------------------------"
-        echo "generating synthetic data"
+        echo "downloading synthetic data"
         echo "------------------------"
-        pushd scripts >/dev/null
-        python3 generate_synth_box_ensembles.py
-        popd >/dev/null
+        wget https://zenodo.org/records/10018860/files/linear_4x4.nc?download=1
+        curl --show-error --fail \
+        https://zenodo.org/records/10018860/files/linear_4x4.nc --output "./Data/VolumeDataSets/linear_4x4.nc"
     fi
     if [ ! -f "./Data/VolumeDataSets/datasets.json" ]; then
         printf "{ \"datasets\": [ { \"name\": \"linear_4x4\", \"filename\": \"linear_4x4.nc\" } ] }" >> ./Data/VolumeDataSets/datasets.json
