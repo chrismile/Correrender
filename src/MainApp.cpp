@@ -639,6 +639,11 @@ void MainApp::render() {
         quit();
     }*/
 
+    if (useReplicabilityStampMode) {
+        useReplicabilityStampMode = false;
+        loadReplicabilityStampState();
+    }
+
     if (usePerformanceMeasurementMode) {
         performanceMeasurer->beginRenderFunction();
     }

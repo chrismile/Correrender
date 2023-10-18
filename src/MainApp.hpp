@@ -87,7 +87,7 @@ public:
     void setNewState(const InternalState& newState);
 
     /// Replicability stamp mode.
-    void loadReplicabilityStampState();
+    void setUseReplicabilityStampMode();
 
 protected:
     void renderGuiGeneralSettingsPropertyEditor() override;
@@ -157,6 +157,8 @@ private:
     void saveStateToFile(const std::string& stateFilePath);
     void loadStateFromFile(const std::string& stateFilePath);
     void loadStateFromJsonObject(Json::Value root);
+    void loadReplicabilityStampState();
+    bool useReplicabilityStampMode = false;
     bool stateModeSave = false;
     std::string stateFileDirectory;
     // For field similarity computation.

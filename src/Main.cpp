@@ -268,7 +268,7 @@ int main(int argc, char *argv[]) {
     if (!isHeadlessMode) {
         auto app = new MainApp();
         if (useReplicabilityStampMode) {
-            app->loadReplicabilityStampState();
+            app->setUseReplicabilityStampMode();
         }
         app->run();
         delete app;

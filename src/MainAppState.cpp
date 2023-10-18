@@ -432,6 +432,10 @@ void MainApp::loadStateFromJsonObject(Json::Value root) {
     onCameraReset();
 }
 
+void MainApp::setUseReplicabilityStampMode() {
+    useReplicabilityStampMode = true;
+}
+
 void MainApp::loadReplicabilityStampState() {
     Json::CharReaderBuilder builder;
     const std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
