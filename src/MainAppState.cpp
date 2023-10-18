@@ -441,9 +441,23 @@ void MainApp::loadReplicabilityStampState() {
     const std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
     JSONCPP_STRING errorString;
     Json::Value root;
+
+    int desktopWidth = 0;
+    int desktopHeight = 0;
+    int refreshRate = 60;
+    sgl::AppSettings::get()->getDesktopDisplayMode(desktopWidth, desktopHeight, refreshRate);
+    const char* replicabilityStateString;
+    int stateStringLength;
+    if (desktopWidth == 3840 && desktopHeight == 2160) {
+        replicabilityStateString = REPLICABILITY_STATE_STRING_4K;
+        stateStringLength = IM_ARRAYSIZE(REPLICABILITY_STATE_STRING_4K);
+    } else {
+        replicabilityStateString = REPLICABILITY_STATE_STRING_MISC;
+        stateStringLength = IM_ARRAYSIZE(REPLICABILITY_STATE_STRING_MISC);
+    }
+
     if (!reader->parse(
-            REPLICABILITY_STATE_STRING, REPLICABILITY_STATE_STRING + IM_ARRAYSIZE(REPLICABILITY_STATE_STRING),
-            &root, &errorString)) {
+            replicabilityStateString, replicabilityStateString + stateStringLength, &root, &errorString)) {
         sgl::Logfile::get()->writeError(errorString);
         return;
     }

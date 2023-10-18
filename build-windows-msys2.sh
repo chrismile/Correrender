@@ -43,15 +43,19 @@ skia_link_dynamically=true
 # VKVG support is disabled due to: https://github.com/jpbruyere/vkvg/issues/140
 build_with_vkvg_support=false
 build_with_osqp_support=true
+# Replicability Stamp (https://www.replicabilitystamp.org/) mode for replicating a figure from the corresponding paper.
+replicability=false
 
 # Process command line arguments.
 custom_glslang=false
 for ((i=1;i<=$#;i++));
 do
     if [ ${!i} = "--do-not-run" ]; then
-            run_program=false
+        run_program=false
     elif [ ${!i} = "--custom-glslang" ]; then
         custom_glslang=true
+    elif [ ${!i} = "--replicability" ]; then
+        replicability=true
     fi
 done
 
@@ -432,6 +436,30 @@ fi
 printf "@echo off\npushd %%~dp0\npushd bin\nstart \"\" Correrender.exe\n" > "$destination_dir/run.bat"
 
 
+# Replicability Stamp mode.
+params_run=()
+if $replicability; then
+    mkdir -p "./Data/VolumeDataSets"
+    if [ ! -f "./Data/VolumeDataSets/linear_4x4.nc" ]; then
+        #echo "------------------------"
+        #echo "generating synthetic data"
+        #echo "------------------------"
+        #pushd scripts >/dev/null
+        #python3 generate_synth_box_ensembles.py
+        #popd >/dev/null
+        echo "------------------------"
+        echo "downloading synthetic data"
+        echo "------------------------"
+        curl --show-error --fail \
+        https://zenodo.org/records/10018860/files/linear_4x4.nc --output "./Data/VolumeDataSets/linear_4x4.nc"
+    fi
+    if [ ! -f "./Data/VolumeDataSets/datasets.json" ]; then
+        printf "{ \"datasets\": [ { \"name\": \"linear_4x4\", \"filename\": \"linear_4x4.nc\" } ] }" >> ./Data/VolumeDataSets/datasets.json
+    fi
+    params_run+=(--replicability)
+fi
+
+
 # Run the program as the last step.
 echo "All done!"
 pushd $build_dir >/dev/null
@@ -443,5 +471,5 @@ elif [[ ! "${PATH}" == *"${PROJECTPATH}/third_party/sgl/install/bin"* ]]; then
 fi
 
 if [ $run_program = true ]; then
-    ./Correrender
+    ./Correrender "${params_run[@]}"
 fi
