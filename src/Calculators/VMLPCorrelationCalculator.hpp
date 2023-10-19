@@ -70,6 +70,8 @@ protected:
     // Inference steps to be implemented by subclasses.
     bool getIsModuleLoaded() override { return moduleWrapper != nullptr; }
     vmlp::Matrix createMatrix(size_t dim0, size_t dim1, VkBufferUsageFlags usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+    vmlp::Matrix createMatrixFloat(
+            size_t dim0, size_t dim1, VkBufferUsageFlags usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
     void recreateCache(int batchSize);
     void runInferenceReference();
     void runInferenceBatch(uint32_t batchOffset, uint32_t batchSize);

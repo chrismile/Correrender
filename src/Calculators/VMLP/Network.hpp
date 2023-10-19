@@ -99,7 +99,12 @@ const uint32_t ALIGNMENT_MLP = 16;
 
 class Module {
 public:
-    virtual ~Module() = default;
+    virtual ~Module() {
+        if (parametersCpu) {
+            delete[] parametersCpu;
+            parametersCpu = nullptr;
+        }
+    }
 
     // Input/output information functionality.
     virtual uint32_t getOutputAlignment() { return 1; }
@@ -111,13 +116,14 @@ public:
 
     // Parameter functionality.
     virtual uint32_t getNumParameters()=0;
-    virtual void setParametersCpu(float* parameters, uint32_t numParameters)=0;
+    virtual void setParametersCpu(float* parameters, uint32_t numParameters);
 
     // Inference functionality.
     virtual void runInference()=0;
 
 protected:
     FloatFormat format = FloatFormat::FLOAT32;
+    float* parametersCpu = nullptr;
 };
 
 typedef std::shared_ptr<Module> ModulePtr;
@@ -146,7 +152,8 @@ public:
         }
 
         auto batchSize = input.getBatchSize();
-        if (batchSize != intermediateOutput.getBatchSize()) {
+        if (batchSize != intermediateOutput.getBatchSize() || floatFormatChanged) {
+            floatFormatChanged = false;
             auto channelsEncodingOut = encoding->getNumChannelsOut();
             // Add "VK_BUFFER_USAGE_TRANSFER_SRC_BIT |" for debugging purposes.
             auto intermediateBuffer = std::make_shared<sgl::vk::Buffer>(
@@ -164,6 +171,10 @@ public:
         network->setBatchSize(_batchSize);
     }
     void setFloatFormat(FloatFormat _format) override {
+        if (format != _format) {
+            floatFormatChanged = true;
+            format = _format;
+        }
         encoding->setFloatFormat(_format);
         network->setFloatFormat(_format);
     }
@@ -185,6 +196,7 @@ public:
 
 private:
     sgl::vk::Device* device;
+    bool floatFormatChanged = true;
     Matrix intermediateOutput;
     std::shared_ptr<Module> network = nullptr;
     std::shared_ptr<Module> encoding = nullptr;
@@ -208,7 +220,6 @@ public:
     uint32_t getNumParameters() override {
         return numParameters;
     }
-    void setParametersCpu(float* parameters, uint32_t _numParameters) override;
 
     void runInference() override;
 
@@ -222,6 +233,7 @@ private:
     uint32_t numParameters;
     sgl::vk::BufferPtr parametersBuffer;
     sgl::vk::BufferPtr intermediateOutputBuffers[2];
+    bool floatFormatChanged = true;
     uint32_t cachedBatchSize = 0;
     std::vector<std::shared_ptr<MlpPass>> layerPasses;
 };

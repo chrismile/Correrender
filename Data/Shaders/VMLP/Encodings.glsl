@@ -42,12 +42,47 @@ layout(local_size_x = BLOCK_SIZE, local_size_y = 1, local_size_z = 1) in;
 #define IDX_OUT(channelIdx, batchIdx) (OFFSET_OUT + (channelIdx) + (batchIdx) * NUM_CHANNELS_OUT)
 
 layout(binding = 0, std430) readonly buffer InputBuffer {
-    real inputBuffer[];
+    float inputBuffer[];
 };
 
 layout(binding = 1, std430) writeonly buffer OutputBuffer {
     real outputBuffer[];
 };
+
+
+-- Padding.Compute
+
+#version 450 core
+
+layout(local_size_x = BLOCK_SIZE, local_size_y = 1, local_size_z = 1) in;
+
+/**
+ * Global defines:
+ * - OFFSET_OUT: The write channel offset.
+ * - NUM_CHANNELS_OUT: The number of output channels.
+ * - NUM_CHANNELS_TO_ENCODE: The number of channels to encode.
+ */
+
+// Analogous to tiny-cuda-nn with column major format.
+#define IDX_OUT(channelIdx, batchIdx) (OFFSET_OUT + (channelIdx) + (batchIdx) * NUM_CHANNELS_OUT)
+
+layout(binding = 0, std430) writeonly buffer OutputBuffer {
+    real outputBuffer[];
+};
+
+layout(push_constant) uniform PushConstants {
+    uint numOutputs; // The number of outputs to be written in total.
+};
+
+void main() {
+    const uint threadIdx = gl_GlobalInvocationID.x;
+    if (threadIdx >= numOutputs) {
+        return;
+    }
+    const uint batchIdx = threadIdx / NUM_CHANNELS_TO_ENCODE;
+    const uint channelIdx = threadIdx % NUM_CHANNELS_TO_ENCODE;
+    outputBuffer[IDX_OUT(channelIdx, batchIdx)] = real(1.0);
+}
 
 
 -- Identity.Compute
@@ -67,7 +102,7 @@ void main() {
     }
     const uint batchIdx = threadIdx / NUM_CHANNELS_TO_ENCODE;
     const uint channelIdx = threadIdx % NUM_CHANNELS_TO_ENCODE;
-    outputBuffer[IDX_OUT(channelIdx, batchIdx)] = inputBuffer[IDX_IN(channelIdx, batchIdx)];
+    outputBuffer[IDX_OUT(channelIdx, batchIdx)] = real(inputBuffer[IDX_IN(channelIdx, batchIdx)]);
 }
 
 
@@ -100,7 +135,7 @@ void main() {
 
     float val = inputBuffer[IDX_IN(channelInIdx, batchIdx)] * float(1u << powerOfTwo);
     val = fma(val, PI, phaseShift); // val * PI + phaseShift
-    outputBuffer[IDX_OUT(channelOutIdx, batchIdx)] = sin(val);
+    outputBuffer[IDX_OUT(channelOutIdx, batchIdx)] = real(sin(val));
 }
 
 
@@ -175,6 +210,7 @@ layout(local_size_x = BLOCK_SIZE, local_size_y = 1, local_size_z = 1) in;
 
 #extension GL_EXT_scalar_block_layout : require
 #extension GL_EXT_control_flow_attributes : require
+//#extension GL_EXT_debug_printf : enable
 
 /**
  * Global defines:
@@ -199,7 +235,7 @@ layout(binding = 0) uniform UniformBuffer {
 };
 
 layout(binding = 1, std430) readonly buffer InputBuffer {
-    real positions_in[];
+    float positions_in[];
 };
 
 #if NUM_FEATURES_PER_LEVEL == 2
@@ -383,4 +419,6 @@ void main() {
 #else
     encoded_positions[i + level * batchSize] = result;
 #endif
+
+    //debugPrintfEXT("%u %u %f %f", i, level, result.x, result.y);
 }

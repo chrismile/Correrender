@@ -35,7 +35,7 @@ layout(binding = 0) uniform UniformBuffer {
 };
 
 layout(binding = 1, std430) writeonly buffer OutputBuffer {
-    real outputBuffer[];
+    float outputBuffer[];
 };
 
 
@@ -60,9 +60,9 @@ void main() {
     uint x = pointIdxReadOffset % xs;
     uint y = (pointIdxReadOffset / xs) % ys;
     uint z = pointIdxReadOffset / (xs * ys);
-    outputBuffer[pointIdxWriteOffset] = real(2.0f * float(x) / float(xs - 1) - 1.0f);
-    outputBuffer[pointIdxWriteOffset + 1] = real(2.0f * float(y) / float(ys - 1) - 1.0f);
-    outputBuffer[pointIdxWriteOffset + 2] = real(2.0f * float(z) / float(zs - 1) - 1.0f);
+    outputBuffer[pointIdxWriteOffset] = 2.0f * float(x) / float(xs - 1) - 1.0f;
+    outputBuffer[pointIdxWriteOffset + 1] = 2.0f * float(y) / float(ys - 1) - 1.0f;
+    outputBuffer[pointIdxWriteOffset + 2] = 2.0f * float(z) / float(zs - 1) - 1.0f;
 }
 
 
@@ -91,9 +91,9 @@ void main() {
     uint x = pointIdxReadOffset % xs;
     uint y = (pointIdxReadOffset / xs) % ys;
     uint z = pointIdxReadOffset / (xs * ys);
-    outputBuffer[pointIdxWriteOffset] = real(2.0f * float(x) / float(xs - 1) - 1.0f);
-    outputBuffer[pointIdxWriteOffset + 1] = real(2.0f * float(y) / float(ys - 1) - 1.0f);
-    outputBuffer[pointIdxWriteOffset + 2] = real(2.0f * float(z) / float(zs - 1) - 1.0f);
+    outputBuffer[pointIdxWriteOffset] = 2.0f * float(x) / float(xs - 1) - 1.0f;
+    outputBuffer[pointIdxWriteOffset + 1] = 2.0f * float(y) / float(ys - 1) - 1.0f;
+    outputBuffer[pointIdxWriteOffset + 2] = 2.0f * float(z) / float(zs - 1) - 1.0f;
 }
 
 
@@ -112,7 +112,7 @@ void main() {
     if (globalThreadIdx >= 1) {
         return;
     }
-    outputBuffer[0] = real(2.0f * float(referencePointIdx.x) / float(xs - 1) - 1.0f);
-    outputBuffer[1] = real(2.0f * float(referencePointIdx.y) / float(ys - 1) - 1.0f);
-    outputBuffer[2] = real(2.0f * float(referencePointIdx.z) / float(zs - 1) - 1.0f);
+    outputBuffer[0] = 2.0f * float(referencePointIdx.x) / float(xs - 1) - 1.0f;
+    outputBuffer[1] = 2.0f * float(referencePointIdx.y) / float(ys - 1) - 1.0f;
+    outputBuffer[2] = 2.0f * float(referencePointIdx.z) / float(zs - 1) - 1.0f;
 }

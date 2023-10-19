@@ -48,6 +48,70 @@ Encoding::Encoding(sgl::vk::Renderer* renderer, const Json::Value& settingsEncod
     }
 }
 
+class PaddingPass : public sgl::vk::ComputePass {
+public:
+    explicit PaddingPass(
+            sgl::vk::Renderer* renderer, uint32_t channelOffset, uint32_t numChannelsEncode)
+    : ComputePass(renderer), channelOffset(channelOffset), numChannelsEncode(numChannelsEncode) {}
+
+    void setBufferOut(const Matrix& _matrixOut);
+    void setBatchSize(uint32_t _batchSize);
+    void setFloatFormat(FloatFormat _format);
+
+protected:
+    void loadShader() override;
+    void setComputePipelineInfo(sgl::vk::ComputePipelineInfo& pipelineInfo) override {}
+    void createComputeData(sgl::vk::Renderer* renderer, sgl::vk::ComputePipelinePtr& computePipeline) override;
+    void _render() override;
+
+private:
+    const uint32_t BLOCK_SIZE = 256;
+    FloatFormat format = FloatFormat::FLOAT32;
+    uint32_t channelOffset = 0, numChannelsEncode = 0;
+    Matrix matrixOut;
+    uint32_t batchSize = 0;
+};
+
+void PaddingPass::setBufferOut(const Matrix& _matrixOut) {
+    matrixOut = _matrixOut;
+    dataDirty = true;
+}
+
+void PaddingPass::setBatchSize(uint32_t _batchSize) {
+    batchSize = _batchSize;
+}
+
+void PaddingPass::setFloatFormat(FloatFormat _format) {
+    format = _format;
+    shaderDirty = true;
+}
+
+void PaddingPass::loadShader() {
+    sgl::vk::ShaderManager->invalidateShaderCache();
+    std::map<std::string, std::string> preprocessorDefines;
+    preprocessorDefines.insert(std::make_pair("BLOCK_SIZE", std::to_string(BLOCK_SIZE)));
+    preprocessorDefines.insert(std::make_pair("OFFSET_OUT", std::to_string(channelOffset)));
+    preprocessorDefines.insert(std::make_pair("NUM_CHANNELS_OUT", std::to_string(matrixOut.getNumChannels())));
+    preprocessorDefines.insert(std::make_pair("NUM_CHANNELS_TO_ENCODE", std::to_string(numChannelsEncode)));
+    addPreprocessorDefinesFormat(preprocessorDefines, format);
+    shaderStages = sgl::vk::ShaderManager->getShaderStages({"Encodings.Padding.Compute"}, preprocessorDefines);
+}
+
+void PaddingPass::createComputeData(sgl::vk::Renderer* renderer, sgl::vk::ComputePipelinePtr& computePipeline) {
+    computeData = std::make_shared<sgl::vk::ComputeData>(renderer, computePipeline);
+    computeData->setStaticBuffer(matrixOut.getBuffer(), "OutputBuffer");
+}
+
+void PaddingPass::_render() {
+    const uint32_t numThreads = numChannelsEncode * batchSize;
+    renderer->pushConstants(getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, 0, numThreads);
+    renderer->dispatch(computeData, sgl::uiceil(numThreads, BLOCK_SIZE), 1, 1);
+    renderer->insertBufferMemoryBarrier(
+            VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            matrixOut.getBuffer());
+}
+
 CompositeEncoding::CompositeEncoding(sgl::vk::Renderer* renderer, const Json::Value& settingsCompositeEncoding)
         : Encoding(renderer, settingsCompositeEncoding) {
     const auto& nested = settingsCompositeEncoding["nested"];
@@ -59,7 +123,12 @@ CompositeEncoding::CompositeEncoding(sgl::vk::Renderer* renderer, const Json::Va
         uint32_t alignment = encoding->getOutputAlignment();
         uint32_t alignmentOffset = numChannelsOutPadded % alignment;
         if (alignmentOffset != 0) {
-            numChannelsOutPadded += alignment - alignmentOffset;
+            uint32_t numChannelsPadding = alignment - alignmentOffset;
+            auto paddingPass = std::make_shared<PaddingPass>(renderer, numChannelsOutPadded, numChannelsPadding);
+            paddingPasses.push_back(paddingPass);
+            numChannelsOutPadded += numChannelsPadding;
+        } else {
+            paddingPasses.push_back(nullptr);
         }
         encodingsChannelOffsets.push_back(numChannelsOutPadded);
         numChannelsOutPadded += numChannelsOutEncoding;
@@ -71,6 +140,60 @@ CompositeEncoding::CompositeEncoding(sgl::vk::Renderer* renderer, const Json::Va
     if (alignmentOffsetOut != 0) {
         numChannelsOutPadded += ALIGNMENT_MLP - alignmentOffsetOut;
     }
+}
+
+void CompositeEncoding::setInputOutputMatrices(const Matrix& input, const Matrix& output) {
+    for (size_t i = 0; i < encodings.size(); i++) {
+        auto& encoding = encodings.at(i);
+        auto& paddingPass = paddingPasses.at(i);
+        if (paddingPass) {
+            paddingPass->setBufferOut(output);
+        }
+        uint32_t outputChannelOffset = encodingsChannelOffsets.at(i);
+        encoding->setInputOutputMatrices(input, output.viewOffset(outputChannelOffset));
+    }
+    // For debug purposes.
+    //this->input = input;
+    //this->output = output;
+}
+
+void CompositeEncoding::setBatchSize(uint32_t _batchSize) {
+    for (size_t i = 0; i < encodings.size(); i++) {
+        auto& encoding = encodings.at(i);
+        auto& paddingPass = paddingPasses.at(i);
+        if (paddingPass) {
+            paddingPass->setBatchSize(_batchSize);
+        }
+        encoding->setBatchSize(_batchSize);
+    }
+}
+
+void CompositeEncoding::setFloatFormat(FloatFormat _format) {
+    format = _format;
+    for (size_t i = 0; i < encodings.size(); i++) {
+        auto& encoding = encodings.at(i);
+        auto& paddingPass = paddingPasses.at(i);
+        if (paddingPass) {
+            paddingPass->setFloatFormat(_format);
+        }
+        encoding->setFloatFormat(_format);
+    }
+}
+
+void CompositeEncoding::runInference() {
+    for (size_t i = 0; i < encodings.size(); i++) {
+        auto& encoding = encodings.at(i);
+        auto& paddingPass = paddingPasses.at(i);
+        if (paddingPass) {
+            paddingPass->render();
+        }
+        encoding->runInference();
+    }
+
+    // For debug purposes.
+    //debugPrintBuffer(input.getBuffer(), format, 10);
+    //debugPrintBuffer(output.getBuffer(), format, 48);
+    //std::cout << std::endl;
 }
 
 
@@ -109,7 +232,6 @@ void IdentityEncodingPass::setBatchSize(uint32_t _batchSize) {
 }
 
 void IdentityEncodingPass::setFloatFormat(FloatFormat _format) {
-    sgl::vk::ShaderManager->invalidateShaderCache();
     format = _format;
     shaderDirty = true;
 }
@@ -157,6 +279,7 @@ void IdentityEncoding::setBatchSize(uint32_t _batchSize) {
 }
 
 void IdentityEncoding::setFloatFormat(vmlp::FloatFormat _format) {
+    format = _format;
     encodingPass->setFloatFormat(_format);
 }
 
@@ -201,7 +324,6 @@ void FrequencyEncodingPass::setBatchSize(uint32_t _batchSize) {
 }
 
 void FrequencyEncodingPass::setFloatFormat(FloatFormat _format) {
-    sgl::vk::ShaderManager->invalidateShaderCache();
     format = _format;
     shaderDirty = true;
 }
@@ -253,6 +375,7 @@ void FrequencyEncoding::setBatchSize(uint32_t _batchSize) {
 }
 
 void FrequencyEncoding::setFloatFormat(vmlp::FloatFormat _format) {
+    format = _format;
     encodingPass->setFloatFormat(_format);
 }
 
@@ -268,12 +391,12 @@ public:
             GridType gridType, InterpolationType interpolationType, HashType hashType,
             uint32_t numLevels, uint32_t numFeaturesPerLevel, uint32_t numFeatures,
             uint32_t log2HashMapSize, uint32_t baseResolution, float perLevelScale,
-            sgl::vk::BufferPtr parametersBuffer, sgl::vk::BufferPtr offsetTableBuffer)
+            sgl::vk::BufferPtr& parametersBuffer, sgl::vk::BufferPtr offsetTableBuffer)
             : ComputePass(renderer), channelOffset(channelOffset), numChannelsEncode(numChannelsEncode),
               gridType(gridType), interpolationType(interpolationType), hashType(hashType),
               numLevels(numLevels), numFeaturesPerLevel(numFeaturesPerLevel), numFeatures(numFeatures),
               log2HashMapSize(log2HashMapSize), baseResolution(baseResolution), perLevelScale(perLevelScale),
-              parametersBuffer(std::move(parametersBuffer)), offsetTableBuffer(std::move(offsetTableBuffer)) {
+              parametersBuffer(parametersBuffer), offsetTableBuffer(std::move(offsetTableBuffer)) {
         uniformData.baseResolution = baseResolution;
         uniformData.log2PerLevelScale = std::log2(perLevelScale);
         uniformBuffer = std::make_shared<sgl::vk::Buffer>(
@@ -311,7 +434,7 @@ private:
     };
     UniformData uniformData{};
     sgl::vk::BufferPtr uniformBuffer;
-    sgl::vk::BufferPtr parametersBuffer;
+    sgl::vk::BufferPtr& parametersBuffer;
     sgl::vk::BufferPtr offsetTableBuffer;
     Matrix matrixIn;
     sgl::vk::BufferPtr bufferOut;
@@ -329,7 +452,6 @@ void GridEncodingPass::setBatchSize(uint32_t _batchSize) {
 }
 
 void GridEncodingPass::setFloatFormat(FloatFormat _format) {
-    sgl::vk::ShaderManager->invalidateShaderCache();
     format = _format;
     shaderDirty = true;
 }
@@ -419,7 +541,6 @@ void EncodedPositionsTransposePass::setBatchSize(uint32_t _batchSize) {
 }
 
 void EncodedPositionsTransposePass::setFloatFormat(FloatFormat _format) {
-    sgl::vk::ShaderManager->invalidateShaderCache();
     format = _format;
     shaderDirty = true;
 }
@@ -518,10 +639,6 @@ GridEncoding::GridEncoding(sgl::vk::Renderer* renderer, const Json::Value& setti
             device, (numLevels + 1) * sizeof(uint32_t), offsetTable.data(),
             VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
 
-    parametersBuffer = std::make_shared<sgl::vk::Buffer>(
-            device, numParameters * FLOAT_FORMAT_SIZES_IN_BYTE[int(format)],
-            VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
-
     encodingPass = std::make_shared<GridEncodingPass>(
             renderer, channelOffset, numChannelsEncode, gridType, interpolationType, hashType,
             numLevels, numFeaturesPerLevel, numFeatures, log2HashMapSize, baseResolution, perLevelScale,
@@ -531,8 +648,9 @@ GridEncoding::GridEncoding(sgl::vk::Renderer* renderer, const Json::Value& setti
 
 void GridEncoding::setInputOutputMatrices(const Matrix& input, const Matrix& output) {
     auto batchSize = input.getBatchSize();
-    if (cachedBatchSize != batchSize) {
+    if (cachedBatchSize != batchSize || floatFormatChanged) {
         cachedBatchSize = batchSize;
+        floatFormatChanged = false;
         encodedPositionsBuffer = std::make_shared<sgl::vk::Buffer>(
                 device, numFeatures * batchSize * FLOAT_FORMAT_SIZES_IN_BYTE[int(format)],
                 VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
@@ -548,24 +666,27 @@ void GridEncoding::setBatchSize(uint32_t _batchSize) {
 }
 
 void GridEncoding::setFloatFormat(vmlp::FloatFormat _format) {
+    if (!parametersBuffer || format != _format) {
+        parametersBuffer = std::make_shared<sgl::vk::Buffer>(
+                device, numParameters * FLOAT_FORMAT_SIZES_IN_BYTE[int(_format)],
+                VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+        uploadParametersToBuffer(parametersCpu, getNumParameters(), parametersBuffer, _format);
+        floatFormatChanged = true;
+    }
+    format = _format;
     encodingPass->setFloatFormat(_format);
     encodedPositionsTransposePass->setFloatFormat(_format);
 }
 
-void GridEncoding::setParametersCpu(float* parameters, uint32_t _numParameters) {
-    if (_numParameters != getNumParameters()) {
-        sgl::Logfile::get()->throwError("Error in GridEncoding::setParametersCpu: Mismatch in number of parameters.");
-    }
-    uploadParametersToBuffer(parameters, _numParameters, parametersBuffer, format);
-}
-
 void GridEncoding::runInference() {
+    //debugPrintBuffer(encodedPositionsBuffer, format, 48);
     encodingPass->render();
     renderer->insertBufferMemoryBarrier(
             VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
             encodedPositionsBuffer);
     encodedPositionsTransposePass->render();
+    //debugPrintBuffer(encodedPositionsBuffer, format, 48);
 }
 
 }

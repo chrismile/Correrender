@@ -158,6 +158,18 @@ std::shared_ptr<Module> createNetworkWithInputEncoding(
     return std::shared_ptr<Module>(new NetworkWithInputEncoding(renderer, settingsEncoding, settingsNetwork));
 }
 
+void Module::setParametersCpu(float* parameters, uint32_t numParameters) {
+    if (numParameters != getNumParameters()) {
+        sgl::Logfile::get()->throwError("Error in MlpNetwork::setParametersCpu: Mismatch in number of parameters.");
+    }
+    if (numParameters > 0) {
+        if (!parametersCpu) {
+            parametersCpu = new float[numParameters];
+        }
+        memcpy(parametersCpu, parameters, sizeof(float) * numParameters);
+    }
+}
+
 NetworkWithInputEncoding::NetworkWithInputEncoding(
         sgl::vk::Renderer* renderer, const Json::Value& settingsEncoding, Json::Value settingsNetwork)
         : device(renderer->getDevice()) {
@@ -169,6 +181,8 @@ NetworkWithInputEncoding::NetworkWithInputEncoding(
 void NetworkWithInputEncoding::runInference() {
     encoding->runInference();
     network->runInference();
+
+    //debugPrintBuffer(intermediateOutput.getBuffer(), format, 48);
 
     /*networkRenderer->syncWithCpu();
     auto beginEncoding = std::chrono::system_clock::now();
@@ -191,10 +205,10 @@ public:
     MlpPass(
             sgl::vk::Renderer* renderer, uint32_t layerChannelsIn, uint32_t layerChannelsOut,
             ActivationFunction activationFunction,
-            uint32_t parametersBufferOffset, sgl::vk::BufferPtr parametersBuffer)
+            uint32_t parametersBufferOffset, sgl::vk::BufferPtr& parametersBuffer)
             : ComputePass(renderer), layerChannelsIn(layerChannelsIn), layerChannelsOut(layerChannelsOut),
               activationFunction(activationFunction),
-              parametersBufferOffset(parametersBufferOffset), parametersBuffer(std::move(parametersBuffer)) {}
+              parametersBufferOffset(parametersBufferOffset), parametersBuffer(parametersBuffer) {}
 
     void setBuffersInOut(const sgl::vk::BufferPtr& _bufferIn, const sgl::vk::BufferPtr& _bufferOut);
     void setBatchSize(uint32_t _batchSize);
@@ -212,7 +226,7 @@ private:
     uint32_t layerChannelsIn, layerChannelsOut;
     ActivationFunction activationFunction;
     uint32_t parametersBufferOffset;
-    sgl::vk::BufferPtr parametersBuffer;
+    sgl::vk::BufferPtr& parametersBuffer;
     sgl::vk::BufferPtr bufferIn, bufferOut;
     uint32_t batchSize = 0;
 };
@@ -228,12 +242,12 @@ void MlpPass::setBatchSize(uint32_t _batchSize) {
 }
 
 void MlpPass::setFloatFormat(FloatFormat _format) {
-    sgl::vk::ShaderManager->invalidateShaderCache();
     format = _format;
     shaderDirty = true;
 }
 
 void MlpPass::loadShader() {
+    sgl::vk::ShaderManager->invalidateShaderCache();
     std::map<std::string, std::string> preprocessorDefines;
     auto numChannelsInPadded = nextMultiple(layerChannelsIn, 16);
     auto numChannelsOutPadded = nextMultiple(layerChannelsOut, 16);
@@ -289,9 +303,6 @@ MlpNetwork::MlpNetwork(sgl::vk::Renderer* renderer, const Json::Value& settingsN
                 + numChannelsHidden * numChannelsHidden * (numLayers - 2)
                 + numChannelsHidden * numChannelsOutPadded;
     }
-    parametersBuffer = std::make_shared<sgl::vk::Buffer>(
-            device, numParameters * FLOAT_FORMAT_SIZES_IN_BYTE[int(format)],
-            VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
 
     uint32_t parametersBufferOffset = 0;
     layerPasses.reserve(numLayers);
@@ -320,8 +331,9 @@ MlpNetwork::MlpNetwork(sgl::vk::Renderer* renderer, const Json::Value& settingsN
 
 void MlpNetwork::setInputOutputMatrices(const Matrix& input, const Matrix& output) {
     auto batchSize = input.getBatchSize();
-    if (numLayers > 1 && cachedBatchSize != batchSize) {
+    if (numLayers > 1 && (cachedBatchSize != batchSize || floatFormatChanged)) {
         cachedBatchSize = batchSize;
+        floatFormatChanged = false;
         for (int i = 0; i < 2; i++) {
             // Add "VK_BUFFER_USAGE_TRANSFER_SRC_BIT" for debugging purposes.
             intermediateOutputBuffers[i] = std::make_shared<sgl::vk::Buffer>(
@@ -355,17 +367,18 @@ void MlpNetwork::setBatchSize(uint32_t _batchSize) {
 }
 
 void MlpNetwork::setFloatFormat(vmlp::FloatFormat _format) {
+    if (!parametersBuffer || format != _format) {
+        parametersBuffer = std::make_shared<sgl::vk::Buffer>(
+                device, numParameters * FLOAT_FORMAT_SIZES_IN_BYTE[int(_format)],
+                VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+        uploadParametersToBuffer(parametersCpu, getNumParameters(), parametersBuffer, _format);
+        floatFormatChanged = true;
+    }
+    format = _format;
     for (size_t i = 0; i < numLayers; i++) {
         auto& layerPass = layerPasses.at(i);
         layerPass->setFloatFormat(_format);
     }
-}
-
-void MlpNetwork::setParametersCpu(float* parameters, uint32_t _numParameters) {
-    if (_numParameters != getNumParameters()) {
-        sgl::Logfile::get()->throwError("Error in MlpNetwork::setParametersCpu: Mismatch in number of parameters.");
-    }
-    uploadParametersToBuffer(parameters, _numParameters, parametersBuffer, format);
 }
 
 void MlpNetwork::runInference() {

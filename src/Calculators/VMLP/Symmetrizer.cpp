@@ -76,12 +76,12 @@ void SymmetrizerPass::setBatchSize(uint32_t _batchSize) {
 }
 
 void SymmetrizerPass::setFloatFormat(FloatFormat _format) {
-    sgl::vk::ShaderManager->invalidateShaderCache();
     format = _format;
     shaderDirty = true;
 }
 
 void SymmetrizerPass::loadShader() {
+    sgl::vk::ShaderManager->invalidateShaderCache();
     std::map<std::string, std::string> preprocessorDefines;
     preprocessorDefines.insert(std::make_pair("BLOCK_SIZE", std::to_string(BLOCK_SIZE)));
     addPreprocessorDefinesFormat(preprocessorDefines, format);
@@ -106,7 +106,7 @@ void SymmetrizerPass::createComputeData(sgl::vk::Renderer* renderer, sgl::vk::Co
 }
 
 void SymmetrizerPass::_render() {
-    const uint32_t numThreads = matrixQuery.getBatchSize() * batchSize;
+    const uint32_t numThreads = matrixQuery.getNumChannels() * batchSize;
     PushConstantsSymmetrizer pc{ numThreads, matrixQuery.getNumChannels() };
     renderer->pushConstants(getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, 0, pc);
     renderer->dispatch(computeData, sgl::uiceil(numThreads, BLOCK_SIZE), 1, 1);
@@ -136,6 +136,7 @@ void Symmetrizer::setBatchSize(uint32_t _batchSize) {
 }
 
 void Symmetrizer::setFloatFormat(vmlp::FloatFormat _format) {
+    format = _format;
     symmetrizerPass0->setFloatFormat(_format);
     if (symmetrizerType == SymmetrizerType::AddDiff) {
         symmetrizerPass1->setFloatFormat(_format);

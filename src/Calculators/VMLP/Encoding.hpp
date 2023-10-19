@@ -50,32 +50,17 @@ protected:
     uint32_t channelOffset = 0, numChannelsEncode = 0;
 };
 
+class PaddingPass;
+
 class CompositeEncoding : public Encoding {
 public:
     CompositeEncoding(sgl::vk::Renderer* renderer, const Json::Value& settingsCompositeEncoding);
     uint32_t getNumChannelsOut() override {
         return numChannelsOutPadded;
     }
-    void setInputOutputMatrices(const Matrix& input, const Matrix& output) override {
-        for (size_t i = 0; i < encodings.size(); i++) {
-            auto& encoding = encodings.at(i);
-            uint32_t outputChannelOffset = encodingsChannelOffsets.at(i);
-            encoding->setInputOutputMatrices(input, output.viewOffset(outputChannelOffset));
-        }
-        // For debug purposes.
-        //this->input = input;
-        //this->output = output;
-    }
-    void setBatchSize(uint32_t _batchSize) override {
-        for (auto& encoding : encodings) {
-            encoding->setBatchSize(_batchSize);
-        }
-    }
-    void setFloatFormat(FloatFormat _format) override {
-        for (auto& encoding : encodings) {
-            encoding->setFloatFormat(_format);
-        }
-    }
+    void setInputOutputMatrices(const Matrix& input, const Matrix& output) override;
+    void setBatchSize(uint32_t _batchSize) override;
+    void setFloatFormat(FloatFormat _format) override;
 
     uint32_t getNumParameters() override {
         return numParameters;
@@ -98,20 +83,12 @@ public:
     }
 
     uint32_t getOutputAlignment() override { return 1; }
-    void runInference() override {
-        for (auto& encoding : encodings) {
-            encoding->runInference();
-        }
-
-        // For debug purposes.
-        //debugPrintBuffer(input.getBuffer(), format, 10);
-        //debugPrintBuffer(output.getBuffer(), format, 48);
-        //std::cout << std::endl;
-    }
+    void runInference() override;
 
 private:
     std::vector<std::shared_ptr<Module>> encodings;
     std::vector<uint32_t> encodingsChannelOffsets;
+    std::vector<std::shared_ptr<PaddingPass>> paddingPasses;
     uint32_t numParameters = 0;
     uint32_t numChannelsOut = 0, numChannelsOutPadded = 0;
     //Matrix input, output; // For debug purposes.
@@ -131,8 +108,6 @@ public:
 
     uint32_t getNumParameters() override {
         return 0;
-    }
-    void setParametersCpu(float* parameters, uint32_t _numParameters) override {
     }
 
     uint32_t getOutputAlignment() override { return 1; }
@@ -157,10 +132,8 @@ public:
     uint32_t getNumParameters() override {
         return 0;
     }
-    void setParametersCpu(float* parameters, uint32_t _numParameters) override {
-    }
 
-    uint32_t getOutputAlignment() override { return 2; }
+    uint32_t getOutputAlignment() override { return 1; }
     void runInference() override;
 
 private:
@@ -196,7 +169,6 @@ public:
     uint32_t getNumParameters() override {
         return numParameters;
     }
-    void setParametersCpu(float* parameters, uint32_t _numParameters) override;
 
     uint32_t getOutputAlignment() override { return numFeaturesPerLevel; }
     void runInference() override;
@@ -216,6 +188,7 @@ private:
     uint32_t numParameters;
     sgl::vk::BufferPtr parametersBuffer;
     sgl::vk::BufferPtr encodedPositionsBuffer;
+    bool floatFormatChanged = true;
     uint32_t cachedBatchSize = 0;
     std::vector<uint32_t> offsetTable;
     sgl::vk::BufferPtr offsetTableBuffer;

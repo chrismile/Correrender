@@ -69,7 +69,6 @@ public:
         batchOffset = _batchOffset;
         batchSize = _batchSize;
     }
-    void setFloatFormat(vmlp::FloatFormat _format);
 
 protected:
     void loadShader() override;
@@ -77,7 +76,6 @@ protected:
     std::string shaderName;
 
     const uint32_t BLOCK_SIZE = 256;
-    vmlp::FloatFormat format = vmlp::FloatFormat::FLOAT32;
     uint32_t batchOffset = 0, batchSize = 0;
     struct UniformData {
         uint32_t xs, ys, zs, stride;
@@ -115,16 +113,9 @@ void WriteGridPositionsBasePass::setOutputBuffer(const sgl::vk::BufferPtr& _outp
     }
 }
 
-void WriteGridPositionsBasePass::setFloatFormat(vmlp::FloatFormat _format) {
-    sgl::vk::ShaderManager->invalidateShaderCache();
-    format = _format;
-    shaderDirty = true;
-}
-
 void WriteGridPositionsBasePass::loadShader() {
     std::map<std::string, std::string> preprocessorDefines;
     preprocessorDefines.insert(std::make_pair("BLOCK_SIZE", std::to_string(BLOCK_SIZE)));
-    addPreprocessorDefinesFormat(preprocessorDefines, format);
     shaderStages = sgl::vk::ShaderManager->getShaderStages({ shaderName }, preprocessorDefines);
 }
 
@@ -302,12 +293,12 @@ void CopyDecoderOutputPass::setBuffers(
 }
 
 void CopyDecoderOutputPass::setFloatFormat(vmlp::FloatFormat _format) {
-    sgl::vk::ShaderManager->invalidateShaderCache();
     format = _format;
     shaderDirty = true;
 }
 
 void CopyDecoderOutputPass::loadShader() {
+    sgl::vk::ShaderManager->invalidateShaderCache();
     std::map<std::string, std::string> preprocessorDefines;
     preprocessorDefines.insert(std::make_pair("BLOCK_SIZE", std::to_string(BLOCK_SIZE)));
     addPreprocessorDefinesFormat(preprocessorDefines, format);
@@ -352,8 +343,6 @@ VMLPCorrelationCalculator::VMLPCorrelationCalculator(sgl::vk::Renderer* renderer
     if (deviceSupporsFp16) {
         floatFormat = vmlp::FloatFormat::FLOAT16;
     }
-    // TODO: Remove after debugging.
-    floatFormat = vmlp::FloatFormat::FLOAT32;
 
     writeGridPositionsPass = std::make_shared<WriteGridPositionsPass>(renderer);
     writeGridPositionsStencilPass = std::make_shared<WriteGridPositionsStencilPass>(renderer);
@@ -388,9 +377,11 @@ void VMLPCorrelationCalculator::setVolumeData(VolumeData* _volumeData, bool isNe
 }
 
 void VMLPCorrelationCalculator::onFloatFormatChanged() {
-    writeGridPositionsPass->setFloatFormat(floatFormat);
-    writeGridPositionsStencilPass->setFloatFormat(floatFormat);
-    writeGridPositionReferencePass->setFloatFormat(floatFormat);
+    if (moduleWrapper) {
+        moduleWrapper->networkEncoder->setFloatFormat(floatFormat);
+        moduleWrapper->networkDecoder->setFloatFormat(floatFormat);
+        moduleWrapper->symmetrizerModule->setFloatFormat(floatFormat);
+    }
     copyDecoderOutputMutualInformationPass->setFloatFormat(floatFormat);
     copyDecoderOutputCorrelationCoefficientPass->setFloatFormat(floatFormat);
     copyDecoderOutputCorrelationCoefficientAbsPass->setFloatFormat(floatFormat);
@@ -431,7 +422,7 @@ void VMLPCorrelationCalculator::getSettings(SettingsMap& settings) {
 
 static void loadNetworkVMLP(
         sgl::vk::Renderer* renderer, std::shared_ptr<vmlp::Module>& network, const std::string& modelPath,
-        const Json::Value& config, const sgl::ArchiveEntry& entry) {
+        vmlp::FloatFormat floatFormat, const Json::Value& config, const sgl::ArchiveEntry& entry) {
     auto* header = reinterpret_cast<NetworkParametersHeader*>(entry.bufferData.get());
     uint8_t* paramsData = entry.bufferData.get() + sizeof(NetworkParametersHeader);
     uint32_t numParams = header->numParams;
@@ -488,6 +479,7 @@ static void loadNetworkVMLP(
         sgl::Logfile::get()->throwError(
                 "Error in VMLPCorrelationCalculator::loadNetworkVMLP: Half precision weights not supported so far.");
     }
+    network->setFloatFormat(floatFormat);
 
     /*if (network->output_width() != network->padded_output_width() && network->n_params() != numParams) {
         delete[] paramsData;
@@ -641,12 +633,13 @@ void VMLPCorrelationCalculator::loadModelFromFile(const std::string& modelPath) 
     if (hasInputEncoding && !isInputEncodingIdentity) {
 #endif
     loadNetworkVMLP(
-            renderer, moduleWrapper->networkEncoder, modelPath,
+            renderer, moduleWrapper->networkEncoder, modelPath, floatFormat,
             moduleWrapper->configEncoder, itNetworkEncoder->second);
     loadNetworkVMLP(
-            renderer, moduleWrapper->networkDecoder, modelPath,
+            renderer, moduleWrapper->networkDecoder, modelPath, floatFormat,
             moduleWrapper->configDecoder, itNetworkDecoder->second);
     moduleWrapper->symmetrizerModule = std::make_shared<vmlp::Symmetrizer>(renderer, symmetrizerType);
+    moduleWrapper->symmetrizerModule->setFloatFormat(floatFormat);
 
     // numLayersOutEncoder == numLayersInDecoder when symmetrizer is sum operation.
     numLayersInEncoder = uint32_t(moduleWrapper->networkEncoder->getNumChannelsIn());
@@ -671,6 +664,13 @@ vmlp::Matrix VMLPCorrelationCalculator::createMatrix(size_t dim0, size_t dim1, V
     return { buffer, uint32_t(entrySize), uint32_t(dim0), uint32_t(dim1) };
 }
 
+vmlp::Matrix VMLPCorrelationCalculator::createMatrixFloat(size_t dim0, size_t dim1, VkBufferUsageFlags usage) {
+    constexpr size_t entrySize = sizeof(float);
+    auto buffer = std::make_shared<sgl::vk::Buffer>(
+            renderer->getDevice(), entrySize * dim0 * dim1, usage, VMA_MEMORY_USAGE_GPU_ONLY);
+    return { buffer, uint32_t(entrySize), uint32_t(dim0), uint32_t(dim1) };
+}
+
 void VMLPCorrelationCalculator::recreateCache(int batchSize) {
     cacheWrapper->networkInput = {};
     cacheWrapper->referenceEncoded = {};
@@ -683,7 +683,7 @@ void VMLPCorrelationCalculator::recreateCache(int batchSize) {
 
     const uint32_t numInputLayers = 3;
     // For debug purposes: Add ", VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT".
-    cacheWrapper->networkInput = createMatrix(numInputLayers, batchSize);
+    cacheWrapper->networkInput = createMatrixFloat(numInputLayers, batchSize);
     cacheWrapper->referenceEncoded = createMatrix(
             numLayersOutEncoder, 1, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
     cacheWrapper->queryEncoded = createMatrix(
@@ -742,6 +742,9 @@ void VMLPCorrelationCalculator::runInferenceReference() {
             VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
             cacheWrapper->queryEncoded.getBuffer());
+
+    // TODO
+    //debugPrintBuffer(cacheWrapper->queryEncoded.getBuffer(), floatFormat, 48);
 }
 
 void VMLPCorrelationCalculator::runInferenceBatch(uint32_t batchOffset, uint32_t batchSize) {
@@ -761,6 +764,11 @@ void VMLPCorrelationCalculator::runInferenceBatch(uint32_t batchOffset, uint32_t
     //auto beginNetwork = std::chrono::system_clock::now();
     moduleWrapper->symmetrizerModule->setBatchSize(batchSize);
     moduleWrapper->symmetrizerModule->runInference();
+    renderer->insertBufferMemoryBarrier(
+            VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            cacheWrapper->symmetrizedInput.getBuffer());
+
     moduleWrapper->networkDecoder->setBatchSize(batchSize);
     moduleWrapper->networkDecoder->runInference();
     renderer->insertBufferMemoryBarrier(
@@ -772,13 +780,19 @@ void VMLPCorrelationCalculator::runInferenceBatch(uint32_t batchOffset, uint32_t
     //auto elapsedNetwork = std::chrono::duration_cast<std::chrono::microseconds>(endNetwork - beginNetwork);
     //std::cout << "Elapsed time decoder: " << (elapsedNetwork.count() * 1e-3) << "ms" << std::endl;
 
+    //debugPrintBuffer(cacheWrapper->networkInput.getBuffer(), vmlp::FloatFormat::FLOAT32, 16);
+    //debugPrintBuffer(cacheWrapper->referenceEncoded.getBuffer(), floatFormat, 16);
+    //debugPrintBuffer(cacheWrapper->queryEncoded.getBuffer(), floatFormat, 16);
+    //debugPrintBuffer(cacheWrapper->symmetrizedInput.getBuffer(), floatFormat, 16);
+    //debugPrintBuffer(cacheWrapper->queryDecoded.getBuffer(), floatFormat, 16);
+
     std::shared_ptr<CopyDecoderOutputPass> copyDecoderOutputPass;
     if (isMutualInformationData) {
         copyDecoderOutputPass = copyDecoderOutputMutualInformationPass;
     } else if (calculateAbsoluteValue) {
-        copyDecoderOutputPass = copyDecoderOutputCorrelationCoefficientPass;
-    } else {
         copyDecoderOutputPass = copyDecoderOutputCorrelationCoefficientAbsPass;
+    } else {
+        copyDecoderOutputPass = copyDecoderOutputCorrelationCoefficientPass;
     }
     copyDecoderOutputPass->setBatchInformation(batchOffset, batchSize);
     copyDecoderOutputPass->render();
