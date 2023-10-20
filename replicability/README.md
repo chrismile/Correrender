@@ -12,7 +12,7 @@ We give permission to the Replicability Stamp committee and reviewers of the Gra
 Adaptive Sampling of 3D Spatial Correlations for Focus+Context Visualization. \
 Christoph Neuhauser, Josef Stumpfegger, Rüdiger Westermann. \
 To appear in IEEE Transactions on Visualization and Computer Graphics 2023 (TVCG 2023). \
-Manuscript ID: TVCG-2023-08-0438.R1
+DOI: 10.1109/TVCG.2023.3326855
 
 
 ## Build Process
