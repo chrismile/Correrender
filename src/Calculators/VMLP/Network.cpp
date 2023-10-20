@@ -178,6 +178,31 @@ NetworkWithInputEncoding::NetworkWithInputEncoding(
     network = createNetwork(renderer, settingsNetwork);
 }
 
+void NetworkWithInputEncoding::setInputOutputMatrices(const Matrix& input, const Matrix& output) {
+    if (input.getBatchSize() != output.getBatchSize()) {
+        sgl::Logfile::get()->throwError(
+                "Error in NetworkWithInputEncoding::setInputOutputMatrices: "
+                "Mismatch in input and output batch size.");
+    }
+
+    auto batchSize = input.getBatchSize();
+    if (batchSize != intermediateOutput.getBatchSize() || floatFormatChanged) {
+        floatFormatChanged = false;
+        auto channelsEncodingOut = encoding->getNumChannelsOut();
+        auto intermediateBuffer = std::make_shared<sgl::vk::Buffer>(
+                device, channelsEncodingOut * batchSize * FLOAT_FORMAT_SIZES_IN_BYTE[int(format)],
+                VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+        auto commandBuffer = device->beginSingleTimeCommands();
+        intermediateBuffer->fill(0, commandBuffer);
+        device->endSingleTimeCommands(commandBuffer);
+        intermediateOutput = Matrix(
+                intermediateBuffer, FLOAT_FORMAT_SIZES_IN_BYTE[int(format)], channelsEncodingOut, batchSize);
+    }
+
+    encoding->setInputOutputMatrices(input, intermediateOutput);
+    network->setInputOutputMatrices(intermediateOutput, output);
+}
+
 void NetworkWithInputEncoding::runInference() {
     encoding->runInference();
     network->runInference();

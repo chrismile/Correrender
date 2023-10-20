@@ -144,28 +144,7 @@ public:
     uint32_t getNumChannelsOut() override {
         return network->getNumChannelsOut();
     }
-    void setInputOutputMatrices(const Matrix& input, const Matrix& output) override {
-        if (input.getBatchSize() != output.getBatchSize()) {
-            sgl::Logfile::get()->throwError(
-                    "Error in NetworkWithInputEncoding::setInputOutputMatrices: "
-                    "Mismatch in input and output batch size.");
-        }
-
-        auto batchSize = input.getBatchSize();
-        if (batchSize != intermediateOutput.getBatchSize() || floatFormatChanged) {
-            floatFormatChanged = false;
-            auto channelsEncodingOut = encoding->getNumChannelsOut();
-            // Add "VK_BUFFER_USAGE_TRANSFER_SRC_BIT |" for debugging purposes.
-            auto intermediateBuffer = std::make_shared<sgl::vk::Buffer>(
-                    device, channelsEncodingOut * batchSize * FLOAT_FORMAT_SIZES_IN_BYTE[int(format)],
-                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
-            intermediateOutput = Matrix(
-                    intermediateBuffer, FLOAT_FORMAT_SIZES_IN_BYTE[int(format)], channelsEncodingOut, batchSize);
-        }
-
-        encoding->setInputOutputMatrices(input, intermediateOutput);
-        network->setInputOutputMatrices(intermediateOutput, output);
-    }
+    void setInputOutputMatrices(const Matrix& input, const Matrix& output) override;
     void setBatchSize(uint32_t _batchSize) override {
         encoding->setBatchSize(_batchSize);
         network->setBatchSize(_batchSize);
