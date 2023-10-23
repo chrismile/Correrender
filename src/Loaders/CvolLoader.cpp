@@ -35,8 +35,6 @@
 #include <tbb/blocked_range.h>
 #endif
 
-#include "half/half.h"
-
 #include "Volume/VolumeData.hpp"
 #include "DataSet.hpp"
 #include "LoadersUtil.hpp"

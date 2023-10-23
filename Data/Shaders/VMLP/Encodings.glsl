@@ -143,6 +143,8 @@ void main() {
 
 #version 450 core
 
+#extension GL_EXT_scalar_block_layout : require
+
 layout(local_size_x = BLOCK_SIZE, local_size_y = 1, local_size_z = 1) in;
 
 /**
@@ -156,11 +158,11 @@ layout(local_size_x = BLOCK_SIZE, local_size_y = 1, local_size_z = 1) in;
 #define IDX_IN(channelIdx, batchIdx) ((batchIdx) + (channelIdx) * batchSize)
 #define IDX_OUT(channelIdx, batchIdx) (OFFSET_OUT + (channelIdx) + (batchIdx) * NUM_CHANNELS_OUT)
 
-layout(binding = 0, std430) readonly buffer InputBuffer {
+layout(binding = 0, scalar) readonly buffer InputBuffer {
     real inputBuffer[];
 };
 
-layout(binding = 1, std430) writeonly buffer OutputBuffer {
+layout(binding = 1, scalar) writeonly buffer OutputBuffer {
     real outputBuffer[];
 };
 
@@ -256,7 +258,7 @@ layout(binding = 3, std430) readonly buffer OffsetTableBuffer {
     uint offset_table[];
 };
 
-layout(binding = 4, std430) writeonly buffer OutputBuffer {
+layout(binding = 4, scalar) writeonly buffer OutputBuffer {
     real encoded_positions[];
 };
 

@@ -134,7 +134,7 @@ public:
     void addField(float* fieldData, FieldType fieldType, const std::string& fieldName, int timeStepIdx, int ensembleIdx);
     void addField(uint8_t* fieldData, FieldType fieldType, const std::string& fieldName, int timeStepIdx, int ensembleIdx);
     void addField(uint16_t* fieldData, FieldType fieldType, const std::string& fieldName, int timeStepIdx, int ensembleIdx);
-    void addField(FLOAT16* fieldData, FieldType fieldType, const std::string& fieldName, int timeStepIdx, int ensembleIdx);
+    void addField(HalfFloat* fieldData, FieldType fieldType, const std::string& fieldName, int timeStepIdx, int ensembleIdx);
     void addField(
             void* fieldData, ScalarDataFormat dataFormat, FieldType fieldType,
             const std::string& fieldName, int timeStepIdx, int ensembleIdx);

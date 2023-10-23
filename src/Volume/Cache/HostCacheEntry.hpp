@@ -33,7 +33,7 @@
 
 #include <Utils/SciVis/ScalarDataFormat.hpp>
 
-class FLOAT16;
+class HalfFloat;
 class VolumeData;
 
 class HostCacheEntryType {
@@ -45,7 +45,7 @@ public:
             : scalarDataFormatNative(ScalarDataFormat::BYTE), numEntries(numEntries), dataByte(dataByte) {}
     explicit HostCacheEntryType(size_t numEntries, uint16_t* dataShort)
             : scalarDataFormatNative(ScalarDataFormat::SHORT), numEntries(numEntries), dataShort(dataShort) {}
-    explicit HostCacheEntryType(size_t numEntries, FLOAT16* dataFloat16)
+    explicit HostCacheEntryType(size_t numEntries, HalfFloat* dataFloat16)
             : scalarDataFormatNative(ScalarDataFormat::FLOAT16), numEntries(numEntries), dataFloat16(dataFloat16) {}
     ~HostCacheEntryType();
 
@@ -54,7 +54,7 @@ public:
     [[nodiscard]] const float* getDataFloat();
     [[nodiscard]] const uint8_t* getDataByte();
     [[nodiscard]] const uint16_t* getDataShort();
-    [[nodiscard]] const FLOAT16* getDataFloat16();
+    [[nodiscard]] const HalfFloat* getDataFloat16();
 
     void switchNativeFormat(ScalarDataFormat newNativeFormat);
 
@@ -88,7 +88,7 @@ public:
         return getDataShort();
     }
     template<class T>
-    [[nodiscard]] inline const typename std::enable_if<std::is_same<T, FLOAT16>::value, T>::type* data() {
+    [[nodiscard]] inline const typename std::enable_if<std::is_same<T, HalfFloat>::value, T>::type* data() {
         return getDataFloat16();
     }
 
@@ -105,7 +105,7 @@ private:
     float* dataFloat = nullptr;
     uint8_t* dataByte = nullptr;
     uint16_t* dataShort = nullptr;
-    FLOAT16* dataFloat16 = nullptr;
+    HalfFloat* dataFloat16 = nullptr;
 };
 
 #endif //CORRERENDER_HOSTCACHEENTRY_HPP

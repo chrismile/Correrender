@@ -37,7 +37,7 @@
 #include <Graphics/Vulkan/Render/Renderer.hpp>
 #include <Graphics/Vulkan/Render/Passes/Pass.hpp>
 
-#include "Loaders/half/half.h"
+#include "Loaders/half/half.hpp"
 #include "Encoding.hpp"
 #include "Network.hpp"
 
@@ -50,15 +50,15 @@ void uploadParametersToBuffer(
     if (format == FloatFormat::FLOAT32) {
         data = parameters;
     } else if (format == FloatFormat::FLOAT16) {
-        auto* dataHalf = new FLOAT16[numParameters];
+        auto* dataHalf = new HalfFloat[numParameters];
         for (uint32_t i = 0; i < numParameters; i++) {
-            dataHalf[i] = FLOAT16::ToFloat16(parameters[i]);
+            dataHalf[i] = HalfFloat(parameters[i]);
         }
         data = dataHalf;
     }
     parametersBuffer->uploadData(numParameters * FLOAT_FORMAT_SIZES_IN_BYTE[int(format)], data);
     if (format == FloatFormat::FLOAT16) {
-        delete[] reinterpret_cast<FLOAT16*>(data);
+        delete[] reinterpret_cast<HalfFloat*>(data);
     }
 }
 
@@ -121,9 +121,10 @@ void debugPrintBuffer(const sgl::vk::BufferPtr& deviceBuffer, FloatFormat format
         std::cout << std::endl;
         stagingBuffer->unmapMemory();
     } else {
-        auto* data = reinterpret_cast<FLOAT16*>(stagingBuffer->mapMemory());
+        auto* data = reinterpret_cast<HalfFloat*>(stagingBuffer->mapMemory());
+        std::cout << std::endl;
         for (size_t i = 0; i < numEntries; i++) {
-            std::cout << FLOAT16::ToFloat32(data[i]) << std::endl;
+            std::cout << float(data[i]) << std::endl;
         }
         std::cout << std::endl;
         stagingBuffer->unmapMemory();
@@ -189,9 +190,10 @@ void NetworkWithInputEncoding::setInputOutputMatrices(const Matrix& input, const
     if (batchSize != intermediateOutput.getBatchSize() || floatFormatChanged) {
         floatFormatChanged = false;
         auto channelsEncodingOut = encoding->getNumChannelsOut();
+        // TODO: Remove VK_BUFFER_USAGE_TRANSFER_SRC_BIT.
         auto intermediateBuffer = std::make_shared<sgl::vk::Buffer>(
                 device, channelsEncodingOut * batchSize * FLOAT_FORMAT_SIZES_IN_BYTE[int(format)],
-                VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+                VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
         auto commandBuffer = device->beginSingleTimeCommands();
         intermediateBuffer->fill(0, commandBuffer);
         device->endSingleTimeCommands(commandBuffer);
@@ -207,7 +209,8 @@ void NetworkWithInputEncoding::runInference() {
     encoding->runInference();
     network->runInference();
 
-    //debugPrintBuffer(intermediateOutput.getBuffer(), format, 48);
+    debugPrintBuffer(intermediateOutput.getBuffer(), format, 48);
+    std::cout << std::endl;
 
     /*networkRenderer->syncWithCpu();
     auto beginEncoding = std::chrono::system_clock::now();

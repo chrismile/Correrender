@@ -33,7 +33,7 @@
 #include <tbb/blocked_range.h>
 #endif
 
-#include "Loaders/half/half.h"
+#include "Loaders/half/half.hpp"
 #include "HostCacheEntry.hpp"
 
 HostCacheEntryType::~HostCacheEntryType() {
@@ -77,9 +77,9 @@ void HostCacheEntryType::switchNativeFormat(ScalarDataFormat newNativeFormat) {
                 "Currently, only switching from float to float16 is supported.");
     }
     scalarDataFormatNative = newNativeFormat;
-    dataFloat16 = new FLOAT16[numEntries];
+    dataFloat16 = new HalfFloat[numEntries];
     for (size_t i = 0; i < numEntries; i++) {
-        dataFloat16[i] = FLOAT16::ToFloat16(dataFloat[i]);
+        dataFloat16[i] = HalfFloat(dataFloat[i]);
     }
 }
 
@@ -97,7 +97,7 @@ const uint16_t* HostCacheEntryType::getDataShort() {
     return dataShort;
 }
 
-const FLOAT16* HostCacheEntryType::getDataFloat16() {
+const HalfFloat* HostCacheEntryType::getDataFloat16() {
     if (scalarDataFormatNative != ScalarDataFormat::FLOAT16) {
         sgl::Logfile::get()->throwError("Error in HostCacheEntryType::getDataFloat16: Native format is not float16.");
     }
@@ -150,7 +150,7 @@ const float* HostCacheEntryType::getDataFloat() {
 #endif
         for (size_t i = 0; i < numEntries; i++) {
 #endif
-            dataFloat[i] = FLOAT16::ToFloat32(dataFloat16[i]);
+            dataFloat[i] = float(dataFloat16[i]);
         }
 #ifdef USE_TBB
         });
@@ -170,7 +170,7 @@ float HostCacheEntryType::getDataFloatAt(size_t idx) {
         return float(dataShort[idx]) / 65535.0f;
     }
     if (scalarDataFormatNative == ScalarDataFormat::FLOAT16) {
-        return FLOAT16::ToFloat32(dataFloat16[idx]);
+        return float(dataFloat16[idx]);
     }
     return 0.0f;
 }

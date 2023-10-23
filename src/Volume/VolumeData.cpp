@@ -53,7 +53,7 @@
 #endif
 
 #include "Loaders/DataSet.hpp"
-#include "Loaders/half/half.h"
+#include "Loaders/half/half.hpp"
 #include "Loaders/VolumeLoader.hpp"
 #include "Loaders/AmiraMeshLoader.hpp"
 #include "Loaders/DatRawFileLoader.hpp"
@@ -324,7 +324,7 @@ static void addFieldGlobal(
         }
         if (fieldType == FieldType::SCALAR) {
             auto* scalarFieldCopy = new T[ssxs * ssys * sszs];
-            if constexpr(std::is_same<T, FLOAT16>()) {
+            if constexpr(std::is_same<T, HalfFloat>()) {
                 size_t bufferSize = ssxs * ssys * sszs;
                 for (size_t i = 0; i < bufferSize; i++) {
                     scalarFieldCopy[i] = fieldData[i];
@@ -355,7 +355,7 @@ static void addFieldGlobal(
             delete[] scalarFieldCopy;
         } else {
             auto* vectorFieldCopy = new T[3 * ssxs * ssys * sszs];
-            if constexpr(std::is_same<T, FLOAT16>()) {
+            if constexpr(std::is_same<T, HalfFloat>()) {
                 size_t bufferSize = 3 * ssxs * ssys * sszs;
                 for (size_t i = 0; i < bufferSize; i++) {
                     vectorFieldCopy[i] = fieldData[i];
@@ -461,7 +461,7 @@ static void addFieldGlobal(
         access.sizeInBytes /= 4;
     } else if constexpr(std::is_same<T, uint16_t>()) {
         access.sizeInBytes /= 2;
-    } else if constexpr(std::is_same<T, FLOAT16>()) {
+    } else if constexpr(std::is_same<T, HalfFloat>()) {
         access.sizeInBytes /= 2;
     }
 
@@ -498,7 +498,7 @@ void VolumeData::addField(
 }
 
 void VolumeData::addField(
-        FLOAT16* fieldData, FieldType fieldType, const std::string& fieldName, int timeStepIdx, int ensembleIdx) {
+        HalfFloat* fieldData, FieldType fieldType, const std::string& fieldName, int timeStepIdx, int ensembleIdx) {
     addFieldGlobal(
             fieldData, fieldType, fieldName, timeStepIdx, ensembleIdx,
             xs, ys, zs, ssxs, ssys, sszs, subsamplingFactor, transpose, transposeAxes, this, hostFieldCache.get());
@@ -516,7 +516,7 @@ void VolumeData::addField(
         } else if (dataFormat == ScalarDataFormat::SHORT) {
             addField(static_cast<uint16_t*>(fieldData), fieldType, attributeName, timeStepIdx, ensembleIdx);
         } else if (dataFormat == ScalarDataFormat::FLOAT16) {
-            addField(static_cast<FLOAT16*>(fieldData), fieldType, attributeName, timeStepIdx, ensembleIdx);
+            addField(static_cast<HalfFloat*>(fieldData), fieldType, attributeName, timeStepIdx, ensembleIdx);
         }
     } else {
         if (dataFormat == ScalarDataFormat::FLOAT) {
@@ -526,7 +526,7 @@ void VolumeData::addField(
         } else if (dataFormat == ScalarDataFormat::SHORT) {
             addField(static_cast<uint16_t*>(fieldData), fieldType, fieldName, timeStepIdx, ensembleIdx);
         } else if (dataFormat == ScalarDataFormat::FLOAT16) {
-            addField(static_cast<FLOAT16*>(fieldData), fieldType, fieldName, timeStepIdx, ensembleIdx);
+            addField(static_cast<HalfFloat*>(fieldData), fieldType, fieldName, timeStepIdx, ensembleIdx);
         }
     }
 }
@@ -786,7 +786,7 @@ bool VolumeData::getScalarFieldSupportsBufferMode(int scalarFieldIdx) {
 template<class T>
 static void transposeScalarField(T* fieldEntryBuffer, int ssxs, int ssys, int sszs) {
     auto* scalarFieldCopy = new T[ssxs * ssys * sszs];
-    if constexpr(std::is_same<T, FLOAT16>()) {
+    if constexpr(std::is_same<T, HalfFloat>()) {
         size_t bufferSize = ssxs * ssys * sszs;
         for (size_t i = 0; i < bufferSize; i++) {
             scalarFieldCopy[i] = fieldEntryBuffer[i];
@@ -820,7 +820,7 @@ static void transposeScalarField(T* fieldEntryBuffer, int ssxs, int ssys, int ss
 template<class T>
 static void transposeVectorField(T* fieldEntryBuffer, int ssxs, int ssys, int sszs) {
     auto* vectorFieldCopy = new T[3 * ssxs * ssys * sszs];
-    if constexpr(std::is_same<T, FLOAT16>()) {
+    if constexpr(std::is_same<T, HalfFloat>()) {
         size_t bufferSize = 3 * ssxs * ssys * sszs;
         for (size_t i = 0; i < bufferSize; i++) {
             vectorFieldCopy[i] = fieldEntryBuffer[i];
@@ -1146,8 +1146,8 @@ VolumeData::DeviceCacheEntry VolumeData::getFieldEntryDevice(
                 image->uploadData(bufferEntriesCount * 4 * sizeof(uint16_t), bufferPadded);
                 delete[] bufferPadded;
             } else if (scalarDataFormat == ScalarDataFormat::FLOAT16) {
-                const FLOAT16* bufferIn = bufferCpu->data<FLOAT16>();
-                auto* bufferPadded = new FLOAT16[bufferEntriesCount * 4];
+                const HalfFloat* bufferIn = bufferCpu->data<HalfFloat>();
+                auto* bufferPadded = new HalfFloat[bufferEntriesCount * 4];
 #ifdef USE_TBB
                 tbb::parallel_for(tbb::blocked_range<size_t>(0, bufferEntriesCount), [&](auto const& r) {
                     for (auto i = r.begin(); i != r.end(); i++) {
@@ -1162,12 +1162,12 @@ VolumeData::DeviceCacheEntry VolumeData::getFieldEntryDevice(
                     bufferPadded[iPadded] = bufferIn[iIn];
                     bufferPadded[iPadded + 1] = bufferIn[iIn + 1];
                     bufferPadded[iPadded + 2] = bufferIn[iIn + 2];
-                    bufferPadded[iPadded + 3] = FLOAT16::ToFloat16(0.0f);
+                    bufferPadded[iPadded + 3] = HalfFloat(0.0f);
                 }
 #ifdef USE_TBB
                 });
 #endif
-                image->uploadData(bufferEntriesCount * 4 * sizeof(FLOAT16), bufferPadded);
+                image->uploadData(bufferEntriesCount * 4 * sizeof(HalfFloat), bufferPadded);
                 delete[] bufferPadded;
             }
         }

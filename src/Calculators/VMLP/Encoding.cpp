@@ -36,7 +36,7 @@
 #include <Graphics/Vulkan/Render/Renderer.hpp>
 #include <Graphics/Vulkan/Render/Passes/Pass.hpp>
 
-#include "Loaders/half/half.h"
+#include "Loaders/half/half.hpp"
 #include "Encoding.hpp"
 
 namespace vmlp {
