@@ -87,6 +87,10 @@ protected:
     bool deviceSupporsFp16 = false;
     vmlp::FloatFormat floatFormat = vmlp::FloatFormat::FLOAT32;
 
+    // Cooperative matrices.
+    int formatIdxNV = -1, formatIdxKHR = -1;
+    std::vector<uint32_t> formatDimsNV, formatDimsKHR;
+
     /// For networkType == NetworkType::SRN_MINE.
     int srnGpuBatchSize1DBase = 131072;
     size_t cachedVolumeDataSlice3dSize = 0;

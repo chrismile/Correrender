@@ -78,13 +78,6 @@ If you wish to build the program manually using Visual Studio and vcpkg, or usin
 the directory `docs/compilation`.
 
 
-## Replicability Stamp
-
-This repository takes part in the Graphics Replicability Stamp Initiative (GRSI).
-For more information, please refer to `replicability/README.md`.
-For more details on the Replicability Stamp itself, please refer to http://www.replicabilitystamp.org/.
-
-
 ## How to add new data sets
 
 Under `Data/VolumeDataSets/datasets.json`, loadable volume data sets can be specified. Additionally, the user can also
@@ -113,6 +106,15 @@ Supported formats currently are:
 - .vti, .vts (structured grids in VTK XML format).
 - .am (AmiraMesh format, see https://www.csc.kth.se/~weinkauf/notes/amiramesh.html).
 - The custom .field, .bin, .dat and .raw file formats used in our research group.
+
+
+## Replicability Stamp
+
+This repository takes part in the Graphics Replicability Stamp Initiative (GRSI).
+For more information, please refer to `replicability/README.md`.
+For more details on the Replicability Stamp itself, please refer to http://www.replicabilitystamp.org/.
+
+[![](https://www.replicabilitystamp.org/logo/Reproducibility-tiny.png)](http://www.replicabilitystamp.org#https-github-com-chrismile-correrender)
 
 
 ## How to report bugs

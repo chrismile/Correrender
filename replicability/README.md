@@ -3,6 +3,8 @@
 This file contains information for the TVCG Replicability Stamp. For more details on the Replicability Stamp,
 please refer to http://www.replicabilitystamp.org/.
 
+[![](https://www.replicabilitystamp.org/logo/Reproducibility-small.png)](http://www.replicabilitystamp.org#https-github-com-chrismile-correrender)
+
 We give permission to the Replicability Stamp committee and reviewers of the Graphics Replicability Stamp Initiative
 (GRSI) to review the code and advertise the review publicly after the stamp is approved.
 

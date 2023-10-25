@@ -323,10 +323,10 @@ void CopyDecoderOutputPass::_render() {
 
 VMLPCorrelationCalculator::VMLPCorrelationCalculator(sgl::vk::Renderer* renderer)
         : DeepLearningCorrelationCalculator("VMLP", "vmlp", renderer) {
-    //sgl::vk::Device* device = renderer->getDevice();
+    sgl::vk::Device* device = renderer->getDevice();
 
     // e.g., 131072 for RTX 3090 (rounded up from 83968).
-    auto deviceThreadInfo = sgl::getDeviceThreadInfo(renderer->getDevice());
+    auto deviceThreadInfo = sgl::getDeviceThreadInfo(device);
     srnGpuBatchSize1DBase = int(deviceThreadInfo.numCoresTotal) * 8;
     if (!sgl::isPowerOfTwo(srnGpuBatchSize1DBase)) {
         srnGpuBatchSize1DBase = sgl::nextPowerOfTwo(srnGpuBatchSize1DBase);
@@ -334,15 +334,79 @@ VMLPCorrelationCalculator::VMLPCorrelationCalculator(sgl::vk::Renderer* renderer
     srnGpuBatchSize1DBase = std::clamp(srnGpuBatchSize1DBase, 256, 131072);
 
     bool shaderFloat16 =
-            renderer->getDevice()->getPhysicalDeviceShaderFloat16Int8Features().shaderFloat16
-            || renderer->getDevice()->getPhysicalDeviceVulkan12Features().shaderFloat16;
+            device->getPhysicalDeviceShaderFloat16Int8Features().shaderFloat16
+            || device->getPhysicalDeviceVulkan12Features().shaderFloat16;
     bool storageBufferFloat16 =
-            renderer->getDevice()->getPhysicalDevice16BitStorageFeatures().storageBuffer16BitAccess
-            || renderer->getDevice()->getPhysicalDeviceVulkan11Features().storageBuffer16BitAccess;
+            device->getPhysicalDevice16BitStorageFeatures().storageBuffer16BitAccess
+            || device->getPhysicalDeviceVulkan11Features().storageBuffer16BitAccess;
     deviceSupporsFp16 = shaderFloat16 && storageBufferFloat16;
     if (deviceSupporsFp16) {
         floatFormat = vmlp::FloatFormat::FLOAT16;
     }
+
+#ifdef VK_NV_cooperative_matrix
+    if (device->getCooperativeMatrixFeaturesNV().cooperativeMatrix) {
+        const auto& cooperativeMatrixProperties = device->getSupportedCooperativeMatrixPropertiesNV();
+        //std::cout << "Supported modes (NV):\n" << std::endl;
+        for (size_t i = 0; i < cooperativeMatrixProperties.size(); i++) {
+            auto& props = cooperativeMatrixProperties[i];
+            if (props.scope == VK_SCOPE_SUBGROUP_KHR
+                    && props.AType == VK_COMPONENT_TYPE_FLOAT16_NV
+                    && props.BType == VK_COMPONENT_TYPE_FLOAT16_NV
+                    && props.CType == VK_COMPONENT_TYPE_FLOAT16_NV
+                    && props.DType == VK_COMPONENT_TYPE_FLOAT16_NV
+                    && props.MSize == props.NSize && props.NSize == props.KSize) {
+                formatDimsNV.push_back(props.MSize);
+            }
+            std::sort(formatDimsNV.begin(), formatDimsNV.end());
+            if (!formatDimsNV.empty()) {
+                formatIdxNV = int(formatDimsNV.size()) - 1;
+            }
+            //std::cout
+            //        << "MSize: " << props.MSize
+            //        << "\nNSize: " << props.NSize
+            //        << "\nKSize: " << props.KSize
+            //        << "\nAType: " << COMPONENT_TYPE_NAMES[int(props.AType)]
+            //        << "\nBType: " << COMPONENT_TYPE_NAMES[int(props.BType)]
+            //        << "\nCType: " << COMPONENT_TYPE_NAMES[int(props.CType)]
+            //        << "\nDType: " << COMPONENT_TYPE_NAMES[int(props.DType)]
+            //        << "\nscope: " << SCOPE_NAMES[int(props.scope)]
+            //        << "\n" << std::endl;
+        }
+    }
+#endif
+#ifdef VK_KHR_cooperative_matrix
+    if (device->getCooperativeMatrixFeaturesKHR().cooperativeMatrix) {
+        const auto& cooperativeMatrixProperties = device->getSupportedCooperativeMatrixPropertiesKHR();
+        //std::cout << "Supported modes (KHR):\n" << std::endl;
+        for (size_t i = 0; i < cooperativeMatrixProperties.size(); i++) {
+            auto& props = cooperativeMatrixProperties[i];
+            if (props.scope == VK_SCOPE_SUBGROUP_KHR
+                    && props.AType == VK_COMPONENT_TYPE_FLOAT16_NV
+                    && props.BType == VK_COMPONENT_TYPE_FLOAT16_NV
+                    && props.CType == VK_COMPONENT_TYPE_FLOAT16_NV
+                    && props.ResultType == VK_COMPONENT_TYPE_FLOAT16_NV
+                    && props.MSize == props.NSize && props.NSize == props.KSize) {
+                formatDimsKHR.push_back(props.MSize);
+            }
+            std::sort(formatDimsKHR.begin(), formatDimsKHR.end());
+            if (!formatDimsKHR.empty()) {
+                formatIdxKHR = int(formatDimsKHR.size()) - 1;
+            }
+            //std::cout
+            //        << "\nMSize: " << props.MSize
+            //        << "\nNSize: " << props.NSize
+            //        << "\nKSize: " << props.KSize
+            //        << "\nAType: " << COMPONENT_TYPE_NAMES[int(props.AType)]
+            //        << "\nBType: " << COMPONENT_TYPE_NAMES[int(props.BType)]
+            //        << "\nCType: " << COMPONENT_TYPE_NAMES[int(props.CType)]
+            //        << "\nResultType: " << COMPONENT_TYPE_NAMES[int(props.ResultType)]
+            //        << "\nsaturatingAccumulation: " << props.saturatingAccumulation
+            //        << "\nscope: " << SCOPE_NAMES[int(props.scope)]
+            //        << "\n" << std::endl;
+        }
+    }
+#endif
 
     writeGridPositionsPass = std::make_shared<WriteGridPositionsPass>(renderer);
     writeGridPositionsStencilPass = std::make_shared<WriteGridPositionsStencilPass>(renderer);
