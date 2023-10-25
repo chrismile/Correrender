@@ -350,7 +350,7 @@ VMLPCorrelationCalculator::VMLPCorrelationCalculator(sgl::vk::Renderer* renderer
         //std::cout << "Supported modes (NV):\n" << std::endl;
         for (size_t i = 0; i < cooperativeMatrixProperties.size(); i++) {
             auto& props = cooperativeMatrixProperties[i];
-            if (props.scope == VK_SCOPE_SUBGROUP_KHR
+            if (props.scope == VK_SCOPE_SUBGROUP_NV
                     && props.AType == VK_COMPONENT_TYPE_FLOAT16_NV
                     && props.BType == VK_COMPONENT_TYPE_FLOAT16_NV
                     && props.CType == VK_COMPONENT_TYPE_FLOAT16_NV
@@ -382,10 +382,10 @@ VMLPCorrelationCalculator::VMLPCorrelationCalculator(sgl::vk::Renderer* renderer
         for (size_t i = 0; i < cooperativeMatrixProperties.size(); i++) {
             auto& props = cooperativeMatrixProperties[i];
             if (props.scope == VK_SCOPE_SUBGROUP_KHR
-                    && props.AType == VK_COMPONENT_TYPE_FLOAT16_NV
-                    && props.BType == VK_COMPONENT_TYPE_FLOAT16_NV
-                    && props.CType == VK_COMPONENT_TYPE_FLOAT16_NV
-                    && props.ResultType == VK_COMPONENT_TYPE_FLOAT16_NV
+                    && props.AType == VK_COMPONENT_TYPE_FLOAT16_KHR
+                    && props.BType == VK_COMPONENT_TYPE_FLOAT16_KHR
+                    && props.CType == VK_COMPONENT_TYPE_FLOAT16_KHR
+                    && props.ResultType == VK_COMPONENT_TYPE_FLOAT16_KHR
                     && props.MSize == props.NSize && props.NSize == props.KSize) {
                 formatDimsKHR.push_back(props.MSize);
             }

@@ -219,11 +219,12 @@ bool NetCdfLoader::setInputFiles(
     isOpen = true;
 
     // Temporary data for storing information about the variables in the data file.
-    int nvarsp = 0;
+    int ndims = 0, nvarsp = 0;
     int dimids[NC_MAX_VAR_DIMS];
+    char dimname[NC_MAX_NAME];
     char varname[NC_MAX_NAME];
     char attname[NC_MAX_NAME];
-    myassert(nc_inq(ncid, nullptr, &nvarsp, nullptr, nullptr) == NC_NOERR);
+    myassert(nc_inq(ncid, &ndims, &nvarsp, nullptr, nullptr) == NC_NOERR);
 
     bool uLowerCaseVariableExists = getVariableExists("u");
     bool vLowerCaseVariableExists = getVariableExists("v");
@@ -233,6 +234,7 @@ bool NetCdfLoader::setInputFiles(
     bool wUpperCaseVariableExists = getVariableExists("W");
 
     // Get the wind speed variable IDs.
+    int foundDims[3] = { -1, -1, -1 };
     int varIdRepresentative = -1, varIdU = -1, varIdV = -1, varIdW = -1;
     if (uLowerCaseVariableExists && vLowerCaseVariableExists && wLowerCaseVariableExists) {
         myassert(nc_inq_varid(ncid, "u", &varIdU) == NC_NOERR);
@@ -245,15 +247,48 @@ bool NetCdfLoader::setInputFiles(
         myassert(nc_inq_varid(ncid, "W", &varIdW) == NC_NOERR);
         varIdRepresentative = varIdU;
     } else {
+        const std::unordered_set<std::string> validDimNames[3] = {
+                std::unordered_set<std::string>{ "z", "zs", "lev" },
+                std::unordered_set<std::string>{ "y", "ys", "lat" },
+                std::unordered_set<std::string>{ "x", "xs", "lon" }
+        };
+        for (int dimid = 0; dimid < ndims; dimid++) {
+            size_t dimLen = 0;
+            myassert(nc_inq_dim(ncid, dimid, dimname, &dimLen) == NC_NOERR);
+            std::string dimNameString = dimname;
+            for (int dimIdx = 0; dimIdx < 3; dimIdx++) {
+                const auto& names = validDimNames[dimIdx];
+                if (names.find(dimNameString) != names.end()) {
+                    foundDims[dimIdx] = dimid;
+                }
+            }
+        }
+
+        // Get the first variable with 3 dimensions equal to the found dimensions.
+        if (foundDims[0] >= 0 && foundDims[1] >= 0 && foundDims[2] >= 0) {
+            for (int varid = 0; varid < nvarsp; varid++) {
+                nc_type type = NC_FLOAT;
+                int ndims = 0;
+                int natts = 0;
+                nc_inq_var(ncid, varid, varname, &type, &ndims, dimids, &natts);
+                if ((type == NC_FLOAT || type == NC_DOUBLE) && ndims == 3
+                        && dimids[0] == foundDims[0] && dimids[1] == foundDims[1] && dimids[2] == foundDims[2]) {
+                    varIdRepresentative = varid;
+                    break;
+                }
+            }
+        }
         // Get the first variable with 3 or 4 dimensions.
-        for (int varid = 0; varid < nvarsp; varid++) {
-            nc_type type = NC_FLOAT;
-            int ndims = 0;
-            int natts = 0;
-            nc_inq_var(ncid, varid, varname, &type, &ndims, dimids, &natts);
-            if ((type == NC_FLOAT || type == NC_DOUBLE) && ndims == 4) {
-                varIdRepresentative = varid;
-                break;
+        if (varIdRepresentative == -1) {
+            for (int varid = 0; varid < nvarsp; varid++) {
+                nc_type type = NC_FLOAT;
+                int ndims = 0;
+                int natts = 0;
+                nc_inq_var(ncid, varid, varname, &type, &ndims, dimids, &natts);
+                if ((type == NC_FLOAT || type == NC_DOUBLE) && ndims == 4) {
+                    varIdRepresentative = varid;
+                    break;
+                }
             }
         }
         if (varIdRepresentative == -1) {
@@ -298,6 +333,9 @@ bool NetCdfLoader::setInputFiles(
         myassert(nc_inq_dim(ncid, dimensionIds[0], dimNameZ, &zs64) == NC_NOERR);
         myassert(nc_inq_dim(ncid, dimensionIds[1], dimNameY, &ys64) == NC_NOERR);
         myassert(nc_inq_dim(ncid, dimensionIds[2], dimNameX, &xs64) == NC_NOERR);
+        foundDims[0] = dimensionIds[0];
+        foundDims[1] = dimensionIds[1];
+        foundDims[2] = dimensionIds[2];
         zs = int(zs64);
         ys = int(ys64);
         xs = int(xs64);
@@ -478,6 +516,10 @@ bool NetCdfLoader::setInputFiles(
         }
 
         if (!isFloatingPointData || (ndims != 3 && ndims != 4)) {
+            continue;
+        }
+
+        if (ndims == 3 && (foundDims[0] != dimids[0] || foundDims[1] != dimids[1] || foundDims[2] != dimids[2])) {
             continue;
         }
 
