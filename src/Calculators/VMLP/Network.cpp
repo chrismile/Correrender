@@ -426,9 +426,9 @@ void MlpFusedPass::loadShader() {
         preprocessorDefines.insert(std::make_pair("CoopMatA", "coopmat<float16_t, gl_ScopeSubgroup, M, M, gl_MatrixUseA>"));
         preprocessorDefines.insert(std::make_pair("CoopMatB", "coopmat<float16_t, gl_ScopeSubgroup, M, M, gl_MatrixUseB>"));
         preprocessorDefines.insert(std::make_pair("CoopMatAcc", "coopmat<float16_t, gl_ScopeSubgroup, M, M, gl_MatrixUseAccumulator>"));
-        preprocessorDefines.insert(std::make_pair("matLoad", "coopMatLoadKHR"));
-        preprocessorDefines.insert(std::make_pair("matStore", "coopMatStoreKHR"));
-        preprocessorDefines.insert(std::make_pair("matMulAdd", "coopMatMulAddKHR"));
+        preprocessorDefines.insert(std::make_pair("matLoad", "coopMatLoad"));
+        preprocessorDefines.insert(std::make_pair("matStore", "coopMatStore"));
+        preprocessorDefines.insert(std::make_pair("matMulAdd", "coopMatMulAdd"));
         preprocessorDefines.insert(std::make_pair("ROW_MAJOR", "gl_CooperativeMatrixLayoutRowMajor"));
         preprocessorDefines.insert(std::make_pair("COL_MAJOR", "gl_CooperativeMatrixLayoutColumnMajor"));
     } else {

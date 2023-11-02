@@ -84,6 +84,8 @@ int main(int argc, char *argv[]) {
     bool usePerfMode = false, useSamplingMode = false, useReplicabilityStampMode = false;
     std::string dataSetPath;
     int testIdx = -1;
+    bool useCustomShaderCompilerBackend = false;
+    sgl::vk::ShaderCompilerBackend shaderCompilerBackend = sgl::vk::ShaderCompilerBackend::SHADERC;
     for (int i = 1; i < argc; i++) {
         std::string command = argv[i];
         if (command == "--perf") {
@@ -100,6 +102,19 @@ int main(int argc, char *argv[]) {
             }
         } else if (command == "--replicability") {
             useReplicabilityStampMode = true;
+        } else if (command == "--shader-backend") {
+            i++;
+            if (i >= argc) {
+                sgl::Logfile::get()->throwError(
+                        "Error: Command line argument '--shader-backend' expects a backend name.");
+            }
+            useCustomShaderCompilerBackend = true;
+            std::string backendName = argv[i];
+            if (backendName == "shaderc") {
+                shaderCompilerBackend = sgl::vk::ShaderCompilerBackend::SHADERC;
+            } else if (backendName == "glslang") {
+                shaderCompilerBackend = sgl::vk::ShaderCompilerBackend::GLSLANG;
+            }
         }
     }
     bool isHeadlessMode = useSamplingMode;
@@ -265,6 +280,9 @@ int main(int argc, char *argv[]) {
 
     sgl::AppSettings::get()->setPrimaryDevice(device);
     sgl::AppSettings::get()->initializeSubsystems();
+    if (useCustomShaderCompilerBackend) {
+        sgl::vk::ShaderManager->setShaderCompilerBackend(shaderCompilerBackend);
+    }
 
     if (!isHeadlessMode) {
         auto app = new MainApp();
