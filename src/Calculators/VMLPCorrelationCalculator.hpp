@@ -75,8 +75,8 @@ protected:
     void recreateCache(int batchSize);
     void runInferenceReference();
     void runInferenceBatch(uint32_t batchOffset, uint32_t batchSize);
-    uint32_t getInputChannelAlignment() { return 1; }
-    uint32_t getSrnStride() { return 3; }
+    uint32_t getInputChannelAlignment();
+    uint32_t getSrnStride();
 
     void renderGuiImplAdvanced(sgl::PropertyEditor& propertyEditor) override;
 

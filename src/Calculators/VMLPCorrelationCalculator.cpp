@@ -429,6 +429,14 @@ void VMLPCorrelationCalculator::initialize() {
 
 VMLPCorrelationCalculator::~VMLPCorrelationCalculator() = default;
 
+uint32_t VMLPCorrelationCalculator::getInputChannelAlignment() {
+    return 1;
+}
+
+uint32_t VMLPCorrelationCalculator::getSrnStride() {
+    return 3;
+}
+
 void VMLPCorrelationCalculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
     DeepLearningCorrelationCalculator::setVolumeData(_volumeData, isNewData);
     auto xs = uint32_t(_volumeData->getGridSizeX());
@@ -712,6 +720,9 @@ void VMLPCorrelationCalculator::loadModelFromFile(const std::string& modelPath) 
     numLayersInDecoder = uint32_t(moduleWrapper->networkDecoder->getNumChannelsIn());
     numLayersOutDecoder = uint32_t(moduleWrapper->networkDecoder->getNumChannelsOut());
 
+    // TODO
+    numLayersOutDecoder = std::max(numLayersOutDecoder, 16u);
+
     if (numLayersOutEncoder * symmetrizerFactor != numLayersInDecoder) {
         sgl::Logfile::get()->throwError(
                 "Error in VMLPCorrelationCalculator::loadModelFromFile: Mismatch between encoder output and "
@@ -849,9 +860,8 @@ void VMLPCorrelationCalculator::runInferenceBatch(uint32_t batchOffset, uint32_t
     //debugPrintBuffer(cacheWrapper->referenceEncoded.getBuffer(), floatFormat, 16);
     //debugPrintBuffer(cacheWrapper->queryEncoded.getBuffer(), floatFormat, 128);
     //debugPrintBuffer(cacheWrapper->symmetrizedInput.getBuffer(), floatFormat, 16);
-    //debugPrintBuffer(cacheWrapper->queryDecoded.getBuffer(), floatFormat, 16);
+    //debugPrintBuffer(cacheWrapper->queryDecoded.getBuffer(), floatFormat, 128);
     //std::cout << std::endl;
-    dirty = true;
 
     std::shared_ptr<CopyDecoderOutputPass> copyDecoderOutputPass;
     if (isMutualInformationData) {

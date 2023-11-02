@@ -406,7 +406,7 @@ bool CtlLoader::openDataFile(const std::string& dataFileName) {
 #if defined(__linux__) || defined(__MINGW32__) // __GNUC__? Does GCC generally work on non-POSIX systems?
     file = fopen64(dataFileName.c_str(), "rb");
 #else
-    file = fopen(filename.c_str(), "rb");
+    file = fopen(dataFileName.c_str(), "rb");
 #endif
     if (!file) {
         sgl::Logfile::get()->writeError(

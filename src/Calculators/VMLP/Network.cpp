@@ -382,7 +382,7 @@ MlpFusedPass::MlpFusedPass(
                 + std::to_string(maxSharedMemSize) + ").");
     }
     nBatch = std::clamp(nBatch, 1u, 8u);
-    sharedMemorySize = nBatch * numChannelsHidden * M;
+    sharedMemorySize = nBatch * numChannelsHidden * M * sizeof(HalfFloat);
 }
 
 void MlpFusedPass::setBuffersInOut(const sgl::vk::BufferPtr& _bufferIn, const sgl::vk::BufferPtr& _bufferOut) {
@@ -412,7 +412,8 @@ void MlpFusedPass::loadShader() {
     preprocessorDefines.insert(std::make_pair("SUBGROUP_SIZE", std::to_string(subgroupSize)));
     preprocessorDefines.insert(std::make_pair("N_ROWS", std::to_string(nRows)));
     preprocessorDefines.insert(std::make_pair("N_BATCH", std::to_string(nBatch)));
-    preprocessorDefines.insert(std::make_pair("SHARED_MEMORY_SIZE", std::to_string(sharedMemorySize)));
+    preprocessorDefines.insert(std::make_pair(
+            "SHARED_MEMORY_SIZE", std::to_string(sharedMemorySize / sizeof(HalfFloat))));
 
     preprocessorDefines.insert(std::make_pair(
             "ACTIVATION_FUNCTION", ACTIVATION_FUNCTION_NAMES[int(activationFunction)]));
@@ -453,7 +454,10 @@ void MlpFusedPass::createComputeData(sgl::vk::Renderer* renderer, sgl::vk::Compu
 }
 
 void MlpFusedPass::_render() {
-    renderer->pushConstants(getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, 0, batchSize);
+    glm::uvec2 inputOutputBufferSizesUvec4;
+    inputOutputBufferSizesUvec4.x = sgl::uiceil(uint32_t(bufferIn->getSizeInBytes()), uint32_t(sizeof(glm::uvec4)));
+    inputOutputBufferSizesUvec4.y = sgl::uiceil(uint32_t(bufferOut->getSizeInBytes()), uint32_t(sizeof(glm::uvec4)));
+    renderer->pushConstants(getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, 0, inputOutputBufferSizesUvec4);
     renderer->dispatch(computeData, sgl::uiceil(batchSize, M * nBatch), 1, 1);
     renderer->insertBufferMemoryBarrier(
             VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
