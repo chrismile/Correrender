@@ -29,8 +29,9 @@
 #ifndef CORRERENDER_DIAGRAMRENDERER_HPP
 #define CORRERENDER_DIAGRAMRENDERER_HPP
 
-#include <Graphics/Vulkan/Render/Passes/Pass.hpp>
 #include <utility>
+
+#include <Graphics/Vulkan/Render/Passes/Pass.hpp>
 
 #include "../../Calculators/CorrelationDefines.hpp"
 #include "../Renderer.hpp"

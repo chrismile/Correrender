@@ -32,8 +32,12 @@
 #include <Graphics/Vulkan/Render/Passes/Pass.hpp>
 #include "Renderer.hpp"
 
+class ShapefileRasterizer;
 class WorldMapRasterPass;
 
+enum class WorldMapSource {
+    TIFF_FILE, SHAPEFILE_RASTERIZER
+};
 enum class WorldMapQuality {
     LOW, MEDIUM, HIGH
 };
@@ -62,13 +66,18 @@ private:
     std::string worldMapFilePath;
     std::vector<std::shared_ptr<WorldMapRasterPass>> worldMapRasterPasses;
 
-    void ensureWorldMapFileExists();
+    void ensureWorldMapFileExistsTiff();
     void createGeometryData(
             std::vector<uint32_t>& triangleIndices, std::vector<glm::vec3>& vertexPositions,
             std::vector<glm::vec3>& vertexNormals, std::vector<glm::vec2>& vertexTexCoords);
     void createWorldMapTexture();
+    void createWorldMapTextureTiff();
+    void createWorldMapTextureShapefile();
+    WorldMapSource worldMapSource = WorldMapSource::TIFF_FILE;
     WorldMapQuality worldMapQuality = WorldMapQuality::MEDIUM;
+    std::shared_ptr<ShapefileRasterizer> shapefileRasterizer;
     bool hasCheckedWorldMapExists = false;
+    bool manuallySetRasterizer = false;
     float minNormX = 0.0f, minNormY = 0.0f, maxNormX = 0.0f, maxNormY = 0.0;
     uint32_t regionImageWidth = 0, regionImageHeight = 0;
     uint32_t xl = 0, yl = 0, xu = 0, yu = 0;

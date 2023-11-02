@@ -220,6 +220,7 @@ int main(int argc, char *argv[]) {
     // For VMLP.
     requestedDeviceFeatures.optionalVulkan12Features.shaderFloat16 = VK_TRUE;
     requestedDeviceFeatures.optionalVulkan11Features.storageBuffer16BitAccess = VK_TRUE;
+    requestedDeviceFeatures.optionalVulkan12Features.vulkanMemoryModel = VK_TRUE; // For cooperative matrices.
 #ifdef VK_NV_cooperative_matrix
     optionalDeviceExtensions.push_back(VK_NV_COOPERATIVE_MATRIX_EXTENSION_NAME);
 #endif

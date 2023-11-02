@@ -51,7 +51,7 @@ typedef struct _vkvg_context_t* VkvgContext;
 #endif
 
 enum class DiagramType {
-    RADAR_BAR_CHART, HEB_CHART
+    RADAR_BAR_CHART, HEB_CHART, SCATTER_PLOT
 };
 
 class DiagramBase : public sgl::VectorWidget {

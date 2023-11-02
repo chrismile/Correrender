@@ -49,6 +49,7 @@ typedef std::shared_ptr<SemaphoreVkCudaDriverApiInterop> SemaphoreVkCudaDriverAp
 }}
 #endif
 
+class PointPicker;
 class ReferencePointSelectionRenderer;
 
 typedef std::shared_ptr<HostCacheEntryType> HostCacheEntry;
@@ -112,12 +113,8 @@ protected:
     bool isEnsembleMode = true; //< Ensemble or time mode?
 
     // Focus point picking/moving information.
-    void setReferencePointFromFocusPoint();
+    std::shared_ptr<PointPicker> pointPicker;
     bool fixPickingZPlane = true;
-    bool hasHitInformation = false;
-    glm::vec3 focusPoint{};
-    glm::vec3 firstHit{}, lastHit{};
-    glm::vec3 hitLookingDirection{};
 };
 
 

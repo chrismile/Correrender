@@ -808,7 +808,8 @@ void VMLPCorrelationCalculator::runInferenceReference() {
             cacheWrapper->queryEncoded.getBuffer());
 
     // TODO
-    //debugPrintBuffer(cacheWrapper->queryEncoded.getBuffer(), floatFormat, 48);
+    //debugPrintBuffer(cacheWrapper->queryEncoded.getBuffer(), floatFormat, 128);
+    //std::cout << std::endl;
 }
 
 void VMLPCorrelationCalculator::runInferenceBatch(uint32_t batchOffset, uint32_t batchSize) {
@@ -846,9 +847,11 @@ void VMLPCorrelationCalculator::runInferenceBatch(uint32_t batchOffset, uint32_t
 
     //debugPrintBuffer(cacheWrapper->networkInput.getBuffer(), vmlp::FloatFormat::FLOAT32, 16);
     //debugPrintBuffer(cacheWrapper->referenceEncoded.getBuffer(), floatFormat, 16);
-    //debugPrintBuffer(cacheWrapper->queryEncoded.getBuffer(), floatFormat, 16);
+    //debugPrintBuffer(cacheWrapper->queryEncoded.getBuffer(), floatFormat, 128);
     //debugPrintBuffer(cacheWrapper->symmetrizedInput.getBuffer(), floatFormat, 16);
     //debugPrintBuffer(cacheWrapper->queryDecoded.getBuffer(), floatFormat, 16);
+    //std::cout << std::endl;
+    dirty = true;
 
     std::shared_ptr<CopyDecoderOutputPass> copyDecoderOutputPass;
     if (isMutualInformationData) {

@@ -26,7 +26,6 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <boost/algorithm/string/replace.hpp>
 #include <tiffio.h>
 
 #include <Utils/AppSettings.hpp>
@@ -38,58 +37,16 @@
 #include <ImGui/imgui_custom.h>
 
 #include "Utils/InternalState.hpp"
+#include "Utils/Download.hpp"
 #include "Widgets/ViewManager.hpp"
 #include "Volume/VolumeData.hpp"
+#include "Raster/ShapefileRasterizer.hpp"
 #include "RenderingModes.hpp"
 #include "WorldMapRenderer.hpp"
 
-// Include Curl after Renderer.hpp, as NaNHandling::IGNORE conflicts with windows.h.
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <curl/curl.h>
-
-static size_t writeDataCallbackCurl(void *pointer, size_t size, size_t numMembers, void *stream) {
-    size_t written = fwrite(pointer, size, numMembers, (FILE*)stream);
-    return written;
-}
-
-bool downloadFile(const std::string &url, const std::string &localFileName) {
-    CURL* curlHandle = curl_easy_init();
-    if (!curlHandle) {
-        return false;
-    }
-    CURLcode curlErrorCode = CURLE_OK;
-
-    char* compressedUrl = curl_easy_escape(curlHandle, url.c_str(), int(url.size()));
-    std::string fixedUrl = compressedUrl;
-    boost::replace_all(fixedUrl, "%3A", ":");
-    boost::replace_all(fixedUrl, "%2F", "/");
-    std::cout << "Starting to download \"" << fixedUrl << "\"..." << std::endl;
-
-    curl_easy_setopt(curlHandle, CURLOPT_URL, fixedUrl.c_str());
-    //curl_easy_setopt(curlHandle, CURLOPT_VERBOSE, 1L);
-    curl_easy_setopt(curlHandle, CURLOPT_NOPROGRESS, 0L);
-    curl_easy_setopt(curlHandle, CURLOPT_FOLLOWLOCATION, 1L);
-    curl_easy_setopt(curlHandle, CURLOPT_WRITEFUNCTION, writeDataCallbackCurl);
-    FILE* pagefile = fopen(localFileName.c_str(), "wb");
-    if (pagefile) {
-        curl_easy_setopt(curlHandle, CURLOPT_WRITEDATA, pagefile);
-        curlErrorCode = curl_easy_perform(curlHandle);
-        if (curlErrorCode != CURLE_OK) {
-            fclose(pagefile);
-            curl_free(compressedUrl);
-            curl_easy_cleanup(curlHandle);
-            return false;
-        }
-        fclose(pagefile);
-    }
-
-    curl_free(compressedUrl);
-    curl_easy_cleanup(curlHandle);
-    return true;
-}
-
+const char* const WORLD_MAP_SOURCE_NAMES[] = {
+        "TIFF File", "Shapefile Rasterizer"
+};
 const char* const WORLD_MAP_QUALITY_NAMES[] = {
         "Low", "Medium", "High"
 };
@@ -101,22 +58,27 @@ const char* const WORLD_MAP_URLS[] = {
         "https://www.naturalearthdata.com/http//www.naturalearthdata.com/download/10m/raster/HYP_LR_SR_OB_DR.zip",
         "https://www.naturalearthdata.com/http//www.naturalearthdata.com/download/10m/raster/HYP_HR_SR_OB_DR.zip"
 };
+const uint32_t WORLD_MAP_QUALITY_RES[] = {
+        512, 1024, 2048
+};
 
 WorldMapRenderer::WorldMapRenderer(ViewManager* viewManager)
         : Renderer(RENDERING_MODE_NAMES[int(RENDERING_MODE_WORLD_MAP_RENDERER)], viewManager) {
+    shapefileRasterizer = std::make_shared<ShapefileRasterizer>(renderer);
 }
 
 WorldMapRenderer::~WorldMapRenderer() {
+    shapefileRasterizer = {};
 }
 
 void WorldMapRenderer::initialize() {
     Renderer::initialize();
 }
 
-void WorldMapRenderer::ensureWorldMapFileExists() {
+void WorldMapRenderer::ensureWorldMapFileExistsTiff() {
     const std::string mapsDirectory = sgl::AppSettings::get()->getDataDirectory() + "Maps/";
     const std::string mapName = std::string(WORLD_MAP_NAMES[int(worldMapQuality)]);
-    worldMapFilePath = mapsDirectory + mapName + "tif";
+    worldMapFilePath = mapsDirectory + mapName + ".tif";
     const std::string worldMapArchivePath = mapsDirectory + mapName + ".zip";
     if (sgl::FileUtils::get()->exists(worldMapFilePath)) {
         return;
@@ -174,6 +136,38 @@ void WorldMapRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData)
             worldMapRasterPass->setVolumeData(volumeData, isNewData);
             worldMapRasterPass->setRenderData(
                     indexBuffer, vertexPositionBuffer, vertexNormalBuffer, vertexTexCoordBuffer, worldMapTexture);
+        }
+
+        if (manuallySetRasterizer) {
+            worldMapSource = WorldMapSource::TIFF_FILE;
+            manuallySetRasterizer = false;
+        }
+        const float* latData = nullptr;
+        const float* lonData = nullptr;
+        volumeData->getLatLonData(latData, lonData);
+        if (worldMapSource == WorldMapSource::TIFF_FILE && lonData && latData) {
+            int xs = volumeData->getGridSizeX();
+            int ys = volumeData->getGridSizeY();
+            float minLon = std::numeric_limits<float>::max();
+            float maxLon = std::numeric_limits<float>::lowest();
+            float minLat = std::numeric_limits<float>::max();
+            float maxLat = std::numeric_limits<float>::lowest();
+            for (int y = 0; y < ys; y++) {
+                for (int x = 0; x < xs; x++) {
+                    float x_norm = lonData[x + y * xs];
+                    float y_norm = latData[x + y * xs];
+                    minLon = std::min(minLon, x_norm);
+                    maxLon = std::max(maxLon, x_norm);
+                    minLat = std::min(minLat, y_norm);
+                    maxLat = std::max(maxLat, y_norm);
+                }
+            }
+            std::cout << "dlon: " << maxLon - minLon << ", dlat: " << maxLat - minLat << std::endl;
+            // Tokyo: (1.4, 1.2); Germany (Necker): (11.7, 9.6); Central Europe (Matsunobu): (23.6, 14.6)
+            if (maxLon - minLon < 4.0f || maxLat - minLat < 4.0f) {
+                worldMapSource = WorldMapSource::SHAPEFILE_RASTERIZER;
+                manuallySetRasterizer = true;
+            }
         }
 
         std::vector<uint32_t> triangleIndices;
@@ -261,8 +255,16 @@ void WorldMapRenderer::createGeometryData(
 }
 
 void WorldMapRenderer::createWorldMapTexture() {
+    if (worldMapSource == WorldMapSource::TIFF_FILE) {
+        createWorldMapTextureTiff();
+    } else if (worldMapSource == WorldMapSource::SHAPEFILE_RASTERIZER) {
+        createWorldMapTextureShapefile();
+    }
+}
+
+void WorldMapRenderer::createWorldMapTextureTiff() {
     if (!hasCheckedWorldMapExists) {
-        ensureWorldMapFileExists();
+        ensureWorldMapFileExistsTiff();
     }
 
     if (!volumeData->getHasLatLonData()) {
@@ -414,6 +416,68 @@ void WorldMapRenderer::createWorldMapTexture() {
     delete[] worldMapData;*/
 }
 
+void WorldMapRenderer::createWorldMapTextureShapefile() {
+    if (!volumeData->getHasLatLonData()) {
+        sgl::Logfile::get()->writeWarning(
+                "Warning in WorldMapRenderer::createWorldMapTexture: The volume has no lat/lon data.");
+        return;
+    }
+
+    if (!hasCheckedWorldMapExists) {
+        shapefileRasterizer->checkTempFiles();
+        hasCheckedWorldMapExists = true;
+    }
+
+    // TODO: Use worldMapFilePath to cache image for future runs?
+
+    const float* latData = nullptr;
+    const float* lonData = nullptr;
+    volumeData->getLatLonData(latData, lonData);
+    int xs = volumeData->getGridSizeX();
+    int ys = volumeData->getGridSizeY();
+
+    float minLon = std::numeric_limits<float>::max();
+    float maxLon = std::numeric_limits<float>::lowest();
+    float minLat = std::numeric_limits<float>::max();
+    float maxLat = std::numeric_limits<float>::lowest();
+    for (int y = 0; y < ys; y++) {
+        for (int x = 0; x < xs; x++) {
+            float x_norm = lonData[x + y * xs];
+            float y_norm = latData[x + y * xs];
+            minLon = std::min(minLon, x_norm);
+            maxLon = std::max(maxLon, x_norm);
+            minLat = std::min(minLat, y_norm);
+            maxLat = std::max(maxLat, y_norm);
+        }
+    }
+    minNormX = minLon / 360.0f + 0.5f;
+    maxNormX = maxLon / 360.0f + 0.5f;
+    minNormY = minLat / 180.0f + 0.5f;
+    maxNormY = maxLat / 180.0f + 0.5f;
+
+    regionImageWidth = WORLD_MAP_QUALITY_RES[int(worldMapQuality)];
+    regionImageHeight = WORLD_MAP_QUALITY_RES[int(worldMapQuality)];
+    if (xs > ys) {
+        regionImageHeight = uint32_t(std::ceil(float(regionImageWidth) * float(ys) / float(xs)));
+    } else if (xs < ys) {
+        regionImageWidth = uint32_t(std::ceil(float(regionImageHeight) * float(xs) / float(ys)));
+    }
+
+    sgl::vk::ImageSettings imageSettings{};
+    imageSettings.width = uint32_t(regionImageWidth);
+    imageSettings.height = uint32_t(regionImageHeight);
+    sgl::vk::ImageSamplerSettings imageSamplerSettings{};
+    worldMapTexture = std::make_shared<sgl::vk::Texture>(
+            renderer->getDevice(), imageSettings, imageSamplerSettings);
+
+    const auto worldMapSizeBytes = size_t(4) * size_t(regionImageWidth) * size_t(regionImageHeight);
+    auto* worldMapData = new uint8_t[worldMapSizeBytes];
+    shapefileRasterizer->rasterize(minLon, maxLon, minLat, maxLat, regionImageWidth, regionImageHeight, worldMapData);
+
+    worldMapTexture->getImage()->uploadData(worldMapSizeBytes, worldMapData);
+    delete[] worldMapData;
+}
+
 void WorldMapRenderer::recreateSwapchainView(uint32_t viewIdx, uint32_t width, uint32_t height) {
     worldMapRasterPasses.at(viewIdx)->recreateSwapchain(width, height);
 }
@@ -447,6 +511,17 @@ void WorldMapRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         reRender = true;
     }
     if (propertyEditor.addCombo(
+            "Source", (int*)&worldMapSource, WORLD_MAP_SOURCE_NAMES, IM_ARRAYSIZE(WORLD_MAP_SOURCE_NAMES))) {
+        hasCheckedWorldMapExists = false;
+        manuallySetRasterizer = false;
+        createWorldMapTexture();
+        for (auto& worldMapRasterPass : worldMapRasterPasses) {
+            worldMapRasterPass->setRenderData(
+                    indexBuffer, vertexPositionBuffer, vertexNormalBuffer, vertexTexCoordBuffer, worldMapTexture);
+        }
+        reRender = true;
+    }
+    if (propertyEditor.addCombo(
             "Resolution", (int*)&worldMapQuality, WORLD_MAP_QUALITY_NAMES, IM_ARRAYSIZE(WORLD_MAP_QUALITY_NAMES))) {
         hasCheckedWorldMapExists = false;
         createWorldMapTexture();
@@ -455,6 +530,18 @@ void WorldMapRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
                     indexBuffer, vertexPositionBuffer, vertexNormalBuffer, vertexTexCoordBuffer, worldMapTexture);
         }
         reRender = true;
+    }
+    if (worldMapSource == WorldMapSource::SHAPEFILE_RASTERIZER) {
+        if (shapefileRasterizer->renderGuiPropertyEditor(propertyEditor)) {
+            hasCheckedWorldMapExists = false;
+            createWorldMapTexture();
+            for (auto& worldMapRasterPass : worldMapRasterPasses) {
+                worldMapRasterPass->setRenderData(
+                        indexBuffer, vertexPositionBuffer, vertexNormalBuffer, vertexTexCoordBuffer, worldMapTexture);
+            }
+            reRender = true;
+        }
+
     }
 }
 
@@ -465,6 +552,25 @@ void WorldMapRenderer::setSettings(const SettingsMap& settings) {
             worldMapRasterPass->setLightingFactor(lightingFactor);
         }
         reRender = true;
+    }
+    std::string worldMapSourceString;
+    if (settings.getValueOpt("world_map_source", worldMapSourceString)) {
+        manuallySetRasterizer = false;
+        for (int i = 0; i < IM_ARRAYSIZE(WORLD_MAP_SOURCE_NAMES); i++) {
+            if (worldMapSourceString == WORLD_MAP_SOURCE_NAMES[i]) {
+                worldMapSource = WorldMapSource(i);
+                break;
+            }
+        }
+        hasCheckedWorldMapExists = false;
+        createWorldMapTexture();
+        for (auto& worldMapRasterPass : worldMapRasterPasses) {
+            worldMapRasterPass->setRenderData(
+                    indexBuffer, vertexPositionBuffer, vertexNormalBuffer, vertexTexCoordBuffer, worldMapTexture);
+        }
+        reRender = true;
+    } else {
+        worldMapSource = WorldMapSource::TIFF_FILE; //< Old default.
     }
     std::string worldMapQualityString;
     if (settings.getValueOpt("world_map_quality", worldMapQualityString)) {
@@ -487,6 +593,7 @@ void WorldMapRenderer::setSettings(const SettingsMap& settings) {
 void WorldMapRenderer::getSettings(SettingsMap& settings) {
     Renderer::getSettings(settings);
     settings.addKeyValue("lighting_factor", lightingFactor);
+    settings.addKeyValue("world_map_source", WORLD_MAP_SOURCE_NAMES[int(worldMapSource)]);
     settings.addKeyValue("world_map_quality", WORLD_MAP_QUALITY_NAMES[int(worldMapQuality)]);
 }
 

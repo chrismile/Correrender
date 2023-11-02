@@ -29,6 +29,8 @@
 #ifndef CORRERENDER_DATAVIEW_HPP
 #define CORRERENDER_DATAVIEW_HPP
 
+#include <set>
+
 #include <Utils/SciVis/Navigation/CameraNavigator.hpp>
 #include <Graphics/Color.hpp>
 #include <Graphics/Scene/Camera.hpp>
@@ -37,6 +39,7 @@
 #include <Graphics/Vulkan/Shader/Shader.hpp>
 #include <Graphics/Vulkan/Render/Passes/BlitRenderPass.hpp>
 #include <ImGui/imgui.h>
+
 #include "Renderers/SceneData.hpp"
 
 namespace sgl { namespace vk {

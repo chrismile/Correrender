@@ -51,6 +51,7 @@
 #include "Correlation.hpp"
 #include "MutualInformation.hpp"
 #include "ReferencePointSelectionRenderer.hpp"
+#include "PointPicker.hpp"
 #include "CorrelationCalculator.hpp"
 
 ICorrelationCalculator::ICorrelationCalculator(sgl::vk::Renderer* renderer) : Calculator(renderer) {
@@ -61,6 +62,16 @@ void ICorrelationCalculator::setViewManager(ViewManager* _viewManager) {
     referencePointSelectionRenderer = new ReferencePointSelectionRenderer(viewManager);
     calculatorRenderer = RendererPtr(referencePointSelectionRenderer);
     referencePointSelectionRenderer->initialize();
+
+    auto refPosSetter = [this](const glm::vec3& refPos) {
+        this->setReferencePoint(refPos);
+    };
+    auto viewUsedIndexQuery = [this](int mouseHoverWindowIndex) -> bool {
+        uint32_t varIdx = volumeData->getVarIdxForCalculator(this);
+        return volumeData->getIsScalarFieldUsedInView(uint32_t(mouseHoverWindowIndex), varIdx, this);
+    };
+    pointPicker = std::make_shared<PointPicker>(
+            viewManager, fixPickingZPlane, refPosSetter, viewUsedIndexQuery);
 }
 
 void ICorrelationCalculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
@@ -68,6 +79,7 @@ void ICorrelationCalculator::setVolumeData(VolumeData* _volumeData, bool isNewDa
     if (referencePointSelectionRenderer) {
         referencePointSelectionRenderer->setVolumeDataPtr(volumeData, isNewData);
     }
+    pointPicker->setVolumeData(_volumeData, isNewData);
 
     int es = _volumeData->getEnsembleMemberCount();
     int ts = _volumeData->getTimeStepCount();
@@ -167,70 +179,7 @@ void ICorrelationCalculator::onFieldRemoved(FieldType fieldType, int fieldIdx) {
 }
 
 void ICorrelationCalculator::update(float dt) {
-    // Use mouse for selection of reference point.
-    int mouseHoverWindowIndex = viewManager->getMouseHoverWindowIndex();
-    if (mouseHoverWindowIndex >= 0) {
-        SceneData* sceneData = viewManager->getViewSceneData(uint32_t(mouseHoverWindowIndex));
-        uint32_t varIdx = volumeData->getVarIdxForCalculator(this);
-        if (volumeData->getIsScalarFieldUsedInView(uint32_t(mouseHoverWindowIndex), varIdx, this)) {
-            if (sgl::Keyboard->getModifier() & KMOD_CTRL) {
-                if (sgl::Mouse->buttonPressed(1) || (sgl::Mouse->isButtonDown(1) && sgl::Mouse->mouseMoved())) {
-                    ImVec2 mousePosGlobal = ImGui::GetMousePos();
-                    //int mouseGlobalX = sgl::Mouse->getX();
-                    //int mouseGlobalY = sgl::Mouse->getY();
-                    bool rayHasHitMesh;
-                    if (fixPickingZPlane) {
-                        glm::vec3 centerHit;
-                        rayHasHitMesh = volumeData->pickPointScreenAtZ(
-                                sceneData, int(mousePosGlobal.x), int(mousePosGlobal.y),
-                                volumeData->getGridSizeZ() / 2, centerHit);
-                        if (rayHasHitMesh) {
-                            auto aabb = volumeData->getBoundingBoxRendering();
-                            focusPoint = centerHit;
-                            firstHit = glm::vec3(centerHit.x, centerHit.y, aabb.max.z);
-                            lastHit = glm::vec3(centerHit.x, centerHit.y, aabb.min.z);
-                            hitLookingDirection = glm::vec3(0.0f, 0.0f, -glm::sign(sceneData->camera->getPosition().z));
-                            hasHitInformation = true;
-                            setReferencePointFromFocusPoint();
-                        }
-                    } else {
-                        rayHasHitMesh = volumeData->pickPointScreen(
-                                sceneData, int(mousePosGlobal.x), int(mousePosGlobal.y), firstHit, lastHit);
-                        if (rayHasHitMesh) {
-                            focusPoint = firstHit;
-                            hitLookingDirection = glm::normalize(firstHit - sceneData->camera->getPosition());
-                            hasHitInformation = true;
-                            setReferencePointFromFocusPoint();
-                        }
-                    }
-                }
-
-                if (sgl::Mouse->getScrollWheel() > 0.1f || sgl::Mouse->getScrollWheel() < -0.1f) {
-                    if (!hasHitInformation) {
-                        glm::mat4 inverseViewMatrix = glm::inverse(sceneData->camera->getViewMatrix());
-                        glm::vec3 lookingDirection = glm::vec3(
-                                -inverseViewMatrix[2].x, -inverseViewMatrix[2].y, -inverseViewMatrix[2].z);
-
-                        float moveAmount = sgl::Mouse->getScrollWheel() * dt * 0.5f;
-                        glm::vec3 moveDirection = focusPoint - sceneData->camera->getPosition();
-                        moveDirection *= float(sgl::sign(glm::dot(lookingDirection, moveDirection)));
-                        if (glm::length(moveDirection) < 1e-4) {
-                            moveDirection = lookingDirection;
-                        }
-                        moveDirection = glm::normalize(moveDirection);
-                        focusPoint = focusPoint + moveAmount * moveDirection;
-                    } else {
-                        float moveAmount = sgl::Mouse->getScrollWheel() * dt;
-                        glm::vec3 newFocusPoint = focusPoint + moveAmount * hitLookingDirection;
-                        float t = glm::dot(newFocusPoint - firstHit, hitLookingDirection);
-                        t = glm::clamp(t, 0.0f, glm::length(lastHit - firstHit));
-                        focusPoint = firstHit + t * hitLookingDirection;
-                    }
-                    setReferencePointFromFocusPoint();
-                }
-            }
-        }
-    }
+    pointPicker->update(dt);
 
     if (continuousRecompute) {
         dirty = true;
@@ -253,21 +202,6 @@ void ICorrelationCalculator::setReferencePointFromWorld(const glm::vec3& worldPo
             volumeData->getGridSizeX() - 1, volumeData->getGridSizeY() - 1, volumeData->getGridSizeZ() - 1);
     sgl::AABB3 gridAabb = volumeData->getBoundingBoxRendering();
     glm::vec3 position = (worldPosition - gridAabb.min) / (gridAabb.max - gridAabb.min);
-    position *= glm::vec3(maxCoord);
-    glm::ivec3 referencePointNew = glm::ivec3(glm::round(position));
-    referencePointNew = glm::clamp(referencePointNew, glm::ivec3(0), maxCoord);
-    if (referencePointIndex != referencePointNew) {
-        referencePointIndex = referencePointNew;
-        referencePointSelectionRenderer->setReferencePosition(referencePointIndex);
-        dirty = true;
-    }
-}
-
-void ICorrelationCalculator::setReferencePointFromFocusPoint() {
-    glm::ivec3 maxCoord(
-            volumeData->getGridSizeX() - 1, volumeData->getGridSizeY() - 1, volumeData->getGridSizeZ() - 1);
-    sgl::AABB3 gridAabb = volumeData->getBoundingBoxRendering();
-    glm::vec3 position = (focusPoint - gridAabb.min) / (gridAabb.max - gridAabb.min);
     position *= glm::vec3(maxCoord);
     glm::ivec3 referencePointNew = glm::ivec3(glm::round(position));
     referencePointNew = glm::clamp(referencePointNew, glm::ivec3(0), maxCoord);

@@ -67,7 +67,7 @@ class MultivariateGaussian;
 struct MIFieldEntry {
     float correlationValue{};
     uint32_t pointIndex0{}, pointIndex1{};
-    bool isSecondField;
+    bool isSecondField{};
 
     MIFieldEntry() = default;
     MIFieldEntry(float correlationValue, uint32_t pointIndex0, uint32_t pointIndex1)

@@ -60,6 +60,7 @@
 #include "Loaders/FieldFileLoader.hpp"
 #include "Loaders/CvolLoader.hpp"
 #include "Loaders/NiftiLoader.hpp"
+#include "Loaders/CtlLoader.hpp"
 #ifdef USE_ECCODES
 #include "Loaders/GribLoader.hpp"
 #endif
@@ -149,6 +150,7 @@ VolumeData::VolumeData(sgl::vk::Renderer* renderer) : renderer(renderer), multiV
             registerVolumeLoader<FieldFileLoader>(),
             registerVolumeLoader<CvolLoader>(),
             registerVolumeLoader<NiftiLoader>(),
+            registerVolumeLoader<CtlLoader>(),
 #ifdef USE_ECCODES
             registerVolumeLoader<GribLoader>(),
 #endif

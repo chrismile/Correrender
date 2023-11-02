@@ -82,6 +82,7 @@
 #include "Renderers/SliceRenderer.hpp"
 #include "Renderers/WorldMapRenderer.hpp"
 #include "Renderers/Diagram/DiagramRenderer.hpp"
+#include "Renderers/Diagram/Scatter/ScatterPlotRenderer.hpp"
 #include "Utils/CurlWrapper.hpp"
 #include "Utils/AutomaticPerformanceMeasurer.hpp"
 #include "Optimization/TFOptimization.hpp"
@@ -503,8 +504,11 @@ void MainApp::addNewRenderer(RenderingMode renderingMode) {
     // Opaque surface renderers are always added before transparent renderers.
     bool isOpaqueRenderer =
             renderingMode != RenderingMode::RENDERING_MODE_DIRECT_VOLUME_RENDERING
-            && renderingMode != RenderingMode::RENDERING_MODE_DIAGRAM_RENDERER;
-    bool isOverlayRenderer = renderingMode == RenderingMode::RENDERING_MODE_DIAGRAM_RENDERER;
+            && renderingMode != RenderingMode::RENDERING_MODE_DIAGRAM_RENDERER
+            && renderingMode != RenderingMode::RENDERING_MODE_SCATTER_PLOT;
+    bool isOverlayRenderer =
+            renderingMode == RenderingMode::RENDERING_MODE_DIAGRAM_RENDERER
+            || renderingMode == RenderingMode::RENDERING_MODE_SCATTER_PLOT;
     if (isOpaqueRenderer && !isOverlayRenderer) {
         // Push after last opaque renderer (or at the beginning).
         auto it = volumeRenderers.begin();
@@ -549,6 +553,8 @@ void MainApp::setRenderer(RenderingMode newRenderingMode, RendererPtr& newVolume
         newVolumeRenderer = std::make_shared<WorldMapRenderer>(viewManager);
     } else if (newRenderingMode == RENDERING_MODE_DIAGRAM_RENDERER) {
         newVolumeRenderer = std::make_shared<DiagramRenderer>(viewManager);
+    } else if (newRenderingMode == RENDERING_MODE_SCATTER_PLOT) {
+        newVolumeRenderer = std::make_shared<ScatterPlotRenderer>(viewManager);
     } else {
         int idx = std::clamp(int(newRenderingMode), 0, IM_ARRAYSIZE(RENDERING_MODE_NAMES) - 1);
         std::string warningText =
@@ -810,7 +816,8 @@ void MainApp::renderGui() {
                     || boost::ends_with(filenameLower, ".grb")
 #endif
                     || boost::ends_with(filenameLower, ".dat")
-                    || boost::ends_with(filenameLower, ".raw")) {
+                    || boost::ends_with(filenameLower, ".raw")
+                    || boost::ends_with(filenameLower, ".ctl")) {
                 selectedDataSetIndex = 0;
                 customDataSetFileName = filename;
                 dataSetType = DataSetType::VOLUME;
@@ -1314,7 +1321,7 @@ void MainApp::openFileDialog() {
     IGFD_OpenModal(
             fileDialogInstance,
             "ChooseDataSetFile", "Choose a File",
-            ".*,.vtk,.vti,.vts,.nc,.zarr,.am,.bin,.field,.cvol,.grib,.grb,.dat,.raw",
+            ".*,.vtk,.vti,.vts,.nc,.zarr,.am,.bin,.field,.cvol,.grib,.grb,.dat,.raw,.ctl",
             fileDialogDirectory.c_str(),
             "", 1, nullptr,
             ImGuiFileDialogFlags_None);

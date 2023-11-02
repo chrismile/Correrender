@@ -56,28 +56,12 @@ layout(binding = 2, std430) writeonly buffer OutputBuffer {
 };
 
 
--- ActivationFunctions
-
-real ReLU(real x) {
-    return max(x, real(0.0));
-}
-
-real Snake(real x) {
-    real sin_x = sin(x);
-    return x + sin_x * sin_x;
-}
-
-real SnakeAlt(real x) {
-    return (x + real(1.0) - cos(real(2.0) * x)) / real(2.0);
-}
-
-
 -- GlobalMemory.Compute
 
 #version 450 core
 
 #import ".Header"
-#import ".ActivationFunctions"
+#include "ActivationFunctions.glsl"
 
 layout(push_constant) uniform PushConstants {
     uint numOutputs; // The number of outputs to be written in total.

@@ -182,6 +182,7 @@ private:
 };
 
 class MlpPass;
+class MlpFusedPass;
 
 class MlpNetwork : public Module {
 public:
@@ -215,6 +216,7 @@ private:
     bool floatFormatChanged = true;
     uint32_t cachedBatchSize = 0;
     std::vector<std::shared_ptr<MlpPass>> layerPasses;
+    std::shared_ptr<MlpFusedPass> fusedPass;
 };
 
 }
