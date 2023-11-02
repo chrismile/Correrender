@@ -454,10 +454,12 @@ void MlpFusedPass::createComputeData(sgl::vk::Renderer* renderer, sgl::vk::Compu
 }
 
 void MlpFusedPass::_render() {
-    glm::uvec2 inputOutputBufferSizesUvec4;
-    inputOutputBufferSizesUvec4.x = sgl::uiceil(uint32_t(bufferIn->getSizeInBytes()), uint32_t(sizeof(glm::uvec4)));
-    inputOutputBufferSizesUvec4.y = sgl::uiceil(uint32_t(bufferOut->getSizeInBytes()), uint32_t(sizeof(glm::uvec4)));
+    glm::uvec3 inputOutputBufferSizesUvec4;
+    inputOutputBufferSizesUvec4.x = batchSize;
+    inputOutputBufferSizesUvec4.y = sgl::uiceil(batchSize * nextMultiple(numChannelsIn, 16), uint32_t(sizeof(glm::uvec4)));
+    inputOutputBufferSizesUvec4.z = sgl::uiceil(batchSize * nextMultiple(numChannelsOut, 16), uint32_t(sizeof(glm::uvec4)));
     renderer->pushConstants(getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, 0, inputOutputBufferSizesUvec4);
+    //renderer->pushConstants(getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, 0, batchSize);
     renderer->dispatch(computeData, sgl::uiceil(batchSize, M * nBatch), 1, 1);
     renderer->insertBufferMemoryBarrier(
             VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,

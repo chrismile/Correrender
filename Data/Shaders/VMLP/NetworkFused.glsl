@@ -65,14 +65,14 @@ layout(local_size_x = SUBGROUP_SIZE, local_size_y = N_ROWS, local_size_z = 1) in
  */
 //#define SMEM_FACTOR 8 // sizeof(uvec4) / sizeof(float16_t)
 //#define STORAGE_TYPE uvec4
-#define SMEM_FACTOR 4 // sizeof(uvec4) / sizeof(float16_t)
-#define STORAGE_TYPE uvec2
+#define SMEM_FACTOR 1 // sizeof(uvec4) / sizeof(float16_t)
+#define STORAGE_TYPE float16_t
 shared STORAGE_TYPE sharedMemory[SHARED_MEMORY_SIZE / SMEM_FACTOR];
 
 // Analogous to tiny-cuda-nn with column major format.
 //#define WEIGHT_IDX(channelOutIdx, channelInIdx) (WEIGHT_OFFSET + (channelInIdx) + (channelOutIdx) * NUM_CHANNELS_IN_PADDED)
-//#define IDX_IN(channelIdx, batchIdx) ((channelIdx) + (batchIdx) * NUM_CHANNELS_IN / SMEM_FACTOR)
-//#define IDX_OUT(channelIdx, batchIdx) ((channelIdx) + (batchIdx) * NUM_CHANNELS_OUT / SMEM_FACTOR)
+#define IDX_IN(channelIdx, batchIdx) ((channelIdx) + (batchIdx) * NUM_CHANNELS_IN)
+#define IDX_OUT(channelIdx, batchIdx) ((channelIdx) + (batchIdx) * NUM_CHANNELS_OUT_PADDED)
 
 layout(binding = 0, scalar) readonly buffer ParametersBuffer {
     float16_t parametersBuffer[];
@@ -89,7 +89,7 @@ layout(binding = 2, scalar) writeonly buffer OutputBuffer {
 };
 
 layout(push_constant) uniform PushConstants {
-    uint inputBufferSizeUvec4, outputBufferSizeUvec4;
+    uint batchSize, inputBufferSizeUvec4, outputBufferSizeUvec4;
 };
 
 #define real float16_t
@@ -114,6 +114,14 @@ void main() {
             sharedMemory[i] = inputBuffer[i + batchOffset * NUM_CHANNELS_IN_PADDED];
         }
     }
+    /*for (uint i = localThreadIdx + blockRowIdx * SUBGROUP_SIZE; i < NUM_CHANNELS_IN * M * N_BATCH; i += SUBGROUP_SIZE * N_ROWS) {
+        const uint channelIdx = i % NUM_CHANNELS_IN;
+        const uint batchIdxLocal = i / NUM_CHANNELS_IN;
+        const uint batchIdxGlobal = batchOffset + batchIdxLocal;
+        if (batchIdxGlobal < batchSize) {
+            sharedMemory[channelIdx + batchIdxLocal * NUM_CHANNELS_IN_PADDED] = inputBuffer[IDX_IN(channelIdx, batchIdxGlobal)];
+        }
+    }*/
     memoryBarrierShared();
     barrier();
 
@@ -142,49 +150,51 @@ void main() {
         outputStride = numChannelsOutPadded / SMEM_FACTOR;
 
         // TODO: Investigate if other implementations (QuickMLP, tiny-cuda-nn) have some way to avoid this.
-        if (blockRowIdx >= nRows) {
-            continue;
-        }
-
-        // Clear the output matrices.
-        [[unroll]] for (uint b = 0; b < N_BATCH; b++) {
-            outputMat[b] = CoopMatAcc(0.0);
-        }
-
-        for (uint c = 0; c < nCols; c++) {
-            const uint weightOffset = weightOffsetBase + c * M + blockRowIdx * M * weightStride;
-            matLoad(weightsMat, parametersBuffer, weightOffset, weightStride, ROW_MAJOR);
+        if (blockRowIdx < nRows) {
+            // Clear the output matrices.
             [[unroll]] for (uint b = 0; b < N_BATCH; b++) {
-                inputOffset = c * (M / SMEM_FACTOR) + b * M * inputStride;
-                matLoad(inputMat, sharedMemory, inputOffset, inputStride, COL_MAJOR);
-                outputMat[b] = matMulAdd(weightsMat, inputMat, outputMat[b]);
+                outputMat[b] = CoopMatAcc(0.0);
             }
+
+            for (uint c = 0; c < nCols; c++) {
+                const uint weightOffset = weightOffsetBase + c * M + blockRowIdx * M * weightStride;
+                matLoad(weightsMat, parametersBuffer, weightOffset, weightStride, ROW_MAJOR);
+                [[unroll]] for (uint b = 0; b < N_BATCH; b++) {
+                    inputOffset = c * (M / SMEM_FACTOR) + b * M * inputStride;
+                    matLoad(inputMat, sharedMemory, inputOffset, inputStride, COL_MAJOR);
+                    outputMat[b] = matMulAdd(weightsMat, inputMat, outputMat[b]);
+                }
+            }
+
+            // Apply activation function.
+#ifdef NO_OUTPUT_ACTIVATION
+            if (layerIdx != NUM_LAYERS - 1) {
+#endif
+                /*for (uint i = localThreadIdx; i < M * M * N_BATCH; i += SUBGROUP_SIZE) {
+                    const uint b = i % (M * M);
+                    const uint j = i / (M * M);
+                    outputMat[b][j] = ACTIVATION_FUNCTION(outputMat[b][j]);
+                }*/
+                [[unroll]] for (uint b = 0; b < N_BATCH; b++) {
+                    for (uint i = 0; i < outputMat[b].length(); ++i) {
+                        outputMat[b][i] = ACTIVATION_FUNCTION(outputMat[b][i]);
+                    }
+                }
+#ifdef NO_OUTPUT_ACTIVATION
+            }
+#endif
         }
 
-        // Apply activation function.
-#ifdef NO_OUTPUT_ACTIVATION
-        if (layerIdx != NUM_LAYERS - 1) {
-#endif
-        /*for (uint i = localThreadIdx; i < M * M * N_BATCH; i += SUBGROUP_SIZE) {
-            const uint b = i % (M * M);
-            const uint j = i / (M * M);
-            outputMat[b][j] = ACTIVATION_FUNCTION(outputMat[b][j]);
-        }*/
-        [[unroll]] for (uint b = 0; b < N_BATCH; b++) {
-            for (uint i = 0; i < outputMat[b].length(); ++i) {
-                outputMat[b][i] = ACTIVATION_FUNCTION(outputMat[b][i]);
-            }
-        }
-#ifdef NO_OUTPUT_ACTIVATION
-        }
-#endif
-
-        // Store to shared memory.
         barrier();
-        [[unroll]] for (uint b = 0; b < N_BATCH; b++) {
-            outputOffset = blockRowIdx * (M / SMEM_FACTOR) + b * M * outputStride;
-            matStore(outputMat[b], sharedMemory, outputOffset, outputStride, COL_MAJOR);
+
+        if (blockRowIdx < nRows) {
+            // Store to shared memory.
+            [[unroll]] for (uint b = 0; b < N_BATCH; b++) {
+                outputOffset = blockRowIdx * (M / SMEM_FACTOR) + b * M * outputStride;
+                matStore(outputMat[b], sharedMemory, outputOffset, outputStride, COL_MAJOR);
+            }
         }
+
         memoryBarrierShared();
         barrier();
 
@@ -197,7 +207,7 @@ void main() {
     }
 
     // Write outputs into global memory
-    for (uint i = localThreadIdx + blockRowIdx * SUBGROUP_SIZE; i < NUM_CHANNELS_OUT_PADDED * M * N_BATCH / SMEM_FACTOR; i += SUBGROUP_SIZE * N_ROWS) {
+    /*for (uint i = localThreadIdx + blockRowIdx * SUBGROUP_SIZE; i < NUM_CHANNELS_OUT_PADDED * M * N_BATCH / SMEM_FACTOR; i += SUBGROUP_SIZE * N_ROWS) {
         //const uint channelIdx = i % (NUM_CHANNELS_OUT / SMEM_FACTOR);
         //const uint batchIdxLocal = i / (NUM_CHANNELS_OUT / SMEM_FACTOR);
         //const uint batchIdxGlobal = batchOffset + batchIdxLocal;
@@ -208,7 +218,34 @@ void main() {
         if (i < outputBufferSizeUvec4 * 8 / SMEM_FACTOR) {
             outputBuffer[i + batchOffset * NUM_CHANNELS_OUT_PADDED] = sharedMemory[i];
         }
+    }*/
+    /*for (uint i = localThreadIdx + blockRowIdx * SUBGROUP_SIZE; i < NUM_CHANNELS_OUT * M * N_BATCH; i += SUBGROUP_SIZE * N_ROWS) {
+        const uint channelIdx = i % NUM_CHANNELS_OUT;
+        const uint batchIdxLocal = i / NUM_CHANNELS_OUT;
+        const uint batchIdxGlobal = batchOffset + batchIdxLocal;
+        if (batchIdxGlobal < batchSize) {
+            outputBuffer[IDX_OUT(channelIdx, batchIdxGlobal)] = sharedMemory[channelIdx + batchIdxLocal * NUM_CHANNELS_OUT_PADDED];
+        }
+    }*/
+#if NUM_CHANNELS_OUT_PADDED == 16
+    for (uint i = localThreadIdx + blockRowIdx * SUBGROUP_SIZE; i < NUM_CHANNELS_OUT_PADDED * M * N_BATCH; i += SUBGROUP_SIZE * N_ROWS) {
+        const uint channelIdx = i % NUM_CHANNELS_OUT_PADDED;
+        const uint batchIdxLocal = i / NUM_CHANNELS_OUT_PADDED;
+        const uint batchIdxGlobal = batchOffset + batchIdxLocal;
+        if (batchIdxGlobal < batchSize && channelIdx < NUM_CHANNELS_OUT && batchIdxLocal < M * N_BATCH) {
+            outputBuffer[IDX_OUT(channelIdx, batchIdxGlobal)] = sharedMemory[channelIdx + batchIdxLocal * NUM_CHANNELS_OUT_PADDED];
+        }
     }
+#else
+    for (uint i = localThreadIdx + blockRowIdx * SUBGROUP_SIZE; i < NUM_CHANNELS_OUT_PADDED * M * N_BATCH; i += SUBGROUP_SIZE * N_ROWS) {
+        const uint channelIdx = i % NUM_CHANNELS_OUT_PADDED;
+        const uint batchIdxLocal = i / NUM_CHANNELS_OUT_PADDED;
+        const uint batchIdxGlobal = batchOffset + batchIdxLocal;
+        if (batchIdxGlobal < batchSize && channelIdx < NUM_CHANNELS_OUT) {
+            outputBuffer[IDX_OUT(channelIdx, batchIdxGlobal)] = sharedMemory[channelIdx + batchIdxLocal * NUM_CHANNELS_OUT_PADDED];
+        }
+    }
+#endif
 }
 
 
@@ -249,17 +286,14 @@ layout(binding = 0, std430) readonly buffer ParametersBuffer {
 };
 
 layout(binding = 1, std430) readonly buffer InputBuffer {
-    //float16_t inputBuffer[];
-    uvec4 inputBuffer[];
+    float16_t inputBuffer[];
 };
 
 layout(binding = 2, std430) writeonly buffer OutputBuffer {
-    //float16_t outputBuffer[];
-    uvec4 outputBuffer[];
+    float16_t outputBuffer[];
 };
 
-//shared float16_t sharedMemory[SHARED_MEMORY_SIZE];
-shared uvec4 sharedMemory[SHARED_MEMORY_SIZE];
+shared float16_t sharedMemory[SHARED_MEMORY_SIZE];
 
 layout(push_constant) uniform PushConstants {
     uint batchSize;
