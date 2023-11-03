@@ -45,6 +45,13 @@ const char* const FLOAT2_FORMAT_GLSL_NAMES[] = { "vec2", "f16vec2" };
 const char* const FLOAT3_FORMAT_GLSL_NAMES[] = { "vec3", "f16vec3" };
 const char* const FLOAT4_FORMAT_GLSL_NAMES[] = { "vec4", "f16vec4" };
 
+enum class FusedMlpMemoryType {
+    FLOAT16_NO_PADDING, FLOAT16_PADDING, UINT, UVEC2, UVEC4
+};
+const char* const FUSED_MLP_MEMORY_TYPE_NAME[] {
+        "float16_t (no pad)", "float16_t (pad)", "uint", "uvec2", "uvec4"
+};
+
 }
 
 const uint32_t NETWORK_PARAMS_FORMAT_FLOAT = 0;

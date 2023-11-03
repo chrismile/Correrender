@@ -45,6 +45,7 @@ class CopyDecoderOutputPass;
 
 namespace vmlp {
 class Matrix;
+class Module;
 }
 
 class VMLPCorrelationCalculator : public DeepLearningCorrelationCalculator {
@@ -87,9 +88,19 @@ protected:
     bool deviceSupporsFp16 = false;
     vmlp::FloatFormat floatFormat = vmlp::FloatFormat::FLOAT32;
 
-    // Cooperative matrices.
+    // Fused MLP/cooperative matrices.
+    void updateMlpSettings();
+    void updateMlpSettingsNetwork(const std::shared_ptr<vmlp::Module>& module);
+    bool supportsFusedMlp = false;
+    bool useFusedMlp = false;
+    bool useKhrExtension = false;
+    std::vector<uint32_t> subgroupSizes;
+    std::vector<std::string> subgroupSizesString;
+    int subgroupSizeIdx = 0;
+    vmlp::FusedMlpMemoryType memoryType = vmlp::FusedMlpMemoryType::FLOAT16_NO_PADDING;
     int formatIdxNV = -1, formatIdxKHR = -1;
-    std::vector<uint32_t> formatDimsNV, formatDimsKHR;
+    std::vector<uint32_t> matrixBlockSizesNV, matrixBlockSizesKHR;
+    std::vector<std::string> matrixBlockSizesStringNV, matrixBlockSizesStringKHR;
 
     /// For networkType == NetworkType::SRN_MINE.
     int srnGpuBatchSize1DBase = 131072;

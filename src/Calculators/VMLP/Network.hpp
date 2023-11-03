@@ -110,6 +110,7 @@ public:
     virtual uint32_t getOutputAlignment() { return 1; }
     virtual uint32_t getNumChannelsIn()=0;
     virtual uint32_t getNumChannelsOut()=0;
+    virtual uint32_t getNumChannelsOutPadded() { return getNumChannelsOut(); }
     virtual void setInputOutputMatrices(const Matrix& input, const Matrix& output)=0;
     virtual void setBatchSize(uint32_t _batchSize)=0;
     virtual void setFloatFormat(FloatFormat _format)=0;
@@ -138,11 +139,17 @@ public:
     NetworkWithInputEncoding(
             sgl::vk::Renderer* renderer, const Json::Value& settingsEncoding, Json::Value settingsNetwork);
 
+    inline const std::shared_ptr<Module>& getNetwork() { return network; }
+    inline const std::shared_ptr<Module>& getEncoding() { return encoding; }
+
     uint32_t getNumChannelsIn() override {
         return encoding->getNumChannelsIn();
     }
     uint32_t getNumChannelsOut() override {
         return network->getNumChannelsOut();
+    }
+    uint32_t getNumChannelsOutPadded() override {
+        return network->getNumChannelsOutPadded();
     }
     void setInputOutputMatrices(const Matrix& input, const Matrix& output) override;
     void setBatchSize(uint32_t _batchSize) override {
@@ -193,6 +200,7 @@ public:
     uint32_t getNumChannelsOut() override {
         return numChannelsOut;
     }
+    uint32_t getNumChannelsOutPadded() override;
     void setInputOutputMatrices(const Matrix& input, const Matrix& output) override;
     void setBatchSize(uint32_t _batchSize) override;
     void setFloatFormat(FloatFormat _format) override;
@@ -203,7 +211,16 @@ public:
 
     void runInference() override;
 
+    // Fused MLP settings.
+    void checkRecreateFusedPass();
+    void setUseFusedMlp(bool _useFusedMlp);
+    void setFusedMlpMatrixBlockSize(uint32_t _matrixBlockSize);
+    void setFusedMlpExtension(bool _useKhrExtension);
+    void setFusedMlpSubgroupSize(uint32_t _subgroupSize);
+    void setFusedMlpSharedMemoryType(FusedMlpMemoryType _memoryType);
+
 private:
+    sgl::vk::Renderer* renderer;
     sgl::vk::Device* device;
     uint32_t numChannelsIn, numChannelsHidden, numChannelsOut;
     uint32_t numChannelsInPadded, numChannelsOutPadded;
@@ -216,7 +233,18 @@ private:
     bool floatFormatChanged = true;
     uint32_t cachedBatchSize = 0;
     std::vector<std::shared_ptr<MlpPass>> layerPasses;
+
+    // Fused MLP.
+    void recreateFusedPass();
     std::shared_ptr<MlpFusedPass> fusedPass;
+    sgl::vk::BufferPtr inputBuffer, outputBuffer;
+    uint32_t batchSize = 0;
+    bool shallRecreateFusePass = false;
+    bool useFusedMlp = false;
+    uint32_t matrixBlockSize = 16;
+    bool useKhrExtension = false;
+    uint32_t subgroupSize = false;
+    FusedMlpMemoryType memoryType = FusedMlpMemoryType::FLOAT16_NO_PADDING;
 };
 
 }

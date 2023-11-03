@@ -315,6 +315,7 @@ class MlpFusedPass : public sgl::vk::ComputePass {
 public:
     MlpFusedPass(
             sgl::vk::Renderer* renderer, bool useKHR, uint32_t matrixBlockSize, uint32_t subgroupSize,
+            FusedMlpMemoryType memoryType,
             uint32_t numLayers, uint32_t numChannelsIn, uint32_t numChannelsOut, uint32_t numChannelsHidden,
             ActivationFunction activationFunction, ActivationFunction outputActivationFunction,
             sgl::vk::BufferPtr& parametersBuffer);
@@ -332,6 +333,7 @@ private:
     bool useKHR; // Whether to use KHR_cooperative_matrix or NV_cooperative_matrix.
     uint32_t M = 16; // Matrix block size.
     uint32_t subgroupSize = 32;
+    FusedMlpMemoryType memoryType;
     uint32_t nBatch = 8; // Number of batch blocks (determined by shared memory size).
     uint32_t nRows;
     uint32_t sharedMemorySize;
@@ -345,11 +347,13 @@ private:
 
 MlpFusedPass::MlpFusedPass(
         sgl::vk::Renderer* renderer, bool useKHR, uint32_t matrixBlockSize, uint32_t subgroupSize,
+        FusedMlpMemoryType memoryType,
         uint32_t numLayers, uint32_t numChannelsIn, uint32_t numChannelsOut, uint32_t numChannelsHidden,
         ActivationFunction activationFunction, ActivationFunction outputActivationFunction,
         sgl::vk::BufferPtr& parametersBuffer)
-        : ComputePass(renderer), useKHR(useKHR), M(matrixBlockSize), subgroupSize(subgroupSize), numLayers(numLayers),
-          numChannelsIn(numChannelsIn), numChannelsOut(numChannelsOut), numChannelsHidden(numChannelsHidden),
+        : ComputePass(renderer), useKHR(useKHR), M(matrixBlockSize), subgroupSize(subgroupSize), memoryType(memoryType),
+          numLayers(numLayers), numChannelsIn(numChannelsIn), numChannelsOut(numChannelsOut),
+          numChannelsHidden(numChannelsHidden),
           activationFunction(activationFunction), outputActivationFunction(outputActivationFunction),
           parametersBuffer(parametersBuffer) {
     auto* device = renderer->getDevice();
@@ -421,6 +425,28 @@ void MlpFusedPass::loadShader() {
         preprocessorDefines.insert(std::make_pair("NO_OUTPUT_ACTIVATION", ""));
     }
 
+    if (memoryType == FusedMlpMemoryType::FLOAT16_NO_PADDING) {
+        preprocessorDefines.insert(std::make_pair(
+                "FLOAT16_NO_PADDING", std::to_string(sharedMemorySize / sizeof(HalfFloat))));
+    }
+    std::string storageType;
+    int sharedMemoryFactor = 0;
+    if (memoryType == FusedMlpMemoryType::FLOAT16_NO_PADDING || memoryType == FusedMlpMemoryType::FLOAT16_PADDING) {
+        storageType = "float16_t";
+        sharedMemoryFactor = 1;
+    } else if (memoryType == FusedMlpMemoryType::UINT) {
+        storageType = "uint";
+        sharedMemoryFactor = 2;
+    } else if (memoryType == FusedMlpMemoryType::UVEC2) {
+        storageType = "uvec2";
+        sharedMemoryFactor = 4;
+    } else if (memoryType == FusedMlpMemoryType::UVEC4) {
+        storageType = "uvec4";
+        sharedMemoryFactor = 8;
+    }
+    preprocessorDefines.insert(std::make_pair("STORAGE_TYPE", storageType));
+    preprocessorDefines.insert(std::make_pair("SMEM_FACTOR", std::to_string(sharedMemoryFactor)));
+
     if (useKHR) {
         preprocessorDefines.insert(std::make_pair("__extensions", "GL_KHR_cooperative_matrix"));
         preprocessorDefines.insert(std::make_pair("CoopMatA", "coopmat<float16_t, gl_ScopeSubgroup, M, M, gl_MatrixUseA>"));
@@ -454,10 +480,20 @@ void MlpFusedPass::createComputeData(sgl::vk::Renderer* renderer, sgl::vk::Compu
 }
 
 void MlpFusedPass::_render() {
+    uint32_t typeSize = 0;
+    if (memoryType == FusedMlpMemoryType::FLOAT16_NO_PADDING || memoryType == FusedMlpMemoryType::FLOAT16_PADDING) {
+        typeSize = 2;
+    } else if (memoryType == FusedMlpMemoryType::UINT) {
+        typeSize = 4;
+    } else if (memoryType == FusedMlpMemoryType::UVEC2) {
+        typeSize = 8;
+    } else if (memoryType == FusedMlpMemoryType::UVEC4) {
+        typeSize = 16;
+    }
     glm::uvec3 inputOutputBufferSizesUvec4;
     inputOutputBufferSizesUvec4.x = batchSize;
-    inputOutputBufferSizesUvec4.y = sgl::uiceil(batchSize * nextMultiple(numChannelsIn, 16), uint32_t(sizeof(glm::uvec4)));
-    inputOutputBufferSizesUvec4.z = sgl::uiceil(batchSize * nextMultiple(numChannelsOut, 16), uint32_t(sizeof(glm::uvec4)));
+    inputOutputBufferSizesUvec4.y = sgl::uiceil(batchSize * nextMultiple(numChannelsIn, 16), typeSize);
+    inputOutputBufferSizesUvec4.z = sgl::uiceil(batchSize * nextMultiple(numChannelsOut, 16), typeSize);
     renderer->pushConstants(getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, 0, inputOutputBufferSizesUvec4);
     //renderer->pushConstants(getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, 0, batchSize);
     renderer->dispatch(computeData, sgl::uiceil(batchSize, M * nBatch), 1, 1);
@@ -469,7 +505,7 @@ void MlpFusedPass::_render() {
 
 
 MlpNetwork::MlpNetwork(sgl::vk::Renderer* renderer, const Json::Value& settingsNetwork)
-        : device(renderer->getDevice()) {
+        : renderer(renderer), device(renderer->getDevice()) {
     numLayers = settingsNetwork["n_hidden_layers"].asUInt() + 1;
     numChannelsIn = settingsNetwork["n_input_dims"].asUInt();
     numChannelsHidden = settingsNetwork["n_neurons"].asUInt();
@@ -513,22 +549,83 @@ MlpNetwork::MlpNetwork(sgl::vk::Renderer* renderer, const Json::Value& settingsN
         parametersBufferOffset += layerChannelsIn * layerChannelsOut;
     }
 
-    bool supportsCoopMatNV = device->getCooperativeMatrixFeaturesNV().cooperativeMatrix;
-#ifdef VK_KHR_cooperative_matrix
-    bool supportsCoopMatKHR = device->getCooperativeMatrixFeaturesKHR().cooperativeMatrix;
-#else
-    bool supportsCoopMatKHR = false;
-#endif
-    bool supportsCoopMat = supportsCoopMatNV || supportsCoopMatKHR;
-    if (supportsCoopMat) {
-        // TODO
-        uint32_t matrixBlockSize = 16;
-        uint32_t subgroupSize = device->getPhysicalDeviceSubgroupProperties().subgroupSize;
-        fusedPass = std::make_shared<MlpFusedPass>(
-                renderer, supportsCoopMatKHR, matrixBlockSize, subgroupSize,
-                numLayers, numChannelsIn, numChannelsOut, numChannelsHidden,
-                activationFunction, outputActivationFunction,
-                parametersBuffer);
+    subgroupSize = device->getPhysicalDeviceSubgroupProperties().subgroupSize;
+}
+
+void MlpNetwork::recreateFusedPass() {
+    fusedPass = std::make_shared<MlpFusedPass>(
+            renderer, useKhrExtension, matrixBlockSize, subgroupSize, memoryType,
+            numLayers, numChannelsIn, numChannelsOut, numChannelsHidden,
+            activationFunction, outputActivationFunction,
+            parametersBuffer);
+    if (inputBuffer && outputBuffer) {
+        fusedPass->setBuffersInOut(inputBuffer, outputBuffer);
+    }
+    if (batchSize != 0) {
+        fusedPass->setBatchSize(batchSize);
+    }
+    shallRecreateFusePass = false;
+}
+
+void MlpNetwork::checkRecreateFusedPass() {
+    if (useFusedMlp && shallRecreateFusePass) {
+        shallRecreateFusePass = false;
+        recreateFusedPass();
+    }
+}
+
+void MlpNetwork::setUseFusedMlp(bool _useFusedMlp) {
+    if (useFusedMlp != _useFusedMlp) {
+        useFusedMlp = _useFusedMlp;
+        if (useFusedMlp) {
+            shallRecreateFusePass = true;
+        } else {
+            fusedPass = {};
+        }
+    }
+}
+
+void MlpNetwork::setFusedMlpMatrixBlockSize(uint32_t _matrixBlockSize) {
+    if (matrixBlockSize != _matrixBlockSize) {
+        matrixBlockSize = _matrixBlockSize;
+        if (useFusedMlp) {
+            shallRecreateFusePass = true;
+        }
+    }
+}
+
+void MlpNetwork::setFusedMlpExtension(bool _useKhrExtension) {
+    if (useKhrExtension != _useKhrExtension) {
+        useKhrExtension = _useKhrExtension;
+        if (useFusedMlp) {
+            shallRecreateFusePass = true;
+        }
+    }
+}
+
+void MlpNetwork::setFusedMlpSubgroupSize(uint32_t _subgroupSize) {
+    if (subgroupSize != _subgroupSize) {
+        subgroupSize = _subgroupSize;
+        if (useFusedMlp) {
+            shallRecreateFusePass = true;
+        }
+    }
+}
+
+void MlpNetwork::setFusedMlpSharedMemoryType(FusedMlpMemoryType _memoryType) {
+    if (memoryType != _memoryType) {
+        memoryType = _memoryType;
+        if (useFusedMlp) {
+            shallRecreateFusePass = true;
+        }
+    }
+}
+
+uint32_t MlpNetwork::getNumChannelsOutPadded() {
+    if (useFusedMlp && memoryType != FusedMlpMemoryType::FLOAT16_NO_PADDING) {
+        return nextMultiple(getNumChannelsOut(), 16);
+    } else {
+        return getNumChannelsOut();
     }
 }
 
@@ -561,12 +658,15 @@ void MlpNetwork::setInputOutputMatrices(const Matrix& input, const Matrix& outpu
         layerPass->setBuffersInOut(bufferIn, bufferOut);
     }
 
+    inputBuffer = input.getBuffer();
+    outputBuffer = output.getBuffer();
     if (fusedPass) {
-        fusedPass->setBuffersInOut(input.getBuffer(), output.getBuffer());
+        fusedPass->setBuffersInOut(inputBuffer, outputBuffer);
     }
 }
 
 void MlpNetwork::setBatchSize(uint32_t _batchSize) {
+    batchSize = _batchSize;
     for (size_t i = 0; i < numLayers; i++) {
         auto& layerPass = layerPasses.at(i);
         layerPass->setBatchSize(_batchSize);
@@ -590,12 +690,10 @@ void MlpNetwork::setFloatFormat(vmlp::FloatFormat _format) {
         auto& layerPass = layerPasses.at(i);
         layerPass->setFloatFormat(_format);
     }
-
-    // TODO: If fusedPass is used, only FLOAT16 is possible.
 }
 
 void MlpNetwork::runInference() {
-    if (fusedPass) {
+    if (useFusedMlp) {
         fusedPass->render();
     } else {
         for (size_t i = 0; i < numLayers; i++) {

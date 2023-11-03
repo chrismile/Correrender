@@ -355,12 +355,10 @@ VMLPCorrelationCalculator::VMLPCorrelationCalculator(sgl::vk::Renderer* renderer
                     && props.BType == VK_COMPONENT_TYPE_FLOAT16_NV
                     && props.CType == VK_COMPONENT_TYPE_FLOAT16_NV
                     && props.DType == VK_COMPONENT_TYPE_FLOAT16_NV
-                    && props.MSize == props.NSize && props.NSize == props.KSize) {
-                formatDimsNV.push_back(props.MSize);
-            }
-            std::sort(formatDimsNV.begin(), formatDimsNV.end());
-            if (!formatDimsNV.empty()) {
-                formatIdxNV = int(formatDimsNV.size()) - 1;
+                    && props.MSize == props.NSize && props.NSize == props.KSize
+                    && props.MSize <= 16) {
+                // For now, only up to 16x16 matrices are supported due to 32 byte padding.
+                matrixBlockSizesNV.push_back(props.MSize);
             }
             //std::cout
             //        << "MSize: " << props.MSize
@@ -372,6 +370,13 @@ VMLPCorrelationCalculator::VMLPCorrelationCalculator(sgl::vk::Renderer* renderer
             //        << "\nDType: " << COMPONENT_TYPE_NAMES[int(props.DType)]
             //        << "\nscope: " << SCOPE_NAMES[int(props.scope)]
             //        << "\n" << std::endl;
+        }
+        std::sort(matrixBlockSizesNV.begin(), matrixBlockSizesNV.end());
+        if (!matrixBlockSizesNV.empty()) {
+            formatIdxNV = int(matrixBlockSizesNV.size()) - 1;
+        }
+        for (auto matrixBlockSize : matrixBlockSizesNV) {
+            matrixBlockSizesStringNV.push_back(std::to_string(matrixBlockSize));
         }
     }
 #endif
@@ -386,12 +391,10 @@ VMLPCorrelationCalculator::VMLPCorrelationCalculator(sgl::vk::Renderer* renderer
                     && props.BType == VK_COMPONENT_TYPE_FLOAT16_KHR
                     && props.CType == VK_COMPONENT_TYPE_FLOAT16_KHR
                     && props.ResultType == VK_COMPONENT_TYPE_FLOAT16_KHR
-                    && props.MSize == props.NSize && props.NSize == props.KSize) {
-                formatDimsKHR.push_back(props.MSize);
-            }
-            std::sort(formatDimsKHR.begin(), formatDimsKHR.end());
-            if (!formatDimsKHR.empty()) {
-                formatIdxKHR = int(formatDimsKHR.size()) - 1;
+                    && props.MSize == props.NSize && props.NSize == props.KSize
+                    && props.MSize <= 16) {
+                // For now, only up to 16x16 matrices are supported due to 32 byte padding.
+                matrixBlockSizesKHR.push_back(props.MSize);
             }
             //std::cout
             //        << "\nMSize: " << props.MSize
@@ -405,8 +408,37 @@ VMLPCorrelationCalculator::VMLPCorrelationCalculator(sgl::vk::Renderer* renderer
             //        << "\nscope: " << SCOPE_NAMES[int(props.scope)]
             //        << "\n" << std::endl;
         }
+        std::sort(matrixBlockSizesKHR.begin(), matrixBlockSizesKHR.end());
+        if (!matrixBlockSizesKHR.empty()) {
+            formatIdxKHR = int(matrixBlockSizesKHR.size()) - 1;
+        }
+        for (auto matrixBlockSize : matrixBlockSizesKHR) {
+            matrixBlockSizesStringKHR.push_back(std::to_string(matrixBlockSize));
+        }
     }
 #endif
+
+    subgroupSizes.push_back(device->getPhysicalDeviceSubgroupProperties().subgroupSize);
+#ifdef VK_VERSION_1_3
+    if (device->getPhysicalDeviceVulkan13Features().subgroupSizeControl) {
+        auto minSubgroupSize = device->getPhysicalDeviceVulkan13Properties().minSubgroupSize;
+        auto maxSubgroupSize = device->getPhysicalDeviceVulkan13Properties().maxSubgroupSize;
+        for (uint32_t subgroupSize = minSubgroupSize; subgroupSize < maxSubgroupSize; subgroupSize++) {
+            if (subgroupSize != device->getPhysicalDeviceSubgroupProperties().subgroupSize) {
+                subgroupSizes.push_back(subgroupSize);
+            }
+        }
+    }
+#endif
+    for (auto subgroupSize : subgroupSizes) {
+        subgroupSizesString.push_back(std::to_string(subgroupSize));
+    }
+
+    if (!matrixBlockSizesNV.empty() || !matrixBlockSizesKHR.empty()) {
+        supportsFusedMlp = true;
+        useFusedMlp = true;
+        useKhrExtension = !matrixBlockSizesKHR.empty();
+    }
 
     writeGridPositionsPass = std::make_shared<WriteGridPositionsPass>(renderer);
     writeGridPositionsStencilPass = std::make_shared<WriteGridPositionsStencilPass>(renderer);
@@ -464,9 +496,62 @@ void VMLPCorrelationCalculator::onFloatFormatChanged() {
     dirty = true;
 }
 
+void VMLPCorrelationCalculator::updateMlpSettings() {
+    auto networkWithEncoding = reinterpret_cast<vmlp::NetworkWithInputEncoding*>(moduleWrapper->networkEncoder.get());
+    updateMlpSettingsNetwork(networkWithEncoding->getNetwork());
+    updateMlpSettingsNetwork(moduleWrapper->networkDecoder);
+    numLayersOutDecoder = uint32_t(moduleWrapper->networkDecoder->getNumChannelsOutPadded());
+    cacheNeedsRecreate = true;
+    dirty = true;
+}
+
+void VMLPCorrelationCalculator::updateMlpSettingsNetwork(const std::shared_ptr<vmlp::Module>& module) {
+    auto* network = reinterpret_cast<vmlp::MlpNetwork*>(module.get());
+    auto& matrixBlockSizes = useKhrExtension ? matrixBlockSizesKHR : matrixBlockSizesNV;
+    auto& formatIdx = useKhrExtension ? formatIdxKHR : formatIdxNV;
+    network->setUseFusedMlp(useFusedMlp);
+    network->setFusedMlpExtension(useKhrExtension);
+    network->setFusedMlpMatrixBlockSize(matrixBlockSizes.at(formatIdx));
+    network->setFusedMlpSubgroupSize(subgroupSizes.at(subgroupSizeIdx));
+    network->setFusedMlpSharedMemoryType(memoryType);
+    network->checkRecreateFusedPass();
+}
+
 void VMLPCorrelationCalculator::renderGuiImplAdvanced(sgl::PropertyEditor& propertyEditor) {
     DeepLearningCorrelationCalculator::renderGuiImplAdvanced(propertyEditor);
-    if (deviceSupporsFp16 && propertyEditor.addCombo(
+
+    if (supportsFusedMlp && propertyEditor.addCheckbox("Use Fused MLP", &useFusedMlp)) {
+        if (floatFormat == vmlp::FloatFormat::FLOAT32) {
+            floatFormat = vmlp::FloatFormat::FLOAT16;
+            onFloatFormatChanged();
+        }
+        updateMlpSettings();
+    }
+    if (useFusedMlp) {
+        if (!matrixBlockSizesNV.empty() && !matrixBlockSizesKHR.empty()) {
+            if (propertyEditor.addCheckbox("Use KHR Extension", &useKhrExtension)) {
+                updateMlpSettings();
+            }
+        }
+        if (subgroupSizes.size() > 1 && propertyEditor.addCombo(
+                "Subgroup Size", &subgroupSizeIdx, subgroupSizesString.data(), int(subgroupSizesString.size()))) {
+            updateMlpSettings();
+        }
+        auto& matrixBlockSizesString = useKhrExtension ? matrixBlockSizesStringKHR : matrixBlockSizesStringNV;
+        auto& formatIdx = useKhrExtension ? formatIdxKHR : formatIdxNV;
+        if (matrixBlockSizesString.size() > 1 && propertyEditor.addCombo(
+                "Matrix Block Size", &formatIdx,
+                matrixBlockSizesString.data(), int(matrixBlockSizesString.size()))) {
+            updateMlpSettings();
+        }
+        if (propertyEditor.addCombo(
+                "Shared Memory Type", (int*)&memoryType,
+                vmlp::FUSED_MLP_MEMORY_TYPE_NAME, IM_ARRAYSIZE(vmlp::FUSED_MLP_MEMORY_TYPE_NAME))) {
+            updateMlpSettings();
+        }
+    }
+
+    if (!useFusedMlp && deviceSupporsFp16 && propertyEditor.addCombo(
             "Float Format", (int*)&floatFormat,
             vmlp::FLOAT_FORMAT_UI_NAMES, IM_ARRAYSIZE(vmlp::FLOAT_FORMAT_UI_NAMES))) {
         onFloatFormatChanged();
@@ -475,7 +560,7 @@ void VMLPCorrelationCalculator::renderGuiImplAdvanced(sgl::PropertyEditor& prope
 
 void VMLPCorrelationCalculator::setSettings(const SettingsMap& settings) {
     std::string floatFormatString;
-    if (deviceSupporsFp16 && settings.getValueOpt("float_format", floatFormatString)) {
+    if (!useFusedMlp && deviceSupporsFp16 && settings.getValueOpt("float_format", floatFormatString)) {
         for (int i = 0; i < IM_ARRAYSIZE(vmlp::FLOAT_FORMAT_UI_NAMES); i++) {
             if (floatFormatString == vmlp::FLOAT_FORMAT_UI_NAMES[i]) {
                 floatFormat = vmlp::FloatFormat(i);
@@ -712,16 +797,14 @@ void VMLPCorrelationCalculator::loadModelFromFile(const std::string& modelPath) 
             moduleWrapper->configDecoder, itNetworkDecoder->second);
     moduleWrapper->symmetrizerModule = std::make_shared<vmlp::Symmetrizer>(renderer, symmetrizerType);
     moduleWrapper->symmetrizerModule->setFloatFormat(floatFormat);
+    updateMlpSettings();
 
     // numLayersOutEncoder == numLayersInDecoder when symmetrizer is sum operation.
     numLayersInEncoder = uint32_t(moduleWrapper->networkEncoder->getNumChannelsIn());
     numLayersOutEncoder = uint32_t(moduleWrapper->networkEncoder->getNumChannelsOut());
 
     numLayersInDecoder = uint32_t(moduleWrapper->networkDecoder->getNumChannelsIn());
-    numLayersOutDecoder = uint32_t(moduleWrapper->networkDecoder->getNumChannelsOut());
-
-    // TODO
-    numLayersOutDecoder = std::max(numLayersOutDecoder, 16u);
+    numLayersOutDecoder = uint32_t(moduleWrapper->networkDecoder->getNumChannelsOutPadded());
 
     if (numLayersOutEncoder * symmetrizerFactor != numLayersInDecoder) {
         sgl::Logfile::get()->throwError(
