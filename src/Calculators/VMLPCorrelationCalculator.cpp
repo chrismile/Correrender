@@ -478,6 +478,9 @@ void VMLPCorrelationCalculator::setVolumeData(VolumeData* _volumeData, bool isNe
     writeGridPositionsPass->setDataSize(xs, ys, zs, stride);
     writeGridPositionsStencilPass->setDataSize(xs, ys, zs, stride);
     writeGridPositionReferencePass->setDataSize(xs, ys, zs, stride);
+    if (isNewData) {
+        calculatorConstructorUseCount = volumeData->getNewCalculatorUseCount(CalculatorType::VMLP);
+    }
 }
 
 void VMLPCorrelationCalculator::onFloatFormatChanged() {
