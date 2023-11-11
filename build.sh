@@ -42,6 +42,7 @@ if [[ "$(uname -s)" =~ ^Darwin.* ]]; then
 else
     use_macos=false
 fi
+os_arch="$(uname -m)"
 
 run_program=true
 debug=false
@@ -176,13 +177,13 @@ is_installed_brew() {
 }
 
 if $use_msys && command -v pacman &> /dev/null && [ ! -d $build_dir_debug ] && [ ! -d $build_dir_release ]; then
-    if ! command -v cmake &> /dev/null || ! command -v git &> /dev/null \
+    if ! command -v cmake &> /dev/null || ! command -v git &> /dev/null || ! command -v rsync &> /dev/null \
             || ! command -v curl &> /dev/null || ! command -v wget &> /dev/null \
             || ! command -v pkg-config &> /dev/null || ! command -v g++ &> /dev/null; then
         echo "------------------------"
         echo "installing build essentials"
         echo "------------------------"
-        pacman --noconfirm -S --needed make git curl wget mingw64/mingw-w64-x86_64-cmake \
+        pacman --noconfirm -S --needed make git rsync curl wget mingw64/mingw-w64-x86_64-cmake \
         mingw64/mingw-w64-x86_64-gcc mingw64/mingw-w64-x86_64-gdb
     fi
 
@@ -506,7 +507,6 @@ fi
 use_vulkan=false
 vulkan_sdk_env_set=true
 use_vulkan=true
-os_arch="$(uname -m)"
 
 search_for_vulkan_sdk=false
 if [ $use_msys = false ] && [ -z "${VULKAN_SDK+1}" ]; then
@@ -1083,22 +1083,18 @@ if $use_msys; then
         fi
     done
 elif [ $use_macos = true ] && [ $use_vcpkg = true ]; then
-    [ -d $destination_dir ]             || mkdir $destination_dir
-    [ -d $destination_dir/python3 ]     || mkdir $destination_dir/python3
-    [ -d $destination_dir/python3/lib ] || mkdir $destination_dir/python3/lib
-    rsync -a "vcpkg_installed/$(ls vcpkg_installed | grep -Ewv 'vcpkg')/lib/$Python3_VERSION" $destination_dir/python3/lib
-    #rsync -a "$(eval echo "vcpkg_installed/$(ls vcpkg_installed | grep -Ewv 'vcpkg')/lib/python*")" $destination_dir/python3/lib
-    rsync -a "$build_dir/LineVis.app/Contents/MacOS/LineVis" $destination_dir
+    [ -d $destination_dir ] || mkdir $destination_dir
+    rsync -a "$build_dir/Correrender.app/Contents/MacOS/Correrender" $destination_dir
 elif [ $use_macos = true ] && [ $use_vcpkg = false ]; then
     brew_prefix="$(brew --prefix)"
     mkdir -p $destination_dir
 
-    if [ -d "$destination_dir/$program_name.app" ]; then
-        rm -rf "$destination_dir/$program_name.app"
+    if [ -d "$destination_dir/Correrender.app" ]; then
+        rm -rf "$destination_dir/Correrender.app"
     fi
 
     # Copy the application to the destination directory.
-    cp -a "$build_dir/$program_name.app" "$destination_dir"
+    cp -a "$build_dir/Correrender.app" "$destination_dir"
 
     # Copy sgl to the destination directory.
     if [ $debug = true ] ; then
@@ -1164,7 +1160,7 @@ elif [ $use_macos = true ] && [ $use_vcpkg = false ]; then
             fi
         done < <(echo "$otool_output")
     }
-    copy_dependencies_recursive "$build_dir/LineVis.app/Contents/MacOS/LineVis"
+    copy_dependencies_recursive "$build_dir/Correrender.app/Contents/MacOS/Correrender"
     if [ $debug = true ]; then
         copy_dependencies_recursive "./third_party/sgl/install/lib/libsgld.dylib"
     else
@@ -1178,6 +1174,7 @@ elif [ $use_macos = true ] && [ $use_vcpkg = false ]; then
             codesign --force -s - "$filename" &> /dev/null
         fi
     done
+${copy_dependencies_macos_post}
 else
     mkdir -p $destination_dir/bin
 
@@ -1242,9 +1239,9 @@ fi
 
 # Create a run script.
 if $use_msys; then
-    printf "@echo off\npushd %%~dp0\npushd bin\nstart \"\" LineVis.exe\n" > "$destination_dir/run.bat"
+    printf "@echo off\npushd %%~dp0\npushd bin\nstart \"\" Correrender.exe\n" > "$destination_dir/run.bat"
 elif $use_macos; then
-    printf "#!/bin/sh\npushd \"\$(dirname \"\$0\")\" >/dev/null\n./LineVis.app/Contents/MacOS/LineVis\npopd\n" > "$destination_dir/run.sh"
+    printf "#!/bin/sh\npushd \"\$(dirname \"\$0\")\" >/dev/null\n./Correrender.app/Contents/MacOS/Correrender\npopd\n" > "$destination_dir/run.sh"
     chmod +x "$destination_dir/run.sh"
 else
     printf "#!/bin/bash\npushd \"\$(dirname \"\$0\")/bin\" >/dev/null\n./Correrender\npopd\n" > "$destination_dir/run.sh"
@@ -1287,9 +1284,9 @@ if $use_msys; then
     fi
 elif $use_macos; then
     if [ -z "${DYLD_LIBRARY_PATH+x}" ]; then
-        export DYLD_LIBRARY_PATH="${PROJECTPATH}/third_party/sgl/install/lib"
-    elif contains "${DYLD_LIBRARY_PATH}" "${PROJECTPATH}/third_party/sgl/install/lib"; then
-        export DYLD_LIBRARY_PATH="DYLD_LIBRARY_PATH:${PROJECTPATH}/third_party/sgl/install/lib"
+        export DYLD_LIBRARY_PATH="${projectpath}/third_party/sgl/install/lib"
+    elif contains "${DYLD_LIBRARY_PATH}" "${projectpath}/third_party/sgl/install/lib"; then
+        export DYLD_LIBRARY_PATH="DYLD_LIBRARY_PATH:${projectpath}/third_party/sgl/install/lib"
     fi
 else
   if [[ -z "${LD_LIBRARY_PATH+x}" ]]; then

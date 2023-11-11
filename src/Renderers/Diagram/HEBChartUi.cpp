@@ -1256,7 +1256,13 @@ void HEBChart::renderBaseSkia() {
 }
 
 void HEBChart::renderChordDiagramSkia() {
+#ifdef __APPLE__
+    auto minMaxMi = getMinMaxCorrelationValue();
+    float minMi = minMaxMi.first;
+    float maxMi = minMaxMi.second;
+#else
     auto [minMi, maxMi] = getMinMaxCorrelationValue();
+#endif
 
     SkPaint paint;
     static_cast<VectorBackendSkia*>(vectorBackend)->initializePaint(&paint);
@@ -1451,7 +1457,13 @@ void HEBChart::renderBaseVkvg() {
 }
 
 void HEBChart::renderChordDiagramVkvg() {
+#ifdef __APPLE__
+    auto minMaxMi = getMinMaxCorrelationValue();
+    float minMi = minMaxMi.first;
+    float maxMi = minMaxMi.second;
+#else
     auto [minMi, maxMi] = getMinMaxCorrelationValue();
+#endif
 
     // Draw the B-spline curves.
     sgl::Color curveStrokeColor = sgl::Color(100, 255, 100, 255);
@@ -2293,7 +2305,13 @@ void HEBChart::drawColorLegends() {
         numFieldsSize++;
     }
 
+#ifdef __APPLE__
+    auto minMaxMi = getMinMaxCorrelationValue();
+    float minMi = minMaxMi.first;
+    float maxMi = minMaxMi.second;
+#else
     auto [minMi, maxMi] = getMinMaxCorrelationValue();
+#endif
     for (int i = 0; i < numFieldsSize; i++) {
         int ix = numFieldsSize - i;
         HEBChartFieldData* fieldData = nullptr;
