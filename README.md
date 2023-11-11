@@ -11,10 +11,10 @@ There are two ways to build the program on Linux systems.
 - Using the system package manager to install the dependencies (tested: apt on Ubuntu, pacman on Arch Linux).
 - Using [vcpkg](https://github.com/microsoft/vcpkg) to install the dependencies.
 
-In the project root directory, two scripts `build-linux.sh` and `build-linux-vcpkg.sh` can be found. The former uses the
-system package manager to install all dependencies, while the latter uses vcpkg. The build scripts will also launch the
-program after successfully building it. If you wish to build the program manually, instructions can be found in the
-directory `docs/compilation`.
+The script `build.sh` in the project root directory can be used to build the project. If no arguments are passed, the
+dependencies are installed using the system package manager. When calling the script as `./build.sh --vcpkg`, vcpkg is
+used instead. The build scripts will also launch the program after successfully building it. If you wish to build the
+program manually, instructions can be found in the directory `docs/compilation`.
 
 Below, more information concerning different Linux distributions tested can be found.
 
@@ -38,8 +38,8 @@ In this case, CMake needs to be upgraded manually beforehand using the steps at 
 #### Other Linux Distributions
 
 If you are using a different Linux distribution and face difficulties when building the program, please feel free to
-open a [bug report](https://github.com/chrismile/Correrender/issues). In theory, the build scripts should also work on other
-Linux distributions as long as the Vulkan SDK is installed manually beforehand.
+open a [bug report](https://github.com/chrismile/Correrender/issues). In theory, the build scripts should also work on
+other Linux distributions as long as the Vulkan SDK is installed manually beforehand.
 
 #### CUDA Support
 
@@ -60,10 +60,10 @@ export PATH=/usr/local/cuda-12.1/bin:$PATH
 There are two ways to build the program on Windows.
 - Using [vcpkg](https://github.com/microsoft/vcpkg) to install the dependencies. The program can then be compiled using
   [Microsoft Visual Studio](https://visualstudio.microsoft.com/vs/).
-- Using [MSYS2](https://www.msys2.org/) to install the dependencies and compile the program using MinGW. In this case, all CUDA
-  interoperability features are disabled. Currently, the CUDA compiler nvcc only supports MSVC on Windows.
+- Using [MSYS2](https://www.msys2.org/) to install the dependencies and compile the program using MinGW. In this case,
+  all CUDA interoperability features are disabled. Currently, the CUDA compiler nvcc only supports MSVC on Windows.
 
-In the project folder, a script called `build-windows.bat` can be found automating this build process using vcpkg and
+In the project folder, a script called `build-msvc.bat` can be found automating this build process using vcpkg and
 Visual Studio. It is recommended to run the script using the `Developer PowerShell for VS 2022` (or VS 2019 depending on
 your Visual Studio version). The build script will also launch the program after successfully building it.
 Building the program is regularly tested on Windows 10 and 11 with Microsoft Visual Studio 2019 and 2022.
@@ -71,8 +71,8 @@ Building the program is regularly tested on Windows 10 and 11 with Microsoft Vis
 Please note that the [Vulkan SDK](https://vulkan.lunarg.com/sdk/home#windows) needs to be installed beforehand if using
 Microsoft Visual Studio for compilation.
 
-A script `build-windows-msys2.bat` is also available to build the program using MSYS2/MinGW alternatively to using
-Microsoft Visual Studio.
+The script `build.sh` in the project root directory can also be used to alternatively build the program using
+MSYS2/MinGW on Windows. For this, it should be run from a MSYS2 shell.
 
 If you wish to build the program manually using Visual Studio and vcpkg, or using MSYS2, instructions can be found in
 the directory `docs/compilation`.

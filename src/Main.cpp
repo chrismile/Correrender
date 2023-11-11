@@ -77,7 +77,11 @@ void setFileDescriptorLimit() {
 
 int main(int argc, char *argv[]) {
     // Initialize the filesystem utilities.
+#ifdef __APPLE__
+    setlocale(LC_ALL, "en_US.UTF-8"); // For font rendering with VKVG.
+#else
     std::setlocale(LC_ALL, "en_US.UTF-8"); // For font rendering with VKVG.
+#endif
     sgl::FileUtils::get()->initialize("Correrender", argc, argv);
 
     // Parse the arguments.

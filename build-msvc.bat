@@ -54,9 +54,6 @@ IF NOT "%1"=="" (
     GOTO :loop
 )
 
-:: Leave empty to let cmake try to find the correct paths
-set optix_install_dir=""
-
 where cmake >NUL 2>&1 || echo cmake was not found but is required to build the program && exit /b 1
 
 :: Creates a string with, e.g., -G "Visual Studio 17 2022".
@@ -92,8 +89,8 @@ if not exist .\submodules\IsosurfaceCpp\src (
 
 set third_party_dir=%~dp0/third_party
 set cmake_args=-DCMAKE_TOOLCHAIN_FILE="third_party/vcpkg/scripts/buildsystems/vcpkg.cmake" ^
-               -DVCPKG_TARGET_TRIPLET=%vcpkg_triplet%                                      ^
-               -DCMAKE_CXX_FLAGS="/MP"                                                     ^
+               -DVCPKG_TARGET_TRIPLET=%vcpkg_triplet% ^
+               -DCMAKE_CXX_FLAGS="/MP" ^
                -Dsgl_DIR="third_party/sgl/install/lib/cmake/sgl/"
 
 set cmake_args_general=-DCMAKE_TOOLCHAIN_FILE="%third_party_dir%/vcpkg/scripts/buildsystems/vcpkg.cmake" ^
@@ -371,6 +368,8 @@ if %debug% == true (
 echo ------------------------
 echo       generating
 echo ------------------------
+
+
 cmake %cmake_generator% %cmake_args% -S . -B %build_dir%
 
 echo ------------------------
@@ -387,7 +386,6 @@ if %debug% == true (
    )
    robocopy %build_dir%\Debug\  %destination_dir%  >NUL
    robocopy third_party\sgl\.build\Debug %destination_dir% *.dll *.pdb >NUL
-   robocopy third_party\ospray-%ospray_version%.x86_64.windows\bin %destination_dir% *.dll >NUL
 ) else (
    if exist %destination_dir%\*.pdb (
       del %destination_dir%\*.dll
@@ -395,7 +393,6 @@ if %debug% == true (
    )
    robocopy %build_dir%\Release\ %destination_dir% >NUL
    robocopy third_party\sgl\.build\Release %destination_dir% *.dll >NUL
-   robocopy third_party\ospray-%ospray_version%.x86_64.windows\bin %destination_dir% *.dll >NUL
 )
 
 echo.
