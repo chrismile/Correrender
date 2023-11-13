@@ -156,7 +156,7 @@ void renderAdjoint(uint workIdx, uint x, uint y, uint b, uint threadSharedMemory
             float alphaIn = (alphaVolume - colorCurr.a) / (alphaVolume - 1.0);
             vec3 colorIn = colorCurr.rgb - (1.0 - alphaIn) * colorVolume.rgb;
 
-            // Compute the for the volume color/alpha.
+            // Compute the adjoint for the volume color/alpha.
             vec4 colorVolumeAdjoint;
             colorVolumeAdjoint.rgb = alphaVolume * (1.0 - alphaIn) * colorCurrAdjoint.rgb;
             float alphaAdjoint = colorCurrAdjoint.a * (1.0 - alphaIn) + dot(colorCurrAdjoint.rgb, volumeColor.rgb - volumeColor.rgb * alphaIn);
