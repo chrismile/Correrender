@@ -46,7 +46,7 @@ other Linux distributions as long as the Vulkan SDK is installed manually before
 The program can use CUDA to enable optional features. If the build scripts are not able to find your CUDA installation
 on Linux, add the following lines to the end of `$HOME/.profile` and log out of and then back into your user account.
 `cuda-12.1` needs to be adapted depending on the CUDA version installed. On distributions other than Ubuntu and Debian,
-like Arch Linux and Majaro, the library path may be different from the one below, e.g., `/usr/local/cuda-12.1/lib64`.
+like Arch Linux and Manjaro, the library path may be different from the one below, e.g., `/usr/local/cuda-12.1/lib64`.
 
 ```sh
 export CPATH=/usr/local/cuda-12.1/targets/x86_64-linux/include:$CPATH
