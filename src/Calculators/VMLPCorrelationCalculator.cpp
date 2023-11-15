@@ -800,7 +800,9 @@ void VMLPCorrelationCalculator::loadModelFromFile(const std::string& modelPath) 
             moduleWrapper->configDecoder, itNetworkDecoder->second);
     moduleWrapper->symmetrizerModule = std::make_shared<vmlp::Symmetrizer>(renderer, symmetrizerType);
     moduleWrapper->symmetrizerModule->setFloatFormat(floatFormat);
-    updateMlpSettings();
+    if (supportsFusedMlp) {
+        updateMlpSettings();
+    }
 
     // numLayersOutEncoder == numLayersInDecoder when symmetrizer is sum operation.
     numLayersInEncoder = uint32_t(moduleWrapper->networkEncoder->getNumChannelsIn());
