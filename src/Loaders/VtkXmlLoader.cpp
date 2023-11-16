@@ -32,6 +32,7 @@
 #include <Utils/StringUtils.hpp>
 #include <Utils/File/Logfile.hpp>
 #include <Utils/File/Zlib.hpp>
+#include <Utils/File/FileLoader.hpp>
 
 #include "base64/base64.h"
 #include "Volume/VolumeData.hpp"
@@ -44,6 +45,23 @@ VtkXmlLoader::~VtkXmlLoader() {
         delete doc;
         doc = nullptr;
     }
+    if (rawData) {
+        delete[] rawData;
+        rawData = nullptr;
+    }
+}
+
+ptrdiff_t findStringInString(const char* totalString, const char* subsequence, size_t length) {
+    size_t subsequenceLength = strlen(subsequence);
+    for (size_t i = 0; i < length; i++) {
+        if (i + subsequenceLength > length) {
+            return -1;
+        }
+        if (strncmp(totalString + i, subsequence, subsequenceLength) == 0) {
+            return ptrdiff_t(i);
+        }
+    }
+    return -1;
 }
 
 bool VtkXmlLoader::setInputFiles(
@@ -52,15 +70,51 @@ bool VtkXmlLoader::setInputFiles(
     dataSetInformation = _dataSetInformation;
 
     doc = new XMLDocument;
-    if (doc->LoadFile(dataSourceFilename.c_str()) != 0) {
+    uint8_t* bufferData = nullptr;
+    size_t sizeInBytes = 0;
+    bool loadedDat = sgl::loadFileFromSource(filePath, bufferData, sizeInBytes, true);
+    if (!loadedDat) {
+        sgl::Logfile::get()->writeError(
+                "Error in VtkXmlLoader::load: Couldn't open file \"" + filePath + "\".");
+        return false;
+    }
+    const char* fileBuffer = reinterpret_cast<const char*>(bufferData);
+
+    // tinyxml2 can't parse raw data, so process this file section manually if necessary.
+    const char* appendedRawStartString = "<AppendedData encoding=\"raw\">";
+    ptrdiff_t appendedRawStartStringPos = findStringInString(fileBuffer, appendedRawStartString, sizeInBytes);
+    if (appendedRawStartStringPos >= 0) {
+        const char* appendedRawEndString = "</AppendedData>";
+        ptrdiff_t appendedRawEndStringPos = findStringInString(fileBuffer, appendedRawEndString, sizeInBytes);
+        auto offsetStart = appendedRawStartStringPos + ptrdiff_t(strlen(appendedRawStartString));
+        //auto offsetEnd = appendedRawEndStringPos + ptrdiff_t(strlen(appendedRawEndString));
+        std::string fileBufferClean =
+                std::string(fileBuffer, fileBuffer + offsetStart)
+                + std::string(fileBuffer + appendedRawEndStringPos, fileBuffer + sizeInBytes);
+        rawDataSize = appendedRawEndStringPos - offsetStart;
+        rawData = new uint8_t[rawDataSize];
+        memcpy(rawData, bufferData + offsetStart, rawDataSize);
+        if (doc->Parse(fileBufferClean.c_str(), fileBufferClean.size()) != 0) {
+            sgl::Logfile::get()->throwError(
+                    "Error in VtkXmlLoader::load: Couldn't parse file \"" + filePath + "\".");
+        }
+    } else {
+        if (doc->Parse(fileBuffer, sizeInBytes) != 0) {
+            sgl::Logfile::get()->throwError(
+                    "Error in VtkXmlLoader::load: Couldn't parse file \"" + filePath + "\".");
+        }
+    }
+    delete[] bufferData;
+
+    /*if (doc->LoadFile(dataSourceFilename.c_str()) != 0) {
         sgl::Logfile::get()->writeError(
                 std::string() + "VtkXmlLoader::load: Couldn't open file \"" + dataSourceFilename + "\"!");
         return false;
-    }
+    }*/
 
     XMLElement* vtkFileNode = doc->FirstChildElement("VTKFile");
     const char* typeString = vtkFileNode->Attribute("type");
-    if (typeString == nullptr || strcmp(typeString, "ImageData") != 0) {
+    if (typeString == nullptr || (strcmp(typeString, "ImageData") != 0 && strcmp(typeString, "RectilinearGrid") != 0)) {
         sgl::Logfile::get()->throwError(
                 "Error in VtkXmlLoader::load: Invalid VTKFile type string in file \""
                 + dataSourceFilename + "\".");
@@ -81,10 +135,16 @@ bool VtkXmlLoader::setInputFiles(
     }
 
     const char* headerTypeString = vtkFileNode->Attribute("header_type");
-    if (headerTypeString != nullptr && strcmp(headerTypeString, "UInt32") != 0) {
-        sgl::Logfile::get()->throwError(
-                "Error in VtkXmlLoader::load: Unsupported VTKFile header type in file \""
-                + dataSourceFilename + "\".");
+    if (headerTypeString != nullptr) {
+        if (strcmp(headerTypeString, "UInt32") == 0) {
+            numHeaderBytes = 4;
+        } else if (strcmp(headerTypeString, "UInt64") == 0) {
+            numHeaderBytes = 8;
+        } else {
+            sgl::Logfile::get()->throwError(
+                    "Error in VtkXmlLoader::load: Unsupported VTKFile header type in file \""
+                    + dataSourceFilename + "\".");
+        }
     }
 
     useZlib = false;
@@ -101,6 +161,14 @@ bool VtkXmlLoader::setInputFiles(
 
 
     XMLElement* imageDataNode = vtkFileNode->FirstChildElement("ImageData");
+    if (!imageDataNode) {
+        imageDataNode = vtkFileNode->FirstChildElement("RectilinearGrid");
+    }
+    if (!imageDataNode) {
+        sgl::Logfile::get()->throwError(
+                std::string() + "Error in VtkXmlLoader::load: No ImageData or RectilinearGrid node found in file \""
+                + dataSourceFilename + "\".");
+    }
 
     const char* wholeExtentString = imageDataNode->Attribute("WholeExtent");
     if (wholeExtentString == nullptr) {
@@ -124,25 +192,39 @@ bool VtkXmlLoader::setInputFiles(
     zs = wholeExtentArray.at(5) - wholeExtentArray.at(4) + 1;
     numPoints = xs * ys * zs;
 
-    const char* spacingString = imageDataNode->Attribute("Spacing");
-    if (spacingString == nullptr) {
+    XMLElement* pieceNode = imageDataNode->FirstChildElement("Piece");
+    if (pieceNode == nullptr) {
         sgl::Logfile::get()->throwError(
-                "Error in VtkXmlLoader::load: Missing Spacing for ImageData in file \""
+                "Error in VtkXmlLoader::load: No Piece node given in file \""
                 + dataSourceFilename + "\".");
     }
-    std::vector<std::string> spacingStringArray;
-    sgl::splitStringWhitespace(spacingString, spacingStringArray);
-    if (spacingStringArray.size() != 3) {
-        sgl::Logfile::get()->throwError(
-                "Error in VtkXmlLoader::load: ImageData Spacing attribute in file \""
-                + dataSourceFilename + "\" does not have 3 entries as expected.");
-    }
+
     std::vector<float> spacingArray;
-    for (auto& spacingStr : spacingStringArray) {
-        spacingArray.push_back(sgl::fromString<float>(spacingStr));
+    const char* spacingString = imageDataNode->Attribute("Spacing");
+    XMLElement* coordinatesNode = pieceNode->FirstChildElement("Coordinates");
+    if (spacingString != nullptr) {
+        std::vector<std::string> spacingStringArray;
+        sgl::splitStringWhitespace(spacingString, spacingStringArray);
+        if (spacingStringArray.size() != 3) {
+            sgl::Logfile::get()->throwError(
+                    "Error in VtkXmlLoader::load: ImageData Spacing attribute in file \""
+                    + dataSourceFilename + "\" does not have 3 entries as expected.");
+        }
+        for (auto& spacingStr : spacingStringArray) {
+            spacingArray.push_back(sgl::fromString<float>(spacingStr));
+        }
+    } else if (coordinatesNode != nullptr) {
+        // TODO: Add support.
+        // Is of the form: <DataArray Name="x_coordinates" NumberOfComponents="1" type="Float32" format="appended" offset="16392"/>
+        spacingArray.push_back(1.0f);
+        spacingArray.push_back(1.0f);
+        spacingArray.push_back(1.0f);
+    } else {
+        sgl::Logfile::get()->throwError(
+                "Error in VtkXmlLoader::load: Missing Spacing for ImageData or Coordinates node in file \""
+                + dataSourceFilename + "\".");
     }
 
-    XMLElement* pieceNode = imageDataNode->FirstChildElement("Piece");
     const char* pieceExtentString = pieceNode->Attribute("Extent");
     if (pieceExtentString == nullptr) {
         sgl::Logfile::get()->throwError(
@@ -156,11 +238,14 @@ bool VtkXmlLoader::setInputFiles(
     }
 
     XMLElement* pointDataNode = pieceNode->FirstChildElement("PointData");
+    XMLElement* cellDataNode = pieceNode->FirstChildElement("PointData");
 
     bool velocityOffsetsSet[3] = { false, false, false };
     velocityOffsets[0] = 0;
     velocityOffsets[1] = 0;
     velocityOffsets[2] = 0;
+
+    // TODO: Add support for cell data.
 
     for (sgl::XMLIterator it(pointDataNode, sgl::XMLNameFilter("DataArray")); it.isValid(); ++it) {
         XMLElement* dataArrayNode = *it;
@@ -214,30 +299,33 @@ bool VtkXmlLoader::setInputFiles(
 
     XMLElement* appendedDataNode = vtkFileNode->FirstChildElement("AppendedData");
     const char* encodingString = appendedDataNode->Attribute("encoding");
-    if (encodingString == nullptr || strcmp(encodingString, "base64") != 0) {
+    if (encodingString == nullptr || (strcmp(encodingString, "base64") != 0 && strcmp(encodingString, "raw") != 0)) {
         sgl::Logfile::get()->throwError(
                 "Error in VtkXmlLoader::load: Unsupported appended data encoding in file \""
                 + dataSourceFilename + "\".");
     }
-    appendedDataEncoded = appendedDataNode->GetText();
 
-    size_t totalStringLength = strlen(appendedDataEncoded);
-    startPos = 0;
-    ptrdiff_t endPos = ptrdiff_t(totalStringLength) - 1;
-    while (startPos < ptrdiff_t(totalStringLength)) {
-        char c = appendedDataEncoded[startPos];
-        if (c == '_' || c == ' ' || c == '\t' || c == '\n' || c == '\r') {
-            startPos++;
-        } else {
-            break;
+    if (strcmp(encodingString, "base64") != 0) {
+        appendedDataEncoded = appendedDataNode->GetText();
+
+        size_t totalStringLength = strlen(appendedDataEncoded);
+        startPos = 0;
+        ptrdiff_t endPos = ptrdiff_t(totalStringLength) - 1;
+        while (startPos < ptrdiff_t(totalStringLength)) {
+            char c = appendedDataEncoded[startPos];
+            if (c == '_' || c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+                startPos++;
+            } else {
+                break;
+            }
         }
-    }
-    while (endPos >= 0) {
-        char c = appendedDataEncoded[endPos];
-        if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
-            endPos--;
-        } else {
-            break;
+        while (endPos >= 0) {
+            char c = appendedDataEncoded[endPos];
+            if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+                endPos--;
+            } else {
+                break;
+            }
         }
     }
 
@@ -250,14 +338,14 @@ bool VtkXmlLoader::setInputFiles(
     volumeData->setGridExtent(xs, ys, zs, dx, dy, dz);
 
     std::unordered_map<FieldType, std::vector<std::string>> fieldNameMap;
-    fieldNameMap[FieldType::VECTOR].push_back("Velocity");
-    fieldNameMap[FieldType::VECTOR].push_back("Vorticity");
-    fieldNameMap[FieldType::SCALAR].push_back("Velocity Magnitude");
-    fieldNameMap[FieldType::SCALAR].push_back("Vorticity Magnitude");
-    fieldNameMap[FieldType::SCALAR].push_back("Helicity");
-    fieldNameMap[FieldType::SCALAR].push_back("u");
-    fieldNameMap[FieldType::SCALAR].push_back("v");
-    fieldNameMap[FieldType::SCALAR].push_back("w");
+    fieldNameMap[FieldType::VECTOR].emplace_back("Velocity");
+    fieldNameMap[FieldType::VECTOR].emplace_back("Vorticity");
+    fieldNameMap[FieldType::SCALAR].emplace_back("Velocity Magnitude");
+    fieldNameMap[FieldType::SCALAR].emplace_back("Vorticity Magnitude");
+    fieldNameMap[FieldType::SCALAR].emplace_back("Helicity");
+    fieldNameMap[FieldType::SCALAR].emplace_back("u");
+    fieldNameMap[FieldType::SCALAR].emplace_back("v");
+    fieldNameMap[FieldType::SCALAR].emplace_back("w");
     volumeData->setFieldNames(fieldNameMap);
 
     return true;
@@ -272,7 +360,9 @@ bool VtkXmlLoader::getFieldEntry(
 
     float* scalarFields[3] = { uField, vField, wField };
 
-    if (useZlib) {
+    if (rawData) {
+        // TODO
+    } else if (useZlib) {
         for (int i = 0; i < 3; i++) {
             const char* headerBase64String = appendedDataEncoded + startPos + velocityOffsets[i];
 

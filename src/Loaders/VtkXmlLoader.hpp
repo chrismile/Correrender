@@ -43,7 +43,7 @@ class XMLDocument;
  */
 class VtkXmlLoader : public VolumeLoader {
 public:
-    static std::vector<std::string> getSupportedExtensions() { return { "vti", "vts" }; }
+    static std::vector<std::string> getSupportedExtensions() { return { "vti", "vts", "vtr" }; }
     ~VtkXmlLoader() override;
     bool setInputFiles(
             VolumeData* volumeData, const std::string& filePath, const DataSetInformation& dataSetInformation) override;
@@ -63,6 +63,9 @@ private:
     const char* appendedDataEncoded = nullptr;
     ptrdiff_t startPos = 0;
     size_t velocityOffsets[3] = { 0, 0, 0 };
+    size_t numHeaderBytes = 4;
+    uint8_t* rawData = nullptr;
+    size_t rawDataSize = 0;
 };
 
 #endif //CORRERENDER_VTKXMLLOADER_HPP
