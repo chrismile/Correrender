@@ -238,7 +238,7 @@ bool VtkXmlLoader::setInputFiles(
     }
 
     XMLElement* pointDataNode = pieceNode->FirstChildElement("PointData");
-    XMLElement* cellDataNode = pieceNode->FirstChildElement("PointData");
+    XMLElement* cellDataNode = pieceNode->FirstChildElement("CellData");
 
     bool velocityOffsetsSet[3] = { false, false, false };
     velocityOffsets[0] = 0;
@@ -246,6 +246,11 @@ bool VtkXmlLoader::setInputFiles(
     velocityOffsets[2] = 0;
 
     // TODO: Add support for cell data.
+    if (cellDataNode) {
+        sgl::Logfile::get()->throwError(
+                "Error in VtkXmlLoader::load: Cell data specified in file \""
+                + dataSourceFilename + "\" is not yet supported.");
+    }
 
     for (sgl::XMLIterator it(pointDataNode, sgl::XMLNameFilter("DataArray")); it.isValid(); ++it) {
         XMLElement* dataArrayNode = *it;
