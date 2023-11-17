@@ -490,11 +490,11 @@ void MlpFusedPass::_render() {
     } else if (memoryType == FusedMlpMemoryType::UVEC4) {
         typeSize = 16;
     }
-    glm::uvec3 inputOutputBufferSizesUvec4;
-    inputOutputBufferSizesUvec4.x = batchSize;
-    inputOutputBufferSizesUvec4.y = sgl::uiceil(batchSize * nextMultiple(numChannelsIn, 16), typeSize);
-    inputOutputBufferSizesUvec4.z = sgl::uiceil(batchSize * nextMultiple(numChannelsOut, 16), typeSize);
-    renderer->pushConstants(getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, 0, inputOutputBufferSizesUvec4);
+    glm::uvec3 inputOutputBufferSizesTyped;
+    inputOutputBufferSizesTyped.x = batchSize;
+    inputOutputBufferSizesTyped.y = sgl::uiceil(batchSize * nextMultiple(numChannelsIn, 16), typeSize);
+    inputOutputBufferSizesTyped.z = sgl::uiceil(batchSize * nextMultiple(numChannelsOut, 16), typeSize);
+    renderer->pushConstants(getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, 0, inputOutputBufferSizesTyped);
     //renderer->pushConstants(getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, 0, batchSize);
     renderer->dispatch(computeData, sgl::uiceil(batchSize, M * nBatch), 1, 1);
     renderer->insertBufferMemoryBarrier(

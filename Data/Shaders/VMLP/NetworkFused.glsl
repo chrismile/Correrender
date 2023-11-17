@@ -207,9 +207,9 @@ void main() {
     }
 #else
     for (uint i = localThreadIdx + blockRowIdx * SUBGROUP_SIZE; i < NUM_CHANNELS_OUT_PADDED * M * N_BATCH / SMEM_FACTOR; i += SUBGROUP_SIZE * N_ROWS) {
-        if (i < outputBufferSizeTyped) {
-            outputBuffer[i + batchOffset * NUM_CHANNELS_OUT_PADDED] = sharedMemory[i];
-        }
+        //if (i < outputBufferSizeTyped) {
+        outputBuffer[i + batchOffset * NUM_CHANNELS_OUT_PADDED] = sharedMemory[i];
+        //}
     }
 #endif
 }
