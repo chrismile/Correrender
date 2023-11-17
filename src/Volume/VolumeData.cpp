@@ -39,6 +39,7 @@
 #include <Utils/Parallel/Reduction.hpp>
 #endif
 
+#include <Utils/StringUtils.hpp>
 #include <Utils/AppSettings.hpp>
 #include <Utils/File/FileUtils.hpp>
 #include <Utils/Events/EventManager.hpp>
@@ -657,6 +658,22 @@ bool VolumeData::setInputFiles(
         addCalculator(std::make_shared<HelicityCalculator>(renderer));
         helicityVariableExists = true;
     }
+
+    // TODO: Add support for other vector fields?
+    /*auto& scalarMap = typeToFieldNamesMap[FieldType::SCALAR];
+    for (auto& scalarMapEntry : scalarMap) {
+        if (sgl::endsWith(scalarMapEntry, ".x")) {
+            std::string nameRaw = scalarMapEntry.substr(0, scalarMapEntry.size() - 2);
+            if (getFieldExists(FieldType::SCALAR, nameRaw + ".y")
+                    && getFieldExists(FieldType::SCALAR, nameRaw + ".z")) {
+                addCalculator(std::make_shared<VelocityCalculator>(renderer));
+                addCalculator(std::make_shared<VectorMagnitudeCalculator>(renderer, nameRaw));
+                addCalculator(std::make_shared<VorticityCalculator>(renderer));
+                addCalculator(std::make_shared<VectorMagnitudeCalculator>(renderer, nameRaw));
+                addCalculator(std::make_shared<HelicityCalculator>(renderer));
+            }
+        }
+    }*/
 
     if ((ts > 1 || es > 1) && viewManager) {
         addCalculator(std::make_shared<CorrelationCalculator>(renderer));
