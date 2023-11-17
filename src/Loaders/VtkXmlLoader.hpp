@@ -63,6 +63,8 @@ private:
     const char* appendedDataEncoded = nullptr;
     ptrdiff_t startPos = 0;
     size_t velocityOffsets[3] = { 0, 0, 0 };
+    std::map<std::string, size_t> variableOffsets;
+    std::map<std::string, uint32_t> variableDataSize;
     size_t numHeaderBytes = 4;
     uint8_t* rawData = nullptr;
     size_t rawDataSize = 0;

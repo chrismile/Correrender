@@ -91,6 +91,17 @@ bool VtkXmlLoader::setInputFiles(
         std::string fileBufferClean =
                 std::string(fileBuffer, fileBuffer + offsetStart)
                 + std::string(fileBuffer + appendedRawEndStringPos, fileBuffer + sizeInBytes);
+        while (offsetStart < appendedRawEndStringPos) {
+            char c = fileBuffer[offsetStart];
+            if (c == '_' || c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+                offsetStart++;
+                if (c == '_') {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
         rawDataSize = appendedRawEndStringPos - offsetStart;
         rawData = new uint8_t[rawDataSize];
         memcpy(rawData, bufferData + offsetStart, rawDataSize);
@@ -187,10 +198,6 @@ bool VtkXmlLoader::setInputFiles(
     for (auto& extentString : wholeExtentStringArray) {
         wholeExtentArray.push_back(sgl::fromString<int>(extentString));
     }
-    xs = wholeExtentArray.at(1) - wholeExtentArray.at(0) + 1;
-    ys = wholeExtentArray.at(3) - wholeExtentArray.at(2) + 1;
-    zs = wholeExtentArray.at(5) - wholeExtentArray.at(4) + 1;
-    numPoints = xs * ys * zs;
 
     XMLElement* pieceNode = imageDataNode->FirstChildElement("Piece");
     if (pieceNode == nullptr) {
@@ -213,17 +220,34 @@ bool VtkXmlLoader::setInputFiles(
         for (auto& spacingStr : spacingStringArray) {
             spacingArray.push_back(sgl::fromString<float>(spacingStr));
         }
+        xs = wholeExtentArray.at(1) - wholeExtentArray.at(0) + 1;
+        ys = wholeExtentArray.at(3) - wholeExtentArray.at(2) + 1;
+        zs = wholeExtentArray.at(5) - wholeExtentArray.at(4) + 1;
     } else if (coordinatesNode != nullptr) {
-        // TODO: Add support.
         // Is of the form: <DataArray Name="x_coordinates" NumberOfComponents="1" type="Float32" format="appended" offset="16392"/>
         spacingArray.push_back(1.0f);
         spacingArray.push_back(1.0f);
         spacingArray.push_back(1.0f);
+        int pxs = wholeExtentArray.at(1) - wholeExtentArray.at(0) + 1;
+        int pys = wholeExtentArray.at(3) - wholeExtentArray.at(2) + 1;
+        int pzs = wholeExtentArray.at(5) - wholeExtentArray.at(4) + 1;
+        if (pxs != pys || pys != pzs) {
+            sgl::Logfile::get()->throwError(
+                    "Error in VtkXmlLoader::load: Mismatch in number of coordinates in x, y and z direction in file \""
+                    + dataSourceFilename + "\".");
+        }
+        // TODO: Search the point coordinates and find out the directions.
+        int dim = int(std::cbrt(pxs));
+        xs = dim;
+        ys = dim;
+        zs = dim;
+        numPoints = dim * dim * dim;
     } else {
         sgl::Logfile::get()->throwError(
                 "Error in VtkXmlLoader::load: Missing Spacing for ImageData or Coordinates node in file \""
                 + dataSourceFilename + "\".");
     }
+    numPoints = xs * ys * zs;
 
     const char* pieceExtentString = pieceNode->Attribute("Extent");
     if (pieceExtentString == nullptr) {
@@ -239,26 +263,27 @@ bool VtkXmlLoader::setInputFiles(
 
     XMLElement* pointDataNode = pieceNode->FirstChildElement("PointData");
     XMLElement* cellDataNode = pieceNode->FirstChildElement("CellData");
+    XMLElement* dataNode = pointDataNode ? pointDataNode : cellDataNode;
+    std::unordered_map<FieldType, std::vector<std::string>> fieldNameMap;
 
-    bool velocityOffsetsSet[3] = { false, false, false };
-    velocityOffsets[0] = 0;
-    velocityOffsets[1] = 0;
-    velocityOffsets[2] = 0;
-
-    // TODO: Add support for cell data.
-    if (cellDataNode) {
+    if (!dataNode) {
         sgl::Logfile::get()->throwError(
-                "Error in VtkXmlLoader::load: Cell data specified in file \""
-                + dataSourceFilename + "\" is not yet supported.");
+                "Error in VtkXmlLoader::load: No point or cell data specified in file \""
+                + dataSourceFilename + "\".");
     }
 
-    for (sgl::XMLIterator it(pointDataNode, sgl::XMLNameFilter("DataArray")); it.isValid(); ++it) {
+    for (sgl::XMLIterator it(dataNode, sgl::XMLNameFilter("DataArray")); it.isValid(); ++it) {
         XMLElement* dataArrayNode = *it;
         const char* dataArrayTypeString = dataArrayNode->Attribute("type");
-        if (dataArrayTypeString == nullptr || strcmp(dataArrayTypeString, "Float32") != 0) {
+        if (dataArrayTypeString == nullptr
+                || (strcmp(dataArrayTypeString, "Float32") != 0 && strcmp(dataArrayTypeString, "Float64") != 0)) {
             sgl::Logfile::get()->throwError(
                     "Error in VtkXmlLoader::load: Encountered data array with type not equal to Float32 in file \""
                     + dataSourceFilename + "\". Currently, only Float32 is supported.");
+        }
+        uint32_t dataSize = 4;
+        if (strcmp(dataArrayTypeString, "Float64") == 0) {
+            dataSize = 8;
         }
 
         const char* dataArrayFormatString = dataArrayNode->Attribute("format");
@@ -282,24 +307,9 @@ bool VtkXmlLoader::setInputFiles(
                     "Error in VtkXmlLoader::load: Expected name for data array in file \""
                     + dataSourceFilename + "\".");
         }
-        if (strcmp(dataArrayNameString, "u") == 0) {
-            velocityOffsetsSet[0] = true;
-            velocityOffsets[0] = offset;
-        }
-        if (strcmp(dataArrayNameString, "v") == 0) {
-            velocityOffsetsSet[1] = true;
-            velocityOffsets[1] = offset;
-        }
-        if (strcmp(dataArrayNameString, "w") == 0) {
-            velocityOffsetsSet[2] = true;
-            velocityOffsets[2] = offset;
-        }
-    }
-
-    if (!velocityOffsetsSet[0] || !velocityOffsetsSet[1] || !velocityOffsetsSet[2]) {
-        sgl::Logfile::get()->throwError(
-                "Error in VtkXmlLoader::load: A velocity vector field component was not found in file \""
-                + dataSourceFilename + "\".");
+        variableOffsets.emplace(dataArrayNameString, offset);
+        variableDataSize.emplace(dataArrayNameString, dataSize);
+        fieldNameMap[FieldType::SCALAR].emplace_back(dataArrayNameString);
     }
 
     XMLElement* appendedDataNode = vtkFileNode->FirstChildElement("AppendedData");
@@ -310,7 +320,7 @@ bool VtkXmlLoader::setInputFiles(
                 + dataSourceFilename + "\".");
     }
 
-    if (strcmp(encodingString, "base64") != 0) {
+    if (strcmp(encodingString, "base64") == 0) {
         appendedDataEncoded = appendedDataNode->GetText();
 
         size_t totalStringLength = strlen(appendedDataEncoded);
@@ -320,6 +330,9 @@ bool VtkXmlLoader::setInputFiles(
             char c = appendedDataEncoded[startPos];
             if (c == '_' || c == ' ' || c == '\t' || c == '\n' || c == '\r') {
                 startPos++;
+                if (c == '_') {
+                    break;
+                }
             } else {
                 break;
             }
@@ -342,15 +355,6 @@ bool VtkXmlLoader::setInputFiles(
     dz = cellStep * spacingArray.at(2) / maxSpacing;
     volumeData->setGridExtent(xs, ys, zs, dx, dy, dz);
 
-    std::unordered_map<FieldType, std::vector<std::string>> fieldNameMap;
-    fieldNameMap[FieldType::VECTOR].emplace_back("Velocity");
-    fieldNameMap[FieldType::VECTOR].emplace_back("Vorticity");
-    fieldNameMap[FieldType::SCALAR].emplace_back("Velocity Magnitude");
-    fieldNameMap[FieldType::SCALAR].emplace_back("Vorticity Magnitude");
-    fieldNameMap[FieldType::SCALAR].emplace_back("Helicity");
-    fieldNameMap[FieldType::SCALAR].emplace_back("u");
-    fieldNameMap[FieldType::SCALAR].emplace_back("v");
-    fieldNameMap[FieldType::SCALAR].emplace_back("w");
     volumeData->setFieldNames(fieldNameMap);
 
     return true;
@@ -359,78 +363,105 @@ bool VtkXmlLoader::setInputFiles(
 bool VtkXmlLoader::getFieldEntry(
         VolumeData* volumeData, FieldType fieldType, const std::string& fieldName,
         int timestepIdx, int memberIdx, HostCacheEntryType*& fieldEntry) {
-    auto* uField = new float[numPoints];
-    auto* vField = new float[numPoints];
-    auto* wField = new float[numPoints];
+    auto* fieldEntryBuffer = new float[numPoints];
 
-    float* scalarFields[3] = { uField, vField, wField };
-
+    auto it = variableOffsets.find(fieldName);
+    uint32_t dataSize = variableDataSize.find(fieldName)->second;
     if (rawData) {
-        // TODO
-    } else if (useZlib) {
-        for (int i = 0; i < 3; i++) {
-            const char* headerBase64String = appendedDataEncoded + startPos + velocityOffsets[i];
-
-            uint32_t numBlocks = base64DecodeUint32(headerBase64String);
-            size_t headerSizeBytes = sizeof(uint32_t) * size_t(numBlocks + 3);
-            size_t headerSizeBase64 = (headerSizeBytes + 2) / 3 * 4;
-            auto* encodedDataHeader = new char[base64GetNumBytesDecoded(int(headerSizeBase64))];
-            size_t decodedHeaderDataSizeInBytes = base64DecodeSized(
-                    encodedDataHeader, headerBase64String, int(headerSizeBase64));
-            (void)decodedHeaderDataSizeInBytes;
-
-            auto* header = reinterpret_cast<uint32_t *>(encodedDataHeader);
-            //uint32_t numBlocks = header[0];
-            uint32_t uncompressedBlockSize = header[1];
-            uint32_t uncompressedLastBlockPartialSize = header[2];
-
-            size_t bufferSize;
-            if (uncompressedLastBlockPartialSize == 0) {
-                bufferSize = size_t(numBlocks) * size_t(uncompressedBlockSize);
-            } else {
-                bufferSize =
-                        size_t(numBlocks - 1) * size_t(uncompressedBlockSize) +
-                        size_t(uncompressedLastBlockPartialSize);
-            }
-
-            if (bufferSize != sizeof(float) * numPoints) {
-                sgl::Logfile::get()->throwError(
-                        "Error in VtkXmlLoader::load: Invalid uncompressed buffer size in file \""
-                        + dataSourceFilename + "\".");
-            }
-
-            size_t compressedTotalSize = 0;
-            for (uint32_t blockIdx = 0; blockIdx < numBlocks; blockIdx++) {
-                auto compressedSize = size_t(header[blockIdx + 3]);
-                compressedTotalSize += compressedSize;
-            }
-            const char* dataBase64String = headerBase64String + headerSizeBase64;
-            size_t dataSizeBase64 = (compressedTotalSize + 2) / 3 * 4;
-            auto* encodedData = new char[base64GetNumBytesDecoded(int(dataSizeBase64))];
-            size_t decodedDataSizeInBytes = base64DecodeSized(
-                    encodedData, dataBase64String, int(dataSizeBase64));
-            (void)decodedDataSizeInBytes;
-
-            auto* compressedDataReadPtr = reinterpret_cast<uint8_t*>(encodedData);
-            auto* uncompressedDataWritePtr = reinterpret_cast<uint8_t*>(scalarFields[i]);
-            for (uint32_t blockIdx = 0; blockIdx < numBlocks; blockIdx++) {
-                auto compressedSize = size_t(header[blockIdx + 3]);
-                size_t uncompressedSize;
-                if (blockIdx == numBlocks - 1 && uncompressedLastBlockPartialSize != 0) {
-                    uncompressedSize = uncompressedLastBlockPartialSize;
-                } else {
-                    uncompressedSize = uncompressedBlockSize;
-                }
-                sgl::decompressZlibData(
-                        compressedDataReadPtr, compressedSize,
-                        uncompressedDataWritePtr, uncompressedSize);
-                compressedDataReadPtr += compressedSize;
-                uncompressedDataWritePtr += uncompressedSize;
-            }
-
-            delete[] encodedData;
-            delete[] encodedDataHeader;
+        const uint8_t* dataArray = rawData + it->second;
+        size_t numBytes = 0;
+        if (numHeaderBytes == 4) {
+            numBytes = *reinterpret_cast<const uint32_t*>(dataArray);
+            dataArray += sizeof(uint32_t);
+        } else if (numHeaderBytes == 8) {
+            numBytes = *reinterpret_cast<const uint64_t*>(dataArray);
+            dataArray += sizeof(uint64_t);
+        } else {
+            sgl::Logfile::get()->throwError(
+                    "Error in VtkXmlLoader::load: raw encoding as used in file \""
+                    + dataSourceFilename + "\" is currently only supported for UInt32 and UInt64 headers.");
         }
+        if (size_t(numPoints) != numBytes / size_t(dataSize)) {
+            sgl::Logfile::get()->throwError(
+                    "Error in VtkXmlLoader::load: Data size mismatch in file \""
+                    + dataSourceFilename + "\".");
+        }
+        if (dataSize == 4) {
+            memcpy(fieldEntryBuffer, dataArray, numBytes);
+        } else if (dataSize == 8) {
+            const auto* dataDouble = reinterpret_cast<const double*>(dataArray);
+            for (int i = 0; i < numPoints; i++) {
+                fieldEntryBuffer[i] = float(dataDouble[i]);
+            }
+        }
+    } else if (useZlib) {
+        if (numHeaderBytes != 4 || dataSize != 4) {
+            sgl::Logfile::get()->throwError(
+                    "Error in VtkXmlLoader::load: base64 encoding as used in file \""
+                    + dataSourceFilename + "\" is currently only supported for 32-bit headers and data.");
+        }
+
+        const char* headerBase64String = appendedDataEncoded + startPos + it->second;
+
+        uint32_t numBlocks = base64DecodeUint32(headerBase64String);
+        size_t headerSizeBytes = sizeof(uint32_t) * size_t(numBlocks + 3);
+        size_t headerSizeBase64 = (headerSizeBytes + 2) / 3 * 4;
+        auto* encodedDataHeader = new char[base64GetNumBytesDecoded(int(headerSizeBase64))];
+        size_t decodedHeaderDataSizeInBytes = base64DecodeSized(
+                encodedDataHeader, headerBase64String, int(headerSizeBase64));
+        (void)decodedHeaderDataSizeInBytes;
+
+        auto* header = reinterpret_cast<uint32_t*>(encodedDataHeader);
+        //uint32_t numBlocks = header[0];
+        uint32_t uncompressedBlockSize = header[1];
+        uint32_t uncompressedLastBlockPartialSize = header[2];
+
+        size_t bufferSize;
+        if (uncompressedLastBlockPartialSize == 0) {
+            bufferSize = size_t(numBlocks) * size_t(uncompressedBlockSize);
+        } else {
+            bufferSize =
+                    size_t(numBlocks - 1) * size_t(uncompressedBlockSize) +
+                    size_t(uncompressedLastBlockPartialSize);
+        }
+
+        if (bufferSize != sizeof(float) * numPoints) {
+            sgl::Logfile::get()->throwError(
+                    "Error in VtkXmlLoader::load: Invalid uncompressed buffer size in file \""
+                    + dataSourceFilename + "\".");
+        }
+
+        size_t compressedTotalSize = 0;
+        for (uint32_t blockIdx = 0; blockIdx < numBlocks; blockIdx++) {
+            auto compressedSize = size_t(header[blockIdx + 3]);
+            compressedTotalSize += compressedSize;
+        }
+        const char* dataBase64String = headerBase64String + headerSizeBase64;
+        size_t dataSizeBase64 = (compressedTotalSize + 2) / 3 * 4;
+        auto* encodedData = new char[base64GetNumBytesDecoded(int(dataSizeBase64))];
+        size_t decodedDataSizeInBytes = base64DecodeSized(
+                encodedData, dataBase64String, int(dataSizeBase64));
+        (void)decodedDataSizeInBytes;
+
+        auto* compressedDataReadPtr = reinterpret_cast<uint8_t*>(encodedData);
+        auto* uncompressedDataWritePtr = reinterpret_cast<uint8_t*>(fieldEntryBuffer);
+        for (uint32_t blockIdx = 0; blockIdx < numBlocks; blockIdx++) {
+            auto compressedSize = size_t(header[blockIdx + 3]);
+            size_t uncompressedSize;
+            if (blockIdx == numBlocks - 1 && uncompressedLastBlockPartialSize != 0) {
+                uncompressedSize = uncompressedLastBlockPartialSize;
+            } else {
+                uncompressedSize = uncompressedBlockSize;
+            }
+            sgl::decompressZlibData(
+                    compressedDataReadPtr, compressedSize,
+                    uncompressedDataWritePtr, uncompressedSize);
+            compressedDataReadPtr += compressedSize;
+            uncompressedDataWritePtr += uncompressedSize;
+        }
+
+        delete[] encodedData;
+        delete[] encodedDataHeader;
     } else {
         sgl::Logfile::get()->throwError(
                 "Error in VtkXmlLoader::load: Uncompressed appended data as used in file \""
@@ -442,37 +473,7 @@ bool VtkXmlLoader::getFieldEntry(
                 "Error in VtkXmlLoader::load: Big endian encoding used in file \""
                 + dataSourceFilename + "\" is not yet supported.");
     }
-    auto* velocityField = new float[3 * numPoints];
-    for (int ptIdx = 0; ptIdx < numPoints; ptIdx++) {
-        velocityField[3 * ptIdx + 0] = uField[ptIdx];
-        velocityField[3 * ptIdx + 1] = vField[ptIdx];
-        velocityField[3 * ptIdx + 2] = wField[ptIdx];
-    }
-
-
-    // --- Filling grid data ---
-    auto* velocityMagnitudeField = new float[numPoints];
-    auto* vorticityField = new float[numPoints * 3];
-    auto* vorticityMagnitudeField = new float[numPoints];
-    auto* helicityField = new float[numPoints];
-
-    computeVectorMagnitudeField(velocityField, velocityMagnitudeField, xs, ys, zs);
-    computeVorticityField(velocityField, vorticityField, xs, ys, zs, dx, dy, dz);
-    computeVectorMagnitudeField(vorticityField, vorticityMagnitudeField, xs, ys, zs);
-    computeHelicityFieldNormalized(
-            velocityField, vorticityField, helicityField, xs, ys, zs,
-            dataSetInformation.useNormalizedVelocity,
-            dataSetInformation.useNormalizedVorticity);
-
-    volumeData->addField(velocityField, FieldType::VECTOR, "Velocity", timestepIdx, memberIdx);
-    volumeData->addField(vorticityField, FieldType::VECTOR, "Vorticity", timestepIdx, memberIdx);
-    volumeData->addField(helicityField, FieldType::SCALAR, "Helicity", timestepIdx, memberIdx);
-    volumeData->addField(velocityMagnitudeField, FieldType::SCALAR, "Velocity Magnitude", timestepIdx, memberIdx);
-    volumeData->addField(vorticityMagnitudeField, FieldType::SCALAR, "Vorticity Magnitude", timestepIdx, memberIdx);
-
-    volumeData->addField(uField, FieldType::SCALAR, "u", timestepIdx, memberIdx);
-    volumeData->addField(vField, FieldType::SCALAR, "v", timestepIdx, memberIdx);
-    volumeData->addField(wField, FieldType::SCALAR, "w", timestepIdx, memberIdx);
+    fieldEntry = new HostCacheEntryType(xs * ys * zs, fieldEntryBuffer);
 
     return true;
 }
