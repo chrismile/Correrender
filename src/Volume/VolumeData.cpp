@@ -1963,12 +1963,12 @@ bool VolumeData::saveFieldToFile(const std::string& filePath, FieldType fieldTyp
     auto fieldData = getFieldEntryCpu(fieldType, typeToFieldNamesMap[fieldType].at(fieldIndex));
     std::string fileExtension = sgl::FileUtils::get()->getFileExtensionLower(filePath);
     VolumeWriter* volumeWriter = createVolumeWriterByExtension(fileExtension);
-    volumeWriter->writeFieldToFile(
+    bool retVal = volumeWriter->writeFieldToFile(
             filePath, this, fieldType, typeToFieldNamesMap[fieldType].at(fieldIndex),
             currentTimeStepIdx, currentEnsembleIdx);
     delete volumeWriter;
 
-    return false;
+    return retVal;
 }
 
 glm::vec3 VolumeData::screenPosToRayDir(SceneData* sceneData, int globalX, int globalY) {
