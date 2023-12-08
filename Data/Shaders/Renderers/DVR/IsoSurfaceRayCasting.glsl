@@ -54,6 +54,7 @@ layout(binding = 0) uniform RendererUniformDataBuffer {
     vec3 maxBoundingBox;
     float stepSize;
     vec4 isoSurfaceColor;
+    vec3 voxelTexelSize;
 };
 
 layout (binding = 1, rgba32f) uniform image2D outputImage;
@@ -71,7 +72,9 @@ ivec3 gridSize;
 #include "UniformData.glsl"
 #include "Lighting.glsl"
 
+#define DIFFERENCES_NEIGHBOR
 vec3 computeGradient(vec3 texCoords) {
+#ifdef DIFFERENCES_NEIGHBOR
     float gradX =
             (textureOffset(scalarField, texCoords, ivec3(-1, 0, 0)).r
             - textureOffset(scalarField, texCoords, ivec3(1, 0, 0)).r) * 0.5 / dx;
@@ -81,6 +84,20 @@ vec3 computeGradient(vec3 texCoords) {
     float gradZ =
             (textureOffset(scalarField, texCoords, ivec3(0, 0, -1)).r
             - textureOffset(scalarField, texCoords, ivec3(0, 0, 1)).r) * 0.5 / dz;
+#else
+    const float dxp = voxelTexelSize.x * 1;
+    const float dyp = voxelTexelSize.y * 1;
+    const float dzp = voxelTexelSize.z * 1;
+    float gradX =
+            (texture(scalarField, texCoords - vec3(dxp, 0.0, 0.0)).r
+            - texture(scalarField, texCoords + vec3(dxp, 0.0, 0.0)).r) * 0.5;
+    float gradY =
+            (texture(scalarField, texCoords - vec3(0.0, dyp, 0.0)).r
+            - texture(scalarField, texCoords + vec3(0.0, dyp, 0.0)).r) * 0.5;
+    float gradZ =
+            (texture(scalarField, texCoords - vec3(0.0, 0.0, dzp)).r
+            - texture(scalarField, texCoords + vec3(0.0, 0.0, dzp)).r) * 0.5;
+#endif
     return normalize(vec3(gradX, gradY, gradZ));
 }
 

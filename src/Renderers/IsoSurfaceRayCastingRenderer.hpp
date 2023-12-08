@@ -126,6 +126,7 @@ private:
         glm::vec3 maxBoundingBox;
         float stepSize;
         glm::vec4 isoSurfaceColor;
+        glm::vec3 voxelTexelSize;
     };
     RenderSettingsData renderSettingsData{};
     sgl::vk::BufferPtr rendererUniformDataBuffer;

@@ -326,6 +326,13 @@ void IsoSurfaceRayCastingPass::_render() {
     renderSettingsData.cameraPosition = (*camera)->getPosition();
     renderSettingsData.zNear = (*camera)->getNearClipDistance();
     renderSettingsData.zFar = (*camera)->getFarClipDistance();
+    auto settings = computeData->getImageView("scalarField")->getImage()->getImageSettings();
+    renderSettingsData.voxelTexelSize =
+            glm::vec3(1.0f) / glm::vec3(settings.width - 1, settings.height - 1, settings.depth - 1);
+    float minDiff = std::min(renderSettingsData.dx, std::min(renderSettingsData.dy, renderSettingsData.dz));
+    renderSettingsData.voxelTexelSize.x *= minDiff / renderSettingsData.dx;
+    renderSettingsData.voxelTexelSize.y *= minDiff / renderSettingsData.dy;
+    renderSettingsData.voxelTexelSize.z *= minDiff / renderSettingsData.dz;
     rendererUniformDataBuffer->updateData(
             sizeof(RenderSettingsData), &renderSettingsData, renderer->getVkCommandBuffer());
     renderer->insertMemoryBarrier(
