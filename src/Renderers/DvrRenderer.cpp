@@ -29,9 +29,12 @@
 #include <Graphics/Vulkan/Render/Renderer.hpp>
 #include <Graphics/Vulkan/Render/ComputePipeline.hpp>
 #include <ImGui/Widgets/PropertyEditor.hpp>
+
 #include "Utils/InternalState.hpp"
+#include "Utils/Normalization.hpp"
 #include "Widgets/ViewManager.hpp"
 #include "Volume/VolumeData.hpp"
+#include "Export/WriteTetMesh.hpp"
 #include "RenderingModes.hpp"
 #include "DvrRenderer.hpp"
 
@@ -63,6 +66,12 @@ void DvrRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) {
     const std::vector<std::string>& fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
     if (isNewData) {
         selectedFieldIdx = volumeData->getStandardScalarFieldIdx();
+
+        std::string standardExportDirectory = sgl::AppSettings::get()->getDataDirectory() + "VolumeDataSets/preshaded";
+        exportFilePath = standardExportDirectory + "/" + volumeData->getDataSetInformation().name + ".bintet";
+        if (!sgl::FileUtils::get()->directoryExists(standardExportDirectory)) {
+            sgl::FileUtils::get()->ensureDirectoryExists(standardExportDirectory);
+        }
     }
     selectedScalarFieldName = fieldNames.at(selectedFieldIdx);
     volumeData->acquireTf(this, selectedFieldIdx);
@@ -88,6 +97,104 @@ void DvrRenderer::onFieldRemoved(FieldType fieldType, int fieldIdx) {
             selectedScalarFieldName.clear();
         } else if (oldSelectedFieldIdx > fieldIdx) {
             oldSelectedFieldIdx--;
+        }
+    }
+}
+
+/*
+ * Vertex and edge IDs:
+ *
+ *      3 +----------------+ 2
+ *       /|               /|
+ *      / |              / |
+ *     /  |             /  |
+ *    /   |            /   |
+ * 7 +----------------+ 6  |
+ *   |    |           |    |
+ *   |    |           |    |
+ *   |    |           |    |
+ *   |  0 +-----------|----+ 1
+ *   |   /            |   /
+ *   |  /             |  /
+ *   | /              | /
+ *   |/               |/
+ * 4 +----------------+ 5
+ *
+ * Tet mapping: https://cs.stackexchange.com/questions/89910/how-to-decompose-a-unit-cube-into-tetrahedra
+ */
+const int HEX_TO_TET_TABLE[6][4] = {
+        { 0, 4, 7, 6 },
+        { 0, 3, 7, 6 },
+        { 0, 4, 5, 6 },
+        { 0, 1, 5, 6 },
+        { 0, 3, 2, 6 },
+        { 0, 1, 2, 6 },
+};
+
+void DvrRenderer::createTetMeshData(
+        std::vector<uint32_t>& cellIndices, std::vector<glm::vec3>& vertexPositions,
+        std::vector<glm::vec4>& vertexColors) {
+    int xs = volumeData->getGridSizeX();
+    int ys = volumeData->getGridSizeY();
+    int zs = volumeData->getGridSizeZ();
+    sgl::AABB3 gridAabb;
+    gridAabb.min = glm::vec3(-0.5f, -0.5f, -0.5f);
+    gridAabb.max = glm::vec3(volumeData->getGridSizeX(), volumeData->getGridSizeY(), volumeData->getGridSizeZ()) - glm::vec3(0.5f, 0.5f, 0.5f);
+    gridAabb.min *= glm::vec3(volumeData->getDx(), volumeData->getDy(), volumeData->getDz());
+    gridAabb.max *= glm::vec3(volumeData->getDx(), volumeData->getDy(), volumeData->getDz());
+
+    // Add all vertices.
+    auto& tfWindow = volumeData->getMultiVarTransferFunctionWindow();
+    auto tf = tfWindow.getTransferFunctionMap_sRGB(selectedFieldIdx);
+    auto minVal = tfWindow.getSelectedRangeMin(selectedFieldIdx);
+    auto maxVal = tfWindow.getSelectedRangeMax(selectedFieldIdx);
+    auto field = volumeData->getFieldEntryCpu(FieldType::SCALAR, selectedScalarFieldName);
+    auto Nm1 = float(tf.size() - 1);
+    for (int iz = 0; iz < zs; iz++) {
+        for (int iy = 0; iy < ys; iy++) {
+            for (int ix = 0; ix < xs; ix++) {
+                // Add vertex position.
+                glm::vec3 p;
+                p.x = gridAabb.min.x + (float(ix) / float(xs - 1)) * (gridAabb.max.x - gridAabb.min.x);
+                p.y = gridAabb.min.y + (float(iy) / float(ys - 1)) * (gridAabb.max.y - gridAabb.min.y);
+                p.z = gridAabb.min.z + (float(iz) / float(zs - 1)) * (gridAabb.max.z - gridAabb.min.z);
+                vertexPositions.emplace_back(p);
+
+                // Add vertex color.
+                float t = (field->getDataFloatAt(IDXS(ix, iy, iz)) - minVal) / (maxVal - minVal);
+                float t0 = std::clamp(std::floor(t * Nm1), 0.0f, Nm1);
+                float t1 = std::clamp(std::ceil(t * Nm1), 0.0f, Nm1);
+                float f = t * Nm1 - t0;
+                int idx0 = int(t0);
+                int idx1 = int(t1);
+                auto color0 = sgl::color16ToVec4(tf.at(idx0));
+                auto color1 = sgl::color16ToVec4(tf.at(idx1));
+                vertexColors.emplace_back(glm::mix(color0, color1, f));
+                volumeData->getMultiVarTransferFunctionWindow();
+            }
+        }
+    }
+    normalizeVertexPositions(vertexPositions, gridAabb, nullptr);
+
+    // Add all tet indices.
+    int hex[8];
+    for (int iz = 0; iz < zs - 1; iz++) {
+        for (int iy = 0; iy < ys - 1; iy++) {
+            for (int ix = 0; ix < xs - 1; ix++) {
+                hex[0] = IDXS(ix, iy, iz);
+                hex[1] = IDXS(ix + 1, iy, iz);
+                hex[2] = IDXS(ix + 1, iy + 1, iz);
+                hex[3] = IDXS(ix, iy + 1, iz);
+                hex[4] = IDXS(ix, iy, iz + 1);
+                hex[5] = IDXS(ix + 1, iy, iz + 1);
+                hex[6] = IDXS(ix + 1, iy + 1, iz + 1);
+                hex[7] = IDXS(ix, iy + 1, iz + 1);
+                for (int tet = 0; tet < 6; tet++) {
+                    for (int idx = 0; idx < 4; idx++) {
+                        cellIndices.push_back(hex[HEX_TO_TET_TABLE[tet][idx]]);
+                    }
+                }
+            }
         }
     }
 }
@@ -150,6 +257,26 @@ void DvrRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         }
         reRender = true;
     }
+
+    if (propertyEditor.beginNode("Advanced Settings")) {
+        propertyEditor.addInputAction("File Path", &exportFilePath);
+        if (propertyEditor.addButton("", "Export Tet Mesh")) {
+            std::vector<uint32_t> cellIndices;
+            std::vector<glm::vec3> vertexPositions;
+            std::vector<glm::vec4> vertexColors;
+            createTetMeshData(cellIndices, vertexPositions, vertexColors);
+            std::string meshExtension = sgl::FileUtils::get()->getFileExtensionLower(exportFilePath);
+            if (meshExtension == "bintet") {
+                saveBinTet(exportFilePath, cellIndices, vertexPositions, vertexColors);
+            } else if (meshExtension == "txt") {
+                saveTxtTet(exportFilePath, cellIndices, vertexPositions, vertexColors);
+            } else {
+                sgl::Logfile::get()->throwError(
+                        "Error in DvrRenderer::renderGuiImpl: Unknown tet mesh file extension.");
+            }
+        }
+        propertyEditor.endNode();
+    }
 }
 
 void DvrRenderer::setSettings(const SettingsMap& settings) {
@@ -190,6 +317,8 @@ void DvrRenderer::setSettings(const SettingsMap& settings) {
         }
         reRender = true;
     }
+
+    settings.getValueOpt("export_file_path", exportFilePath);
 }
 
 void DvrRenderer::getSettings(SettingsMap& settings) {
@@ -198,6 +327,7 @@ void DvrRenderer::getSettings(SettingsMap& settings) {
     settings.addKeyValue("step_size", stepSize);
     settings.addKeyValue("attenuation_coefficient", attenuationCoefficient);
     settings.addKeyValue("nan_handling", NAN_HANDLING_IDS[int(nanHandling)]);
+    settings.addKeyValue("export_file_path", exportFilePath);
 }
 
 

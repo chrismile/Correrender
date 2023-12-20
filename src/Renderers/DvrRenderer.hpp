@@ -55,7 +55,12 @@ protected:
 
 private:
     VolumeDataPtr volumeData;
+    std::string exportFilePath;
     std::vector<std::shared_ptr<DvrPass>> dvrPasses;
+
+    void createTetMeshData(
+            std::vector<uint32_t>& cellIndices, std::vector<glm::vec3>& vertexPositions,
+            std::vector<glm::vec4>& vertexColors);
 
     // UI renderer settings.
     int selectedFieldIdx = 0, oldSelectedFieldIdx = 0;
