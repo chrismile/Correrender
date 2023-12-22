@@ -123,12 +123,18 @@ void DvrRenderer::onFieldRemoved(FieldType fieldType, int fieldIdx) {
  * Tet mapping: https://cs.stackexchange.com/questions/89910/how-to-decompose-a-unit-cube-into-tetrahedra
  */
 const int HEX_TO_TET_TABLE[6][4] = {
+        // { 0, 4, 7, 6 }, -1
+        // { 0, 4, 5, 6 }, +1
+        // { 0, 3, 7, 6 }, +1
+        // { 0, 3, 2, 6 }, -1
+        // { 0, 1, 5, 6 }, -1
+        // { 0, 1, 2, 6 }, +1
         { 0, 4, 7, 6 },
-        { 0, 3, 7, 6 },
-        { 0, 4, 5, 6 },
-        { 0, 1, 5, 6 },
+        { 0, 4, 6, 5 },
+        { 0, 3, 6, 7 },
         { 0, 3, 2, 6 },
-        { 0, 1, 2, 6 },
+        { 0, 1, 5, 6 },
+        { 0, 1, 6, 2 },
 };
 
 void DvrRenderer::createTetMeshData(
@@ -181,14 +187,14 @@ void DvrRenderer::createTetMeshData(
     for (int iz = 0; iz < zs - 1; iz++) {
         for (int iy = 0; iy < ys - 1; iy++) {
             for (int ix = 0; ix < xs - 1; ix++) {
-                hex[0] = IDXS(ix, iy, iz);
-                hex[1] = IDXS(ix + 1, iy, iz);
-                hex[2] = IDXS(ix + 1, iy + 1, iz);
-                hex[3] = IDXS(ix, iy + 1, iz);
-                hex[4] = IDXS(ix, iy, iz + 1);
-                hex[5] = IDXS(ix + 1, iy, iz + 1);
+                hex[0] = IDXS(ix,     iy,     iz    );
+                hex[1] = IDXS(ix + 1, iy,     iz    );
+                hex[2] = IDXS(ix + 1, iy + 1, iz    );
+                hex[3] = IDXS(ix,     iy + 1, iz    );
+                hex[4] = IDXS(ix,     iy,     iz + 1);
+                hex[5] = IDXS(ix + 1, iy,     iz + 1);
                 hex[6] = IDXS(ix + 1, iy + 1, iz + 1);
-                hex[7] = IDXS(ix, iy + 1, iz + 1);
+                hex[7] = IDXS(ix,     iy + 1, iz + 1);
                 for (int tet = 0; tet < 6; tet++) {
                     for (int idx = 0; idx < 4; idx++) {
                         cellIndices.push_back(hex[HEX_TO_TET_TABLE[tet][idx]]);
