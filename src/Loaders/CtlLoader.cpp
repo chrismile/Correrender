@@ -387,8 +387,8 @@ bool CtlLoader::getFieldEntry(
             return false;
         }
         auto* data2d = data;
-        data = new float[numEntries * varDesc.numLevels];
-        for (ptrdiff_t z = 0; z < varDesc.numLevels; z++) {
+        data = new float[numEntries * info.zs];
+        for (ptrdiff_t z = 0; z < info.zs; z++) {
             memcpy(data + z * numEntries, data2d, varDesc.size3d);
         }
         delete[] data2d;

@@ -315,7 +315,7 @@ class MlpFusedPass : public sgl::vk::ComputePass {
 public:
     MlpFusedPass(
             sgl::vk::Renderer* renderer, bool useKHR, uint32_t matrixBlockSize, uint32_t subgroupSize,
-            FusedMlpMemoryType memoryType,
+            FusedMlpMemoryType memoryType, bool fusedMlpDirectLoad, bool useSharedMemoryBankSkew,
             uint32_t numLayers, uint32_t numChannelsIn, uint32_t numChannelsOut, uint32_t numChannelsHidden,
             ActivationFunction activationFunction, ActivationFunction outputActivationFunction,
             sgl::vk::BufferPtr& parametersBuffer);
@@ -334,6 +334,9 @@ private:
     uint32_t M = 16; // Matrix block size.
     uint32_t subgroupSize = 32;
     FusedMlpMemoryType memoryType;
+    bool fusedMlpDirectLoad;
+    bool useSharedMemoryBankSkew;
+    uint32_t bankSkew;
     uint32_t nBatch = 8; // Number of batch blocks (determined by shared memory size).
     uint32_t nRows;
     uint32_t sharedMemorySize;
@@ -347,11 +350,13 @@ private:
 
 MlpFusedPass::MlpFusedPass(
         sgl::vk::Renderer* renderer, bool useKHR, uint32_t matrixBlockSize, uint32_t subgroupSize,
-        FusedMlpMemoryType memoryType,
+        FusedMlpMemoryType memoryType, bool fusedMlpDirectLoad, bool useSharedMemoryBankSkew,
         uint32_t numLayers, uint32_t numChannelsIn, uint32_t numChannelsOut, uint32_t numChannelsHidden,
         ActivationFunction activationFunction, ActivationFunction outputActivationFunction,
         sgl::vk::BufferPtr& parametersBuffer)
-        : ComputePass(renderer), useKHR(useKHR), M(matrixBlockSize), subgroupSize(subgroupSize), memoryType(memoryType),
+        : ComputePass(renderer), useKHR(useKHR), M(matrixBlockSize), subgroupSize(subgroupSize),
+          memoryType(memoryType), fusedMlpDirectLoad(fusedMlpDirectLoad),
+          useSharedMemoryBankSkew(useSharedMemoryBankSkew),
           numLayers(numLayers), numChannelsIn(numChannelsIn), numChannelsOut(numChannelsOut),
           numChannelsHidden(numChannelsHidden),
           activationFunction(activationFunction), outputActivationFunction(outputActivationFunction),
@@ -373,9 +378,11 @@ MlpFusedPass::MlpFusedPass(
                 "matrix block size.");
     }
 
+    bankSkew = useSharedMemoryBankSkew ? 8 : 0;
+    uint32_t numChannelsHiddenSkewed = numChannelsHidden + bankSkew;
     nRows = numChannelsHidden / M;
     uint32_t maxSharedMemSize = device->getLimits().maxComputeSharedMemorySize;
-    nBatch = maxSharedMemSize / (sizeof(HalfFloat) * numChannelsHidden * M);
+    nBatch = maxSharedMemSize / (sizeof(HalfFloat) * numChannelsHiddenSkewed * M);
     // Do we even need to use this? Non-power-of-two should work just as well.
     //if (!sgl::isPowerOfTwo(int(nBatch))) {
     //    nBatch = uint32_t(sgl::lastPowerOfTwo(int(nBatch)));
@@ -386,7 +393,7 @@ MlpFusedPass::MlpFusedPass(
                 + std::to_string(maxSharedMemSize) + ").");
     }
     nBatch = std::clamp(nBatch, 1u, 8u);
-    sharedMemorySize = nBatch * numChannelsHidden * M * sizeof(HalfFloat);
+    sharedMemorySize = nBatch * numChannelsHiddenSkewed * M * sizeof(HalfFloat);
 }
 
 void MlpFusedPass::setBuffersInOut(const sgl::vk::BufferPtr& _bufferIn, const sgl::vk::BufferPtr& _bufferOut) {
@@ -418,6 +425,9 @@ void MlpFusedPass::loadShader() {
     preprocessorDefines.insert(std::make_pair("N_BATCH", std::to_string(nBatch)));
     preprocessorDefines.insert(std::make_pair(
             "SHARED_MEMORY_SIZE", std::to_string(sharedMemorySize / sizeof(HalfFloat))));
+    if (useSharedMemoryBankSkew) {
+        preprocessorDefines.insert(std::make_pair("BANK_SKEW", std::to_string(bankSkew)));
+    }
 
     preprocessorDefines.insert(std::make_pair(
             "ACTIVATION_FUNCTION", ACTIVATION_FUNCTION_NAMES[int(activationFunction)]));
@@ -428,6 +438,29 @@ void MlpFusedPass::loadShader() {
     if (memoryType == FusedMlpMemoryType::FLOAT16_NO_PADDING) {
         preprocessorDefines.insert(std::make_pair(
                 "FLOAT16_NO_PADDING", std::to_string(sharedMemorySize / sizeof(HalfFloat))));
+    } else if (fusedMlpDirectLoad) {
+        std::string headerPath = sgl::vk::ShaderManager->getShaderFileName("NetworkFusedLayer.glsl");
+        std::string prependContent;
+        std::string headerString = sgl::vk::ShaderManager->loadHeaderFileString(headerPath, prependContent);
+        std::string layerCode = "uint layerIdx;\n";
+        for (uint32_t layerIdx = 0; layerIdx < numLayers; layerIdx++) {
+            if (layerIdx != 0) {
+                layerCode += "#define LAYER_USE_SHARED_MEMORY_INPUT\n";
+            }
+            if (layerIdx != numLayers - 1) {
+                layerCode += "#define LAYER_USE_SHARED_MEMORY_OUTPUT\n";
+            }
+            layerCode += "layerIdx = " + std::to_string(layerIdx) + ";\n";
+            layerCode += headerString;
+            if (layerIdx != 0) {
+                layerCode += "#undef LAYER_USE_SHARED_MEMORY_INPUT\n";
+            }
+            if (layerIdx != numLayers - 1) {
+                layerCode += "#undef LAYER_USE_SHARED_MEMORY_OUTPUT\n";
+            }
+        }
+        preprocessorDefines.insert(std::make_pair("USE_CUSTOM_LAYERS_CODE", ""));
+        preprocessorDefines.insert(std::make_pair("CUSTOM_LAYERS_CODE", layerCode));
     }
     std::string storageType;
     int sharedMemoryFactor = 0;
@@ -554,7 +587,8 @@ MlpNetwork::MlpNetwork(sgl::vk::Renderer* renderer, const Json::Value& settingsN
 
 void MlpNetwork::recreateFusedPass() {
     fusedPass = std::make_shared<MlpFusedPass>(
-            renderer, useKhrExtension, matrixBlockSize, subgroupSize, memoryType,
+            renderer, useKhrExtension, matrixBlockSize, subgroupSize,
+            memoryType, fusedMlpDirectLoad, useSharedMemoryBankSkew,
             numLayers, numChannelsIn, numChannelsOut, numChannelsHidden,
             activationFunction, outputActivationFunction,
             parametersBuffer);
@@ -615,6 +649,24 @@ void MlpNetwork::setFusedMlpSubgroupSize(uint32_t _subgroupSize) {
 void MlpNetwork::setFusedMlpSharedMemoryType(FusedMlpMemoryType _memoryType) {
     if (memoryType != _memoryType) {
         memoryType = _memoryType;
+        if (useFusedMlp) {
+            shallRecreateFusePass = true;
+        }
+    }
+}
+
+void MlpNetwork::setFusedMlpDirectLoad(bool _fusedMlpDirectLoad) {
+    if (fusedMlpDirectLoad != _fusedMlpDirectLoad) {
+        fusedMlpDirectLoad = _fusedMlpDirectLoad;
+        if (useFusedMlp) {
+            shallRecreateFusePass = true;
+        }
+    }
+}
+
+void MlpNetwork::setUseSharedMemoryBankSkew(bool _useSharedMemoryBankSkew) {
+    if (useSharedMemoryBankSkew != _useSharedMemoryBankSkew) {
+        useSharedMemoryBankSkew = _useSharedMemoryBankSkew;
         if (useFusedMlp) {
             shallRecreateFusePass = true;
         }

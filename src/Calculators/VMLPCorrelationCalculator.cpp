@@ -517,6 +517,8 @@ void VMLPCorrelationCalculator::updateMlpSettingsNetwork(const std::shared_ptr<v
     network->setFusedMlpMatrixBlockSize(matrixBlockSizes.at(formatIdx));
     network->setFusedMlpSubgroupSize(subgroupSizes.at(subgroupSizeIdx));
     network->setFusedMlpSharedMemoryType(memoryType);
+    network->setFusedMlpDirectLoad(fusedMlpDirectLoad);
+    network->setUseSharedMemoryBankSkew(useSharedMemoryBankSkew);
     network->checkRecreateFusedPass();
 }
 
@@ -550,6 +552,13 @@ void VMLPCorrelationCalculator::renderGuiImplAdvanced(sgl::PropertyEditor& prope
         if (propertyEditor.addCombo(
                 "Shared Memory Type", (int*)&memoryType,
                 vmlp::FUSED_MLP_MEMORY_TYPE_NAME, IM_ARRAYSIZE(vmlp::FUSED_MLP_MEMORY_TYPE_NAME))) {
+            updateMlpSettings();
+        }
+        if (propertyEditor.addCheckbox("Use Bank Skew", &useSharedMemoryBankSkew)) {
+            updateMlpSettings();
+        }
+        if (memoryType != vmlp::FusedMlpMemoryType::FLOAT16_NO_PADDING && propertyEditor.addCheckbox(
+                "Direct Load", &fusedMlpDirectLoad)) {
             updateMlpSettings();
         }
     }

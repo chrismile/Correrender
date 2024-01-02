@@ -218,6 +218,8 @@ public:
     void setFusedMlpExtension(bool _useKhrExtension);
     void setFusedMlpSubgroupSize(uint32_t _subgroupSize);
     void setFusedMlpSharedMemoryType(FusedMlpMemoryType _memoryType);
+    void setFusedMlpDirectLoad(bool _fusedMlpDirectLoad);
+    void setUseSharedMemoryBankSkew(bool _useSharedMemoryBankSkew);
 
 private:
     sgl::vk::Renderer* renderer;
@@ -245,6 +247,8 @@ private:
     bool useKhrExtension = false;
     uint32_t subgroupSize = false;
     FusedMlpMemoryType memoryType = FusedMlpMemoryType::FLOAT16_NO_PADDING;
+    bool fusedMlpDirectLoad = true;
+    bool useSharedMemoryBankSkew = true;
 };
 
 }

@@ -98,6 +98,8 @@ protected:
     std::vector<std::string> subgroupSizesString;
     int subgroupSizeIdx = 0;
     vmlp::FusedMlpMemoryType memoryType = vmlp::FusedMlpMemoryType::FLOAT16_NO_PADDING;
+    bool fusedMlpDirectLoad = true;
+    bool useSharedMemoryBankSkew = true;
     int formatIdxNV = -1, formatIdxKHR = -1;
     std::vector<uint32_t> matrixBlockSizesNV, matrixBlockSizesKHR;
     std::vector<std::string> matrixBlockSizesStringNV, matrixBlockSizesStringKHR;

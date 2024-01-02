@@ -99,6 +99,163 @@ void main() {
     const uint blockRowIdx = gl_LocalInvocationID.y;
     const uint batchOffset = subgroupIdx * (M * N_BATCH / SMEM_FACTOR);
 
+#ifndef USE_CUSTOM_LAYERS_CODE
+    // Load inputs into shared memory (layout: NUM_CHANNELS_IN_PADDED rows, N_BATCH cols).
+#ifdef FLOAT16_NO_PADDING
+    for (uint i = localThreadIdx + blockRowIdx * SUBGROUP_SIZE; i < NUM_CHANNELS_IN * M * N_BATCH; i += SUBGROUP_SIZE * N_ROWS) {
+        const uint channelIdx = i % NUM_CHANNELS_IN;
+        const uint batchIdxLocal = i / NUM_CHANNELS_IN;
+        const uint batchIdxGlobal = batchOffset + batchIdxLocal;
+        if (batchIdxGlobal < batchSize) {
+#ifdef BANK_SKEW
+            sharedMemory[channelIdx + batchIdxLocal * (NUM_CHANNELS_IN_PADDED + BANK_SKEW)] = inputBuffer[IDX_IN(channelIdx, batchIdxGlobal)];
+#else
+            sharedMemory[channelIdx + batchIdxLocal * NUM_CHANNELS_IN_PADDED] = inputBuffer[IDX_IN(channelIdx, batchIdxGlobal)];
+#endif
+        }
+    }
+#else
+    for (uint i = localThreadIdx + blockRowIdx * SUBGROUP_SIZE; i < NUM_CHANNELS_IN_PADDED * M * N_BATCH / SMEM_FACTOR; i += SUBGROUP_SIZE * N_ROWS) {
+        if (i < inputBufferSizeTyped) {
+#ifdef BANK_SKEW
+            const uint channelIdx = i % NUM_CHANNELS_IN_PADDED;
+            const uint batchIdxLocal = i / NUM_CHANNELS_IN_PADDED;
+            sharedMemory[channelIdx + batchIdxLocal * (NUM_CHANNELS_IN_PADDED + BANK_SKEW)] = inputBuffer[i + batchOffset * NUM_CHANNELS_IN_PADDED];
+#else
+            sharedMemory[i] = inputBuffer[i + batchOffset * NUM_CHANNELS_IN_PADDED];
+#endif
+        }
+    }
+#endif
+    memoryBarrierShared();
+    barrier();
+#endif
+
+    CoopMatA weightsMat; // row major
+    CoopMatB inputMat; // column major
+    CoopMatAcc outputMat[N_BATCH];
+
+    uint weightOffsetBase = 0;
+    uint weightStride = 0;
+    uint inputOffset = 0;
+    uint inputStride = 0;
+    uint outputOffset = 0;
+    uint outputStride = 0;
+
+#ifdef USE_CUSTOM_LAYERS_CODE
+#codefrag "CUSTOM_LAYERS_CODE"
+#else
+#define LAYER_USE_SHARED_MEMORY_INPUT
+#define LAYER_USE_SHARED_MEMORY_OUTPUT
+    [[unroll]] for (uint layerIdx = 0; layerIdx < NUM_LAYERS; layerIdx++)
+#include "NetworkFusedLayer.glsl"
+#endif
+
+#ifndef USE_CUSTOM_LAYERS_CODE
+    // Write outputs into global memory
+#ifdef FLOAT16_NO_PADDING
+    for (uint i = localThreadIdx + blockRowIdx * SUBGROUP_SIZE; i < NUM_CHANNELS_OUT * M * N_BATCH; i += SUBGROUP_SIZE * N_ROWS) {
+        const uint channelIdx = i % NUM_CHANNELS_OUT;
+        const uint batchIdxLocal = i / NUM_CHANNELS_OUT;
+        const uint batchIdxGlobal = batchOffset + batchIdxLocal;
+        if (batchIdxGlobal < batchSize) {
+#ifdef BANK_SKEW
+            outputBuffer[IDX_OUT(channelIdx, batchIdxGlobal)] = sharedMemory[channelIdx + batchIdxLocal * (NUM_CHANNELS_OUT_PADDED + BANK_SKEW)];
+#else
+            outputBuffer[IDX_OUT(channelIdx, batchIdxGlobal)] = sharedMemory[channelIdx + batchIdxLocal * NUM_CHANNELS_OUT_PADDED];
+#endif
+        }
+    }
+#else
+    for (uint i = localThreadIdx + blockRowIdx * SUBGROUP_SIZE; i < NUM_CHANNELS_OUT_PADDED * M * N_BATCH / SMEM_FACTOR; i += SUBGROUP_SIZE * N_ROWS) {
+        //if (i < outputBufferSizeTyped) {
+#ifdef BANK_SKEW
+        const uint channelIdx = i % NUM_CHANNELS_OUT_PADDED;
+        const uint batchIdxLocal = i / NUM_CHANNELS_OUT_PADDED;
+        outputBuffer[i + batchOffset * NUM_CHANNELS_OUT_PADDED] = sharedMemory[channelIdx + batchIdxLocal * (NUM_CHANNELS_OUT_PADDED + BANK_SKEW)];
+#else
+        outputBuffer[i + batchOffset * NUM_CHANNELS_OUT_PADDED] = sharedMemory[i];
+#endif
+        //}
+    }
+#endif
+#endif
+}
+
+
+-- Compute.SingleSource
+
+#version 450 core
+
+layout(local_size_x = SUBGROUP_SIZE, local_size_y = N_ROWS, local_size_z = 1) in;
+
+#extension GL_EXT_control_flow_attributes : require
+#extension GL_EXT_scalar_block_layout : require
+#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require
+#extension GL_EXT_shader_16bit_storage : require
+#extension GL_KHR_memory_scope_semantics : enable
+//#extension GL_EXT_debug_printf : enable
+
+/**
+ * Global defines:
+ * - M: The matrix block size (usually 16 on NVIDIA hardware).
+ * - SUBGROUP_SIZE: The subgroup size.
+ * - N_ROWS: The number of subgroup blocks (NUM_CHANNELS / M) in the weight/output row drection.
+ * - N_BATCH: The number of batch blocks (multiples of M).
+ * - SHARED_MEMORY_SIZE: The number of half-precision float elements in shared memory (N_BATCH * M * NUM_CHANNELS).
+ * - NUM_LAYERS: Total number of layers.
+ * - NUM_CHANNELS_IN, NUM_CHANNELS_OUT: The number of input/output channels.
+ * - NUM_CHANNELS_IN_PADDED, NUM_CHANNELS_OUT_PADDED: The number of input/output channels (padded).
+ * - NUM_CHANNELS_HIDDEN: The number of channels in the hidden layers.
+ * - ACTIVATION_FUNCTION: Name of the activation function.
+ * - NO_OUTPUT_ACTIVATION: Defined if no activation function should be used after the last layer.
+ */
+
+/*
+ * There are some resources online suggesting that using a type != float16_t for shared memory has advantages:
+ * - https://github.com/jeffbolznv/vk_cooperative_matrix_perf/blob/master/shaders/shmem.comp
+ * - https://github.com/KhronosGroup/glslang/blob/4605e2ed2b2b1acbe157d365c3c528367b8b168f/Test/spv.coopmat.comp
+ */
+//#define SMEM_FACTOR 8 // sizeof(uvec4) / sizeof(float16_t)
+//#define STORAGE_TYPE uvec4
+//#define SMEM_FACTOR 1 // sizeof(float16_t) / sizeof(float16_t)
+//#define STORAGE_TYPE float16_t
+shared STORAGE_TYPE sharedMemory[SHARED_MEMORY_SIZE / SMEM_FACTOR];
+
+// Analogous to tiny-cuda-nn with column major format.
+//#define WEIGHT_IDX(channelOutIdx, channelInIdx) (WEIGHT_OFFSET + (channelInIdx) + (channelOutIdx) * NUM_CHANNELS_IN_PADDED)
+#define IDX_IN(channelIdx, batchIdx) ((channelIdx) + (batchIdx) * NUM_CHANNELS_IN)
+#ifdef FLOAT16_NO_PADDING
+#define IDX_OUT(channelIdx, batchIdx) ((channelIdx) + (batchIdx) * NUM_CHANNELS_OUT)
+#else
+#define IDX_OUT(channelIdx, batchIdx) ((channelIdx) + (batchIdx) * NUM_CHANNELS_OUT_PADDED)
+#endif
+
+layout(binding = 0, scalar) readonly buffer ParametersBuffer {
+    float16_t parametersBuffer[];
+};
+
+layout(binding = 1, scalar) readonly buffer InputBuffer {
+    STORAGE_TYPE inputBuffer[];
+};
+
+layout(binding = 2, scalar) writeonly buffer OutputBuffer {
+    STORAGE_TYPE outputBuffer[];
+};
+
+layout(push_constant) uniform PushConstants {
+    uint batchSize, inputBufferSizeTyped, outputBufferSizeTyped;
+};
+
+#define real float16_t
+#include "ActivationFunctions.glsl"
+
+void main() {
+    const uint localThreadIdx = gl_LocalInvocationID.x;
+    const uint subgroupIdx = gl_WorkGroupID.x;
+    const uint blockRowIdx = gl_LocalInvocationID.y;
+    const uint batchOffset = subgroupIdx * (M * N_BATCH / SMEM_FACTOR);
+
     // Load inputs into shared memory (layout: NUM_CHANNELS_IN_PADDED rows, N_BATCH cols).
 #ifdef FLOAT16_NO_PADDING
     for (uint i = localThreadIdx + blockRowIdx * SUBGROUP_SIZE; i < NUM_CHANNELS_IN * M * N_BATCH; i += SUBGROUP_SIZE * N_ROWS) {
@@ -163,11 +320,6 @@ void main() {
 #ifdef NO_OUTPUT_ACTIVATION
             if (layerIdx != NUM_LAYERS - 1) {
 #endif
-                /*for (uint i = localThreadIdx; i < M * M * N_BATCH; i += SUBGROUP_SIZE) {
-                    const uint b = i % (M * M);
-                    const uint j = i / (M * M);
-                    outputMat[b][j] = ACTIVATION_FUNCTION(outputMat[b][j]);
-                }*/
                 [[unroll]] for (uint b = 0; b < N_BATCH; b++) {
                     for (uint i = 0; i < outputMat[b].length(); ++i) {
                         outputMat[b][i] = ACTIVATION_FUNCTION(outputMat[b][i]);
