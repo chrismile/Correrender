@@ -51,7 +51,7 @@ if __name__ == '__main__':
     mse = skimage.metrics.mean_squared_error(img_gt, img_approx)
     psnr = skimage.metrics.peak_signal_noise_ratio(img_gt, img_approx)
     data_range=img_gt.max() - img_approx.min()
-    ssim = skimage.metrics.structural_similarity(img_gt, img_approx, data_range=data_range, multichannel=True)
+    ssim = skimage.metrics.structural_similarity(img_gt, img_approx, data_range=data_range, channel_axis=-1, multichannel=True)
 
     loss_fn_alex = lpips.LPIPS(net='alex')
     loss_fn_vgg = lpips.LPIPS(net='vgg')
