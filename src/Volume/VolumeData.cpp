@@ -97,6 +97,7 @@
 #include "Renderers/Renderer.hpp"
 #include "Renderers/SceneData.hpp"
 #include "Widgets/ViewManager.hpp"
+#include "Histogram.hpp"
 #include "VolumeData.hpp"
 
 template <typename T>
@@ -213,6 +214,15 @@ VolumeData::VolumeData(sgl::vk::Renderer* renderer) : renderer(renderer), multiV
 
     sgl::vk::ImageSamplerSettings samplerSettings{};
     imageSampler = std::make_shared<sgl::vk::ImageSampler>(device, samplerSettings, 0.0f);
+
+    minMaxBufferWritePass = std::make_shared<MinMaxBufferWritePass>(renderer);
+    for (int i = 0; i < 2; i++) {
+        minMaxReductionPasses[i] = std::make_shared<MinMaxDepthReductionPass>(renderer);
+    }
+    computeHistogramPass = std::make_shared<ComputeHistogramPass>(renderer);
+    computeHistogramMaxPass = std::make_shared<ComputeHistogramMaxPass>(renderer);
+    computeHistogramDividePass = std::make_shared<ComputeHistogramDividePass>(renderer);
+    divergentMinMaxPass = std::make_shared<DivergentMinMaxPass>(renderer);
 }
 
 VolumeData::~VolumeData() {
@@ -698,9 +708,6 @@ bool VolumeData::setInputFiles(
             int varIdx, const void** values, ScalarDataFormat* fmt, size_t& numValues, float& minValue, float& maxValue) {
         std::string fieldName = typeToFieldNamesMap[FieldType::SCALAR].at(varIdx);
         if (values && fmt) {
-            //if (this->getIsGpuResidentOrGpuCalculator(FieldType::SCALAR, fieldName)) {
-            //    DeviceCacheEntry cacheEntry = this->getFieldEntryDevice(FieldType::SCALAR, fieldName);
-            //}
             HostCacheEntry cacheEntry = this->getFieldEntryCpu(FieldType::SCALAR, fieldName);
             if (cacheEntry->getScalarDataFormatNative() == ScalarDataFormat::FLOAT) {
                 *values = cacheEntry->data<float>();
@@ -717,10 +724,219 @@ bool VolumeData::setInputFiles(
                 *fmt = ScalarDataFormat::FLOAT;
             }
         }
+
         numValues = this->getSlice3dEntryCount();
         std::tie(minValue, maxValue) = getMinMaxScalarFieldValue(fieldName);
     });
     multiVarTransferFunctionWindow.setAttributeNames(scalarFieldNames);
+
+    multiVarTransferFunctionWindow.setRequestHistogramCallback([this](
+            int varIdx, int histSize, std::vector<float>& histogram, float& selectedRangeMin, float& selectedRangeMax,
+            float& dataRangeMin, float& dataRangeMax, bool recomputeMinMax, bool isSelectedRangeFixed) {
+        // If the data is resident on the GPU, calculate the histogram manually.
+        std::string fieldName = typeToFieldNamesMap[FieldType::SCALAR].at(varIdx);
+        if (!this->getIsGpuResidentOrGpuCalculator(FieldType::SCALAR, fieldName)) {
+            return false;
+        }
+
+        if (recomputeMinMax) {
+            auto itHost = calculatorsHost.find(fieldName);
+            if (itHost != calculatorsHost.end() && itHost->second->getHasFixedRange()) {
+                std::tie(dataRangeMin, dataRangeMax) = itHost->second->getFixedRange();
+                recomputeMinMax = false;
+            }
+            auto itDevice = calculatorsDevice.find(fieldName);
+            if (itDevice != calculatorsDevice.end() && itDevice->second->getHasFixedRange()) {
+                std::tie(dataRangeMin, dataRangeMax) = itDevice->second->getFixedRange();
+                recomputeMinMax = false;
+            }
+            if (!recomputeMinMax && getIsScalarFieldDivergent(fieldName)) {
+                float maxAbs = std::max(std::abs(dataRangeMin), std::abs(dataRangeMax));
+                dataRangeMin = -maxAbs;
+                dataRangeMax = maxAbs;
+            }
+            if (!recomputeMinMax) {
+                selectedRangeMin = dataRangeMin;
+                selectedRangeMax = dataRangeMax;
+            }
+        }
+
+        /*FieldAccess access = createFieldAccessStruct(fieldType, fieldName, timeStepIdx, ensembleIdx);
+        access.isImageData = false;
+        access.bufferTileSize = glm::uvec3(1, 1, 1);
+        if (deviceFieldCache->exists(access)) {
+            return deviceFieldCache->reaccess(access);
+        }*/
+        DeviceCacheEntry deviceEntry = this->getFieldEntryDevice(FieldType::SCALAR, fieldName);
+        const size_t sizeInBytes = getSlice3dSizeInBytes(FieldType::SCALAR, ScalarDataFormat::FLOAT);
+        sgl::vk::BufferPtr dataBuffer;
+        if (deviceEntry->getVulkanBuffer()) {
+            dataBuffer = deviceEntry->getVulkanBuffer();
+        } else if (deviceEntry->getVulkanImage()) {
+            if (!imageDataCacheBuffer || imageDataCacheBuffer->getSizeInBytes() != sizeInBytes) {
+                imageDataCacheBuffer = std::make_shared<sgl::vk::Buffer>(
+                        device, sizeInBytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                        VMA_MEMORY_USAGE_GPU_ONLY);
+            }
+            deviceEntry->getVulkanImage()->transitionImageLayout(
+                    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, renderer->getVkCommandBuffer());
+            deviceEntry->getVulkanImage()->copyToBuffer(imageDataCacheBuffer, renderer->getVkCommandBuffer());
+            deviceEntry->getVulkanImage()->transitionImageLayout(
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, renderer->getVkCommandBuffer());
+            renderer->insertBufferMemoryBarrier(
+                    VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+                    VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                    imageDataCacheBuffer);
+            dataBuffer = imageDataCacheBuffer;
+        }
+
+        if (!minMaxValueBuffer) {
+            minMaxValueBuffer = std::make_shared<sgl::vk::Buffer>(
+                    device, 2 * sizeof(float),
+                    VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT
+                    | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                    VMA_MEMORY_USAGE_GPU_ONLY);
+        }
+        auto bufferSizeTmp = sgl::uiceil(uint32_t(this->getSlice3dEntryCount()), 256);
+        for (int i = 0; i < 2; i++) {
+            minMaxReductionBuffers[i] = std::make_shared<sgl::vk::Buffer>(
+                    device, bufferSizeTmp * sizeof(glm::vec2),
+                    VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT
+                    | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                    VMA_MEMORY_USAGE_GPU_ONLY);
+            bufferSizeTmp = sgl::uiceil(bufferSizeTmp, 512);
+        }
+        if (!maxHistogramValueBuffer) {
+            maxHistogramValueBuffer = std::make_shared<sgl::vk::Buffer>(
+                    device, sizeof(float),
+                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+        }
+        if (!histogramUintBuffer || histogramUintBuffer->getSizeInBytes() < sizeof(uint32_t) * histSize) {
+            histogramUintBuffer = std::make_shared<sgl::vk::Buffer>(
+                    device, sizeof(uint32_t) * histSize,
+                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+            histogramFloatBuffer = std::make_shared<sgl::vk::Buffer>(
+                    device, sizeof(float) * histSize,
+                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+        }
+
+        minMaxBufferWritePass->setBuffers(dataBuffer, minMaxReductionBuffers[0]);
+        for (int i = 0; i < 2; i++) {
+            minMaxReductionPasses[i]->setBuffers(minMaxReductionBuffers[i], minMaxReductionBuffers[(i + 1) % 2]);
+        }
+        computeHistogramPass->setBuffers(minMaxValueBuffer, dataBuffer, uint32_t(histSize), histogramUintBuffer);
+        computeHistogramMaxPass->setBuffers(maxHistogramValueBuffer, uint32_t(histSize), histogramUintBuffer);
+        computeHistogramDividePass->setBuffers(
+                maxHistogramValueBuffer, uint32_t(histSize), histogramUintBuffer, histogramFloatBuffer);
+        divergentMinMaxPass->setBuffers(minMaxValueBuffer);
+
+        int idxOut = 0;
+        if (recomputeMinMax) {
+            uint32_t numBlocks = sgl::uiceil(uint32_t(this->getSlice3dEntryCount()), 256);
+            minMaxBufferWritePass->render();
+            renderer->insertBufferMemoryBarrier(
+                    VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+                    VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                    minMaxReductionBuffers[0]);
+
+            int iteration = 0;
+            while (numBlocks > 1) {
+                renderer->insertMemoryBarrier(
+                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+                minMaxReductionPasses[iteration]->setInputSize(numBlocks);
+                minMaxReductionPasses[iteration]->render();
+                numBlocks = sgl::uiceil(numBlocks, 512);
+                iteration++;
+            }
+            idxOut = iteration % 2;
+            renderer->insertBufferMemoryBarrier(
+                    VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT,
+                    VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                    minMaxReductionBuffers[idxOut]);
+            if (!isSelectedRangeFixed) {
+                minMaxReductionBuffers[idxOut]->copyDataTo(
+                        minMaxValueBuffer, 0, 0, 2 * sizeof(float), renderer->getVkCommandBuffer());
+            }
+            if (getIsScalarFieldDivergent(fieldName)) {
+                renderer->insertBufferMemoryBarrier(
+                        VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                        minMaxValueBuffer);
+                divergentMinMaxPass->render();
+                renderer->insertBufferMemoryBarrier(
+                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_UNIFORM_READ_BIT,
+                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                        minMaxValueBuffer);
+            }
+        }
+        if (isSelectedRangeFixed || !recomputeMinMax) {
+            glm::vec2 minMaxData(selectedRangeMin, selectedRangeMax);
+            minMaxValueBuffer->updateData(2 * sizeof(float), &minMaxData.x, renderer->getVkCommandBuffer());
+        }
+        renderer->insertBufferMemoryBarrier(
+                VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_UNIFORM_READ_BIT,
+                VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                minMaxValueBuffer);
+
+        histogramUintBuffer->fill(0, renderer->getVkCommandBuffer());
+        maxHistogramValueBuffer->fill(0, renderer->getVkCommandBuffer());
+        renderer->insertMemoryBarrier(
+                VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+                VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        computeHistogramPass->render();
+        renderer->insertBufferMemoryBarrier(
+                VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                histogramUintBuffer);
+        computeHistogramMaxPass->render();
+        renderer->insertBufferMemoryBarrier(
+                VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                maxHistogramValueBuffer);
+        computeHistogramDividePass->render();
+        renderer->insertMemoryBarrier(
+                VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT,
+                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+
+        size_t stagingBufferSize = histSize * sizeof(float) + 2 * sizeof(float);
+        ensureStagingBufferExists(stagingBufferSize);
+        histogramFloatBuffer->copyDataTo(
+                stagingBuffer, 0, 0, histSize * sizeof(float), renderer->getVkCommandBuffer());
+        if (recomputeMinMax) {
+            minMaxReductionBuffers[idxOut]->copyDataTo(
+                    stagingBuffer, 0, histSize * sizeof(float), 2 * sizeof(float), renderer->getVkCommandBuffer());
+        }
+        renderer->syncWithCpu();
+
+        auto* data = reinterpret_cast<float*>(stagingBuffer->mapMemory());
+        histogram.resize(histSize);
+        memcpy(histogram.data(), data, sizeof(float) * histSize);
+        if (recomputeMinMax) {
+            data += histSize;
+            dataRangeMin = data[0];
+            dataRangeMax = data[1];
+            if (getIsScalarFieldDivergent(fieldName)) {
+                float maxAbs = std::max(std::abs(dataRangeMin), std::abs(dataRangeMax));
+                dataRangeMin = -maxAbs;
+                dataRangeMax = maxAbs;
+            }
+            if (!isSelectedRangeFixed) {
+                selectedRangeMin = dataRangeMin;
+                selectedRangeMax = dataRangeMax;
+            }
+        }
+        stagingBuffer->unmapMemory();
+
+        if (recomputeMinMax) {
+            FieldAccess access = createFieldAccessStruct(
+                    FieldType::SCALAR, fieldName, currentTimeStepIdx, currentEnsembleIdx);
+            fieldMinMaxCache->push(access, std::make_pair(dataRangeMin, dataRangeMax));
+        }
+
+        return true;
+    });
 
     colorLegendWidgets.clear();
     colorLegendWidgets.resize(scalarFieldNames.size());
@@ -882,6 +1098,13 @@ bool VolumeData::getIsGpuResidentOrGpuCalculator(
     return itCalc != calculatorsDevice.end() || deviceFieldCache->exists(access);
 }
 
+void VolumeData::ensureStagingBufferExists(size_t sizeInBytes) {
+    if (!stagingBuffer || stagingBuffer->getSizeInBytes() < sizeInBytes) {
+        stagingBuffer = std::make_shared<sgl::vk::Buffer>(
+                device, sizeInBytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_TO_CPU);
+    }
+}
+
 VolumeData::HostCacheEntry VolumeData::getFieldEntryCpu(
         FieldType fieldType, const std::string& fieldName, int timeStepIdx, int ensembleIdx) {
     FieldAccess access = createFieldAccessStruct(fieldType, fieldName, timeStepIdx, ensembleIdx);
@@ -912,10 +1135,7 @@ VolumeData::HostCacheEntry VolumeData::getFieldEntryCpu(
         size_t numComponents = fieldType == FieldType::SCALAR ? 1 : 3;
         size_t numEntries = numComponents * size_t(xs) * size_t(ys) * size_t(zs);
         size_t sizeInBytes = numEntries * sizeof(float);
-        if (!stagingBuffer) {
-            stagingBuffer = std::make_shared<sgl::vk::Buffer>(
-                    device, sizeInBytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_TO_CPU);
-        }
+        ensureStagingBufferExists(sizeInBytes);
         deviceEntry->getVulkanImage()->transitionImageLayout(
                 VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, renderer->getVkCommandBuffer());
         deviceEntry->getVulkanImage()->copyToBuffer(stagingBuffer, renderer->getVkCommandBuffer());

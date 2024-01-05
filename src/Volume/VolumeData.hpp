@@ -75,6 +75,13 @@ typedef std::shared_ptr<Calculator> CalculatorPtr;
 enum class CalculatorType : uint32_t;
 class ICorrelationCalculator;
 
+class MinMaxBufferWritePass;
+class MinMaxDepthReductionPass;
+class ComputeHistogramPass;
+class ComputeHistogramMaxPass;
+class ComputeHistogramDividePass;
+class DivergentMinMaxPass;
+
 class VolumeData {
     friend class MainApp;
 public:
@@ -318,6 +325,21 @@ protected:
     std::unordered_map<FieldType, std::vector<std::string>> typeToFieldNamesMap;
     std::unordered_map<FieldType, std::vector<std::string>> typeToFieldNamesMapBase; ///< Without calculator output.
     sgl::vk::ImageSamplerPtr imageSampler{};
+
+    // For calculating the histogram on the GPU.
+    void ensureStagingBufferExists(size_t sizeInBytes);
+    sgl::vk::BufferPtr imageDataCacheBuffer;
+    sgl::vk::BufferPtr minMaxValueBuffer;
+    sgl::vk::BufferPtr maxHistogramValueBuffer;
+    sgl::vk::BufferPtr minMaxReductionBuffers[2];
+    sgl::vk::BufferPtr histogramUintBuffer;
+    sgl::vk::BufferPtr histogramFloatBuffer;
+    std::shared_ptr<MinMaxBufferWritePass> minMaxBufferWritePass;
+    std::shared_ptr<MinMaxDepthReductionPass> minMaxReductionPasses[2];
+    std::shared_ptr<ComputeHistogramPass> computeHistogramPass;
+    std::shared_ptr<ComputeHistogramMaxPass> computeHistogramMaxPass;
+    std::shared_ptr<ComputeHistogramDividePass> computeHistogramDividePass;
+    std::shared_ptr<DivergentMinMaxPass> divergentMinMaxPass;
 
     bool dirty = true; ///< Should be set to true if the representation changed.
     bool isFirstDirty = true;

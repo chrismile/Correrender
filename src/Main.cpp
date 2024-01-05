@@ -240,6 +240,7 @@ int main(int argc, char *argv[]) {
     requestedDeviceFeatures.optionalVulkan12Features.shaderFloat16 = VK_TRUE;
     requestedDeviceFeatures.optionalVulkan11Features.storageBuffer16BitAccess = VK_TRUE;
     requestedDeviceFeatures.optionalVulkan12Features.vulkanMemoryModel = VK_TRUE; // For cooperative matrices.
+    requestedDeviceFeatures.optionalVulkan12Features.vulkanMemoryModelDeviceScope = VK_TRUE; // For cooperative matrices.
 #ifdef VK_VERSION_1_3
     requestedDeviceFeatures.optionalVulkan13Features.subgroupSizeControl = VK_TRUE;
 #endif
