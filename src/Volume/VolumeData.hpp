@@ -220,6 +220,14 @@ public:
             const std::string& fieldName, int timeStepIdx = -1, int ensembleIdx = -1);
 
     /*
+     * Returns whether the field is either resident on the GPU or will be calculated on the GPU.
+     * Using this function, it can be determined whether GPU operations can be done without additional
+     * host -> device memory transfers.
+     */
+    bool getIsGpuResidentOrGpuCalculator(
+            FieldType fieldType, const std::string& fieldName, int timeStepIdx = -1, int ensembleIdx = -1);
+
+    /*
      * Registers auxiliary CPU or device memory used by calculators in the field cache.
      */
     AuxiliaryMemoryToken pushAuxiliaryMemoryCpu(size_t sizeInBytes);

@@ -698,6 +698,9 @@ bool VolumeData::setInputFiles(
             int varIdx, const void** values, ScalarDataFormat* fmt, size_t& numValues, float& minValue, float& maxValue) {
         std::string fieldName = typeToFieldNamesMap[FieldType::SCALAR].at(varIdx);
         if (values && fmt) {
+            //if (this->getIsGpuResidentOrGpuCalculator(FieldType::SCALAR, fieldName)) {
+            //    DeviceCacheEntry cacheEntry = this->getFieldEntryDevice(FieldType::SCALAR, fieldName);
+            //}
             HostCacheEntry cacheEntry = this->getFieldEntryCpu(FieldType::SCALAR, fieldName);
             if (cacheEntry->getScalarDataFormatNative() == ScalarDataFormat::FLOAT) {
                 *values = cacheEntry->data<float>();
@@ -870,6 +873,13 @@ static void transposeVectorField(T* fieldEntryBuffer, int ssxs, int ssys, int ss
     });
 #endif
     delete[] vectorFieldCopy;
+}
+
+bool VolumeData::getIsGpuResidentOrGpuCalculator(
+        FieldType fieldType, const std::string& fieldName, int timeStepIdx, int ensembleIdx) {
+    FieldAccess access = createFieldAccessStruct(fieldType, fieldName, timeStepIdx, ensembleIdx);
+    auto itCalc = calculatorsDevice.find(fieldName);
+    return itCalc != calculatorsDevice.end() || deviceFieldCache->exists(access);
 }
 
 VolumeData::HostCacheEntry VolumeData::getFieldEntryCpu(
