@@ -117,7 +117,7 @@ void main() {
     float gt = g[globalThreadIdx];
     float mt = beta1 * m[globalThreadIdx] + (1.0 - beta1) * gt;
     m[globalThreadIdx] = mt;
-    float vt = beta2 * v[globalThreadIdx] + (1.0 - beta1) * gt * gt;
+    float vt = beta2 * v[globalThreadIdx] + (1.0 - beta2) * gt * gt;
     v[globalThreadIdx] = vt;
 
     // Compute bias-corrected first and second moment estimate.
