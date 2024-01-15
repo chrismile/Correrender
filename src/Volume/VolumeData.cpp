@@ -728,14 +728,16 @@ bool VolumeData::setInputFiles(
         numValues = this->getSlice3dEntryCount();
         std::tie(minValue, maxValue) = getMinMaxScalarFieldValue(fieldName);
     });
-    multiVarTransferFunctionWindow.setAttributeNames(scalarFieldNames);
 
     multiVarTransferFunctionWindow.setRequestHistogramCallback([this](
             int varIdx, int histSize, std::vector<float>& histogram, float& selectedRangeMin, float& selectedRangeMax,
             float& dataRangeMin, float& dataRangeMax, bool recomputeMinMax, bool isSelectedRangeFixed) {
         // If the data is resident on the GPU, calculate the histogram manually.
         std::string fieldName = typeToFieldNamesMap[FieldType::SCALAR].at(varIdx);
-        if (!this->getIsGpuResidentOrGpuCalculator(FieldType::SCALAR, fieldName)) {
+        if (!this->getIsGpuResidentOrGpuCalculator(FieldType::SCALAR, fieldName)
+                || varIdx < int(typeToFieldNamesMapBase[FieldType::SCALAR].size())) {
+            // For now, we also exclude primary fields. In theory, all non-float32 fields should be excluded,
+            // but currently no calculator will output anything but float32 values.
             return false;
         }
 
@@ -937,6 +939,8 @@ bool VolumeData::setInputFiles(
 
         return true;
     });
+
+    multiVarTransferFunctionWindow.setAttributeNames(scalarFieldNames);
 
     colorLegendWidgets.clear();
     colorLegendWidgets.resize(scalarFieldNames.size());
