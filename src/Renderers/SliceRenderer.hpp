@@ -64,6 +64,10 @@ private:
     sgl::vk::BufferPtr vertexPositionBuffer;
     sgl::vk::BufferPtr vertexNormalBuffer;
 
+    // For scaling the transfer function to the visible range of values.
+    void scaleTfToVisible();
+    void computeVisibleRangeView(uint32_t viewIdx, float& minVal, float& maxVal);
+
     // UI renderer settings.
     int selectedFieldIdx = 0, oldSelectedFieldIdx = 0;
     std::string selectedScalarFieldName;
@@ -90,6 +94,7 @@ public:
     inline void setNaNHandling(NaNHandling _nanHandling) { nanHandling = _nanHandling; shaderDirty = true; }
     inline void setLightingFactor(float factor) { renderSettingsData.lightingFactor = factor; }
     void recreateSwapchain(uint32_t width, uint32_t height) override;
+    [[nodiscard]] inline sgl::CameraPtr& getCamera() { return *camera; }
 
 protected:
     void loadShader() override;

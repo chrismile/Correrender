@@ -294,6 +294,10 @@ void SliceRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         }
         reRender = true;
     }
+    if (propertyEditor.addButton("Scale TF", "Scale to Visible")) {
+        scaleTfToVisible();
+        reRender = true;
+    }
 }
 
 void SliceRenderer::setSettings(const SettingsMap& settings) {
@@ -351,6 +355,100 @@ void SliceRenderer::getSettings(SettingsMap& settings) {
     settings.addKeyValue("plane_dist", planeDist);
     settings.addKeyValue("lighting_factor", lightingFactor);
     settings.addKeyValue("nan_handling", NAN_HANDLING_IDS[int(nanHandling)]);
+}
+
+void SliceRenderer::scaleTfToVisible() {
+    float minVal = std::numeric_limits<float>::max();
+    float maxVal = std::numeric_limits<float>::lowest();
+    for (size_t i = 0; i < viewVisibilityArray.size(); i++) {
+        if (viewVisibilityArray.at(i)) {
+            computeVisibleRangeView(uint32_t(i), minVal, maxVal);
+        }
+    }
+    volumeData->getMultiVarTransferFunctionWindow().setSelectedRange(selectedFieldIdx, glm::vec2(minVal, maxVal));
+}
+
+static float testRayPlaneIntersectionT(const glm::vec3& origin, const glm::vec3& dir, const sgl::Plane& plane) {
+    float vd = plane.a * dir.x + plane.b * dir.y + plane.c * dir.z;
+    if (std::abs(vd) < 1e-6f) {
+        return -1.0f;
+    }
+    float t = -(plane.a * origin.x + plane.b * origin.y + plane.c * origin.z + plane.d) / vd;
+    return t;
+}
+
+void SliceRenderer::computeVisibleRangeView(uint32_t viewIdx, float& minVal, float& maxVal) {
+    auto viewportExtent = sliceRasterPasses.at(viewIdx)->getGraphicsPipeline()->getFramebuffer()->getExtent2D();
+    auto w = viewportExtent.width;
+    auto h = viewportExtent.height;
+    auto numPixels = w * h;
+    sgl::CameraPtr& camera = sliceRasterPasses.at(viewIdx)->getCamera();
+    glm::vec3 origin = camera->getPosition();
+    glm::mat3 inverseViewMatrix = glm::inverse(camera->getViewMatrix());
+    float scale = std::tan(camera->getFOVy() * 0.5f);
+    float aspectRatio = camera->getAspectRatio();
+
+    auto fieldEntry = volumeData->getFieldEntryCpu(FieldType::SCALAR, selectedScalarFieldName);
+    sgl::AABB3 aabb = volumeData->getBoundingBoxRendering();
+    sgl::Plane plane(planeNormal, planeDist);
+    int xs = volumeData->getGridSizeX();
+    int ys = volumeData->getGridSizeY();
+    int zs = volumeData->getGridSizeZ();
+
+#ifdef USE_TBB
+    auto [minValNew, maxValNew] = tbb::parallel_reduce(
+            tbb::blocked_range<uint32_t>(0, numPixels), std::make_pair(minVal, maxVal),
+            [&](tbb::blocked_range<uint32_t> const& r, std::pair<float, float> init) {
+                auto& minVal = init.first;
+                auto& maxVal = init.second;
+                for (auto i = r.begin(); i != r.end(); i++) {
+#else
+#if _OPENMP >= 201107
+    #pragma omp parallel for reduction(min: minVal) reduction(max: maxVal) default(none) \
+    shared(w, h, numPixels, origin, plane, aabb, aspectRatio, scale, inverseViewMatrix, fieldEntry, xs, ys, zs)
+#endif
+    for (uint32_t i = 0; i < numPixels; i++) {
+#endif
+        auto x = i % w;
+        auto y = i / w;
+        glm::vec2 ndcPosition = 2.0f * (glm::vec2(x, y) + glm::vec2(0.5f)) / glm::vec2(w, h) - glm::vec2(1.0f);
+        glm::vec2 rayDirCameraSpace = glm::vec2(ndcPosition.x * aspectRatio * scale, ndcPosition.y * scale);
+        glm::vec3 dir = normalize(inverseViewMatrix * glm::vec3(rayDirCameraSpace, -1.0f));
+        float t = testRayPlaneIntersectionT(origin, dir, plane);
+        if (t > 0.0f) {
+            glm::vec3 p = origin + t * dir;
+            if (aabb.contains(p)) {
+                glm::vec3 tc = (p - aabb.min) / (aabb.max - aabb.min) * glm::vec3(xs, ys, zs) - glm::vec3(0.5f);
+                glm::vec tcf = glm::floor(tc);
+                auto l = glm::ivec3(std::clamp(int(tcf.x), 0, xs-1), std::clamp(int(tcf.y), 0, ys-1), std::clamp(int(tcf.z), 0, zs-1));
+                auto u = glm::ivec3(std::clamp(int(tcf.x)+1, 0, xs-1), std::clamp(int(tcf.y)+1, 0, ys-1), std::clamp(int(tcf.z)+1, 0, zs-1));
+                glm::vec3 f = glm::fract(tc);
+                float f000 = fieldEntry->getDataFloatAt(IDXS(l.x, l.y, l.z));
+                float f100 = fieldEntry->getDataFloatAt(IDXS(u.x, l.y, l.z));
+                float f010 = fieldEntry->getDataFloatAt(IDXS(l.x, u.y, l.z));
+                float f110 = fieldEntry->getDataFloatAt(IDXS(u.x, u.y, l.z));
+                float f001 = fieldEntry->getDataFloatAt(IDXS(l.x, l.y, u.z));
+                float f101 = fieldEntry->getDataFloatAt(IDXS(u.x, l.y, u.z));
+                float f011 = fieldEntry->getDataFloatAt(IDXS(l.x, u.y, u.z));
+                float f111 = fieldEntry->getDataFloatAt(IDXS(u.x, u.y, u.z));
+                float f00 = glm::mix(f000, f100, f.x);
+                float f10 = glm::mix(f010, f110, f.x);
+                float f01 = glm::mix(f001, f101, f.x);
+                float f11 = glm::mix(f011, f111, f.x);
+                float f0 = glm::mix(f00, f10, f.y);
+                float f1 = glm::mix(f01, f11, f.y);
+                float val = glm::mix(f0, f1, f.z);
+                minVal = std::min(minVal, val);
+                maxVal = std::max(maxVal, val);
+            }
+        }
+    }
+#ifdef USE_TBB
+                return init;
+            }, &sgl::reductionFunctionFloatMinMax);
+    minVal = std::min(minVal, minValNew);
+    maxVal = std::max(maxVal, maxValNew);
+#endif
 }
 
 
