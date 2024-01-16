@@ -29,6 +29,7 @@
 #ifdef USE_TBB
 #include <tbb/parallel_reduce.h>
 #include <tbb/blocked_range.h>
+#include <Utils/Parallel/Reduction.hpp>
 #endif
 
 #include <Utils/AppSettings.hpp>
