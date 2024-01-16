@@ -298,6 +298,16 @@ void SliceRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
         scaleTfToVisible();
         reRender = true;
     }
+    ImGui::SameLine();
+    if (ImGui::Checkbox("##scale-always", &alwaysScaleTfToVisible)) {
+        scaleTfToVisible();
+        reRender = true;
+    }
+
+    if (dirty && alwaysScaleTfToVisible) {
+        scaleTfToVisible();
+        reRender = true;
+    }
 }
 
 void SliceRenderer::setSettings(const SettingsMap& settings) {

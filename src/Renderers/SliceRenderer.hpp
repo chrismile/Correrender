@@ -67,6 +67,7 @@ private:
     // For scaling the transfer function to the visible range of values.
     void scaleTfToVisible();
     void computeVisibleRangeView(uint32_t viewIdx, float& minVal, float& maxVal);
+    bool alwaysScaleTfToVisible = false;
 
     // UI renderer settings.
     int selectedFieldIdx = 0, oldSelectedFieldIdx = 0;
