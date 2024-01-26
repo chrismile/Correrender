@@ -31,10 +31,6 @@
 #include <algorithm>
 #include <csignal>
 
-#define GLM_ENABLE_EXPERIMENTAL
-#include <glm/gtx/color_space.hpp>
-#include <glm/gtc/quaternion.hpp>
-#include <glm/gtx/rotate_vector.hpp>
 #include <boost/algorithm/string.hpp>
 
 #ifdef USE_ZEROMQ
