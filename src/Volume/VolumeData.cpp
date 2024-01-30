@@ -940,7 +940,7 @@ bool VolumeData::setInputFiles(
         return true;
     });
 
-    multiVarTransferFunctionWindow.setAttributeNames(scalarFieldNames);
+    multiVarTransferFunctionWindow.setAttributeNames(scalarFieldNames, standardScalarFieldIdx);
 
     colorLegendWidgets.clear();
     colorLegendWidgets.resize(scalarFieldNames.size());
@@ -1561,6 +1561,9 @@ void VolumeData::resetDirty() {
         int startIdx = isFirstDirty ? int(0) : int(scalarFieldNamesBase.size());
         int numScalarFields = int(scalarFieldNames.size());
         for (int varIdx = startIdx; varIdx < numScalarFields; varIdx++) {
+            if (isFirstDirty && varIdx == standardScalarFieldIdx) {
+                continue;
+            }
             multiVarTransferFunctionWindow.setAttributeDataDirty(varIdx);
         }
         for (auto& calculator : calculators) {
