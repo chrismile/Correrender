@@ -176,7 +176,6 @@ void DvrRenderer::createTetMeshData(
                 auto color0 = sgl::color16ToVec4(tf.at(idx0));
                 auto color1 = sgl::color16ToVec4(tf.at(idx1));
                 vertexColors.emplace_back(glm::mix(color0, color1, f));
-                volumeData->getMultiVarTransferFunctionWindow();
             }
         }
     }
