@@ -937,10 +937,7 @@ if [ ! -d "${projectpath}/third_party/limbo" ]; then
     echo "------------------------"
     echo "    downloading limbo   "
     echo "------------------------"
-    git clone --recursive https://github.com/chrismile/limbo.git "${projectpath}/third_party/limbo"
-    pushd limbo >/dev/null
-    git checkout fixes
-    popd >/dev/null
+    git clone --recursive https://github.com/resibots/limbo.git "${projectpath}/third_party/limbo"
 fi
 
 if $build_with_zink_support; then
