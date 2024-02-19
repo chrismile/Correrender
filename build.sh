@@ -26,7 +26,8 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-set -euo pipefail
+# Conda crashes with "set -euo pipefail".
+set -eo pipefail
 
 scriptpath="$( cd "$(dirname "$0")" ; pwd -P )"
 projectpath="$scriptpath"
@@ -50,6 +51,8 @@ glibcxx_debug=false
 build_dir_debug=".build_debug"
 build_dir_release=".build_release"
 use_vcpkg=false
+use_conda=false
+conda_env_name="correrender"
 link_dynamic=false
 custom_glslang=false
 build_with_zarr_support=true
@@ -76,8 +79,13 @@ do
         debug=true
     elif [ ${!i} = "--glibcxx-debug" ]; then
         glibcxx_debug=true
-    elif [ ${!i} = "--vcpkg" ]; then
+    elif [ ${!i} = "--vcpkg" ] || [ ${!i} = "--use-vcpkg" ]; then
         use_vcpkg=true
+    elif [ ${!i} = "--conda" ] || [ ${!i} = "--use-conda" ]; then
+        use_conda=true
+    elif [ ${!i} = "--conda-env-name" ]; then
+        ((i++))
+        conda_env_name=${!i}
     elif [ ${!i} = "--link-static" ]; then
         link_dynamic=false
     elif [ ${!i} = "--link-dynamic" ]; then
@@ -170,6 +178,15 @@ is_installed_rpm() {
 is_installed_brew() {
     local pkg_name="$1"
     if brew list $pkg_name > /dev/null; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# https://stackoverflow.com/questions/8063228/check-if-a-variable-exists-in-a-list-in-bash
+list_contains() {
+    if [[ "$1" =~ (^|[[:space:]])"$2"($|[[:space:]]) ]]; then
         return 0
     else
         return 1
@@ -310,7 +327,7 @@ elif $use_macos && command -v brew &> /dev/null && [ ! -d $build_dir_debug ] && 
             brew install nlopt
         fi
     fi
-elif command -v apt &> /dev/null; then
+elif command -v apt &> /dev/null && ! $use_conda; then
     if ! command -v cmake &> /dev/null || ! command -v git &> /dev/null || ! command -v curl &> /dev/null \
             || ! command -v pkg-config &> /dev/null || ! command -v g++ &> /dev/null \
             || ! command -v patchelf &> /dev/null; then
@@ -358,7 +375,7 @@ elif command -v apt &> /dev/null; then
             sudo apt install -y libcurl4-openssl-dev
         fi
     fi
-elif command -v pacman &> /dev/null; then
+elif command -v pacman &> /dev/null && ! $use_conda; then
     if ! command -v cmake &> /dev/null || ! command -v git &> /dev/null || ! command -v curl &> /dev/null \
             || ! command -v pkg-config &> /dev/null || ! command -v g++ &> /dev/null \
             || ! command -v patchelf &> /dev/null; then
@@ -400,7 +417,7 @@ elif command -v pacman &> /dev/null; then
             yay -S eccodes
         fi
     fi
-elif command -v yum &> /dev/null; then
+elif command -v yum &> /dev/null && ! $use_conda; then
     if ! command -v cmake &> /dev/null || ! command -v git &> /dev/null || ! command -v curl &> /dev/null \
             || ! command -v pkg-config &> /dev/null || ! command -v g++ &> /dev/null \
             || ! command -v patchelf &> /dev/null; then
@@ -441,6 +458,54 @@ elif command -v yum &> /dev/null; then
             SDL2_image-devel glew-devel vulkan-headers libshaderc-devel opencl-headers ocl-icd jsoncpp-devel json-devel \
             blosc-devel netcdf-devel eccodes-devel eigen3-devel libtiff-devel libcurl-devel NLopt-devel
         fi
+    fi
+elif $use_conda && ! $use_macos; then
+    if [ -f "$HOME/miniconda3/etc/profile.d/conda.sh" ]; then
+        . "$HOME/miniconda3/etc/profile.d/conda.sh" shell.bash hook
+    elif [ -f "/opt/anaconda3/etc/profile.d/conda.sh" ]; then
+        . "/opt/anaconda3/etc/profile.d/conda.sh" shell.bash hook
+    fi
+    if ! command -v conda &> /dev/null; then
+        echo "------------------------"
+        echo "  Installing Miniconda  "
+        echo "------------------------"
+        wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+        chmod +x Miniconda3-latest-Linux-x86_64.sh
+        bash ./Miniconda3-latest-Linux-x86_64.sh
+        . "$HOME/miniconda3/etc/profile.d/conda.sh" shell.bash hook
+    fi
+
+    if ! conda env list | grep ".*${conda_env_name}.*" >/dev/null 2>&1; then
+        echo "------------------------"
+        echo "Creating conda environment"
+        echo "------------------------"
+        conda create -n "${conda_env_name}" -y
+        conda activate "${conda_env_name}"
+    elif [ "${var+CONDA_DEFAULT_ENV}" != "${conda_env_name}" ]; then
+        conda activate "${conda_env_name}"
+    fi
+
+    conda_pkg_list="$(conda list)"
+    if ! list_contains "$conda_pkg_list" "glew" || ! list_contains "$conda_pkg_list" "cxx-compiler" \
+            || ! list_contains "$conda_pkg_list" "make" || ! list_contains "$conda_pkg_list" "cmake" \
+            || ! list_contains "$conda_pkg_list" "pkg-config" || ! list_contains "$conda_pkg_list" "gdb" \
+            || ! list_contains "$conda_pkg_list" "git" \
+            || ! list_contains "$conda_pkg_list" "mesa-libgl-devel-cos7-x86_64" \
+            || ! list_contains "$conda_pkg_list" "mesa-dri-drivers-cos7-aarch64" \
+            || ! list_contains "$conda_pkg_list" "libxau-devel-cos7-aarch64" \
+            || ! list_contains "$conda_pkg_list" "libselinux-devel-cos7-aarch64" \
+            || ! list_contains "$conda_pkg_list" "libxdamage-devel-cos7-aarch64" \
+            || ! list_contains "$conda_pkg_list" "libxxf86vm-devel-cos7-aarch64" \
+            || ! list_contains "$conda_pkg_list" "libxext-devel-cos7-aarch64" \
+            || ! list_contains "$conda_pkg_list" "xorg-libxfixes xorg-libxau" \
+            || ! list_contains "$conda_pkg_list" "patchelf" || ! list_contains "$conda_pkg_list" "eccodes"; then
+        echo "------------------------"
+        echo "installing dependencies "
+        echo "------------------------"
+        conda install -y -c conda-forge glew cxx-compiler make cmake pkg-config gdb git mesa-libgl-devel-cos7-x86_64 \
+        mesa-dri-drivers-cos7-aarch64 libxau-devel-cos7-aarch64 libselinux-devel-cos7-aarch64 \
+        libxdamage-devel-cos7-aarch64 libxxf86vm-devel-cos7-aarch64 libxext-devel-cos7-aarch64 \
+        xorg-libxfixes xorg-libxau patchelf eccodes
     fi
 else
     echo "Warning: Unsupported system package manager detected." >&2
