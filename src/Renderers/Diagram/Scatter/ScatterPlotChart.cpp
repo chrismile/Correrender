@@ -251,8 +251,8 @@ void ScatterPlotChart::updateData() {
 
     float diff0 = minMax0.second - minMax0.first;
     float diff1 = minMax1.second - minMax1.first;
-    minMaxOff0 = std::make_pair(minMax0.first - offsetPct * diff0, minMax0.second + offsetPct * diff1);
-    minMaxOff1 = std::make_pair(minMax1.first - offsetPct * diff0, minMax1.second + offsetPct * diff1);
+    minMaxOff0 = std::make_pair(minMax0.first - offsetPct * diff0, minMax0.second + offsetPct * diff0);
+    minMaxOff1 = std::make_pair(minMax1.first - offsetPct * diff1, minMax1.second + offsetPct * diff1);
 }
 
 void ScatterPlotChart::renderScatterPlot() {
