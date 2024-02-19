@@ -757,7 +757,7 @@ bool VolumeData::setInputFiles(
                 dataRangeMin = -maxAbs;
                 dataRangeMax = maxAbs;
             }
-            if (!recomputeMinMax) {
+            if (!recomputeMinMax && !isSelectedRangeFixed) {
                 selectedRangeMin = dataRangeMin;
                 selectedRangeMax = dataRangeMax;
             }
