@@ -467,7 +467,7 @@ elif $use_conda && ! $use_macos; then
     fi
     if ! command -v conda &> /dev/null; then
         echo "------------------------"
-        echo "  Installing Miniconda  "
+        echo "  installing Miniconda  "
         echo "------------------------"
         wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
         chmod +x Miniconda3-latest-Linux-x86_64.sh
@@ -477,7 +477,7 @@ elif $use_conda && ! $use_macos; then
 
     if ! conda env list | grep ".*${conda_env_name}.*" >/dev/null 2>&1; then
         echo "------------------------"
-        echo "Creating conda environment"
+        echo "creating conda environment"
         echo "------------------------"
         conda create -n "${conda_env_name}" -y
         conda activate "${conda_env_name}"
@@ -486,10 +486,13 @@ elif $use_conda && ! $use_macos; then
     fi
 
     conda_pkg_list="$(conda list)"
-    if ! list_contains "$conda_pkg_list" "glew" || ! list_contains "$conda_pkg_list" "cxx-compiler" \
-            || ! list_contains "$conda_pkg_list" "make" || ! list_contains "$conda_pkg_list" "cmake" \
-            || ! list_contains "$conda_pkg_list" "pkg-config" || ! list_contains "$conda_pkg_list" "gdb" \
-            || ! list_contains "$conda_pkg_list" "git" \
+    if ! list_contains "$conda_pkg_list" "boost" || ! list_contains "$conda_pkg_list" "glm" \
+            || ! list_contains "$conda_pkg_list" "libarchive" || ! list_contains "$conda_pkg_list" "tinyxml2" \
+            || ! list_contains "$conda_pkg_list" "libpng" || ! list_contains "$conda_pkg_list" "sdl2" \
+            || ! list_contains "$conda_pkg_list" "sdl2" || ! list_contains "$conda_pkg_list" "glew" \
+            || ! list_contains "$conda_pkg_list" "cxx-compiler" || ! list_contains "$conda_pkg_list" "make" \
+            || ! list_contains "$conda_pkg_list" "cmake" || ! list_contains "$conda_pkg_list" "pkg-config" \
+            || ! list_contains "$conda_pkg_list" "gdb" || ! list_contains "$conda_pkg_list" "git" \
             || ! list_contains "$conda_pkg_list" "mesa-libgl-devel-cos7-x86_64" \
             || ! list_contains "$conda_pkg_list" "mesa-dri-drivers-cos7-aarch64" \
             || ! list_contains "$conda_pkg_list" "libxau-devel-cos7-aarch64" \
@@ -498,14 +501,20 @@ elif $use_conda && ! $use_macos; then
             || ! list_contains "$conda_pkg_list" "libxxf86vm-devel-cos7-aarch64" \
             || ! list_contains "$conda_pkg_list" "libxext-devel-cos7-aarch64" \
             || ! list_contains "$conda_pkg_list" "xorg-libxfixes xorg-libxau" \
-            || ! list_contains "$conda_pkg_list" "patchelf" || ! list_contains "$conda_pkg_list" "eccodes"; then
+            || ! list_contains "$conda_pkg_list" "patchelf" || ! list_contains "$conda_pkg_list" "libvulkan-headers" \
+            || ! list_contains "$conda_pkg_list" "shaderc" || ! list_contains "$conda_pkg_list" "jsoncpp" \
+            || ! list_contains "$conda_pkg_list" "nlohmann_json" || ! list_contains "$conda_pkg_list" "blosc" \
+            || ! list_contains "$conda_pkg_list" "netcdf4" || ! list_contains "$conda_pkg_list" "eccodes" \
+            || ! list_contains "$conda_pkg_list" "eigen" || ! list_contains "$conda_pkg_list" "libtiff" \
+            || ! list_contains "$conda_pkg_list" "libcurl" || ! list_contains "$conda_pkg_list" "nlopt"; then
         echo "------------------------"
         echo "installing dependencies "
         echo "------------------------"
-        conda install -y -c conda-forge glew cxx-compiler make cmake pkg-config gdb git mesa-libgl-devel-cos7-x86_64 \
-        mesa-dri-drivers-cos7-aarch64 libxau-devel-cos7-aarch64 libselinux-devel-cos7-aarch64 \
-        libxdamage-devel-cos7-aarch64 libxxf86vm-devel-cos7-aarch64 libxext-devel-cos7-aarch64 \
-        xorg-libxfixes xorg-libxau patchelf eccodes
+        conda install -y -c conda-forge boost glm libarchive tinyxml2 libpng sdl2 sdl2 glew cxx-compiler make cmake \
+        pkg-config gdb git mesa-libgl-devel-cos7-x86_64 mesa-dri-drivers-cos7-aarch64 libxau-devel-cos7-aarch64 \
+        libselinux-devel-cos7-aarch64 libxdamage-devel-cos7-aarch64 libxxf86vm-devel-cos7-aarch64 \
+        libxext-devel-cos7-aarch64 xorg-libxfixes xorg-libxau patchelf libvulkan-headers shaderc jsoncpp nlohmann_json \
+        blosc netcdf4 eccodes eigen libtiff libcurl nlopt
     fi
 else
     echo "Warning: Unsupported system package manager detected." >&2
@@ -608,7 +617,7 @@ if [ $search_for_vulkan_sdk = true ]; then
             found_vulkan=true
         fi
 
-        if ! $found_vulkan && (lsb_release -a 2> /dev/null | grep -q 'Ubuntu' || lsb_release -a 2> /dev/null | grep -q 'Mint'); then
+        if ! $found_vulkan && (lsb_release -a 2> /dev/null | grep -q 'Ubuntu' || lsb_release -a 2> /dev/null | grep -q 'Mint') && ! $use_conda; then
             if lsb_release -a 2> /dev/null | grep -q 'Ubuntu'; then
                 distro_code_name=$(lsb_release -cs)
             else
