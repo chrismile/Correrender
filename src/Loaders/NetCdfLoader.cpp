@@ -1,7 +1,7 @@
 /*
  * BSD 2-Clause License
  *
- * Copyright (c) 2022, Christoph Neuhauser
+ * Copyright (c) 2022-2024, Christoph Neuhauser
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -520,7 +520,13 @@ bool NetCdfLoader::setInputFiles(
         }
 
         if (ndims == 3 && (foundDims[0] != dimids[0] || foundDims[1] != dimids[1] || foundDims[2] != dimids[2])) {
-            continue;
+            size_t zs64, ys64, xs64;
+            myassert(nc_inq_dimlen(ncid, dimids[0], &zs64) == NC_NOERR);
+            myassert(nc_inq_dimlen(ncid, dimids[1], &ys64) == NC_NOERR);
+            myassert(nc_inq_dimlen(ncid, dimids[2], &xs64) == NC_NOERR);
+            if (xs != int(xs64) || ys != int(ys64) || zs != int(zs64)) {
+                continue;
+            }
         }
 
         bool hasFillValue = false;
