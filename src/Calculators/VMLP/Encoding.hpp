@@ -39,18 +39,27 @@ class Value;
 
 namespace vmlp {
 
+enum class CompositionMode {
+    NONE, SUM, PRODUCT
+};
+
 class Encoding : public Module {
 public:
     Encoding(sgl::vk::Renderer* renderer, const Json::Value& settingsEncoding);
     uint32_t getNumChannelsIn() override {
         return numChannelsEncode;
     }
+    virtual void setCompositionMode(CompositionMode _compositionMode) = 0;
 
 protected:
     uint32_t channelOffset = 0, numChannelsEncode = 0;
 };
 
 class PaddingPass;
+
+enum class ReductionType {
+    CONCATENATION, SUM, PRODUCT
+};
 
 class CompositeEncoding : public Encoding {
 public:
@@ -61,6 +70,7 @@ public:
     void setInputOutputMatrices(const Matrix& input, const Matrix& output) override;
     void setBatchSize(uint32_t _batchSize) override;
     void setFloatFormat(FloatFormat _format) override;
+    void setCompositionMode(CompositionMode _compositionMode) override;
 
     uint32_t getNumParameters() override {
         return numParameters;
@@ -91,6 +101,7 @@ private:
     std::vector<std::shared_ptr<PaddingPass>> paddingPasses;
     uint32_t numParameters = 0;
     uint32_t numChannelsOut = 0, numChannelsOutPadded = 0;
+    ReductionType reductionType = ReductionType::CONCATENATION;
     //Matrix input, output; // For debug purposes.
 };
 
@@ -105,6 +116,7 @@ public:
     void setInputOutputMatrices(const Matrix& input, const Matrix& output) override;
     void setBatchSize(uint32_t _batchSize) override;
     void setFloatFormat(FloatFormat _format) override;
+    void setCompositionMode(CompositionMode _compositionMode) override;
 
     uint32_t getNumParameters() override {
         return 0;
@@ -128,6 +140,7 @@ public:
     void setInputOutputMatrices(const Matrix& input, const Matrix& output) override;
     void setBatchSize(uint32_t _batchSize) override;
     void setFloatFormat(FloatFormat _format) override;
+    void setCompositionMode(CompositionMode _compositionMode) override;
 
     uint32_t getNumParameters() override {
         return 0;
@@ -165,6 +178,7 @@ public:
     void setInputOutputMatrices(const Matrix& input, const Matrix& output) override;
     void setBatchSize(uint32_t _batchSize) override;
     void setFloatFormat(FloatFormat _format) override;
+    void setCompositionMode(CompositionMode _compositionMode) override;
 
     uint32_t getNumParameters() override {
         return numParameters;
@@ -194,6 +208,44 @@ private:
     sgl::vk::BufferPtr offsetTableBuffer;
     std::shared_ptr<GridEncodingPass> encodingPass;
     std::shared_ptr<EncodedPositionsTransposePass> encodedPositionsTransposePass;
+};
+
+
+class DictionaryEncodingPass;
+
+/*
+ * Embedding similar to: https://pytorch.org/docs/stable/generated/torch.nn.Embedding.html
+ * Input: Vector of integers.
+ * Output: Set of feature vectors.
+ * JSON settings:
+ * - num_embeddings (dictionary size)
+ * - embedding_dim (number of features per dictionary entry)
+ */
+class DictionaryEncoding : public Encoding {
+public:
+    DictionaryEncoding(sgl::vk::Renderer* renderer, const Json::Value& settingsEncoding);
+    uint32_t getNumChannelsOut() override {
+        return numChannelsEncode * numFeatures;
+    }
+    void setInputOutputMatrices(const Matrix& input, const Matrix& output) override;
+    void setBatchSize(uint32_t _batchSize) override;
+    void setFloatFormat(FloatFormat _format) override;
+    void setCompositionMode(CompositionMode _compositionMode) override;
+
+    uint32_t getNumParameters() override {
+        return numEmbeddings * numFeatures;
+    }
+
+    uint32_t getOutputAlignment() override { return 1; }
+    void runInference() override;
+
+private:
+    sgl::vk::Renderer* renderer;
+    sgl::vk::Device* device;
+    uint32_t numEmbeddings; ///< Dictionary size.
+    uint32_t numFeatures; ///< Number of features per dictionary entry.
+    sgl::vk::BufferPtr parametersBuffer;
+    std::shared_ptr<DictionaryEncodingPass> dictionaryEncodingPass;
 };
 
 }

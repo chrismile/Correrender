@@ -102,7 +102,13 @@ void main() {
     }
     const uint batchIdx = threadIdx / NUM_CHANNELS_TO_ENCODE;
     const uint channelIdx = threadIdx % NUM_CHANNELS_TO_ENCODE;
+#if defined(OUTPUT_OP_SUM)
+    outputBuffer[IDX_OUT(channelIdx, batchIdx)] += real(inputBuffer[IDX_IN(channelIdx, batchIdx)]);
+#elif defined(OUTPUT_OP_PRODUCT)
+    outputBuffer[IDX_OUT(channelIdx, batchIdx)] *= real(inputBuffer[IDX_IN(channelIdx, batchIdx)]);
+#else
     outputBuffer[IDX_OUT(channelIdx, batchIdx)] = real(inputBuffer[IDX_IN(channelIdx, batchIdx)]);
+#endif
 }
 
 
@@ -135,7 +141,13 @@ void main() {
 
     float val = inputBuffer[IDX_IN(channelInIdx, batchIdx)] * float(1u << powerOfTwo);
     val = fma(val, PI, phaseShift); // val * PI + phaseShift
+#if defined(OUTPUT_OP_SUM)
+    outputBuffer[IDX_OUT(channelOutIdx, batchIdx)] += real(sin(val));
+#elif defined(OUTPUT_OP_PRODUCT)
+    outputBuffer[IDX_OUT(channelOutIdx, batchIdx)] *= real(sin(val));
+#else
     outputBuffer[IDX_OUT(channelOutIdx, batchIdx)] = real(sin(val));
+#endif
 }
 
 
@@ -176,7 +188,13 @@ void main() {
         return;
     }
     const uint channelIdx = gl_LocalInvocationID.x % NUM_FEATURES;
+#if defined(OUTPUT_OP_SUM)
+    outputBuffer[IDX_OUT(channelIdx, batchIdx)] += inputBuffer[IDX_IN(channelIdx, batchIdx)];
+#elif defined(OUTPUT_OP_PRODUCT)
+    outputBuffer[IDX_OUT(channelIdx, batchIdx)] *= inputBuffer[IDX_IN(channelIdx, batchIdx)];
+#else
     outputBuffer[IDX_OUT(channelIdx, batchIdx)] = inputBuffer[IDX_IN(channelIdx, batchIdx)];
+#endif
 }
 
 
@@ -423,4 +441,44 @@ void main() {
 #endif
 
     //debugPrintfEXT("%u %u %f %f", i, level, result.x, result.y);
+}
+
+
+-- Dictionary.Compute
+
+#version 450 core
+
+#import ".Header"
+
+layout(push_constant) uniform PushConstants {
+    uint numOutputs; // The number of outputs to be written in total.
+};
+
+layout(binding = 2, scalar) readonly buffer ParametersBuffer {
+    real dictionaryBuffer[];
+};
+
+/**
+ * Additional defines:
+ * - NUM_EMBEDDINGS, NUM_FEATURES
+ */
+void main() {
+    const uint threadIdx = gl_GlobalInvocationID.x;
+    if (threadIdx >= numOutputs) {
+        return;
+    }
+    const uint batchIdx = threadIdx / (NUM_CHANNELS_TO_ENCODE * NUM_FEATURES);
+    const uint channelOutIdx = threadIdx % (NUM_CHANNELS_TO_ENCODE * NUM_FEATURES);
+    const uint featureIdx = channelOutIdx % NUM_FEATURES;
+    const uint channelInIdx = channelOutIdx / NUM_FEATURES;
+
+    uint dictionaryEntryIdx = uint(inputBuffer[IDX_IN(channelInIdx, batchIdx)]);
+    real val = dictionaryBuffer[dictionaryEntryIdx * NUM_FEATURES + featureIdx]
+#if defined(OUTPUT_OP_SUM)
+    outputBuffer[IDX_OUT(channelOutIdx, batchIdx)] += val;
+#elif defined(OUTPUT_OP_PRODUCT)
+    outputBuffer[IDX_OUT(channelOutIdx, batchIdx)] *= val;
+#else
+    outputBuffer[IDX_OUT(channelOutIdx, batchIdx)] = val;
+#endif
 }

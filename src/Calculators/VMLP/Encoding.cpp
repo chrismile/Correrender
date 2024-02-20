@@ -114,25 +114,45 @@ void PaddingPass::_render() {
 
 CompositeEncoding::CompositeEncoding(sgl::vk::Renderer* renderer, const Json::Value& settingsCompositeEncoding)
         : Encoding(renderer, settingsCompositeEncoding) {
+    std::string reductionTypeString = settingsCompositeEncoding.get("reduction", "Concatenation").asString();
+    if (reductionTypeString == "Concatenation") {
+        reductionType = ReductionType::CONCATENATION;
+    } else if (reductionTypeString == "Sum") {
+        reductionType = ReductionType::SUM;
+    } else if (reductionTypeString == "Product") {
+        reductionType = ReductionType::PRODUCT;
+    } else {
+        sgl::Logfile::get()->throwError(
+                "Error in CompositeEncoding::CompositeEncoding: Unsupported reduction type \""
+                + reductionTypeString + "\".");
+    }
+
     const auto& nested = settingsCompositeEncoding["nested"];
     for (const auto& settingsEncoding : nested) {
         auto encoding = createInputEncoding(renderer, settingsEncoding);
         encodings.push_back(encoding);
         numParameters += encoding->getNumParameters();
         uint32_t numChannelsOutEncoding = encoding->getNumChannelsOut();
-        uint32_t alignment = encoding->getOutputAlignment();
-        uint32_t alignmentOffset = numChannelsOutPadded % alignment;
-        if (alignmentOffset != 0) {
-            uint32_t numChannelsPadding = alignment - alignmentOffset;
-            auto paddingPass = std::make_shared<PaddingPass>(renderer, numChannelsOutPadded, numChannelsPadding);
-            paddingPasses.push_back(paddingPass);
-            numChannelsOutPadded += numChannelsPadding;
+        if (reductionType == ReductionType::CONCATENATION) {
+            uint32_t alignment = encoding->getOutputAlignment();
+            uint32_t alignmentOffset = numChannelsOutPadded % alignment;
+            if (alignmentOffset != 0) {
+                uint32_t numChannelsPadding = alignment - alignmentOffset;
+                auto paddingPass = std::make_shared<PaddingPass>(renderer, numChannelsOutPadded, numChannelsPadding);
+                paddingPasses.push_back(paddingPass);
+                numChannelsOutPadded += numChannelsPadding;
+            } else {
+                paddingPasses.push_back(nullptr);
+            }
+            encodingsChannelOffsets.push_back(numChannelsOutPadded);
+            numChannelsOutPadded += numChannelsOutEncoding;
+            numChannelsOut += numChannelsOutEncoding;
         } else {
             paddingPasses.push_back(nullptr);
+            encodingsChannelOffsets.push_back(0u);
+            numChannelsOutPadded = std::max(numChannelsOutPadded, numChannelsOutEncoding);
+            numChannelsOut = std::max(numChannelsOut, numChannelsOutEncoding);
         }
-        encodingsChannelOffsets.push_back(numChannelsOutPadded);
-        numChannelsOutPadded += numChannelsOutEncoding;
-        numChannelsOut += numChannelsOutEncoding;
         numChannelsEncode = std::max(numChannelsEncode, encoding->getNumChannelsIn());
     }
 
@@ -180,6 +200,16 @@ void CompositeEncoding::setFloatFormat(FloatFormat _format) {
     }
 }
 
+void CompositeEncoding::setCompositionMode(CompositionMode _compositionMode) {
+    if (!encodings.empty()) {
+        std::static_pointer_cast<Encoding>(encodings.front())->setCompositionMode(CompositionMode::NONE);
+    }
+    for (size_t i = 1; i < encodings.size(); i++) {
+        auto& encoding = encodings.at(i);
+        std::static_pointer_cast<Encoding>(encoding)->setCompositionMode(_compositionMode);
+    }
+}
+
 void CompositeEncoding::runInference() {
     for (size_t i = 0; i < encodings.size(); i++) {
         auto& encoding = encodings.at(i);
@@ -206,6 +236,7 @@ public:
     void setBuffersInOut(const Matrix& _matrixIn, const Matrix& _matrixOut);
     void setBatchSize(uint32_t _batchSize);
     void setFloatFormat(FloatFormat _format);
+    void setCompositionMode(CompositionMode _compositionMode);
 
 protected:
     void loadShader() override;
@@ -216,6 +247,7 @@ protected:
 private:
     const uint32_t BLOCK_SIZE = 256;
     FloatFormat format = FloatFormat::FLOAT32;
+    CompositionMode compositionMode = CompositionMode::NONE;
     uint32_t channelOffset = 0, numChannelsEncode = 0;
     Matrix matrixIn, matrixOut;
     uint32_t batchSize = 0;
@@ -236,6 +268,11 @@ void IdentityEncodingPass::setFloatFormat(FloatFormat _format) {
     shaderDirty = true;
 }
 
+void IdentityEncodingPass::setCompositionMode(CompositionMode _compositionMode) {
+    compositionMode = _compositionMode;
+    shaderDirty = true;
+}
+
 void IdentityEncodingPass::loadShader() {
     sgl::vk::ShaderManager->invalidateShaderCache();
     std::map<std::string, std::string> preprocessorDefines;
@@ -245,6 +282,11 @@ void IdentityEncodingPass::loadShader() {
     preprocessorDefines.insert(std::make_pair("NUM_CHANNELS_IN", std::to_string(matrixIn.getNumChannels())));
     preprocessorDefines.insert(std::make_pair("NUM_CHANNELS_OUT", std::to_string(matrixOut.getNumChannels())));
     preprocessorDefines.insert(std::make_pair("NUM_CHANNELS_TO_ENCODE", std::to_string(numChannelsEncode)));
+    if (compositionMode == CompositionMode::SUM) {
+        preprocessorDefines.insert(std::make_pair("OUTPUT_OP_SUM", ""));
+    } else if (compositionMode == CompositionMode::PRODUCT) {
+        preprocessorDefines.insert(std::make_pair("OUTPUT_OP_PRODUCT", ""));
+    }
     addPreprocessorDefinesFormat(preprocessorDefines, format);
     shaderStages = sgl::vk::ShaderManager->getShaderStages({"Encodings.Identity.Compute"}, preprocessorDefines);
 }
@@ -283,6 +325,10 @@ void IdentityEncoding::setFloatFormat(vmlp::FloatFormat _format) {
     encodingPass->setFloatFormat(_format);
 }
 
+void IdentityEncoding::setCompositionMode(CompositionMode _compositionMode) {
+    encodingPass->setCompositionMode(_compositionMode);
+}
+
 void IdentityEncoding::runInference() {
     encodingPass->render();
 }
@@ -298,6 +344,7 @@ public:
     void setBuffersInOut(const Matrix& _matrixIn, const Matrix& _matrixOut);
     void setBatchSize(uint32_t _batchSize);
     void setFloatFormat(FloatFormat _format);
+    void setCompositionMode(CompositionMode _compositionMode);
 
 protected:
     void loadShader() override;
@@ -308,6 +355,7 @@ protected:
 private:
     const uint32_t BLOCK_SIZE = 256;
     FloatFormat format = FloatFormat::FLOAT32;
+    CompositionMode compositionMode = CompositionMode::NONE;
     uint32_t channelOffset = 0, numChannelsEncode = 0, numFrequencies = 0;
     Matrix matrixIn, matrixOut;
     uint32_t batchSize = 0;
@@ -328,6 +376,11 @@ void FrequencyEncodingPass::setFloatFormat(FloatFormat _format) {
     shaderDirty = true;
 }
 
+void FrequencyEncodingPass::setCompositionMode(CompositionMode _compositionMode) {
+    compositionMode = _compositionMode;
+    shaderDirty = true;
+}
+
 void FrequencyEncodingPass::loadShader() {
     sgl::vk::ShaderManager->invalidateShaderCache();
     std::map<std::string, std::string> preprocessorDefines;
@@ -340,6 +393,11 @@ void FrequencyEncodingPass::loadShader() {
     preprocessorDefines.insert(std::make_pair("NUM_FREQUENCIES", std::to_string(numFrequencies)));
     preprocessorDefines.insert(std::make_pair("PI", std::to_string(sgl::PI)));
     preprocessorDefines.insert(std::make_pair("PI_HALF", std::to_string(sgl::HALF_PI)));
+    if (compositionMode == CompositionMode::SUM) {
+        preprocessorDefines.insert(std::make_pair("OUTPUT_OP_SUM", ""));
+    } else if (compositionMode == CompositionMode::PRODUCT) {
+        preprocessorDefines.insert(std::make_pair("OUTPUT_OP_PRODUCT", ""));
+    }
     addPreprocessorDefinesFormat(preprocessorDefines, format);
     shaderStages = sgl::vk::ShaderManager->getShaderStages({"Encodings.Frequency.Compute"}, preprocessorDefines);
 }
@@ -377,6 +435,10 @@ void FrequencyEncoding::setBatchSize(uint32_t _batchSize) {
 void FrequencyEncoding::setFloatFormat(vmlp::FloatFormat _format) {
     format = _format;
     encodingPass->setFloatFormat(_format);
+}
+
+void FrequencyEncoding::setCompositionMode(CompositionMode _compositionMode) {
+    encodingPass->setCompositionMode(_compositionMode);
 }
 
 void FrequencyEncoding::runInference() {
@@ -514,6 +576,7 @@ public:
     void setBuffersInOut(const sgl::vk::BufferPtr& _bufferIn, const Matrix& _matrixOut);
     void setBatchSize(uint32_t _batchSize);
     void setFloatFormat(FloatFormat _format);
+    void setCompositionMode(CompositionMode _compositionMode);
 
 protected:
     void loadShader() override;
@@ -524,6 +587,7 @@ protected:
 private:
     uint32_t BLOCK_SIZE;
     FloatFormat format = FloatFormat::FLOAT32;
+    CompositionMode compositionMode = CompositionMode::NONE;
     uint32_t numFeatures;
     sgl::vk::BufferPtr bufferIn;
     Matrix matrixOut;
@@ -545,6 +609,11 @@ void EncodedPositionsTransposePass::setFloatFormat(FloatFormat _format) {
     shaderDirty = true;
 }
 
+void EncodedPositionsTransposePass::setCompositionMode(CompositionMode _compositionMode) {
+    compositionMode = _compositionMode;
+    shaderDirty = true;
+}
+
 void EncodedPositionsTransposePass::loadShader() {
     sgl::vk::ShaderManager->invalidateShaderCache();
     std::map<std::string, std::string> preprocessorDefines;
@@ -552,6 +621,11 @@ void EncodedPositionsTransposePass::loadShader() {
     preprocessorDefines.insert(std::make_pair("OFFSET_OUT", std::to_string(matrixOut.getOffsetChannels())));
     preprocessorDefines.insert(std::make_pair("NUM_CHANNELS_OUT", std::to_string(matrixOut.getNumChannels())));
     preprocessorDefines.insert(std::make_pair("NUM_FEATURES", std::to_string(numFeatures)));
+    if (compositionMode == CompositionMode::SUM) {
+        preprocessorDefines.insert(std::make_pair("OUTPUT_OP_SUM", ""));
+    } else if (compositionMode == CompositionMode::PRODUCT) {
+        preprocessorDefines.insert(std::make_pair("OUTPUT_OP_PRODUCT", ""));
+    }
     addPreprocessorDefinesFormat(preprocessorDefines, format);
     shaderStages = sgl::vk::ShaderManager->getShaderStages({"Encodings.GridTranspose.Compute"}, preprocessorDefines);
 }
@@ -678,6 +752,10 @@ void GridEncoding::setFloatFormat(vmlp::FloatFormat _format) {
     encodedPositionsTransposePass->setFloatFormat(_format);
 }
 
+void GridEncoding::setCompositionMode(CompositionMode _compositionMode) {
+    encodedPositionsTransposePass->setCompositionMode(_compositionMode);
+}
+
 void GridEncoding::runInference() {
     //debugPrintBuffer(encodedPositionsBuffer, format, 48);
     encodingPass->render();
@@ -687,6 +765,129 @@ void GridEncoding::runInference() {
             encodedPositionsBuffer);
     encodedPositionsTransposePass->render();
     //debugPrintBuffer(encodedPositionsBuffer, format, 48);
+}
+
+
+class DictionaryEncodingPass : public sgl::vk::ComputePass {
+public:
+    explicit DictionaryEncodingPass(
+            sgl::vk::Renderer* renderer, uint32_t channelOffset, uint32_t numChannelsEncode,
+            uint32_t numEmbeddings, uint32_t numFeatures, sgl::vk::BufferPtr& parametersBuffer)
+            : ComputePass(renderer), channelOffset(channelOffset), numChannelsEncode(numChannelsEncode),
+              numEmbeddings(numEmbeddings), numFeatures(numFeatures), parametersBuffer(parametersBuffer) {}
+
+    void setBuffersInOut(const Matrix& _matrixIn, const Matrix& _matrixOut);
+    void setBatchSize(uint32_t _batchSize);
+    void setFloatFormat(FloatFormat _format);
+    void setCompositionMode(CompositionMode _compositionMode);
+
+protected:
+    void loadShader() override;
+    void setComputePipelineInfo(sgl::vk::ComputePipelineInfo& pipelineInfo) override {}
+    void createComputeData(sgl::vk::Renderer* renderer, sgl::vk::ComputePipelinePtr& computePipeline) override;
+    void _render() override;
+
+private:
+    const uint32_t BLOCK_SIZE = 256;
+    FloatFormat format = FloatFormat::FLOAT32;
+    CompositionMode compositionMode = CompositionMode::NONE;
+    uint32_t channelOffset = 0, numChannelsEncode = 0, numEmbeddings = 0, numFeatures = 0;
+    Matrix matrixIn, matrixOut;
+    uint32_t batchSize = 0;
+    sgl::vk::BufferPtr& parametersBuffer;
+};
+
+void DictionaryEncodingPass::setBuffersInOut(const Matrix& _matrixIn, const Matrix& _matrixOut) {
+    matrixIn = _matrixIn;
+    matrixOut = _matrixOut;
+    dataDirty = true;
+}
+
+void DictionaryEncodingPass::setBatchSize(uint32_t _batchSize) {
+    batchSize = _batchSize;
+}
+
+void DictionaryEncodingPass::setFloatFormat(FloatFormat _format) {
+    format = _format;
+    shaderDirty = true;
+}
+
+void DictionaryEncodingPass::setCompositionMode(CompositionMode _compositionMode) {
+    compositionMode = _compositionMode;
+    shaderDirty = true;
+}
+
+void DictionaryEncodingPass::loadShader() {
+    sgl::vk::ShaderManager->invalidateShaderCache();
+    std::map<std::string, std::string> preprocessorDefines;
+    preprocessorDefines.insert(std::make_pair("BLOCK_SIZE", std::to_string(BLOCK_SIZE)));
+    preprocessorDefines.insert(std::make_pair("OFFSET_IN", std::to_string(channelOffset)));
+    preprocessorDefines.insert(std::make_pair("OFFSET_OUT", std::to_string(matrixOut.getOffsetChannels())));
+    preprocessorDefines.insert(std::make_pair("NUM_CHANNELS_IN", std::to_string(matrixIn.getNumChannels())));
+    preprocessorDefines.insert(std::make_pair("NUM_CHANNELS_OUT", std::to_string(matrixOut.getNumChannels())));
+    preprocessorDefines.insert(std::make_pair("NUM_CHANNELS_TO_ENCODE", std::to_string(numChannelsEncode)));
+    preprocessorDefines.insert(std::make_pair("NUM_EMBEDDINGS", std::to_string(numEmbeddings)));
+    preprocessorDefines.insert(std::make_pair("NUM_FEATURES", std::to_string(numFeatures)));
+    if (compositionMode == CompositionMode::SUM) {
+        preprocessorDefines.insert(std::make_pair("OUTPUT_OP_SUM", ""));
+    } else if (compositionMode == CompositionMode::PRODUCT) {
+        preprocessorDefines.insert(std::make_pair("OUTPUT_OP_PRODUCT", ""));
+    }
+    addPreprocessorDefinesFormat(preprocessorDefines, format);
+    shaderStages = sgl::vk::ShaderManager->getShaderStages({"Encodings.Dictionary.Compute"}, preprocessorDefines);
+}
+
+void DictionaryEncodingPass::createComputeData(sgl::vk::Renderer* renderer, sgl::vk::ComputePipelinePtr& computePipeline) {
+    computeData = std::make_shared<sgl::vk::ComputeData>(renderer, computePipeline);
+    computeData->setStaticBuffer(matrixIn.getBuffer(), "InputBuffer");
+    computeData->setStaticBuffer(matrixOut.getBuffer(), "OutputBuffer");
+    computeData->setStaticBuffer(parametersBuffer, "ParametersBuffer");
+}
+
+void DictionaryEncodingPass::_render() {
+    const uint32_t numThreads = numChannelsEncode * numFeatures * batchSize;
+    renderer->pushConstants(getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, 0, numThreads);
+    renderer->dispatch(computeData, sgl::uiceil(numThreads, BLOCK_SIZE), 1, 1);
+    renderer->insertBufferMemoryBarrier(
+            VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            matrixOut.getBuffer());
+}
+
+DictionaryEncoding::DictionaryEncoding(sgl::vk::Renderer* renderer, const Json::Value& settingsEncoding)
+        : Encoding(renderer, settingsEncoding), renderer(renderer), device(renderer->getDevice()) {
+    numEmbeddings = settingsEncoding.get("num_embeddings", 1u).asUInt();
+    numFeatures = settingsEncoding.get("embedding_dim", 1u).asUInt();
+
+    dictionaryEncodingPass = std::make_shared<DictionaryEncodingPass>(
+            renderer, channelOffset, numChannelsEncode, numEmbeddings, numFeatures, parametersBuffer);
+}
+
+void DictionaryEncoding::setInputOutputMatrices(const Matrix& input, const Matrix& output) {
+    dictionaryEncodingPass->setBuffersInOut(input, output);
+}
+
+void DictionaryEncoding::setBatchSize(uint32_t _batchSize) {
+    dictionaryEncodingPass->setBatchSize(_batchSize);
+}
+
+void DictionaryEncoding::setFloatFormat(vmlp::FloatFormat _format) {
+    if (!parametersBuffer || format != _format) {
+        parametersBuffer = std::make_shared<sgl::vk::Buffer>(
+                device, numEmbeddings * numFeatures * FLOAT_FORMAT_SIZES_IN_BYTE[int(_format)],
+                VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+        uploadParametersToBuffer(parametersCpu, getNumParameters(), parametersBuffer, _format);
+    }
+    format = _format;
+    dictionaryEncodingPass->setFloatFormat(_format);
+}
+
+void DictionaryEncoding::setCompositionMode(CompositionMode _compositionMode) {
+    dictionaryEncodingPass->setCompositionMode(_compositionMode);
+}
+
+void DictionaryEncoding::runInference() {
+    dictionaryEncodingPass->render();
 }
 
 }

@@ -147,6 +147,8 @@ std::shared_ptr<Module> createInputEncoding(sgl::vk::Renderer* renderer, const J
         module = new FrequencyEncoding(renderer, settingsEncoding);
     } else if (encodingType == "Grid" || encodingType == "HashGrid" || encodingType == "DenseGrid") {
         module = new GridEncoding(renderer, settingsEncoding);
+    } else if (encodingType == "Dictionary") {
+        module = new DictionaryEncoding(renderer, settingsEncoding);
     } else {
         sgl::Logfile::get()->throwError(
                 "Error in createInputEncoding: Unsupported encoding type \"" + encodingType + "\".");
