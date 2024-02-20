@@ -76,6 +76,10 @@ void SliceRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) {
     volumeData->acquireTf(this, selectedFieldIdx);
     volumeData->acquireScalarField(this, selectedFieldIdx);
     oldSelectedFieldIdx = selectedFieldIdx;
+    if (alwaysScaleTfToVisible) {
+        scaleTfToVisible();
+        reRender = true;
+    }
 
     indexBuffer = {};
     vertexPositionBuffer = {};

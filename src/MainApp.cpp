@@ -1952,6 +1952,7 @@ void MainApp::prepareVisualizationPipeline() {
     }
     if (volumeData && !volumeRenderers.empty()) {
         bool isPreviousNodeDirty = volumeData->isDirty();
+        volumeData->resetDirty();
         for (auto& volumeRenderer : volumeRenderers) {
             if (volumeRenderer->isDirty() || isPreviousNodeDirty) {
                 rendererVk->getDevice()->waitIdle();
@@ -1959,7 +1960,6 @@ void MainApp::prepareVisualizationPipeline() {
                 volumeRenderer->resetDirty();
             }
         }
-        volumeData->resetDirty();
     }
     newDataLoaded = false;
 }
