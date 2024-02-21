@@ -473,7 +473,7 @@ void main() {
     const uint channelInIdx = channelOutIdx / NUM_FEATURES;
 
     uint dictionaryEntryIdx = uint(inputBuffer[IDX_IN(channelInIdx, batchIdx)]);
-    real val = dictionaryBuffer[dictionaryEntryIdx * NUM_FEATURES + featureIdx]
+    real val = dictionaryBuffer[dictionaryEntryIdx * NUM_FEATURES + featureIdx];
 #if defined(OUTPUT_OP_SUM)
     outputBuffer[IDX_OUT(channelOutIdx, batchIdx)] += val;
 #elif defined(OUTPUT_OP_PRODUCT)
