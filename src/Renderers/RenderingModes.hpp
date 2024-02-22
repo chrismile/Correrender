@@ -41,7 +41,8 @@ enum RenderingMode : int32_t {
     RENDERING_MODE_WORLD_MAP_RENDERER = 5,
     RENDERING_MODE_DIAGRAM_RENDERER = 6,
     RENDERING_MODE_SCATTER_PLOT = 7,
-    RENDERING_MODE_CUSTOM = 8 // e.g., reference point selection renderer; cannot be chosen in UI.
+    RENDERING_MODE_CORRELATION_MATRIX = 8,
+    RENDERING_MODE_CUSTOM = 9 // e.g., reference point selection renderer; cannot be chosen in UI.
 };
 const char* const RENDERING_MODE_NAMES[] = {
         "Direct Volume Renderer",
@@ -51,7 +52,8 @@ const char* const RENDERING_MODE_NAMES[] = {
         "Slice Renderer",
         "World Map Renderer",
         "Diagram Renderer",
-        "Scatter Plot"
+        "Scatter Plot",
+        "Correlation Matrix"
 };
 const char* const RENDERING_MODE_NAMES_ID[] = {
         "dvr",
@@ -61,7 +63,8 @@ const char* const RENDERING_MODE_NAMES_ID[] = {
         "slice",
         "world_map",
         "diagram",
-        "scatter_plot"
+        "scatter_plot",
+        "correlation_matrix"
 };
 const int NUM_RENDERING_MODES = ((int)(sizeof(RENDERING_MODE_NAMES) / sizeof(*RENDERING_MODE_NAMES)));
 

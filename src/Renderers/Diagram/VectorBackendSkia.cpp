@@ -50,6 +50,17 @@
 #include <gpu/ganesh/SkSurfaceGanesh.h>
 #include <gpu/GrBackendSurface.h>
 #endif
+#if SK_MILESTONE >= 120
+#include <core/SkFontMgr.h>
+#include <gpu/ganesh/vk/GrVkDirectContext.h>
+#include <gpu/ganesh/vk/GrVkBackendSurface.h>
+#if defined(SK_BUILD_FOR_WIN) && (defined(SK_FONTMGR_GDI_AVAILABLE) || defined(SK_FONTMGR_DIRECTWRITE_AVAILABLE))
+#include "include/ports/SkTypeface_win.h"
+#endif
+#if defined(SK_FONTMGR_FREETYPE_EMPTY_AVAILABLE)
+#include <ports/SkFontMgr_empty.h>
+#endif
+#endif
 
 #include "VectorBackendSkia.hpp"
 
@@ -57,6 +68,9 @@ struct SkiaCache {
     sk_sp<GrDirectContext> context{};
     sk_sp<SkColorSpace> colorSpace;
     sk_sp<SkSurface> surface{};
+#if SK_MILESTONE >= 120
+    sk_sp<SkFontMgr> skFontMgr{};
+#endif
 };
 
 bool VectorBackendSkia::checkIsSupported() {
@@ -117,16 +131,36 @@ void VectorBackendSkia::initialize() {
     skVkBackendContext.fGetProc = getProcFun;
 
     //sk_sp<skgpu::VulkanMemoryAllocator> fMemoryAllocator;
+#if SK_MILESTONE < 120
     skiaCache->context = GrDirectContext::MakeVulkan(skVkBackendContext);
+#else
+    skiaCache->context = GrDirectContexts::MakeVulkan(skVkBackendContext);
+#endif
     if (!skiaCache->context) {
         sgl::Logfile::get()->writeError("Error in SkiaRenderPass::SkiaRenderPass: GrDirectContext::MakeVulkan failed.");
     }
+#if SK_MILESTONE >= 120
+    //skiaCache->skFontMgr = ToolUtils::TestFontMgr();
+#if defined(SK_BUILD_FOR_WIN) && defined(SK_FONTMGR_GDI_AVAILABLE)
+    skiaCache->skFontMgr = SkFontMgr_New_GDI();
+#elif defined(SK_BUILD_FOR_WIN) && defined(SK_FONTMGR_DIRECTWRITE_AVAILABLE)
+    skiaCache->skFontMgr = SkFontMgr_New_DirectWrite();
+#elif defined(SK_FONTMGR_FREETYPE_EMPTY_AVAILABLE)
+    skiaCache->skFontMgr = SkFontMgr_New_Custom_Empty();
+#else
+    #error "No Skia font manager available."
+#endif
+#endif
 }
 
 sk_sp<SkTypeface> VectorBackendSkia::createDefaultTypeface() {
     std::string fontFilename = sgl::AppSettings::get()->getDataDirectory() + "Fonts/DroidSans.ttf";
+#if SK_MILESTONE < 120
     return SkTypeface::MakeFromFile(fontFilename.c_str());
     //return SkTypeface::MakeDefault();
+#else
+    return skiaCache->skFontMgr->makeFromFile(fontFilename.c_str());
+#endif
 }
 
 void VectorBackendSkia::destroy() {
@@ -187,7 +221,13 @@ void VectorBackendSkia::onResize() {
     }
     SkSurfaceProps skSurfaceProps(flags, kUnknown_SkPixelGeometry);
 
-    GrBackendTexture backendTexture(int(fboWidthInternal), int(fboHeightInternal), skVkImageInfo);
+#if SK_MILESTONE < 120
+    GrBackendTexture backendTexture(
+            int(fboWidthInternal), int(fboHeightInternal), skVkImageInfo);
+#else
+    GrBackendTexture backendTexture = GrBackendTextures::MakeVk(
+            int(fboWidthInternal), int(fboHeightInternal), skVkImageInfo);
+#endif
 #if SK_MILESTONE < 115
     skiaCache->surface = SkSurface::MakeFromBackendTexture(
 #else
@@ -226,8 +266,14 @@ void VectorBackendSkia::renderStart() {
 }
 
 void VectorBackendSkia::renderEnd() {
+#if SK_MILESTONE < 117
     skiaCache->surface->flush();
+#else
+    if (auto dContext = GrAsDirectContext(skiaCache->surface->recordingContext())) {
+        skiaCache->context->flushAndSubmit();
+    }
     skiaCache->context->submit();
+#endif
 
 #if SK_MILESTONE < 115
     GrBackendTexture backendTexture = skiaCache->surface->getBackendTexture(SkSurface::kFlushRead_BackendHandleAccess);
@@ -239,7 +285,11 @@ void VectorBackendSkia::renderEnd() {
         sgl::Logfile::get()->throwError("Error in SkiaRenderPass::recreateSwapchain: getBackendTexture failed.");
     }
     GrVkImageInfo skImageInfo;
+#if SK_MILESTONE < 120
     if (!backendTexture.getVkImageInfo(&skImageInfo)) {
+#else
+    if (!GrBackendTextures::GetVkImageInfo(backendTexture, &skImageInfo)) {
+#endif
         sgl::Logfile::get()->throwError("Error in SkiaRenderPass::recreateSwapchain: getVkImageInfo failed.");
     }
 
@@ -247,7 +297,11 @@ void VectorBackendSkia::renderEnd() {
     renderTargetTextureVk->getImage()->transitionImageLayout(
             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, rendererVk->getVkCommandBuffer());
 
+#if SK_MILESTONE < 120
     backendTexture.setVkImageLayout(renderTargetTextureVk->getImage()->getVkImageLayout());
+#else
+    GrBackendTextures::SetVkImageLayout(&backendTexture, renderTargetTextureVk->getImage()->getVkImageLayout());
+#endif
 }
 
 bool VectorBackendSkia::renderGuiPropertyEditor(sgl::PropertyEditor& propertyEditor) {

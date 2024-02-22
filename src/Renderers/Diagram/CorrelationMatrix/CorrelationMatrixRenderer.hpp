@@ -1,7 +1,7 @@
 /*
  * BSD 2-Clause License
  *
- * Copyright (c) 2023, Christoph Neuhauser
+ * Copyright (c) 2024, Christoph Neuhauser
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -26,23 +26,23 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef CORRERENDER_SCATTERPLOTRENDERER_HPP
-#define CORRERENDER_SCATTERPLOTRENDERER_HPP
+#ifndef CORRERENDER_CORRELATIONMATRIXRENDERER_HPP
+#define CORRERENDER_CORRELATIONMATRIXRENDERER_HPP
 
 #include <Graphics/Color.hpp>
 
 #include "../../Renderer.hpp"
+#include "Calculators/CorrelationDefines.hpp"
+#include "Calculators/CorrelationMatrix.hpp"
 
-class ScatterPlotChart;
-class ReferencePointSelectionRasterPass;
-class PointPicker;
+class CorrelationMatrixChart;
 
-class ScatterPlotRenderer : public Renderer {
+class CorrelationMatrixRenderer : public Renderer {
 public:
-    explicit ScatterPlotRenderer(ViewManager* viewManager);
-    ~ScatterPlotRenderer() override;
+    explicit CorrelationMatrixRenderer(ViewManager* viewManager);
+    ~CorrelationMatrixRenderer() override;
     void initialize() override;
-    [[nodiscard]] RenderingMode getRenderingMode() const override { return RENDERING_MODE_SCATTER_PLOT; }
+    [[nodiscard]] RenderingMode getRenderingMode() const override { return RENDERING_MODE_CORRELATION_MATRIX; }
     [[nodiscard]] bool getIsOpaqueRenderer() const override { return false; }
     [[nodiscard]] bool getIsOverlayRenderer() const override { return true; }
     void setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) override;
@@ -68,31 +68,18 @@ private:
     void renderDiagramViewSelectionGui(
             sgl::PropertyEditor& propertyEditor, const std::string& name, uint32_t& diagramViewIdx);
     bool adaptIdxOnViewRemove(uint32_t viewIdx, uint32_t& diagramViewIdx);
-    void setReferencePoint(int idx, const glm::ivec3& referencePoint);
 
+    void recomputeCorrelationMatrix();
     VolumeDataPtr volumeData;
     uint32_t diagramViewIdx = 0;
     bool reRenderTriggeredByDiagram = false;
-    std::shared_ptr<ScatterPlotChart> parentDiagram; //< Parent diagram.
-    bool isEnsembleMode = true; //< Ensemble or time mode?
+    std::shared_ptr<CorrelationMatrixChart> parentDiagram; //< Parent diagram.
     bool alignWithParentWindow = false;
-    bool useGlobalMinMax = false;
-    sgl::Color pointColor = sgl::Color(80, 120, 255, 255);
-    float pointSize = 5.0f;
-    bool useSameField = true;
-    int fieldIdx0 = 0, fieldIdx1 = 0;
-    std::string fieldName0, fieldName1;
-    glm::ivec3 refPos[2];
-
-    // Focus point picking/moving information.
-    std::shared_ptr<PointPicker> pointPicker[2];
-    bool fixPickingZPlane = true;
-
-    // Passes.
-    sgl::vk::BufferPtr vertexPositionBuffer;
-    sgl::vk::BufferPtr vertexNormalBuffer;
-    sgl::vk::BufferPtr indexBuffer;
-    std::vector<std::shared_ptr<ReferencePointSelectionRasterPass>> referencePointSelectionRasterPasses[2];
+    bool useAllTimeSteps = false;
+    bool useAllEnsembleMembers = false;
+    CorrelationMeasureType correlationMeasureType = CorrelationMeasureType::PEARSON;
+    int useFieldAccuracyDouble = 1;
+    DiagramColorMap colorMap = DiagramColorMap::VIRIDIS;
 };
 
-#endif //CORRERENDER_SCATTERPLOTRENDERER_HPP
+#endif //CORRERENDER_CORRELATIONMATRIXRENDERER_HPP

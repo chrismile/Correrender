@@ -79,6 +79,7 @@
 #include "Renderers/WorldMapRenderer.hpp"
 #include "Renderers/Diagram/DiagramRenderer.hpp"
 #include "Renderers/Diagram/Scatter/ScatterPlotRenderer.hpp"
+#include "Renderers/Diagram/CorrelationMatrix/CorrelationMatrixRenderer.hpp"
 #include "Utils/CurlWrapper.hpp"
 #include "Utils/AutomaticPerformanceMeasurer.hpp"
 #include "Optimization/TFOptimization.hpp"
@@ -501,10 +502,12 @@ void MainApp::addNewRenderer(RenderingMode renderingMode) {
     bool isOpaqueRenderer =
             renderingMode != RenderingMode::RENDERING_MODE_DIRECT_VOLUME_RENDERING
             && renderingMode != RenderingMode::RENDERING_MODE_DIAGRAM_RENDERER
-            && renderingMode != RenderingMode::RENDERING_MODE_SCATTER_PLOT;
+            && renderingMode != RenderingMode::RENDERING_MODE_SCATTER_PLOT
+            && renderingMode != RenderingMode::RENDERING_MODE_CORRELATION_MATRIX;
     bool isOverlayRenderer =
             renderingMode == RenderingMode::RENDERING_MODE_DIAGRAM_RENDERER
-            || renderingMode == RenderingMode::RENDERING_MODE_SCATTER_PLOT;
+            || renderingMode == RenderingMode::RENDERING_MODE_SCATTER_PLOT
+            || renderingMode == RenderingMode::RENDERING_MODE_CORRELATION_MATRIX;
     if (isOpaqueRenderer && !isOverlayRenderer) {
         // Push after last opaque renderer (or at the beginning).
         auto it = volumeRenderers.begin();
@@ -551,6 +554,8 @@ void MainApp::setRenderer(RenderingMode newRenderingMode, RendererPtr& newVolume
         newVolumeRenderer = std::make_shared<DiagramRenderer>(viewManager);
     } else if (newRenderingMode == RENDERING_MODE_SCATTER_PLOT) {
         newVolumeRenderer = std::make_shared<ScatterPlotRenderer>(viewManager);
+    } else if (newRenderingMode == RENDERING_MODE_CORRELATION_MATRIX) {
+        newVolumeRenderer = std::make_shared<CorrelationMatrixRenderer>(viewManager);
     } else {
         int idx = std::clamp(int(newRenderingMode), 0, IM_ARRAYSIZE(RENDERING_MODE_NAMES) - 1);
         std::string warningText =

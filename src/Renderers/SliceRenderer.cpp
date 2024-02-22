@@ -51,6 +51,7 @@ SliceRenderer::SliceRenderer(ViewManager* viewManager)
 
 SliceRenderer::~SliceRenderer() {
     if (!selectedScalarFieldName.empty()) {
+        volumeData->releaseTf(this, selectedFieldIdx);
         volumeData->releaseScalarField(this, selectedFieldIdx);
     }
 }
