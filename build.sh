@@ -537,6 +537,14 @@ if [ $use_macos = false ] && ! command -v pkg-config &> /dev/null; then
     exit 1
 fi
 
+if [ ! -f nvcc ] && [ -d /usr/local/cuda ]; then
+    if [ -d /usr/local/cuda/targets/x86_64-linux ]; then
+        export CPATH=/usr/local/cuda/targets/x86_64-linux/include:$CPATH
+        export LD_LIBRARY_PATH=/usr/local/cuda/targets/x86_64-linux/lib:$LD_LIBRARY_PATH
+    fi
+    export PATH=$PATH:/usr/local/cuda/bin
+fi
+
 if [ ! -d "submodules/IsosurfaceCpp/src" ]; then
     echo "------------------------"
     echo "initializing submodules "
