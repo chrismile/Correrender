@@ -97,10 +97,15 @@ void CorrelationMatrixChart::initialize() {
 }
 
 void CorrelationMatrixChart::onUpdatedWindowSize() {
+    //if (windowWidth < 360.0f || windowHeight < 360.0f) {
+    //    borderSizeX = borderSizeY = 10.0f;
+    //} else {
+    //    borderSizeX = borderSizeY = std::min(windowWidth, windowHeight) / 36.0f;
+    //}
     if (windowWidth < 360.0f || windowHeight < 360.0f) {
-        borderSizeX = borderSizeY = 10.0f;
+        borderSizeX = borderSizeY = 60.0f;
     } else {
-        borderSizeX = borderSizeY = std::min(windowWidth, windowHeight) / 36.0f;
+        borderSizeX = borderSizeY = std::min(windowWidth, windowHeight) / 6.0f;
     }
     float minDim = std::min(windowWidth - 2.0f * borderSizeX, windowHeight - 2.0f * borderSizeY);
     totalRadius = std::round(0.5f * minDim);
@@ -293,11 +298,12 @@ void CorrelationMatrixChart::renderScatterPlot() {
         const float w = wp;
         const float h = hp;
         //float x0 = startX + float(numRows) * w;
-        float x0 = startX;
-        //float y0 = startY + (float(i) + 0.5f) * h;
-        float y0 = startY + (float(numRows - i - 1) + 0.5f) * h;
-        float x1 = startX + (float(i) + 0.5f) * w;
-        float y1 = startY + float(numRows) * h;
+        const float x0 = startX;
+        //const float y0 = startY + (float(i) + 0.5f) * h;
+        const float y0 = startY + (float(numRows - i - 1) + 0.5f) * h;
+        const float x1 = startX + (float(i) + 0.5f) * w;
+        const float y1 = startY + float(numRows) * h;
+        const float angleCenter = float(M_PI) / 4.0f;
         std::string labelText = fieldNames.at(i);
         if (vg) {
             // Text side
@@ -311,9 +317,8 @@ void CorrelationMatrixChart::renderScatterPlot() {
             nvgFill(vg);
 
             // Text top
+            const glm::vec2 textPosition(x1, y1 + textSizeLegend / 2.0f);
             nvgSave(vg);
-            float angleCenter = float(M_PI) / 4.0f;
-            glm::vec2 textPosition(x1, y1);
             nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
             glm::vec2 bounds[2];
             nvgTextBounds(vg, textPosition.x, textPosition.y, labelText.c_str(), nullptr, &bounds[0].x);
@@ -326,17 +331,30 @@ void CorrelationMatrixChart::renderScatterPlot() {
         }
 #ifdef SUPPORT_SKIA
         else if (canvas) {
+            // Text side
             paint->setColor(toSkColor(textColor));
             SkRect bounds{};
             font->measureText(labelText.c_str(), labelText.size(), SkTextEncoding::kUTF8, &bounds);
             canvas->drawString(
                     labelText.c_str(),
-                    x0 * s, y0 * s + 0.5f * (bounds.height() - metrics.fDescent),
+                    x0 * s - bounds.width(), y0 * s + 0.5f * (bounds.height() - metrics.fDescent),
                     *font, *paint);
+
+            // Text top
+            const glm::vec2 textPosition(
+                    x1 * s, (y1 + textSizeLegend / 2.0f) * s + 0.5f * (bounds.height() - metrics.fDescent));
+            canvas->save();
+            //canvas->rotate(angleCenter / sgl::PI * 180.0f, textPosition.x, textPosition.y);
+            canvas->translate(textPosition.x, textPosition.y);
+            canvas->rotate(angleCenter / sgl::PI * 180.0f);
+            canvas->translate(-textPosition.x, -textPosition.y);
+            canvas->drawString(labelText.c_str(), textPosition.x, textPosition.y, *font, *paint);
+            canvas->restore();
         }
 #endif
 #ifdef SUPPORT_VKVG
         else if (context) {
+            // Text side
             vkvg_set_font_size(context, uint32_t(std::round(textSizeLegend * s * 0.75f)));
             //vkvg_select_font_face(context, "sans");
             vkvg_set_source_color(context, textColor.getColorRGBA());
@@ -344,8 +362,18 @@ void CorrelationMatrixChart::renderScatterPlot() {
             vkvg_text_extents(context, labelText.c_str(), &te);
             vkvg_font_extents_t fe{};
             vkvg_font_extents(context, &fe);
-            vkvg_move_to(context, x0 * s, y0 * s + 0.5f * te.height - fe.descent);
+            vkvg_move_to(context, x0 * s - te.width, y0 * s + 0.5f * te.height - fe.descent);
             vkvg_show_text(context, labelText.c_str());
+
+            // Text top
+            const glm::vec2 textPosition(x1 * s, (y1 + textSizeLegend / 2.0f) * s + 0.5f * te.height - fe.descent);
+            vkvg_save(context);
+            vkvg_translate(context, textPosition.x, textPosition.y);
+            vkvg_rotate(context, angleCenter);
+            vkvg_translate(context, -textPosition.x, -textPosition.y);
+            vkvg_move_to(context, textPosition.x, textPosition.y);
+            vkvg_show_text(context, labelText.c_str());
+            vkvg_restore(context);
         }
 #endif
     }
@@ -432,10 +460,11 @@ void CorrelationMatrixChart::drawColorLegends() {
         numTicks = 3;
     }
 
-    float posX =
-            windowWidth - borderSizeX
-            - float(1) * (colorLegendWidth + textWidthMax)
-            - float(0) * colorLegendSpacing;
+    //float posX =
+    //        windowWidth - borderSizeX
+    //        - float(1) * (colorLegendWidth + textWidthMax)
+    //        - float(0) * colorLegendSpacing;
+    float posX = windowWidth / 2.0f + totalRadius + borderSizeX * 0.5f;
 
     float posY = windowHeight - borderSizeY - colorLegendHeight;
     drawColorLegend(
@@ -674,26 +703,7 @@ void CorrelationMatrixChart::drawColorLegend(
 template<typename T> inline T sqr(T val) { return val * val; }
 
 float CorrelationMatrixChart::computeColorLegendHeightForNumFields(int numFields, float maxHeight) {
-    const float r = totalRadius;
-    const float bx = borderSizeX;
-    const float by = borderSizeY;
-    const float w = windowWidth;
-    const float h = windowHeight;
-    const float d = colorLegendCircleDist;
-    const float cw = float(numFields) * (colorLegendWidth + textWidthMax) + float(numFields - 1) * colorLegendSpacing;
-
-    const float b = -2.0f * (h - by - h * 0.5f);
-    const float c = sqr(h - by - h * 0.5f) - sqr(r + d) + sqr(w - bx - cw - w * 0.5f);
-    const float discriminant = b * b - 4.0f * c;
-
-    float height;
-    if (discriminant > 0.0f) {
-        height = (-b - std::sqrt(b * b - 4.0f * c)) * 0.5f - textSize * 2.0f;
-        height = std::clamp(height, 1.0f, maxHeight);
-    } else {
-        height = maxHeight;
-    }
-    return height;
+    return maxHeight;
 }
 
 void CorrelationMatrixChart::computeColorLegendHeight() {

@@ -1554,11 +1554,11 @@ void MainApp::renderGuiMenuBar() {
         if (useFieldAccuracyDouble) {
             similarityMetricNumber = computeFieldSimilarity<double>(
                     volumeData.get(), similarityFieldIdx0, similarityFieldIdx1, correlationMeasureFieldSimilarity,
-                    maxCorrelationValue);
+                    maxCorrelationValue, false, false);
         } else {
             similarityMetricNumber = computeFieldSimilarity<float>(
                     volumeData.get(), similarityFieldIdx0, similarityFieldIdx1, correlationMeasureFieldSimilarity,
-                    maxCorrelationValue);
+                    maxCorrelationValue, false, false);
         }
     }
     if (ImGui::BeginPopupModal("Field Similarity Result", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {

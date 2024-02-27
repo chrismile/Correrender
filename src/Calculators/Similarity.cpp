@@ -36,25 +36,93 @@
 template<class T>
 float computeFieldSimilarity(
         VolumeData* volumeData, int similarityFieldIdx0, int similarityFieldIdx1, CorrelationMeasureType cmt,
-        float& maxCorrelationValue) {
-    int numVoxels = volumeData->getGridSizeX() * volumeData->getGridSizeY() * volumeData->getGridSizeZ();
+        float& maxCorrelationValue, bool useAllTimeSteps, bool useAllEnsembleMembers) {
+    size_t numVoxels =
+            size_t(volumeData->getGridSizeX())
+            * size_t(volumeData->getGridSizeY())
+            * size_t(volumeData->getGridSizeZ());
+    size_t numVoxelsTotal = numVoxels;
+    const auto ts = size_t(volumeData->getTimeStepCount());
+    const auto es = size_t(volumeData->getTimeStepCount());
+    if (useAllTimeSteps) {
+        numVoxelsTotal *= ts;
+    }
+    if (useAllEnsembleMembers) {
+        numVoxelsTotal *= es;
+    }
+
     auto fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
-    VolumeData::HostCacheEntry fieldEntry0 = volumeData->getFieldEntryCpu(
-            FieldType::SCALAR, fieldNames.at(similarityFieldIdx0));
-    VolumeData::HostCacheEntry fieldEntry1 = volumeData->getFieldEntryCpu(
-            FieldType::SCALAR, fieldNames.at(similarityFieldIdx1));
-    const float* data0 = fieldEntry0->data<float>();
-    const float* data1 = fieldEntry1->data<float>();
     std::vector<float> X;
     std::vector<float> Y;
-    X.reserve(numVoxels);
-    Y.reserve(numVoxels);
-    for (int i = 0; i < numVoxels; i++) {
-        float val0 = data0[i];
-        float val1 = data1[i];
-        if (!std::isnan(val0) && !std::isnan(val1)) {
-            X.push_back(val0);
-            Y.push_back(val1);
+    X.reserve(numVoxelsTotal);
+    Y.reserve(numVoxelsTotal);
+    if (!useAllTimeSteps && !useAllEnsembleMembers) {
+        VolumeData::HostCacheEntry fieldEntry0 = volumeData->getFieldEntryCpu(
+                FieldType::SCALAR, fieldNames.at(similarityFieldIdx0));
+        VolumeData::HostCacheEntry fieldEntry1 = volumeData->getFieldEntryCpu(
+                FieldType::SCALAR, fieldNames.at(similarityFieldIdx1));
+        const float* data0 = fieldEntry0->data<float>();
+        const float* data1 = fieldEntry1->data<float>();
+        for (size_t i = 0; i < numVoxels; i++) {
+            float val0 = data0[i];
+            float val1 = data1[i];
+            if (!std::isnan(val0) && !std::isnan(val1)) {
+                X.push_back(val0);
+                Y.push_back(val1);
+            }
+        }
+    } else if (useAllTimeSteps && !useAllEnsembleMembers) {
+        for (size_t tidx = 0; tidx < ts; tidx++) {
+            VolumeData::HostCacheEntry fieldEntry0 = volumeData->getFieldEntryCpu(
+                    FieldType::SCALAR, fieldNames.at(similarityFieldIdx0), tidx, -1);
+            VolumeData::HostCacheEntry fieldEntry1 = volumeData->getFieldEntryCpu(
+                    FieldType::SCALAR, fieldNames.at(similarityFieldIdx1), tidx, -1);
+            const float* data0 = fieldEntry0->data<float>();
+            const float* data1 = fieldEntry1->data<float>();
+            for (size_t i = 0; i < numVoxels; i++) {
+                float val0 = data0[i];
+                float val1 = data1[i];
+                if (!std::isnan(val0) && !std::isnan(val1)) {
+                    X.push_back(val0); // tidx * numVoxels + i
+                    Y.push_back(val1); // tidx * numVoxels + i
+                }
+            }
+        }
+    } else if (!useAllTimeSteps) {
+        for (size_t eidx = 0; eidx < ts; eidx++) {
+            VolumeData::HostCacheEntry fieldEntry0 = volumeData->getFieldEntryCpu(
+                    FieldType::SCALAR, fieldNames.at(similarityFieldIdx0), -1, eidx);
+            VolumeData::HostCacheEntry fieldEntry1 = volumeData->getFieldEntryCpu(
+                    FieldType::SCALAR, fieldNames.at(similarityFieldIdx1), -1, eidx);
+            const float* data0 = fieldEntry0->data<float>();
+            const float* data1 = fieldEntry1->data<float>();
+            for (size_t i = 0; i < numVoxels; i++) {
+                float val0 = data0[i];
+                float val1 = data1[i];
+                if (!std::isnan(val0) && !std::isnan(val1)) {
+                    X.push_back(val0); // eidx * numVoxels + i
+                    Y.push_back(val1); // eidx * numVoxels + i
+                }
+            }
+        }
+    } else {
+        for (size_t tidx = 0; tidx < ts; tidx++) {
+            for (size_t eidx = 0; eidx < ts; eidx++) {
+                VolumeData::HostCacheEntry fieldEntry0 = volumeData->getFieldEntryCpu(
+                        FieldType::SCALAR, fieldNames.at(similarityFieldIdx0), tidx, eidx);
+                VolumeData::HostCacheEntry fieldEntry1 = volumeData->getFieldEntryCpu(
+                        FieldType::SCALAR, fieldNames.at(similarityFieldIdx1), tidx, eidx);
+                const float* data0 = fieldEntry0->data<float>();
+                const float* data1 = fieldEntry1->data<float>();
+                for (size_t i = 0; i < numVoxels; i++) {
+                    float val0 = data0[i];
+                    float val1 = data1[i];
+                    if (!std::isnan(val0) && !std::isnan(val1)) {
+                        X.push_back(val0); // (eidx + tidx * es) * numVoxels + i
+                        Y.push_back(val1); // (eidx + tidx * es) * numVoxels + i
+                    }
+                }
+            }
         }
     }
     auto cs = int(X.size());
@@ -113,8 +181,8 @@ float computeFieldSimilarity(
 template
 float computeFieldSimilarity<float>(
         VolumeData* volumeData, int similarityFieldIdx0, int similarityFieldIdx1, CorrelationMeasureType cmt,
-        float& maxCorrelationValue);
+        float& maxCorrelationValue, bool useAllTimeSteps, bool useAllEnsembleMembers);
 template
 float computeFieldSimilarity<double>(
         VolumeData* volumeData, int similarityFieldIdx0, int similarityFieldIdx1, CorrelationMeasureType cmt,
-        float& maxCorrelationValue);
+        float& maxCorrelationValue, bool useAllTimeSteps, bool useAllEnsembleMembers);

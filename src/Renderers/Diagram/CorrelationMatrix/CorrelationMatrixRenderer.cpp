@@ -92,10 +92,12 @@ void CorrelationMatrixRenderer::recomputeCorrelationMatrix() {
             float maxCorrelationValueLocal = 0.0f;
             if (useFieldAccuracyDouble) {
                 similarityMetricNumber = computeFieldSimilarity<double>(
-                        volumeData.get(), fieldIdx0, fieldIdx1, correlationMeasureType, maxCorrelationValueLocal);
+                        volumeData.get(), fieldIdx0, fieldIdx1, correlationMeasureType, maxCorrelationValueLocal,
+                        useAllTimeSteps, useAllEnsembleMembers);
             } else {
                 similarityMetricNumber = computeFieldSimilarity<float>(
-                        volumeData.get(), fieldIdx0, fieldIdx1, correlationMeasureType, maxCorrelationValueLocal);
+                        volumeData.get(), fieldIdx0, fieldIdx1, correlationMeasureType, maxCorrelationValueLocal,
+                        useAllTimeSteps, useAllEnsembleMembers);
             }
             maxCorrelationValueGlobal = std::max(maxCorrelationValueGlobal, maxCorrelationValueLocal);
             similarityMatrix->set(fieldIdx0, fieldIdx1, similarityMetricNumber);

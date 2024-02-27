@@ -36,14 +36,14 @@ class VolumeData;
 template<class T>
 float computeFieldSimilarity(
         VolumeData* volumeData, int similarityFieldIdx0, int similarityFieldIdx1, CorrelationMeasureType cmt,
-        float& maxCorrelationValue);
+        float& maxCorrelationValue, bool useAllTimeSteps, bool useAllEnsembleMembers);
 extern template
 float computeFieldSimilarity<float>(
         VolumeData* volumeData, int similarityFieldIdx0, int similarityFieldIdx1, CorrelationMeasureType cmt,
-        float& maxCorrelationValue);
+        float& maxCorrelationValue, bool useAllTimeSteps, bool useAllEnsembleMembers);
 extern template
 float computeFieldSimilarity<double>(
         VolumeData* volumeData, int similarityFieldIdx0, int similarityFieldIdx1, CorrelationMeasureType cmt,
-        float& maxCorrelationValue);
+        float& maxCorrelationValue, bool useAllTimeSteps, bool useAllEnsembleMembers);
 
 #endif //CORRERENDER_SIMILARITY_HPP
