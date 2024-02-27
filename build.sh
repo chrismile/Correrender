@@ -450,13 +450,13 @@ elif command -v yum &> /dev/null && ! $use_conda; then
                 || ! is_installed_rpm "blosc-devel" || ! is_installed_rpm "netcdf-devel" \
                 || ! is_installed_rpm "eccodes-devel" || ! is_installed_rpm "eigen3-devel" \
                 || ! is_installed_rpm "libtiff-devel" || ! is_installed_rpm "libcurl-devel" \
-                || ! is_installed_rpm "NLopt-devel"; then
+                || ! is_installed_rpm "NLopt-devel" || ! is_installed_rpm "expat-devel"; then
             echo "------------------------"
             echo "installing dependencies "
             echo "------------------------"
             sudo yum install -y boost-devel glm-devel libarchive-devel tinyxml2-devel libpng-devel SDL2-devel \
             SDL2_image-devel glew-devel vulkan-headers libshaderc-devel opencl-headers ocl-icd jsoncpp-devel json-devel \
-            blosc-devel netcdf-devel eccodes-devel eigen3-devel libtiff-devel libcurl-devel NLopt-devel
+            blosc-devel netcdf-devel eccodes-devel eigen3-devel libtiff-devel libcurl-devel NLopt-devel expat-devel
         fi
     fi
 elif $use_conda && ! $use_macos; then
