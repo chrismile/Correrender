@@ -71,7 +71,7 @@ ScatterPlotRenderer::ScatterPlotRenderer(ViewManager* viewManager)
             return mouseHoverWindowIndex == int(diagramViewIdx);
         };
         pointPicker[i] = std::make_shared<PointPicker>(
-                viewManager, fixPickingZPlane, refPosSetter, viewUsedIndexQuery);
+                viewManager, fixPickingZPlane, fixedZPlanePercentage, refPosSetter, viewUsedIndexQuery);
     }
     pointPicker[0]->setMouseButton(1);
     pointPicker[1]->setMouseButton(3);
@@ -423,6 +423,14 @@ void ScatterPlotRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
 
     if (!volumeData || volumeData->getGridSizeZ() > 1) {
         propertyEditor.addCheckbox("Fix Picking Z", &fixPickingZPlane);
+        auto fixedZPlane = int(fixedZPlanePercentage * float(volumeData->getGridSizeZ()));
+        if (fixPickingZPlane && propertyEditor.addSliderInt(
+                "Z Plane", &fixedZPlane, 0, volumeData->getGridSizeZ() - 1)) {
+            fixedZPlanePercentage = float(fixedZPlane) / float(volumeData->getGridSizeZ());
+            for (int i = 0; i < 2; i++) {
+                pointPicker[i]->onUpdatePositionFixed();
+            }
+        }
     }
 
     if (propertyEditor.addCheckbox("Global Min/Max", &useGlobalMinMax)) {
@@ -491,6 +499,11 @@ void ScatterPlotRenderer::setSettings(const SettingsMap& settings) {
     }
 
     settings.getValueOpt("fix_picking_z", fixPickingZPlane);
+    if (settings.getValueOpt("fixed_z_plane_percentage", fixedZPlanePercentage)) {
+        for (int i = 0; i < 2; i++) {
+            pointPicker[i]->onUpdatePositionFixed();
+        }
+    }
 
     dirty = true;
     reRender = true;
@@ -507,6 +520,7 @@ void ScatterPlotRenderer::getSettings(SettingsMap& settings) {
     settings.addKeyValue("field0", fieldName0);
     settings.addKeyValue("field1", fieldName1);
     settings.addKeyValue("fix_picking_z", fixPickingZPlane);
+    settings.addKeyValue("fixed_z_plane_percentage", fixedZPlanePercentage);
 
     // No vector widget settings for now.
 }

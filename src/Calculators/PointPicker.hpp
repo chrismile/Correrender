@@ -41,16 +41,18 @@ typedef std::function<bool(int)> ViewUsedIndexQuery;
 class PointPicker {
 public:
     PointPicker(
-            ViewManager* viewManager, bool& fixPickingZPlane,
+            ViewManager* viewManager, bool& fixPickingZPlane, float& fixedZPlanePercentage,
             RefPosSetter _refPosSetter, ViewUsedIndexQuery _viewUsedIndexQuery);
     void setVolumeData(VolumeData* _volumeData, bool isNewData);
     inline void setKeyMod(int _keyMod) { keyMod = _keyMod; }
     inline void setMouseButton(int _mouseButton) { mouseButton = _mouseButton; }
     void update(float dt);
+    void onUpdatePositionFixed();
 
 private:
     ViewManager* viewManager;
     bool& fixPickingZPlane;
+    float& fixedZPlanePercentage;
     RefPosSetter refPosSetter;
     ViewUsedIndexQuery viewUsedIndexQuery;
     VolumeData* volumeData = nullptr;

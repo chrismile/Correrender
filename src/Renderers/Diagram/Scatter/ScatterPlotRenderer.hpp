@@ -87,6 +87,7 @@ private:
     // Focus point picking/moving information.
     std::shared_ptr<PointPicker> pointPicker[2];
     bool fixPickingZPlane = true;
+    float fixedZPlanePercentage = 0.5f;
 
     // Passes.
     sgl::vk::BufferPtr vertexPositionBuffer;

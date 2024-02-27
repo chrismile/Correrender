@@ -40,16 +40,23 @@
 #include "PointPicker.hpp"
 
 PointPicker::PointPicker(
-        ViewManager* _viewManager, bool& fixPickingZPlane,
+        ViewManager* _viewManager, bool& fixPickingZPlane, float& fixedZPlanePercentage,
         RefPosSetter _refPosSetter, ViewUsedIndexQuery _viewUsedIndexQuery)
-        : viewManager(_viewManager), fixPickingZPlane(fixPickingZPlane), refPosSetter(std::move(_refPosSetter)),
-          viewUsedIndexQuery(std::move(_viewUsedIndexQuery)) {
+        : viewManager(_viewManager), fixPickingZPlane(fixPickingZPlane), fixedZPlanePercentage(fixedZPlanePercentage),
+          refPosSetter(std::move(_refPosSetter)), viewUsedIndexQuery(std::move(_viewUsedIndexQuery)) {
     keyMod = KMOD_CTRL;
     mouseButton = 1;
 }
 
 void PointPicker::setVolumeData(VolumeData* _volumeData, bool isNewData) {
     volumeData = _volumeData;
+}
+
+void PointPicker::onUpdatePositionFixed() {
+    auto aabb = volumeData->getBoundingBoxRendering();
+    auto z = aabb.min.z + (aabb.max.z - aabb.min.z) * fixedZPlanePercentage;
+    focusPoint = glm::vec3(focusPoint.x, focusPoint.y, z);
+    setReferencePointFromFocusPoint();
 }
 
 void PointPicker::update(float dt) {
@@ -63,13 +70,12 @@ void PointPicker::update(float dt) {
                         && sgl::Mouse->mouseMoved())) {
                     ImVec2 mousePosGlobal = ImGui::GetMousePos();
                     //int mouseGlobalX = sgl::Mouse->getX();
-                    //int mouseGlobalY = sgl::Mouse->getY();
-                    bool rayHasHitMesh;
                     if (fixPickingZPlane) {
                         glm::vec3 centerHit;
-                        rayHasHitMesh = volumeData->pickPointScreenAtZ(
-                                sceneData, int(mousePosGlobal.x), int(mousePosGlobal.y),
-                                volumeData->getGridSizeZ() / 2, centerHit);
+                        //int z = volumeData->getGridSizeZ() / 2;
+                        auto z = int(std::round(float(volumeData->getGridSizeZ()) * fixedZPlanePercentage));
+                        bool rayHasHitMesh = volumeData->pickPointScreenAtZ(
+                                sceneData, int(mousePosGlobal.x), int(mousePosGlobal.y), z, centerHit);
                         if (rayHasHitMesh) {
                             auto aabb = volumeData->getBoundingBoxRendering();
                             focusPoint = centerHit;
@@ -80,7 +86,7 @@ void PointPicker::update(float dt) {
                             setReferencePointFromFocusPoint();
                         }
                     } else {
-                        rayHasHitMesh = volumeData->pickPointScreen(
+                        bool rayHasHitMesh = volumeData->pickPointScreen(
                                 sceneData, int(mousePosGlobal.x), int(mousePosGlobal.y), firstHit, lastHit);
                         if (rayHasHitMesh) {
                             focusPoint = firstHit;

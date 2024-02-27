@@ -71,7 +71,7 @@ void ICorrelationCalculator::setViewManager(ViewManager* _viewManager) {
         return volumeData->getIsScalarFieldUsedInView(uint32_t(mouseHoverWindowIndex), varIdx, this);
     };
     pointPicker = std::make_shared<PointPicker>(
-            viewManager, fixPickingZPlane, refPosSetter, viewUsedIndexQuery);
+            viewManager, fixPickingZPlane, fixedZPlanePercentage, refPosSetter, viewUsedIndexQuery);
 }
 
 void ICorrelationCalculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
@@ -307,6 +307,12 @@ void ICorrelationCalculator::renderGuiImplAdvanced(sgl::PropertyEditor& property
 
     if (!volumeData || volumeData->getGridSizeZ() > 1) {
         propertyEditor.addCheckbox("Fix Picking Z", &fixPickingZPlane);
+        auto fixedZPlane = int(fixedZPlanePercentage * float(volumeData->getGridSizeZ()));
+        if (fixPickingZPlane && propertyEditor.addSliderInt(
+                "Z Plane", &fixedZPlane, 0, volumeData->getGridSizeZ() - 1)) {
+            fixedZPlanePercentage = float(fixedZPlane) / float(volumeData->getGridSizeZ());
+            pointPicker->onUpdatePositionFixed();
+        }
     }
 }
 
@@ -406,6 +412,9 @@ void ICorrelationCalculator::setSettings(const SettingsMap& settings) {
         dirty = true;
     }
     settings.getValueOpt("fix_picking_z", fixPickingZPlane);
+    if (settings.getValueOpt("fixed_z_plane_percentage", fixedZPlanePercentage)) {
+        pointPicker->onUpdatePositionFixed();
+    }
 }
 
 void ICorrelationCalculator::getSettings(SettingsMap& settings) {
@@ -429,6 +438,7 @@ void ICorrelationCalculator::getSettings(SettingsMap& settings) {
     settings.addKeyValue("data_mode", DATA_MODE_NAMES[int(dataMode)]);
     settings.addKeyValue("use_buffer_tiling", useBufferTiling);
     settings.addKeyValue("fix_picking_z", fixPickingZPlane);
+    settings.addKeyValue("fixed_z_plane_percentage", fixedZPlanePercentage);
 }
 
 

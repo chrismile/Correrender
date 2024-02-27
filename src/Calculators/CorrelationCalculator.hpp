@@ -115,6 +115,7 @@ protected:
     // Focus point picking/moving information.
     std::shared_ptr<PointPicker> pointPicker;
     bool fixPickingZPlane = true;
+    float fixedZPlanePercentage = 0.5f;
 };
 
 
