@@ -77,9 +77,6 @@ void CorrelationMatrixRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool i
 }
 
 void CorrelationMatrixRenderer::recomputeCorrelationMatrix() {
-    // TODO
-    int es = volumeData->getEnsembleMemberCount();
-    int ts = volumeData->getTimeStepCount();
     const std::vector<std::string>& fieldNames = volumeData->getFieldNamesBase(FieldType::SCALAR);
     const auto numFields = int(fieldNames.size());
     std::shared_ptr<CorrelationMatrix> similarityMatrix = std::make_shared<SymmetricCorrelationMatrix>(numFields);

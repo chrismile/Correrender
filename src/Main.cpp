@@ -90,6 +90,7 @@ int main(int argc, char *argv[]) {
     int testIdx = -1;
     bool useCustomShaderCompilerBackend = false;
     sgl::vk::ShaderCompilerBackend shaderCompilerBackend = sgl::vk::ShaderCompilerBackend::SHADERC;
+    bool useDownloadSwapchain = false;
     for (int i = 1; i < argc; i++) {
         std::string command = argv[i];
         if (command == "--perf") {
@@ -119,6 +120,8 @@ int main(int argc, char *argv[]) {
             } else if (backendName == "glslang") {
                 shaderCompilerBackend = sgl::vk::ShaderCompilerBackend::GLSLANG;
             }
+        } else if (command == "--dlswap") {
+            useDownloadSwapchain = true;
         }
     }
     bool isHeadlessMode = useSamplingMode;
@@ -155,6 +158,14 @@ int main(int argc, char *argv[]) {
         sgl::AppSettings::get()->getSettings().addKeyValue("window-resizable", true);
         sgl::AppSettings::get()->getSettings().addKeyValue("window-savePosition", true);
         //sgl::AppSettings::get()->setVulkanDebugPrintfEnabled();
+
+#ifdef __linux__
+        const char* displayVar = getenv("DISPLAY");
+        if (displayVar && !sgl::startsWith(displayVar, ":0")) {
+            useDownloadSwapchain = true;
+        }
+        sgl::AppSettings::get()->getSettings().addKeyValue("window-useDownloadSwapchain", useDownloadSwapchain);
+#endif
 
         ImFontGlyphRangesBuilder builder;
         builder.AddChar(L'\u03BB'); // lambda
@@ -266,7 +277,7 @@ int main(int argc, char *argv[]) {
     }
 
     sgl::OffscreenContext* offscreenContext = nullptr;
-    if (!isHeadlessMode) {
+    if (!isHeadlessMode && !sgl::AppSettings::get()->getMainWindow()->getUseDownloadSwapchain()) {
 #ifdef SUPPORT_OPENGL
         sgl::OffscreenContextParams params{};
 #ifdef USE_ZINK
@@ -281,7 +292,9 @@ int main(int argc, char *argv[]) {
             sgl::AppSettings::get()->setOffscreenContext(offscreenContext);
         }
 #endif
-        sgl::vk::Swapchain* swapchain = new sgl::vk::Swapchain(device);
+    }
+    if (!isHeadlessMode) {
+        auto* swapchain = new sgl::vk::Swapchain(device);
         swapchain->create(window);
         sgl::AppSettings::get()->setSwapchain(swapchain);
     }

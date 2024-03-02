@@ -62,6 +62,8 @@ skia_link_dynamically=true
 build_with_vkvg_support=false
 build_with_osqp_support=true
 build_with_zink_support=false
+use_download_swapchain=false
+use_additional_linker_flags=false
 if $use_msys; then
     build_with_cuda_support=false
     # VKVG support is disabled due to: https://github.com/jpbruyere/vkvg/issues/140
@@ -92,6 +94,12 @@ do
         link_dynamic=true
     elif [ ${!i} = "--custom-glslang" ]; then
         custom_glslang=true
+    elif [ ${!i} = "--dlswap" ]; then
+        use_download_swapchain=true
+    elif [ ${!i} = "--linker-flags" ]; then
+        use_additional_linker_flags=true
+        ((i++))
+        linker_flags=${!i}
     elif [ ${!i} = "--replicability" ]; then
         replicability=true
     fi
@@ -596,6 +604,14 @@ fi
 if $glibcxx_debug; then
     params_sgl+=(-DUSE_GLIBCXX_DEBUG=On)
     params+=(-DUSE_GLIBCXX_DEBUG=On)
+fi
+
+if [ $use_additional_linker_flags = true ]; then
+    params+=(-DCMAKE_EXE_LINKER_FLAGS="$linker_flags")
+fi
+
+if [ $use_download_swapchain = true ]; then
+    params_run+=(--dlswap)
 fi
 
 use_vulkan=false
