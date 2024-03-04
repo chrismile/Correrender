@@ -162,6 +162,7 @@ int main(int argc, char *argv[]) {
 
 #ifdef __linux__
         useDownloadSwapchain = guessUseDownloadSwapchain();
+        useDownloadSwapchain = false; // TODO: Find workaround for TurboVNC.
         sgl::AppSettings::get()->getSettings().addKeyValue("window-useDownloadSwapchain", useDownloadSwapchain);
 #endif
 
