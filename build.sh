@@ -722,6 +722,14 @@ if [ $search_for_vulkan_sdk = true ]; then
         echo "Please refer to https://vulkan.lunarg.com/sdk/home#${os_name} for instructions on how to install the Vulkan SDK."
         exit 1
     fi
+
+    # On RHEL 8.6, I got the following errors when using the libvulkan.so provided by the SDK:
+    # dlopen failed: /lib64/libm.so.6: version `GLIBC_2.29' not found (required by /home/u12458/Correrender/third_party/VulkanSDK/1.3.275.0/x86_64/lib/libvulkan.so)
+    # Thus, we should remove it from the path if necessary.
+    if ldd -r libvulkan.so | grep "undefined symbol"; then
+        echo "Removing Vulkan SDK libvulkan.so from path..."
+        export LD_LIBRARY_PATH=$(echo ${LD_LIBRARY_PATH} | awk -v RS=: -v ORS=: '/VulkanSDK/ {next} {print}' | sed 's/:*$//') && echo $OUTPATH
+    fi
 fi
 
 if $custom_glslang; then
