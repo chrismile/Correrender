@@ -31,6 +31,7 @@
 #include <Utils/StringUtils.hpp>
 #include <Utils/AppSettings.hpp>
 #include <Utils/AppLogic.hpp>
+#include <Utils/RemoteUtils.hpp>
 #include <Utils/File/FileUtils.hpp>
 #include <Utils/File/Logfile.hpp>
 #include <Graphics/Window.hpp>
@@ -160,10 +161,7 @@ int main(int argc, char *argv[]) {
         //sgl::AppSettings::get()->setVulkanDebugPrintfEnabled();
 
 #ifdef __linux__
-        const char* displayVar = getenv("DISPLAY");
-        if (displayVar && !sgl::startsWith(displayVar, ":0")) {
-            useDownloadSwapchain = true;
-        }
+        useDownloadSwapchain = guessUseDownloadSwapchain();
         sgl::AppSettings::get()->getSettings().addKeyValue("window-useDownloadSwapchain", useDownloadSwapchain);
 #endif
 

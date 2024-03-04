@@ -431,6 +431,9 @@ void ScatterPlotRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
                 pointPicker[i]->onUpdatePositionFixed();
             }
         }
+        if (fixPickingZPlane) {
+            volumeData->displayLayerInfo(propertyEditor, fixedZPlane);
+        }
     }
 
     if (propertyEditor.addCheckbox("Global Min/Max", &useGlobalMinMax)) {

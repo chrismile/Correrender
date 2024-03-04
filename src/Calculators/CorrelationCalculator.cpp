@@ -313,6 +313,9 @@ void ICorrelationCalculator::renderGuiImplAdvanced(sgl::PropertyEditor& property
             fixedZPlanePercentage = float(fixedZPlane) / float(volumeData->getGridSizeZ());
             pointPicker->onUpdatePositionFixed();
         }
+        if (fixPickingZPlane) {
+            volumeData->displayLayerInfo(propertyEditor, fixedZPlane);
+        }
     }
 }
 

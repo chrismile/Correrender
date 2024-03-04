@@ -237,6 +237,9 @@ VolumeData::~VolumeData() {
     if (lonData) {
         delete[] lonData;
     }
+    if (heightData) {
+        delete[] heightData;
+    }
 }
 
 void VolumeData::setTransposeAxes(const glm::ivec3& axes) {
@@ -577,6 +580,14 @@ void VolumeData::setLatLonData(float* _latData, float* _lonData) {
         lonData = nullptr;
     }
     lonData = _lonData;
+}
+
+void VolumeData::setHeightData(float* _heightData) {
+    if (heightData) {
+        delete[] heightData;
+        heightData = nullptr;
+    }
+    heightData = _heightData;
 }
 
 bool VolumeData::setInputFiles(
@@ -1542,6 +1553,13 @@ bool VolumeData::getHasLatLonData() {
 void VolumeData::getLatLonData(const float*& _latData, const float*& _lonData) {
     _latData = latData;
     _lonData = lonData;
+}
+
+void VolumeData::displayLayerInfo(sgl::PropertyEditor& propertyEditor, int zPlaneCoord) {
+    zPlaneCoord = std::clamp(zPlaneCoord, 0, zs - 1);
+    if (heightData) {
+        propertyEditor.addText("Z Level Height", std::to_string(heightData[zPlaneCoord]) + "m");
+    }
 }
 
 void VolumeData::update(float dtFrame) {

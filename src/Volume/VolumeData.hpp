@@ -146,6 +146,7 @@ public:
             void* fieldData, ScalarDataFormat dataFormat, FieldType fieldType,
             const std::string& fieldName, int timeStepIdx, int ensembleIdx);
     void setLatLonData(float* _latData, float* _lonData);
+    void setHeightData(float* _heightData);
     void addCalculator(const CalculatorPtr& calculator);
     const std::vector<std::string>& getFieldNames(FieldType fieldType);
     const std::vector<std::string>& getFieldNamesBase(FieldType fieldType);
@@ -245,6 +246,10 @@ public:
     // For querying lat/lon coordinates possibly associated with the grid.
     bool getHasLatLonData();
     void getLatLonData(const float*& _latData, const float*& _lonData);
+
+    // For querying height and pressure data for individual levels.
+    /// Uses PropertyEditor to display z layer info (height in m or pressure in hPa).
+    void displayLayerInfo(sgl::PropertyEditor& propertyEditor, int zPlaneCoord);
 
     // Keep track of transfer function use in renderers to display overlays in renderer.
     void acquireTf(Renderer* renderer, int varIdx);
@@ -393,6 +398,9 @@ protected:
     // Associated lat/lon data (may be nullptr).
     float* latData = nullptr;
     float* lonData = nullptr;
+
+    // Associated height (in m) or pressure (in hPa) data (may be nullptr).
+    float* heightData = nullptr;
 
 private:
     static glm::vec3 screenPosToRayDir(SceneData* sceneData, int globalX, int globalY);

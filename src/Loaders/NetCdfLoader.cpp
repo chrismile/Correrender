@@ -476,6 +476,7 @@ bool NetCdfLoader::setInputFiles(
     fillValueMap.resize(nvarsp);
     float* lonData = nullptr;
     float* latData = nullptr;
+    float* heightData = nullptr;
     for (int varid = 0; varid < nvarsp; varid++) {
         nc_type type = NC_FLOAT;
         int ndims = 0;
@@ -486,6 +487,7 @@ bool NetCdfLoader::setInputFiles(
         // Check if the variable contains the lat/lon simulation grid values.
         bool isLon = ndims < 3 && isFloatingPointData && strcmp(varname, "lon") == 0;
         bool isLat = ndims < 3 && isFloatingPointData && strcmp(varname, "lat") == 0;
+        bool isHeightData = ndims == 1 && isFloatingPointData && strcmp(varname, "z") == 0;
         if ((isLon || isLat) && ndims == 1) {
             float* data1D = nullptr;
             loadFloatArray1D(varid, isLon ? xs : ys, data1D);
@@ -513,6 +515,23 @@ bool NetCdfLoader::setInputFiles(
                 loadFloatArray2D(varid, ys, xs, latData);
             }
             continue;
+        }
+        if (isHeightData) {
+            bool hasUnitM = false;
+            for (int attnum = 0; attnum < natts; attnum++) {
+                nc_inq_attname(ncid, varid, attnum, attname);
+                if (strcmp(attname, "units") == 0) {
+                    auto unitsName = getStringAttribute(varid, "units");
+                    if (unitsName == "m") {
+                        hasUnitM = true;
+                    }
+                }
+            }
+            size_t zs64 = 0;
+            myassert(nc_inq_dimlen(ncid, dimids[0], &zs64) == NC_NOERR);
+            if (hasUnitM && zs == int(zs64)) {
+                loadFloatArray1D(varid, zs, heightData);
+            }
         }
 
         if (!isFloatingPointData || (ndims != 3 && ndims != 4)) {
@@ -558,6 +577,9 @@ bool NetCdfLoader::setInputFiles(
             sgl::Logfile::get()->throwError("Error in NetCdfLoader::setInputFiles: Only lat or lon set, but not both.");
         }
         volumeData->setLatLonData(latData, lonData);
+    }
+    if (heightData) {
+        volumeData->setHeightData(heightData);
     }
 
     return true;
