@@ -5,6 +5,11 @@ layout (binding = 0) uniform UniformBuffer {
     uint xsr, ysr, zsr, paddingUniform0;
     uint xsq, ysq, zsq, paddingUniform1;
 #endif
+#ifdef SET_PREDICATE_CALCULATOR
+    int countLower, countUpper;
+    float comparisonValue;
+    float paddingUniform;
+#endif
 };
 #else
 layout (binding = 0) uniform UniformBuffer {

@@ -161,8 +161,13 @@ int main(int argc, char *argv[]) {
         //sgl::AppSettings::get()->setVulkanDebugPrintfEnabled();
 
 #ifdef __linux__
-        useDownloadSwapchain = guessUseDownloadSwapchain();
-        useDownloadSwapchain = false; // TODO: Find workaround for TurboVNC.
+        /*
+         * guessUseDownloadSwapchain might be harder to implement than initially thought. Findings:
+         * - TightVNC seems to work out-of-the-box.
+         * - xrdp needed the download swapchain, but is hard to detect.
+         * - x11vnc also works out-of-the-box.
+         */
+        //useDownloadSwapchain = guessUseDownloadSwapchain();
         sgl::AppSettings::get()->getSettings().addKeyValue("window-useDownloadSwapchain", useDownloadSwapchain);
 #endif
 

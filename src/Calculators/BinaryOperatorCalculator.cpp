@@ -300,15 +300,6 @@ void BinaryOperatorComputePass::loadShader() {
         preprocessorDefines.insert(std::make_pair("binaryOperator(x, y)", "(min((x), (y)))"));
     }
     std::string shaderName = "BinaryOperatorCalculator.Compute";
-    //if (correlationMeasureType == CorrelationMeasureType::PEARSON) {
-    //    shaderName = "PearsonCorrelation.Compute";
-    //} else if (correlationMeasureType == CorrelationMeasureType::SPEARMAN) {
-    //    shaderName = "SpearmanRankCorrelation.Compute";
-    //} else if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_BINNED) {
-    //    shaderName = "MutualInformationBinned.Compute";
-    //} else if (correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV) {
-    //    shaderName = "MutualInformationKraskov.Compute";
-    //}
     shaderStages = sgl::vk::ShaderManager->getShaderStages({ shaderName }, preprocessorDefines);
 }
 

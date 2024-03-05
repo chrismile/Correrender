@@ -81,6 +81,7 @@
 #include "Calculators/BinaryOperatorCalculator.hpp"
 #include "Calculators/NoiseReductionCalculator.hpp"
 #include "Calculators/EnsembleVarianceCalculator.hpp"
+#include "Calculators/SetPredicateCalculator.hpp"
 #include "Calculators/ResidualColorCalculator.hpp"
 #include "Calculators/CorrelationCalculator.hpp"
 #ifdef SUPPORT_PYTORCH
@@ -189,6 +190,8 @@ VolumeData::VolumeData(sgl::vk::Renderer* renderer) : renderer(renderer), multiV
             "Noise Reduction", [renderer]() { return new NoiseReductionCalculator(renderer); });
     factoriesCalculator.emplace_back(
             "Ensemble Variance", [renderer]() { return new EnsembleVarianceCalculator(renderer); });
+    factoriesCalculator.emplace_back(
+            "Set Predicate", [renderer]() { return new SetPredicateCalculator(renderer); });
     factoriesCalculator.emplace_back(
             "Residual Color Calculator", [renderer]() { return new ResidualColorCalculator(renderer); });
     factoriesCalculator.emplace_back(
@@ -1034,7 +1037,7 @@ bool VolumeData::getScalarFieldSupportsBufferMode(int scalarFieldIdx) {
     if (scalarFieldIdx < int(scalarFieldNames.size()) && scalarFieldIdx >= int(scalarFieldNamesBase.size())) {
         const std::string& fieldName = scalarFieldNames.at(scalarFieldIdx);
         auto itCalc = calculatorsDevice.find(fieldName);
-        return itCalc != calculatorsDevice.end();
+        return itCalc == calculatorsDevice.end() || itCalc->second->getSupportsBufferOutput();
     }
     return volumeLoaders.front()->getHasFloat32Data();
 }
