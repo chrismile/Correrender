@@ -94,6 +94,7 @@ public:
     [[nodiscard]] virtual bool getUseTransferFunction() const { return false; }
     [[nodiscard]] virtual bool getUsesScalarFieldIdx(int fieldIdx) const { return false; }
     [[nodiscard]] virtual CalculatorType getCalculatorType() const = 0;
+    [[nodiscard]] virtual bool getSupportsBufferOutput() const { return false; }
     virtual void setViewManager(ViewManager* _viewManager) {}
     virtual void setVolumeData(VolumeData* _volumeData, bool isNewData);
     virtual void onFieldRemoved(FieldType fieldType, int fieldIdx) {}

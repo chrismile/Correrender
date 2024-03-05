@@ -75,6 +75,8 @@ typedef std::shared_ptr<Calculator> CalculatorPtr;
 enum class CalculatorType : uint32_t;
 class ICorrelationCalculator;
 
+class ImageToBufferCopyPass;
+class DivergentMinMaxPass;
 class MinMaxBufferWritePass;
 class MinMaxDepthReductionPass;
 class ComputeHistogramPass;
@@ -318,7 +320,7 @@ protected:
     int currentTimeStepIdx = 0;
     int currentEnsembleIdx = 0;
 
-    /// Cache system.
+    // Cache system.
     sgl::vk::Renderer* renderer = nullptr;
     sgl::vk::Device* device = nullptr;
     ViewManager* viewManager = nullptr;
@@ -330,6 +332,15 @@ protected:
     std::unordered_map<FieldType, std::vector<std::string>> typeToFieldNamesMap;
     std::unordered_map<FieldType, std::vector<std::string>> typeToFieldNamesMapBase; ///< Without calculator output.
     sgl::vk::ImageSamplerPtr imageSampler{};
+
+    // Utility functions.
+    void copyCacheEntryImageToBuffer(
+            VolumeData::DeviceCacheEntry& deviceCacheEntryImage, VolumeData::DeviceCacheEntry& deviceCacheEntryBuffer);
+    VolumeData::DeviceCacheEntry allocDeviceCacheEntryImage(FieldType fieldType, ScalarDataFormat scalarDataFormat);
+    VolumeData::DeviceCacheEntry allocDeviceCacheEntryBuffer(
+            size_t& bufferSize, FieldAccess& access,
+            bool tileBufferMemory, uint32_t tileSizeX, uint32_t tileSizeY, uint32_t tileSizeZ);
+    std::shared_ptr<ImageToBufferCopyPass> imageToBufferCopyPass;
 
     // For calculating the histogram on the GPU.
     void ensureStagingBufferExists(size_t sizeInBytes);

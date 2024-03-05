@@ -31,6 +31,7 @@
 
 #include <string>
 #include <memory>
+#include <glm/vec3.hpp>
 
 #include <Utils/SciVis/ScalarDataFormat.hpp>
 
@@ -74,7 +75,12 @@ public:
 
     // Buffer mode.
     explicit DeviceCacheEntryType(sgl::vk::BufferPtr vulkanBuffer);
+    DeviceCacheEntryType(sgl::vk::BufferPtr vulkanBuffer, uint32_t tileSizeX, uint32_t tileSizeY, uint32_t tileSizeZ);
     inline const sgl::vk::BufferPtr& getVulkanBuffer() { return vulkanBuffer; }
+    [[nodiscard]] inline uint32_t getBufferTileSizeX() const { return tileSizeX; }
+    [[nodiscard]] inline uint32_t getBufferTileSizeY() const { return tileSizeY; }
+    [[nodiscard]] inline uint32_t getBufferTileSizeZ() const { return tileSizeZ; }
+    [[nodiscard]] inline glm::uvec3 getBufferTileSize() const { return { tileSizeX, tileSizeY, tileSizeZ }; }
 #ifdef SUPPORT_CUDA_INTEROP
     CUdeviceptr getCudaBuffer();
     const sgl::vk::BufferCudaExternalMemoryVkPtr& getBufferCudaExternalMemory();
@@ -84,6 +90,7 @@ private:
     sgl::vk::ImagePtr vulkanImage;
     sgl::vk::ImageSamplerPtr vulkanSampler;
     sgl::vk::BufferPtr vulkanBuffer;
+    uint32_t tileSizeX = 1, tileSizeY = 1, tileSizeZ = 1;
 
     /// Optional, created when @see getVulkanImageView or @see getVulkanTexture are called.
     sgl::vk::ImageViewPtr vulkanImageView;

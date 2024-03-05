@@ -1081,6 +1081,10 @@ void CorrelationCalculator::calculateDevice(int timeStepIdx, int ensembleIdx, co
         }
         referenceValuesBuffer->updateData(
                 sizeof(float) * cs, referenceValuesCpu.data(), renderer->getVkCommandBuffer());
+        renderer->insertBufferMemoryBarrier(
+                VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+                VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                referenceValuesBuffer);
         correlationComputePass->setReferenceValuesBuffer(referenceValuesBuffer);
 #ifdef SUPPORT_CUDA_INTEROP
         correlationComputePass->setReferenceValuesCudaBuffer(referenceValuesCudaBuffer);

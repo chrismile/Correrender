@@ -131,6 +131,11 @@ const sgl::vk::ImageCudaExternalMemoryVkPtr& DeviceCacheEntryType::getImageCudaE
 DeviceCacheEntryType::DeviceCacheEntryType(sgl::vk::BufferPtr vulkanBuffer) : vulkanBuffer(std::move(vulkanBuffer)) {
 }
 
+DeviceCacheEntryType::DeviceCacheEntryType(
+        sgl::vk::BufferPtr vulkanBuffer, uint32_t tileSizeX, uint32_t tileSizeY, uint32_t tileSizeZ)
+        : vulkanBuffer(std::move(vulkanBuffer)), tileSizeX(tileSizeX), tileSizeY(tileSizeY), tileSizeZ(tileSizeZ) {
+}
+
 #ifdef SUPPORT_CUDA_INTEROP
 CUdeviceptr DeviceCacheEntryType::getCudaBuffer() {
     if (!cudaBuffer) {

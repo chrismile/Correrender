@@ -97,6 +97,7 @@
 #include "Renderers/Renderer.hpp"
 #include "Renderers/SceneData.hpp"
 #include "Widgets/ViewManager.hpp"
+#include "CopyImageToBuffer.hpp"
 #include "Histogram.hpp"
 #include "VolumeData.hpp"
 
@@ -214,6 +215,8 @@ VolumeData::VolumeData(sgl::vk::Renderer* renderer) : renderer(renderer), multiV
 
     sgl::vk::ImageSamplerSettings samplerSettings{};
     imageSampler = std::make_shared<sgl::vk::ImageSampler>(device, samplerSettings, 0.0f);
+
+    imageToBufferCopyPass = std::make_shared<ImageToBufferCopyPass>(renderer);
 
     minMaxBufferWritePass = std::make_shared<MinMaxBufferWritePass>(renderer);
     for (int i = 0; i < 2; i++) {
@@ -1234,6 +1237,101 @@ VolumeData::HostCacheEntry VolumeData::getFieldEntryCpu(
     return buffer;
 }
 
+VolumeData::DeviceCacheEntry VolumeData::allocDeviceCacheEntryImage(
+        FieldType fieldType, ScalarDataFormat scalarDataFormat) {
+    sgl::vk::ImageSettings imageSettings{};
+    imageSettings.width = uint32_t(xs);
+    imageSettings.height = uint32_t(ys);
+    imageSettings.depth = uint32_t(zs);
+    imageSettings.imageType = VK_IMAGE_TYPE_3D;
+    if (scalarDataFormat == ScalarDataFormat::FLOAT) {
+        imageSettings.format = fieldType == FieldType::SCALAR ? VK_FORMAT_R32_SFLOAT : VK_FORMAT_R32G32B32A32_SFLOAT;
+    } else if (scalarDataFormat == ScalarDataFormat::BYTE) {
+        imageSettings.format = fieldType == FieldType::SCALAR ? VK_FORMAT_R8_UNORM : VK_FORMAT_R8G8B8A8_UNORM;
+    } else if (scalarDataFormat == ScalarDataFormat::SHORT) {
+        imageSettings.format = fieldType == FieldType::SCALAR ? VK_FORMAT_R16_UNORM : VK_FORMAT_R16G16B16A16_UNORM;
+    } else if (scalarDataFormat == ScalarDataFormat::FLOAT16) {
+        imageSettings.format = fieldType == FieldType::SCALAR ? VK_FORMAT_R16_SFLOAT : VK_FORMAT_R16G16B16A16_SFLOAT;
+    }
+    imageSettings.tiling = VK_IMAGE_TILING_OPTIMAL;
+    imageSettings.usage =
+            VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
+            | VK_IMAGE_USAGE_STORAGE_BIT;
+    imageSettings.memoryUsage = VMA_MEMORY_USAGE_GPU_ONLY;
+
+#ifdef SUPPORT_CUDA_INTEROP
+    bool canUseCuda = sgl::vk::getIsCudaDeviceApiFunctionTableInitialized();
+#else
+    bool canUseCuda = false;
+#endif
+    imageSettings.exportMemory = canUseCuda;
+
+    /*
+     * https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkMemoryGetWin32HandleInfoKHR.html
+     * "If handleType is defined as an NT handle, vkGetMemoryWin32HandleKHR must be called no more than once for each valid
+     * unique combination of memory and handleType"
+     * TODO: On Windows the application can only use non-dedicated allocations when it has been figured out that the handle
+     * is only exported once.
+     */
+#ifdef _WIN32
+    imageSettings.useDedicatedAllocationForExportedMemory = true;
+#else
+    imageSettings.useDedicatedAllocationForExportedMemory = false;
+#endif
+
+    auto image = std::make_shared<sgl::vk::Image>(device, imageSettings);
+    auto deviceCacheEntry = std::make_shared<DeviceCacheEntry::element_type>(image, imageSampler);
+    return deviceCacheEntry;
+}
+
+VolumeData::DeviceCacheEntry VolumeData::allocDeviceCacheEntryBuffer(
+        size_t& bufferSize, FieldAccess& access,
+        bool tileBufferMemory, uint32_t tileSizeX, uint32_t tileSizeY, uint32_t tileSizeZ) {
+#ifdef SUPPORT_CUDA_INTEROP
+    bool canUseCuda = sgl::vk::getIsCudaDeviceApiFunctionTableInitialized();
+#else
+    bool canUseCuda = false;
+#endif
+    if (tileBufferMemory) {
+        bufferSize =
+                4 * size_t(sgl::uiceil(uint32_t(xs), tileSizeX) * tileSizeX)
+                * size_t(sgl::uiceil(uint32_t(ys), tileSizeY) * tileSizeY)
+                * size_t(sgl::uiceil(uint32_t(zs), tileSizeZ) * tileSizeZ);
+        access.sizeInBytes = bufferSize;
+    }
+    VkBufferUsageFlags bufferUsage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+    auto buffer = std::make_shared<sgl::vk::Buffer>(
+            device, bufferSize, bufferUsage, VMA_MEMORY_USAGE_GPU_ONLY, true, canUseCuda, false);
+    auto deviceCacheEntry = std::make_shared<DeviceCacheEntry::element_type>(
+            buffer, tileSizeX, tileSizeY, tileSizeZ);
+    return deviceCacheEntry;
+}
+
+void VolumeData::copyCacheEntryImageToBuffer(
+        VolumeData::DeviceCacheEntry& deviceCacheEntryImage, VolumeData::DeviceCacheEntry& deviceCacheEntryBuffer) {
+    auto buffer = deviceCacheEntryBuffer->getVulkanBuffer();
+    auto tileSize = deviceCacheEntryBuffer->getBufferTileSize();
+    if (tileSize == glm::uvec3(1, 1, 1)) {
+        auto image = deviceCacheEntryImage->getVulkanImage();
+        image->transitionImageLayout(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, renderer->getVkCommandBuffer());
+        image->copyToBuffer(buffer, renderer->getVkCommandBuffer());
+        renderer->insertImageMemoryBarrier(
+                image,
+                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL,
+                VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                VK_ACCESS_TRANSFER_READ_BIT, VK_ACCESS_SHADER_READ_BIT);
+    } else {
+        auto image = deviceCacheEntryImage->getVulkanImageView();
+        image->transitionImageLayout(VK_IMAGE_LAYOUT_GENERAL, renderer->getVkCommandBuffer());
+        imageToBufferCopyPass->setData(xs, ys, zs, image, buffer, tileSize);
+        imageToBufferCopyPass->render();
+    }
+    renderer->syncWithCpu();
+    if (tileSize != glm::uvec3(1, 1, 1)) {
+        imageToBufferCopyPass->resetData();
+    }
+}
+
 VolumeData::DeviceCacheEntry VolumeData::getFieldEntryDevice(
         FieldType fieldType, const std::string& fieldName, int timeStepIdx, int ensembleIdx,
         bool wantsImageData, const glm::uvec3& bufferTileSize) {
@@ -1260,12 +1358,6 @@ VolumeData::DeviceCacheEntry VolumeData::getFieldEntryDevice(
     size_t bufferSize = getSlice3dSizeInBytes(fieldType, scalarDataFormat);
     deviceFieldCache->ensureSufficientMemory(bufferSize);
 
-#ifdef SUPPORT_CUDA_INTEROP
-    bool canUseCuda = sgl::vk::getIsCudaDeviceApiFunctionTableInitialized();
-#else
-    bool canUseCuda = false;
-#endif
-
     bool tileBufferMemory = bufferTileSize.x > 1 || bufferTileSize.y > 1 || bufferTileSize.z > 1;
     const uint32_t tileSizeX = bufferTileSize.x;
     const uint32_t tileSizeY = bufferTileSize.y;
@@ -1273,54 +1365,10 @@ VolumeData::DeviceCacheEntry VolumeData::getFieldEntryDevice(
 
     DeviceCacheEntry deviceCacheEntry;
     if (wantsImageData) {
-        sgl::vk::ImageSettings imageSettings{};
-        imageSettings.width = uint32_t(xs);
-        imageSettings.height = uint32_t(ys);
-        imageSettings.depth = uint32_t(zs);
-        imageSettings.imageType = VK_IMAGE_TYPE_3D;
-        if (scalarDataFormat == ScalarDataFormat::FLOAT) {
-            imageSettings.format = fieldType == FieldType::SCALAR ? VK_FORMAT_R32_SFLOAT : VK_FORMAT_R32G32B32A32_SFLOAT;
-        } else if (scalarDataFormat == ScalarDataFormat::BYTE) {
-            imageSettings.format = fieldType == FieldType::SCALAR ? VK_FORMAT_R8_UNORM : VK_FORMAT_R8G8B8A8_UNORM;
-        } else if (scalarDataFormat == ScalarDataFormat::SHORT) {
-            imageSettings.format = fieldType == FieldType::SCALAR ? VK_FORMAT_R16_UNORM : VK_FORMAT_R16G16B16A16_UNORM;
-        } else if (scalarDataFormat == ScalarDataFormat::FLOAT16) {
-            imageSettings.format = fieldType == FieldType::SCALAR ? VK_FORMAT_R16_SFLOAT : VK_FORMAT_R16G16B16A16_SFLOAT;
-        }
-        imageSettings.tiling = VK_IMAGE_TILING_OPTIMAL;
-        imageSettings.usage =
-                VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
-                | VK_IMAGE_USAGE_STORAGE_BIT;
-        imageSettings.memoryUsage = VMA_MEMORY_USAGE_GPU_ONLY;
-        imageSettings.exportMemory = canUseCuda;
-        
-        /*
-         * https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkMemoryGetWin32HandleInfoKHR.html
-         * "If handleType is defined as an NT handle, vkGetMemoryWin32HandleKHR must be called no more than once for each valid
-         * unique combination of memory and handleType"
-         * TODO: On Windows the application can only use non-dedicated allocations when it has been figured out that the handle
-         * is only exported once.
-         */
-#ifdef _WIN32
-        imageSettings.useDedicatedAllocationForExportedMemory = true;
-#else
-        imageSettings.useDedicatedAllocationForExportedMemory = false;
-#endif
-
-        auto image = std::make_shared<sgl::vk::Image>(device, imageSettings);
-        deviceCacheEntry = std::make_shared<DeviceCacheEntry::element_type>(image, imageSampler);
+        deviceCacheEntry = allocDeviceCacheEntryImage(fieldType, scalarDataFormat);
     } else {
-        if (tileBufferMemory) {
-            bufferSize =
-                    4 * size_t(sgl::uiceil(uint32_t(xs), tileSizeX) * tileSizeX)
-                    * size_t(sgl::uiceil(uint32_t(ys), tileSizeY) * tileSizeY)
-                    * size_t(sgl::uiceil(uint32_t(zs), tileSizeZ) * tileSizeZ);
-            access.sizeInBytes = bufferSize;
-        }
-        VkBufferUsageFlags bufferUsage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-        auto buffer = std::make_shared<sgl::vk::Buffer>(
-                device, bufferSize, bufferUsage, VMA_MEMORY_USAGE_GPU_ONLY, true, canUseCuda, false);
-        deviceCacheEntry = std::make_shared<DeviceCacheEntry::element_type>(buffer);
+        deviceCacheEntry = allocDeviceCacheEntryBuffer(
+                bufferSize, access, tileBufferMemory, tileSizeX, tileSizeY, tileSizeZ);
     }
 
     if (itCalc != calculatorsDevice.end()) {
@@ -1330,7 +1378,15 @@ VolumeData::DeviceCacheEntry VolumeData::getFieldEntryDevice(
                     "Error in VolumeData::getFieldEntryDevice: Mismatch between field type and calculator output for "
                     "field \"" + fieldName + "\".");
         }
-        calculator->calculateDevice(timeStepIdx, ensembleIdx, deviceCacheEntry);
+
+        // All calculators so far output their data to images.
+        if (!wantsImageData && !calculator->getSupportsBufferOutput()) {
+            auto deviceCacheEntryImage = allocDeviceCacheEntryImage(fieldType, scalarDataFormat);
+            calculator->calculateDevice(timeStepIdx, ensembleIdx, deviceCacheEntryImage);
+            copyCacheEntryImageToBuffer(deviceCacheEntryImage, deviceCacheEntry);
+        } else {
+            calculator->calculateDevice(timeStepIdx, ensembleIdx, deviceCacheEntry);
+        }
     } else if (wantsImageData) {
         auto& image = deviceCacheEntry->getVulkanImage();
         if (fieldType == FieldType::SCALAR) {
@@ -1678,6 +1734,7 @@ void VolumeData::renderGuiCalculators(sgl::PropertyEditor& propertyEditor) {
         }
     }
 
+    std::vector<Calculator*> calculatorResetTfWindowList;
     for (int calculatorIdx = 0; calculatorIdx < int(calculators.size()); calculatorIdx++) {
         CalculatorPtr calculator = calculators.at(calculatorIdx);
         if (!calculator->getShouldRenderGui()) {
@@ -1702,8 +1759,30 @@ void VolumeData::renderGuiCalculators(sgl::PropertyEditor& propertyEditor) {
         }
         if (calculator->getIsDirty()) {
             updateCalculator(calculator);
+            calculatorResetTfWindowList.push_back(calculator.get());
             dirty = true;
             reRender = true;
+        }
+    }
+
+    // The code below was moved outside updateCalculator to avoid the use of invalid cache resources in
+    // setAttributeDataDirty.
+    auto& fieldNames = typeToFieldNamesMap[FieldType::SCALAR];
+    for (Calculator* calculator : calculatorResetTfWindowList) {
+        if (calculator->getOutputFieldType() == FieldType::SCALAR) {
+            int fieldNameIdx = 0;
+            for (auto& fieldName : fieldNames) {
+                if (fieldName == calculator->getOutputFieldName()) {
+                    break;
+                }
+                fieldNameIdx++;
+            }
+            if (fieldNameIdx == int(fieldNames.size())) {
+                sgl::Logfile::get()->throwError(
+                        "Error in VolumeData::updateCalculator: Invalid field name \""
+                        + calculator->getOutputFieldName() + "\".");
+            }
+            multiVarTransferFunctionWindow.setAttributeDataDirty(fieldNameIdx);
         }
     }
 }
@@ -2105,23 +2184,6 @@ void VolumeData::updateCalculator(const CalculatorPtr& calculator) {
     hostFieldCache->removeEntriesForFieldName(calculator->getOutputFieldName());
     deviceFieldCache->removeEntriesForFieldName(calculator->getOutputFieldName());
     fieldMinMaxCache->removeEntriesForFieldName(calculator->getOutputFieldName());
-
-    if (calculator->getOutputFieldType() == FieldType::SCALAR) {
-        auto& fieldNames = typeToFieldNamesMap[calculator->getOutputFieldType()];
-        int fieldNameIdx = 0;
-        for (auto& fieldName : fieldNames) {
-            if (fieldName == calculator->getOutputFieldName()) {
-                break;
-            }
-            fieldNameIdx++;
-        }
-        if (fieldNameIdx == int(fieldNames.size())) {
-            sgl::Logfile::get()->throwError(
-                    "Error in VolumeData::updateCalculator: Invalid field name \""
-                    + calculator->getOutputFieldName() + "\".");
-        }
-        multiVarTransferFunctionWindow.setAttributeDataDirty(fieldNameIdx);
-    }
 }
 
 void VolumeData::removeCalculator(const CalculatorPtr& calculator, int calculatorIdx) {
