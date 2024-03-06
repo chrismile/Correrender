@@ -1965,6 +1965,16 @@ void MainApp::prepareVisualizationPipeline() {
                 volumeRenderer->resetDirty();
             }
         }
+
+        // For rendering restriction enforced by calculators.
+        bool reloadRendererShaders = volumeData->getShallReloadRendererShaders();
+        if (reloadRendererShaders) {
+            rendererVk->getDevice()->waitIdle();
+            reRender = true;
+            for (auto& volumeRenderer : volumeRenderers) {
+                volumeRenderer->reloadShaders();
+            }
+        }
     }
     newDataLoaded = false;
 }

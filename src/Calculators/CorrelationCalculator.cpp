@@ -193,6 +193,9 @@ void ICorrelationCalculator::setReferencePoint(const glm::ivec3& referencePoint)
         referencePointIndex = referencePoint;
         referencePointIndex = glm::clamp(referencePointIndex, glm::ivec3(0), maxCoord);
         referencePointSelectionRenderer->setReferencePosition(referencePointIndex);
+        if (useRenderRestriction) {
+            setRenderRestrictionData();
+        }
         dirty = true;
     }
 }
@@ -317,6 +320,38 @@ void ICorrelationCalculator::renderGuiImplAdvanced(sgl::PropertyEditor& property
             volumeData->displayLayerInfo(propertyEditor, fixedZPlane);
         }
     }
+
+    bool useRenderRestrictionDirty = false;
+    if (propertyEditor.addCheckbox("Restrict Rendering", &useRenderRestriction)) {
+        useRenderRestrictionDirty = true;
+    }
+    if (useRenderRestriction) {
+        if (propertyEditor.addSliderFloat("Rendering Radius", &renderRestrictionRadius, 0.01f, 0.5f)) {
+            useRenderRestrictionDirty = true;
+        }
+        if (propertyEditor.addCombo(
+                "Distance Metric", (int*)&renderRestrictionDistanceMetric,
+                DISTANCE_METRIC_NAMES, IM_ARRAYSIZE(DISTANCE_METRIC_NAMES))) {
+            useRenderRestrictionDirty = true;
+        }
+    }
+    if (useRenderRestrictionDirty) {
+        setRenderRestrictionData();
+    }
+}
+
+void ICorrelationCalculator::setRenderRestrictionData() {
+    if (useRenderRestriction) {
+        glm::ivec3 maxCoord(
+                volumeData->getGridSizeX() - 1, volumeData->getGridSizeY() - 1, volumeData->getGridSizeZ() - 1);
+        glm::vec3 normalizedPosition = glm::vec3(referencePointIndex) / glm::vec3(maxCoord);
+        sgl::AABB3 gridAabb = volumeData->getBoundingBoxRendering();
+        auto position = normalizedPosition * (gridAabb.max - gridAabb.min) + gridAabb.min;
+        volumeData->setRenderRestriction(
+                this, renderRestrictionDistanceMetric, position, renderRestrictionRadius);
+    } else {
+        volumeData->resetRenderRestriction(this);
+    }
 }
 
 bool ICorrelationCalculator::getSupportsBufferMode() {
@@ -418,6 +453,30 @@ void ICorrelationCalculator::setSettings(const SettingsMap& settings) {
     if (settings.getValueOpt("fixed_z_plane_percentage", fixedZPlanePercentage)) {
         pointPicker->onUpdatePositionFixed();
     }
+
+    bool useRenderRestrictionDirty = false;
+    if (settings.getValueOpt("restrict_rendering",useRenderRestriction)) {
+        useRenderRestrictionDirty = true;
+    }
+    if (useRenderRestriction) {
+        if (settings.getValueOpt("render_restriction_radius", renderRestrictionRadius)) {
+            useRenderRestrictionDirty = true;
+        }
+        std::string distanceMetricString;
+        if (settings.getValueOpt("distance_metric", distanceMetricString)) {
+            for (int i = 0; i < IM_ARRAYSIZE(DISTANCE_METRIC_NAMES); i++) {
+                if (distanceMetricString == DISTANCE_METRIC_NAMES[i]) {
+                    renderRestrictionDistanceMetric = DistanceMetric(i);
+                    break;
+                }
+            }
+            clearFieldDeviceData();
+            dirty = true;
+        }
+    }
+    if (useRenderRestrictionDirty) {
+        setRenderRestrictionData();
+    }
 }
 
 void ICorrelationCalculator::getSettings(SettingsMap& settings) {
@@ -442,6 +501,12 @@ void ICorrelationCalculator::getSettings(SettingsMap& settings) {
     settings.addKeyValue("use_buffer_tiling", useBufferTiling);
     settings.addKeyValue("fix_picking_z", fixPickingZPlane);
     settings.addKeyValue("fixed_z_plane_percentage", fixedZPlanePercentage);
+
+    settings.addKeyValue("restrict_rendering", useRenderRestriction);
+    if (useRenderRestriction) {
+        settings.addKeyValue("render_restriction_radius", renderRestrictionRadius);
+        settings.addKeyValue("distance_metric", DISTANCE_METRIC_NAMES[int(renderRestrictionDistanceMetric)]);
+    }
 }
 
 

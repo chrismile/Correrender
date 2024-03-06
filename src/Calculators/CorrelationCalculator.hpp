@@ -33,6 +33,7 @@
 #include <glm/vec3.hpp>
 #include <Graphics/Vulkan/Render/Passes/Pass.hpp>
 
+#include "Volume/DistanceMetrics.hpp"
 #include "Volume/Cache/HostCacheEntry.hpp"
 #include "Volume/Cache/DeviceCacheEntry.hpp"
 #include "Calculator.hpp"
@@ -93,6 +94,7 @@ protected:
     virtual void clearFieldDeviceData()=0;
     virtual bool getSupportsBufferMode();
     virtual bool getSupportsSeparateFields();
+    void setRenderRestrictionData();
     /// For SRNs that may not require the field data, but only the position and/or field index.
     [[nodiscard]] virtual bool getNeedsScalarFieldData() const { return true; }
 
@@ -116,6 +118,11 @@ protected:
     std::shared_ptr<PointPicker> pointPicker;
     bool fixPickingZPlane = true;
     float fixedZPlanePercentage = 0.5f;
+
+    // Render restriction that can be set by calculators.
+    bool useRenderRestriction = false;
+    float renderRestrictionRadius = 0.05f; ///< Position + radius.
+    DistanceMetric renderRestrictionDistanceMetric = DistanceMetric::EUCLIDEAN;
 };
 
 

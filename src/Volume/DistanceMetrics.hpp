@@ -1,7 +1,7 @@
 /*
  * BSD 2-Clause License
  *
- * Copyright (c) 2022, Christoph Neuhauser
+ * Copyright (c) 2024, Christoph Neuhauser
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -26,55 +26,14 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
--- Vertex
+#ifndef CORRERENDER_DISTANCEMETRICS_HPP
+#define CORRERENDER_DISTANCEMETRICS_HPP
 
-#version 450 core
-
-layout(location = 0) in vec3 vertexPosition;
-layout(location = 1) in vec3 vertexNormal;
-layout(location = 0) out vec3 fragmentPositionWorld;
-layout(location = 1) out vec3 fragmentNormal;
-
-void main() {
-    fragmentPositionWorld = vertexPosition;
-    fragmentNormal = vertexNormal;
-    gl_Position = mvpMatrix * vec4(vertexPosition, 1.0);
-}
-
-
--- Fragment
-
-#version 450 core
-
-layout(binding = 0) uniform RendererUniformDataBuffer {
-    vec3 cameraPosition;
-    float isoValue;
-    vec4 isoSurfaceColor;
+enum class DistanceMetric {
+    EUCLIDEAN, CHEBYSHEV
+};
+const char* const DISTANCE_METRIC_NAMES[] = {
+        "Euclidean", "Chebyshev"
 };
 
-layout(location = 0) in vec3 fragmentPositionWorld;
-layout(location = 1) in vec3 fragmentNormal;
-layout(location = 0) out vec4 fragColor;
-
-#include "Lighting.glsl"
-
-#ifdef USE_RENDER_RESTRICTION
-#include "UniformData.glsl"
-#include "RenderRestriction.glsl"
-#endif
-
-void main() {
-#ifdef USE_RENDER_RESTRICTION
-    if (!getShouldRender(fragmentPositionWorld)) {
-        discard;
-    }
-#endif
-
-    vec3 tangentX = dFdx(fragmentPositionWorld);
-    vec3 tangentY = dFdy(fragmentPositionWorld);
-    //vec3 n = normalize(cross(tangentX, tangentY));
-    vec3 n = normalize(fragmentNormal);
-    vec4 color = blinnPhongShadingSurface(isoSurfaceColor, fragmentPositionWorld, n);
-    fragColor = color;
-    //fragColor = vec4(n * 0.5 + vec3(0.5), 1.0);
-}
+#endif //CORRERENDER_DISTANCEMETRICS_HPP

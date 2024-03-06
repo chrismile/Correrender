@@ -337,6 +337,12 @@ void IsoSurfaceRasterizer::getSettings(SettingsMap& settings) {
     settings.addKeyValue("export_file_path", exportFilePath);
 }
 
+void IsoSurfaceRasterizer::reloadShaders() {
+    for (auto& isoSurfaceRasterPass : isoSurfaceRasterPasses) {
+        isoSurfaceRasterPass->setShaderDirty();
+    }
+}
+
 
 
 IsoSurfaceRasterPass::IsoSurfaceRasterPass(sgl::vk::Renderer* renderer, SceneData* sceneData)

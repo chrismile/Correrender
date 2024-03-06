@@ -240,6 +240,12 @@ void IsoSurfaceRayCastingRenderer::getSettings(SettingsMap& settings) {
     settings.addKeyValue("iso_surface_color_a", isoSurfaceColor.a);
 }
 
+void IsoSurfaceRayCastingRenderer::reloadShaders() {
+    for (auto& isoSurfaceRayCastingPass : isoSurfaceRayCastingPasses) {
+        isoSurfaceRayCastingPass->setShaderDirty();
+    }
+}
+
 
 
 IsoSurfaceRayCastingPass::IsoSurfaceRayCastingPass(sgl::vk::Renderer* renderer, SceneData* sceneData)

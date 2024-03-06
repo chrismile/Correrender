@@ -219,6 +219,10 @@ VolumeData::VolumeData(sgl::vk::Renderer* renderer) : renderer(renderer), multiV
     sgl::vk::ImageSamplerSettings samplerSettings{};
     imageSampler = std::make_shared<sgl::vk::ImageSampler>(device, samplerSettings, 0.0f);
 
+    renderRestrictionUniformBuffer = std::make_shared<sgl::vk::Buffer>(
+            device, 4 * sizeof(float), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+            VMA_MEMORY_USAGE_GPU_ONLY);
+
     imageToBufferCopyPass = std::make_shared<ImageToBufferCopyPass>(renderer);
 
     minMaxBufferWritePass = std::make_shared<MinMaxBufferWritePass>(renderer);
@@ -1663,10 +1667,22 @@ void VolumeData::setRenderDataBindings(const sgl::vk::RenderDataPtr& renderData)
                     multiVarTransferFunctionWindow.getMinMaxSsboVulkan(), "MinMaxBuffer");
         }
     }
+    if (renderData->getShaderStages()->hasDescriptorBinding(0, "RenderRestrictionUniformBuffer")) {
+        renderData->setStaticBuffer(
+                renderRestrictionUniformBuffer, "RenderRestrictionUniformBuffer");
+    }
 }
 
 void VolumeData::getPreprocessorDefines(std::map<std::string, std::string>& preprocessorDefines) {
     preprocessorDefines.insert(std::make_pair("USE_MULTI_VAR_TRANSFER_FUNCTION", ""));
+    if (useRenderRestriction) {
+        preprocessorDefines.insert(std::make_pair("USE_RENDER_RESTRICTION", ""));
+        if (renderRestrictionDistanceMetric == DistanceMetric::EUCLIDEAN) {
+            preprocessorDefines.insert(std::make_pair("RENDER_RESTRICTION_EUCLIDEAN_DISTANCE", ""));
+        } else if (renderRestrictionDistanceMetric == DistanceMetric::CHEBYSHEV) {
+            preprocessorDefines.insert(std::make_pair("RENDER_RESTRICTION_CHEBYSHEV_DISTANCE", ""));
+        }
+    }
 }
 
 void VolumeData::setBaseFieldsDirty() {
@@ -1708,6 +1724,17 @@ void VolumeData::renderGui(sgl::PropertyEditor& propertyEditor) {
         }
         propertyEditor.addCheckbox("Render Color Legend", &shallRenderColorLegendWidgets);
         propertyEditor.endNode();
+    }
+
+    // Moved from VolumeData::setRenderRestriction, as command buffer is not valid in VolumeData::update.
+    if (useRenderRestriction && renderRestrictionUniformBufferDirty) {
+        renderRestrictionUniformBuffer->updateData(
+                sizeof(glm::vec4), &renderRestriction, renderer->getVkCommandBuffer());
+        renderer->insertBufferMemoryBarrier(
+                VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_UNIFORM_READ_BIT,
+                VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                renderRestrictionUniformBuffer);
+        renderRestrictionUniformBufferDirty = false;
     }
 }
 
@@ -2236,6 +2263,11 @@ void VolumeData::removeCalculator(const CalculatorPtr& calculator, int calculato
         }
     }
 
+    if (renderRestrictionCalculator == calculator.get()) {
+        renderRestrictionCalculator = nullptr;
+        useRenderRestriction = false;
+    }
+
     if (calculator->getOutputFieldType() == FieldType::SCALAR) {
         multiVarTransferFunctionWindow.removeAttribute(fieldNameIdx);
         colorLegendWidgets.erase(colorLegendWidgets.begin() + fieldNameIdx);
@@ -2265,6 +2297,33 @@ void VolumeData::removeCalculator(const CalculatorPtr& calculator, int calculato
         for (auto& calculatorIt : calculators) {
             calculatorIt->onFieldRemoved(calculator->getOutputFieldType(), fieldNameIdx);
         }
+    }
+}
+
+void VolumeData::setRenderRestriction(
+        Calculator* calculator, DistanceMetric distanceMetric, const glm::vec3& position, float radius) {
+    if (!renderRestrictionCalculator) {
+        renderRestrictionCalculator = calculator;
+        useRenderRestriction = true;
+        shallReloadRendererShaders = true;
+    }
+    glm::vec4 uniformData = glm::vec4(position, radius);
+    if (uniformData != renderRestriction) {
+        renderRestriction = uniformData;
+        renderRestrictionUniformBufferDirty = true;
+        reRender = true;
+    }
+    if (distanceMetric != renderRestrictionDistanceMetric) {
+        renderRestrictionDistanceMetric = distanceMetric;
+        shallReloadRendererShaders = true;
+    }
+}
+
+void VolumeData::resetRenderRestriction(Calculator* calculator) {
+    if (renderRestrictionCalculator == calculator) {
+        renderRestrictionCalculator = nullptr;
+        useRenderRestriction = false;
+        shallReloadRendererShaders = true;
     }
 }
 

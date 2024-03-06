@@ -59,6 +59,10 @@ float closestDepth;
 #include "UniformData.glsl"
 #include "TransferFunction.glsl"
 
+#ifdef USE_RENDER_RESTRICTION
+#include "RenderRestriction.glsl"
+#endif
+
 void main() {
     ivec2 outputImageSize = imageSize(outputImage);
     ivec2 imageCoords = ivec2(gl_GlobalInvocationID.xy);
@@ -97,16 +101,26 @@ void main() {
                 break;
             }
 #endif
+            
+#ifdef USE_RENDER_RESTRICTION
+            if (getShouldRender(currentPoint)) {
+#endif
+                
             vec3 texCoords = (currentPoint - minBoundingBox) / (maxBoundingBox - minBoundingBox);
 
             float scalarValue = texture(scalarField, texCoords).r;
             vec4 volumeColor = transferFunction(scalarValue, fieldIndex);
-            float alpha = 1 - exp(-volumeColor.a * stepSize * attenuationCoefficient);
+            float alpha = 1.0 - exp(-volumeColor.a * stepSize * attenuationCoefficient);
             vec4 color = vec4(volumeColor.rgb, alpha);
 
             if (blend(color, outputColor)) {
                 break;
             }
+            
+#ifdef USE_RENDER_RESTRICTION
+            }
+#endif
+            
             currentPoint += rayDirection * stepSize;
         }
 

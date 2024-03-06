@@ -104,6 +104,8 @@ public:
 
     /// Called when the transfer function was changed.
     virtual void onTransferFunctionMapRebuilt() {}
+    /// Called when a calculator demands the reloading of shaders via VolumeData.
+    virtual void reloadShaders() {}
 
     virtual void setVolumeData(VolumeDataPtr& volumeData, bool isNewData) = 0;
     virtual void onFieldRemoved(FieldType fieldType, int fieldIdx) {}

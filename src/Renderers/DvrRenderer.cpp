@@ -335,6 +335,12 @@ void DvrRenderer::getSettings(SettingsMap& settings) {
     settings.addKeyValue("export_file_path", exportFilePath);
 }
 
+void DvrRenderer::reloadShaders() {
+    for (auto& dvrPass : dvrPasses) {
+        dvrPass->setShaderDirty();
+    }
+}
+
 
 
 DvrPass::DvrPass(sgl::vk::Renderer* renderer, SceneData* sceneData)

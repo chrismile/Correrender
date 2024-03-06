@@ -48,6 +48,7 @@
 #include "Cache/FieldCache.hpp"
 #include "Cache/DeviceCacheEntry.hpp"
 #include "Cache/HostCacheEntry.hpp"
+#include "DistanceMetrics.hpp"
 #include "FieldType.hpp"
 #include "FieldAccess.hpp"
 
@@ -210,6 +211,11 @@ public:
     void resetDirty();
     /// Returns if the data needs to be re-rendered, but the visualization mapping is valid.
     virtual bool needsReRender() { bool tmp = reRender; reRender = false; return tmp; }
+    [[nodiscard]] inline bool getShallReloadRendererShaders() {
+        bool tmp = shallReloadRendererShaders;
+        shallReloadRendererShaders = false;
+        return tmp;
+    }
 
     // TODO
     /// For changing performance measurement modes.
@@ -277,6 +283,11 @@ public:
 
     // Tracks use count of calculator classes.
     size_t getNewCalculatorUseCount(CalculatorType calculatorType);
+
+    // For restricting the volume rendering to certain areas.
+    void setRenderRestriction(
+            Calculator* calculator, DistanceMetric distanceMetric, const glm::vec3& position, float radius);
+    void resetRenderRestriction(Calculator* calculator);
 
     /**
      * Picks a point on the simulation domain boundary mesh using screen coordinates
@@ -372,6 +383,19 @@ protected:
     std::vector<sgl::ColorLegendWidget> colorLegendWidgets;
     /// Keep track of transfer function use in renderers to display overlays in renderer.
     std::unordered_multimap<int, Renderer*> transferFunctionToRendererMap;
+
+    /*
+     * Render restriction that can be set by calculators.
+     * TODO: This should be done per view, but currently setRenderDataBindings and getPreprocessorDefines are not yet
+     * view-dependent.
+     */
+    bool useRenderRestriction = false;
+    Calculator* renderRestrictionCalculator = nullptr;
+    glm::vec4 renderRestriction{}; ///< Position + radius.
+    sgl::vk::BufferPtr renderRestrictionUniformBuffer{};
+    bool renderRestrictionUniformBufferDirty = true;
+    DistanceMetric renderRestrictionDistanceMetric = DistanceMetric::EUCLIDEAN;
+    bool shallReloadRendererShaders = false;
 
     /*
      * Keep track of which scalar fields are used in which view to only display auxiliary calculator renderers

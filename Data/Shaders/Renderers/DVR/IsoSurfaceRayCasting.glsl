@@ -72,6 +72,10 @@ ivec3 gridSize;
 #include "UniformData.glsl"
 #include "Lighting.glsl"
 
+#ifdef USE_RENDER_RESTRICTION
+#include "RenderRestriction.glsl"
+#endif
+
 #define DIFFERENCES_NEIGHBOR
 vec3 computeGradient(vec3 texCoords) {
 #ifdef DIFFERENCES_NEIGHBOR
@@ -508,11 +512,17 @@ vec4 traverseVoxelGridAnalytic(vec3 rayDirection, vec3 startPoint, vec3 endPoint
                 float tHit = tNearHit + (tFarHit - tNearHit) * (isoValue - rho0) / (rho1 - rho0);
                 vec3 currentPoint = gridToWorldPos(startPoint + tHit * rayDirection);
                 if (all(greaterThan(currentPoint, minBoundingBox)) && all(lessThan(currentPoint, maxBoundingBox))) {
+#ifdef USE_RENDER_RESTRICTION
+                    if (getShouldRender(currentPoint)) {
+#endif
                     vec4 color = getIsoSurfaceHitColor(currentPoint);
                     if (blend(color, outputColor)) {
                         // Early ray termination.
                         return outputColor;
                     }
+#ifdef USE_RENDER_RESTRICTION
+                    }
+#endif
                 }
             }
 #elif defined(SOLVER_LINEAR_INTERPOLATION_MANUAL)
@@ -524,11 +534,17 @@ vec4 traverseVoxelGridAnalytic(vec3 rayDirection, vec3 startPoint, vec3 endPoint
                 float tHit = tNearHit + (tFarHit - tNearHit) * f0 / (f0 - f1);
                 vec3 currentPoint = gridToWorldPos(startPoint + tHit * rayDirection);
                 if (all(greaterThan(currentPoint, minBoundingBox)) && all(lessThan(currentPoint, maxBoundingBox))) {
+#ifdef USE_RENDER_RESTRICTION
+                    if (getShouldRender(currentPoint)) {
+#endif
                     vec4 color = getIsoSurfaceHitColor(currentPoint);
                     if (blend(color, outputColor)) {
                         // Early ray termination.
                         return outputColor;
                     }
+#ifdef USE_RENDER_RESTRICTION
+                    }
+#endif
                 }
             }
 #elif defined(SOLVER_NEUBAUER)
@@ -554,11 +570,17 @@ vec4 traverseVoxelGridAnalytic(vec3 rayDirection, vec3 startPoint, vec3 endPoint
                 float tHit = t0 + (t1 - t0) * (isoValue - rho0) / (rho1 - rho0);
                 vec3 currentPoint = gridToWorldPos(startPoint + tHit * rayDirection);
                 if (all(greaterThan(currentPoint, minBoundingBox)) && all(lessThan(currentPoint, maxBoundingBox))) {
+#ifdef USE_RENDER_RESTRICTION
+                    if (getShouldRender(currentPoint)) {
+#endif
                     vec4 color = getIsoSurfaceHitColor(currentPoint);
                     if (blend(color, outputColor)) {
                         // Early ray termination.
                         return outputColor;
                     }
+#ifdef USE_RENDER_RESTRICTION
+                    }
+#endif
                 }
             }
 #elif defined(SOLVER_MARMITT)
@@ -569,11 +591,17 @@ vec4 traverseVoxelGridAnalytic(vec3 rayDirection, vec3 startPoint, vec3 endPoint
             if (hasSolution) {
                 vec3 currentPoint = gridToWorldPos(startPoint + tHit * rayDirection);
                 if (all(greaterThan(currentPoint, minBoundingBox)) && all(lessThan(currentPoint, maxBoundingBox))) {
+#ifdef USE_RENDER_RESTRICTION
+                    if (getShouldRender(currentPoint)) {
+#endif
                     vec4 color = getIsoSurfaceHitColor(currentPoint);
                     if (blend(color, outputColor)) {
                         // Early ray termination.
                         return outputColor;
                     }
+#ifdef USE_RENDER_RESTRICTION
+                    }
+#endif
                 }
             }
 #elif defined(SOLVER_MARMITT_MANUAL)
@@ -584,11 +612,17 @@ vec4 traverseVoxelGridAnalytic(vec3 rayDirection, vec3 startPoint, vec3 endPoint
             if (hasSolution) {
                 vec3 currentPoint = gridToWorldPos(startPoint + tHit * rayDirection);
                 if (all(greaterThan(currentPoint, minBoundingBox)) && all(lessThan(currentPoint, maxBoundingBox))) {
+#ifdef USE_RENDER_RESTRICTION
+                    if (getShouldRender(currentPoint)) {
+#endif
                     vec4 color = getIsoSurfaceHitColor(currentPoint);
                     if (blend(color, outputColor)) {
                         // Early ray termination.
                         return outputColor;
                     }
+#ifdef USE_RENDER_RESTRICTION
+                    }
+#endif
                 }
             }
 #endif
@@ -645,10 +679,16 @@ vec4 traverseVoxelGridRayMarching(vec3 currentPoint, vec3 rayDirection, vec3 ent
 
             if (lastScalarSign != currentScalarSign) {
                 refineIsoSurfaceHit(currentPoint, rayDirection, currentScalarSign);
+#ifdef USE_RENDER_RESTRICTION
+                if (getShouldRender(currentPoint)) {
+#endif
                 vec4 color = getIsoSurfaceHitColor(currentPoint);
                 if (blend(color, outputColor)) {
                     break;
                 }
+#ifdef USE_RENDER_RESTRICTION
+                }
+#endif
             }
         }
 
