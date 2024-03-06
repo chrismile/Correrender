@@ -72,11 +72,8 @@ struct DataSetInformation {
     float heightScale = 1.0f;
     bool useFormatCast = false;
     ScalarDataFormat formatTarget = ScalarDataFormat::FLOAT;
-    /**
-     * Metadata reuse for individual time step or ensemble member files can potentially speed up loading.
-     * It is not yet set as default in order to first investigate potential problems.
-     */
-    bool reuseMetadata = false;
+    /// Metadata reuse for individual time step or ensemble member files can potentially speed up loading.
+    bool reuseMetadata = true;
 
     // Date can be left 0. It is used for GRIB files storing time in a date-time format.
     // E.g., "data_date": 20161002, "data_time": 600 can be used for 2016-10-02 6:00.
