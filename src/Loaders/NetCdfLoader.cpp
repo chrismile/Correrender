@@ -218,6 +218,10 @@ bool NetCdfLoader::setInputFiles(
     }
     isOpen = true;
 
+    if (reusedMetadata) {
+        return true;
+    }
+
     // Temporary data for storing information about the variables in the data file.
     int ndims = 0, nvarsp = 0;
     int dimids[NC_MAX_VAR_DIMS];
@@ -582,6 +586,20 @@ bool NetCdfLoader::setInputFiles(
         volumeData->setHeightData(heightData);
     }
 
+    return true;
+}
+
+bool NetCdfLoader::setMetadataFrom(VolumeLoader* other) {
+    auto* otherNc = static_cast<NetCdfLoader*>(other);
+    this->datasetNameMap = otherNc->datasetNameMap;
+    this->xs = otherNc->xs;
+    this->ys = otherNc->ys;
+    this->zs = otherNc->zs;
+    this->ts = otherNc->ts;
+    this->es = otherNc->es;
+    this->varHasFillValueMap = otherNc->varHasFillValueMap;
+    this->fillValueMap = otherNc->fillValueMap;
+    reusedMetadata = true;
     return true;
 }
 

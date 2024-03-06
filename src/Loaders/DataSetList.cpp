@@ -211,6 +211,11 @@ void processDataSetNodeChildren(Json::Value& childList, DataSetInformation* data
             }
         }
 
+        // Optional data: Metadata reuse for individual time step or ensemble member files?
+        if (source.isMember("reuse_metadata")) {
+            dataSetInformation->reuseMetadata = jsonValueToBool(source["reuse_metadata"]);
+        }
+
         if (source.isMember("time")) {
             auto timeElement = source["time"];
             if (timeElement.isString()) {

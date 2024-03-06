@@ -47,6 +47,9 @@ public:
             VolumeData* volumeData, FieldType fieldType, const std::string& fieldName,
             int timestepIdx, int memberIdx, HostCacheEntryType*& fieldEntry) override;
     bool getHasFloat32Data() override { return !dataSetInformation.useFormatCast; }
+    // Metadata reuse for individual time step or ensemble member files can potentially speed up loading.
+    bool getSupportsMetadataReuse() override { return true; }
+    bool setMetadataFrom(VolumeLoader* other) override;
 
 private:
     bool getDimensionExists(const std::string& dimensionName);
@@ -132,6 +135,7 @@ private:
     DataSetInformation dataSetInformation;
     std::unordered_map<std::string, int> datasetNameMap;
     int xs = 0, ys = 0, zs = 0, ts = 0, es = 0;
+    bool reusedMetadata = false;
 
     // Fill values are optional and replaced with NaN for visualization purposes.
     std::vector<bool> varHasFillValueMap;

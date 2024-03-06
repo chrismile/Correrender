@@ -632,6 +632,12 @@ bool VolumeData::setInputFiles(
         if (!volumeLoader) {
             return false;
         }
+        if (i > 0 && dataSetInformation.reuseMetadata && volumeLoader->getSupportsMetadataReuse()) {
+            if (!volumeLoader->setMetadataFrom(volumeLoaders.front())) {
+                delete volumeLoader;
+                return false;
+            }
+        }
         if (!volumeLoader->setInputFiles(this, filePath, dataSetInformation)) {
             delete volumeLoader;
             return false;

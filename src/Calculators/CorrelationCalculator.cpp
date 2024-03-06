@@ -455,7 +455,7 @@ void ICorrelationCalculator::setSettings(const SettingsMap& settings) {
     }
 
     bool useRenderRestrictionDirty = false;
-    if (settings.getValueOpt("restrict_rendering",useRenderRestriction)) {
+    if (settings.getValueOpt("restrict_rendering", useRenderRestriction)) {
         useRenderRestrictionDirty = true;
     }
     if (useRenderRestriction) {

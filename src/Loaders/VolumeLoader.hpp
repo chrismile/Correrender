@@ -46,6 +46,9 @@ public:
             VolumeData* volumeData, FieldType fieldType, const std::string& fieldName,
             int timestepIdx, int memberIdx, HostCacheEntryType*& fieldEntry) = 0;
     virtual bool getHasFloat32Data() { return true; }
+    // Metadata reuse for individual time step or ensemble member files can potentially speed up loading.
+    virtual bool getSupportsMetadataReuse() { return false; }
+    virtual bool setMetadataFrom(VolumeLoader* other) { return false; }
 };
 
 #endif //CORRERENDER_VOLUMELOADER_HPP
