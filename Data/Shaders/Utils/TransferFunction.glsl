@@ -62,10 +62,12 @@ vec4 transferFunction(float attr, uint variableIndex) {
 
 #else
 
+#ifndef TRANSFER_FUNCTION_MIN_MAX_PUSH_CONSTANTS
 layout (binding = MIN_MAX_BUFFER_BINDING) uniform MinMaxUniformBuffer {
     float minAttributeValue;
     float maxAttributeValue;
 };
+#endif
 layout(binding = TRANSFER_FUNCTION_TEXTURE_BINDING) uniform sampler1D transferFunctionTexture;
 
 vec4 transferFunction(float attr) {

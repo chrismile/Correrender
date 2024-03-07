@@ -61,7 +61,7 @@ NetCdfLoader::NetCdfLoader() = default;
 NetCdfLoader::~NetCdfLoader() {
     if (isOpen && nc_close(ncid) != NC_NOERR) {
         sgl::Logfile::get()->throwError(
-                "Error in NetCdfLoader::load: nc_close failed for file \"" + filePath + "\".");
+                "Error in NetCdfLoader::~NetCdfLoader: nc_close failed for file \"" + filePath + "\".");
     }
 }
 

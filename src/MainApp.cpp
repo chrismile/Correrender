@@ -80,6 +80,7 @@
 #include "Renderers/Diagram/DiagramRenderer.hpp"
 #include "Renderers/Diagram/Scatter/ScatterPlotRenderer.hpp"
 #include "Renderers/Diagram/CorrelationMatrix/CorrelationMatrixRenderer.hpp"
+#include "Renderers/Diagram/TimeSeriesCorrelation/TimeSeriesCorrelationRenderer.hpp"
 #include "Utils/CurlWrapper.hpp"
 #include "Utils/AutomaticPerformanceMeasurer.hpp"
 #include "Optimization/TFOptimization.hpp"
@@ -503,11 +504,13 @@ void MainApp::addNewRenderer(RenderingMode renderingMode) {
             renderingMode != RenderingMode::RENDERING_MODE_DIRECT_VOLUME_RENDERING
             && renderingMode != RenderingMode::RENDERING_MODE_DIAGRAM_RENDERER
             && renderingMode != RenderingMode::RENDERING_MODE_SCATTER_PLOT
-            && renderingMode != RenderingMode::RENDERING_MODE_CORRELATION_MATRIX;
+            && renderingMode != RenderingMode::RENDERING_MODE_CORRELATION_MATRIX
+            && renderingMode != RenderingMode::RENDERING_MODE_TIME_SERIES_CORRELATION;
     bool isOverlayRenderer =
             renderingMode == RenderingMode::RENDERING_MODE_DIAGRAM_RENDERER
             || renderingMode == RenderingMode::RENDERING_MODE_SCATTER_PLOT
-            || renderingMode == RenderingMode::RENDERING_MODE_CORRELATION_MATRIX;
+            || renderingMode == RenderingMode::RENDERING_MODE_CORRELATION_MATRIX
+            || renderingMode == RenderingMode::RENDERING_MODE_TIME_SERIES_CORRELATION;
     if (isOpaqueRenderer && !isOverlayRenderer) {
         // Push after last opaque renderer (or at the beginning).
         auto it = volumeRenderers.begin();
@@ -556,6 +559,8 @@ void MainApp::setRenderer(RenderingMode newRenderingMode, RendererPtr& newVolume
         newVolumeRenderer = std::make_shared<ScatterPlotRenderer>(viewManager);
     } else if (newRenderingMode == RENDERING_MODE_CORRELATION_MATRIX) {
         newVolumeRenderer = std::make_shared<CorrelationMatrixRenderer>(viewManager);
+    } else if (newRenderingMode == RENDERING_MODE_TIME_SERIES_CORRELATION) {
+        newVolumeRenderer = std::make_shared<TimeSeriesCorrelationRenderer>(viewManager);
     } else {
         int idx = std::clamp(int(newRenderingMode), 0, IM_ARRAYSIZE(RENDERING_MODE_NAMES) - 1);
         std::string warningText =
@@ -1077,6 +1082,12 @@ void MainApp::renderGui() {
                                     }
                                 }
                                 rendererIdx++;
+                            }
+                        } else {
+                            for (auto& volumeRenderer : volumeRenderers) {
+                                if (volumeRenderer->getShallRenderWithoutData()) {
+                                    volumeRenderer->renderView(viewIdx);
+                                }
                             }
                         }
 
