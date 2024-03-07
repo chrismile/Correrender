@@ -26,7 +26,11 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <boost/algorithm/string/case_conv.hpp>
+#ifdef USE_TBB
+#include <tbb/parallel_for.h>
+#include <tbb/blocked_range.h>
+#endif
+
 #include <json/json.h>
 
 #include <Graphics/Vulkan/Render/Renderer.hpp>
@@ -36,7 +40,6 @@
 #include "Widgets/ViewManager.hpp"
 #include "Utils/InternalState.hpp"
 #include "Calculators/CorrelationDefines.hpp"
-#include "Calculators/Similarity.hpp"
 #include "Calculators/Correlation.hpp"
 #include "Calculators/MutualInformation.hpp"
 #include "Volume/VolumeData.hpp"
