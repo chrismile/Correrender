@@ -48,6 +48,7 @@ public:
     inline void setMouseButton(int _mouseButton) { mouseButton = _mouseButton; }
     void update(float dt);
     void onUpdatePositionFixed();
+    void overwriteFocusPointFromRefPoint(const glm::vec3& _refPoint);
 
 private:
     ViewManager* viewManager;

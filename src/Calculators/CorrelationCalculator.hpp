@@ -104,6 +104,7 @@ protected:
     int fieldIndex = 0, fieldIndexGui = 0;
     int fieldIndex2 = 0, fieldIndex2Gui = 0;
     glm::ivec3 referencePointIndex{};
+    bool dataFromState = false;
     CorrelationDataMode dataMode = CorrelationDataMode::BUFFER_ARRAY;
     bool useBufferTiling = true;
     bool useSeparateFields = false;

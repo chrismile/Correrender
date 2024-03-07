@@ -59,6 +59,13 @@ void PointPicker::onUpdatePositionFixed() {
     setReferencePointFromFocusPoint();
 }
 
+void PointPicker::overwriteFocusPointFromRefPoint(const glm::vec3& _refPoint) {
+    glm::ivec3 maxCoord(
+            volumeData->getGridSizeX() - 1, volumeData->getGridSizeY() - 1, volumeData->getGridSizeZ() - 1);
+    sgl::AABB3 gridAabb = volumeData->getBoundingBoxRendering();
+    focusPoint = _refPoint / glm::vec3(maxCoord) * (gridAabb.max - gridAabb.min) + gridAabb.min;
+}
+
 void PointPicker::update(float dt) {
     // Use mouse for selection of reference point.
     int mouseHoverWindowIndex = viewManager->getMouseHoverWindowIndex();

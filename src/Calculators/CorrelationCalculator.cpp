@@ -430,6 +430,7 @@ void ICorrelationCalculator::setSettings(const SettingsMap& settings) {
     referencePointChanged |= settings.getValueOpt("reference_point_z", referencePointIndex[2]);
     if (referencePointChanged) {
         referencePointSelectionRenderer->setReferencePosition(referencePointIndex);
+        pointPicker->overwriteFocusPointFromRefPoint(referencePointIndex);
         dirty = true;
     }
 
