@@ -177,10 +177,6 @@ void TimeSeriesCorrelationRenderer::recomputeCorrelationMatrix() {
     if (correlationMeasureType == CorrelationMeasureType::PEARSON) {
 #ifdef USE_TBB
         tbb::parallel_for(tbb::blocked_range<int>(0, numGridPoints), [&](auto const& r) {
-            auto* referenceValues = new float[cs];
-            for (int c = 0; c < cs; c++) {
-                referenceValues[c] = fields.at(c)[referencePointIdx];
-            }
             for (auto gridPointIdx = r.begin(); gridPointIdx != r.end(); gridPointIdx++) {
 #else
 #if _OPENMP >= 200805
