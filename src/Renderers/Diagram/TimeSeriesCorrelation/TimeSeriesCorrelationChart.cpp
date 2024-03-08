@@ -308,9 +308,10 @@ void TimeSeriesCorrelationChart::setCorrelationDataBuffer(
 
 void TimeSeriesCorrelationChart::onCorrelationDataRecalculated(
         CorrelationMeasureType _correlationMeasureType,
-        const std::pair<float, float>& _minMaxCorrelationValue) {
+        const std::pair<float, float>& _minMaxCorrelationValue, bool _isNetworkData) {
     correlationMeasureType = _correlationMeasureType;
     minMaxCorrelationValue = _minMaxCorrelationValue;
+    isNetworkData = _isNetworkData;
 }
 
 void TimeSeriesCorrelationChart::onWindowSizeChanged() {
@@ -551,7 +552,14 @@ void TimeSeriesCorrelationChart::drawColorLegends() {
 #else
     auto [minMi, maxMi] = minMaxCorrelationValue;
 #endif
-    std::string variableName = CORRELATION_MEASURE_TYPE_NAMES[int(correlationMeasureType)];
+    std::string variableName;
+    if (isNetworkData) {
+        variableName =
+                correlationMeasureType == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV
+                ? "MI" : "Pearson";
+    } else {
+        variableName = CORRELATION_MEASURE_TYPE_SHORT_NAMES[int(correlationMeasureType)];
+    }
     std::function<glm::vec4(float)> colorMap;
     std::function<std::string(float)> labelMap;
     colorMap = [this](float t) {

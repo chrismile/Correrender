@@ -29,14 +29,11 @@
 #ifndef CORRERENDER_TINYCUDANNCORRELATIONCALCULATOR_HPP
 #define CORRERENDER_TINYCUDANNCORRELATIONCALCULATOR_HPP
 
+#include "TinyCudaNNCorrelationDefines.hpp"
 #include "DeepLearningCudaCorrelationCalculator.hpp"
 
 struct TinyCudaNNModuleWrapper;
 struct TinyCudaNNCacheWrapper;
-
-enum class TinyCudaNNNetworkImplementation {
-    FULLY_FUSED_MLP, CUTLASS_MLP
-};
 
 class TinyCudaNNCorrelationCalculator : public DeepLearningCudaCorrelationCalculator {
 public:

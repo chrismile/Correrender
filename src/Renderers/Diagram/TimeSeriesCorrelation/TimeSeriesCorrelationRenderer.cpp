@@ -54,6 +54,10 @@ TimeSeriesCorrelationRenderer::TimeSeriesCorrelationRenderer(ViewManager* viewMa
     if (sgl::FileUtils::get()->exists(presetsJsonFilename)) {
         parsePresetsFile(presetsJsonFilename);
     }
+
+#ifdef SUPPORT_TINY_CUDA_NN
+    initializeCuda();
+#endif
 }
 
 void TimeSeriesCorrelationRenderer::parsePresetsFile(const std::string& filename) {
@@ -89,6 +93,10 @@ void TimeSeriesCorrelationRenderer::parsePresetsFile(const std::string& filename
 
 TimeSeriesCorrelationRenderer::~TimeSeriesCorrelationRenderer() {
     parentDiagram = {};
+
+#ifdef SUPPORT_TINY_CUDA_NN
+    cleanupCuda();
+#endif
 }
 
 void TimeSeriesCorrelationRenderer::initialize() {
@@ -118,25 +126,27 @@ void TimeSeriesCorrelationRenderer::loadTimeSeriesFromFile(const std::string& fi
         return;
     }
     timeSeriesMetadata = loader->getMetadata();
-    timeSeriesData = loader->loadData();
-    loader->close();
-    delete loader;
-
     if (timeSeriesMetadata.window > 0) {
         windowLength = timeSeriesMetadata.window;
     } else {
         windowLength = 32;
     }
     sidxRef = 0;
-    recomputeCorrelationMatrix();
+    if (modelFilePath.empty()) {
+        timeSeriesData = loader->loadData();
+        recomputeCorrelationMatrix();
+    }
+    loader->close();
+    delete loader;
 }
 
+#ifndef SUPPORT_TINY_CUDA_NN
 void TimeSeriesCorrelationRenderer::loadModelFromFile(const std::string& filePath) {
-    // TODO: Implement.
 }
+#endif
 
 void TimeSeriesCorrelationRenderer::recomputeCorrelationMatrix() {
-    if (!timeSeriesData) {
+    if (!timeSeriesData && !getIsModuleLoaded()) {
         return;
     }
 
@@ -157,18 +167,58 @@ void TimeSeriesCorrelationRenderer::recomputeCorrelationMatrix() {
         maxFieldVal = timeSeriesData->getMaxValue();
     }
 
-    if (cachedNumSamples != timeSeriesMetadata.samples || cachedNumWindows != numWindows) {
+    if (cachedNumSamples != timeSeriesMetadata.samples || cachedNumWindows != numWindows
+            || memoryExported != getIsModuleLoaded()) {
         cachedNumSamples = timeSeriesMetadata.samples;
         cachedNumWindows = numWindows;
+        memoryExported = getIsModuleLoaded();
         correlationDataBuffer = std::make_shared<sgl::vk::Buffer>(
                 renderer->getDevice(), sizeof(float) * cachedNumSamples * cachedNumWindows,
                 VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                VMA_MEMORY_USAGE_GPU_ONLY);
+                VMA_MEMORY_USAGE_GPU_ONLY, true, memoryExported, true);
         correlationDataStagingBuffer = std::make_shared<sgl::vk::Buffer>(
                 renderer->getDevice(), sizeof(float) * cachedNumSamples * cachedNumWindows,
                 VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                 VMA_MEMORY_USAGE_CPU_TO_GPU);
         parentDiagram->setCorrelationDataBuffer(timeSeriesMetadata.samples, numWindows, correlationDataBuffer);
+#ifdef SUPPORT_TINY_CUDA_NN
+        if (getIsModuleLoaded()) {
+            outputBufferInterop = std::make_shared<sgl::vk::BufferCudaDriverApiExternalMemoryVk>(correlationDataBuffer);
+            outputImageBufferCu = outputBufferInterop->getCudaDevicePtr();
+        }
+#endif
+    }
+
+#ifdef SUPPORT_TINY_CUDA_NN
+    if (getIsModuleLoaded()) {
+        recomputeCorrelationMatrixTcnn();
+        minCorrelationValue = 0.0f;
+        maxCorrelationValue = 1.0f;
+        if (isMutualInformationData) {
+            maxCorrelationValue = computeMaximumMutualInformationKraskov(k, cs);
+        } else if (!calculateAbsoluteValue) {
+            minCorrelationValue = -maxCorrelationValue;
+        }
+        parentDiagram->onCorrelationDataRecalculated(
+                isMutualInformationData ? CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV : CorrelationMeasureType::PEARSON,
+                {minCorrelationValue, maxCorrelationValue}, true);
+        reRender = true;
+        reRenderTriggeredByDiagram = true;
+        return;
+    }
+#endif
+
+    minCorrelationValue = 0.0f;
+    maxCorrelationValue = 1.0f;
+    if (isMeasureKraskovMI(cmt)) {
+        if (cmt == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV) {
+            maxCorrelationValue = computeMaximumMutualInformationKraskov(k, cs);
+        }
+    }
+    if (correlationMeasureType == CorrelationMeasureType::PEARSON
+        || correlationMeasureType == CorrelationMeasureType::SPEARMAN
+        || correlationMeasureType == CorrelationMeasureType::KENDALL) {
+        minCorrelationValue = -maxCorrelationValue;
     }
 
     auto* buffer = reinterpret_cast<float*>(correlationDataStagingBuffer->mapMemory());
@@ -442,19 +492,6 @@ void TimeSeriesCorrelationRenderer::recomputeCorrelationMatrix() {
 #endif
     }
 
-    minCorrelationValue = 0.0f;
-    maxCorrelationValue = 1.0f;
-    if (isMeasureKraskovMI(cmt)) {
-        if (cmt == CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV) {
-            maxCorrelationValue = computeMaximumMutualInformationKraskov(k, cs);
-        }
-    }
-    if (correlationMeasureType == CorrelationMeasureType::PEARSON
-            || correlationMeasureType == CorrelationMeasureType::SPEARMAN
-            || correlationMeasureType == CorrelationMeasureType::KENDALL) {
-        minCorrelationValue = -maxCorrelationValue;
-    }
-
     correlationDataStagingBuffer->unmapMemory();
     correlationDataStagingBuffer->copyDataTo(correlationDataBuffer, renderer->getVkCommandBuffer());
     renderer->insertBufferMemoryBarrier(
@@ -462,8 +499,8 @@ void TimeSeriesCorrelationRenderer::recomputeCorrelationMatrix() {
             VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
             correlationDataBuffer);
 
-    parentDiagram->onCorrelationDataRecalculated(correlationMeasureType, {minCorrelationValue, maxCorrelationValue});
-
+    parentDiagram->onCorrelationDataRecalculated(
+            correlationMeasureType, {minCorrelationValue, maxCorrelationValue}, false);
     reRender = true;
     reRenderTriggeredByDiagram = true;
 }
@@ -615,6 +652,7 @@ void TimeSeriesCorrelationRenderer::renderGuiImpl(sgl::PropertyEditor& propertyE
         if (presetIndex != 0) {
             timeSeriesFilePath = timeSeriesDataPaths.at(presetIndex);
             modelFilePath = timeSeriesModelPaths.at(presetIndex);
+            unloadModel();
             loadTimeSeriesFromFile(timeSeriesFilePath);
             loadModelFromFile(modelFilePath);
             dirty = true;
@@ -624,6 +662,7 @@ void TimeSeriesCorrelationRenderer::renderGuiImpl(sgl::PropertyEditor& propertyE
     propertyEditor.addInputAction("Time Series Path", &timeSeriesFilePath);
     propertyEditor.addInputAction("Model Path", &modelFilePath);
     if (propertyEditor.addButton("", "Load")) {
+        unloadModel();
         loadTimeSeriesFromFile(timeSeriesFilePath);
         loadModelFromFile(modelFilePath);
         dirty = true;
@@ -637,7 +676,7 @@ void TimeSeriesCorrelationRenderer::renderGuiImpl(sgl::PropertyEditor& propertyE
         }
     }
 
-    if (propertyEditor.addCombo(
+    if (!getIsModuleLoaded() && propertyEditor.addCombo(
             "Correlation Measure", (int*)&correlationMeasureType,
             CORRELATION_MEASURE_TYPE_NAMES, IM_ARRAYSIZE(CORRELATION_MEASURE_TYPE_NAMES))) {
         recomputeCorrelationMatrix();
@@ -658,6 +697,23 @@ void TimeSeriesCorrelationRenderer::renderGuiImpl(sgl::PropertyEditor& propertyE
         reRender = true;
         reRenderTriggeredByDiagram = true;
     }
+
+#ifdef SUPPORT_TINY_CUDA_NN
+    if (propertyEditor.beginNode("Advanced Settings")) {
+        if (deviceSupporsFullyFusedMlp && propertyEditor.addCombo(
+                "Network", (int*)&networkImplementation,
+                TINY_CUDA_NN_NETWORK_IMPLEMENTATION_UI_NAMES, IM_ARRAYSIZE(TINY_CUDA_NN_NETWORK_IMPLEMENTATION_UI_NAMES))) {
+            if (sgl::FileUtils::get()->exists(modelFilePath) && !sgl::FileUtils::get()->isDirectory(modelFilePath)) {
+                loadModelFromFile(modelFilePath);
+            }
+            dirty = true;
+        }
+        if (!isMutualInformationData && propertyEditor.addCheckbox("Absolute Value", &calculateAbsoluteValue)) {
+            dirty = true;
+        }
+        propertyEditor.endNode();
+    }
+#endif
 
     if (parentDiagram->renderGuiPropertyEditor(propertyEditor)) {
         reRender = true;
@@ -721,6 +777,25 @@ void TimeSeriesCorrelationRenderer::setSettings(const SettingsMap& settings) {
         }
     }
 
+#ifdef SUPPORT_TINY_CUDA_NN
+    std::string networkImplementationString;
+    if (settings.getValueOpt("network_implementation", networkImplementationString)) {
+        for (int i = 0; i < IM_ARRAYSIZE(TINY_CUDA_NN_NETWORK_IMPLEMENTATION_NAMES); i++) {
+            if (networkImplementationString == TINY_CUDA_NN_NETWORK_IMPLEMENTATION_NAMES[i]) {
+                networkImplementation = TinyCudaNNNetworkImplementation(i);
+                break;
+            }
+        }
+        if (!deviceSupporsFullyFusedMlp) {
+            networkImplementation = TinyCudaNNNetworkImplementation::CUTLASS_MLP;
+        }
+        dirty = true;
+    }
+    if (settings.getValueOpt("calculate_absolute_value", calculateAbsoluteValue)) {
+        dirty = true;
+    }
+#endif
+
     dirty = true;
     reRender = true;
     reRenderTriggeredByDiagram = true;
@@ -741,6 +816,12 @@ void TimeSeriesCorrelationRenderer::getSettings(SettingsMap& settings) {
     settings.addKeyValue(
             "correlation_measure_type", CORRELATION_MEASURE_TYPE_IDS[int(correlationMeasureType)]);
     settings.addKeyValue("color_map", DIAGRAM_COLOR_MAP_NAMES[int(colorMap)]);
+
+#ifdef SUPPORT_TINY_CUDA_NN
+    settings.addKeyValue("calculate_absolute_value", calculateAbsoluteValue);
+    settings.addKeyValue(
+            "network_implementation", TINY_CUDA_NN_NETWORK_IMPLEMENTATION_NAMES[int(networkImplementation)]);
+#endif
 
     // No vector widget settings for now.
 }

@@ -32,6 +32,7 @@
 
 #include <tiny-cuda-nn/evaluator.h>
 #include <tiny-cuda-nn/network_with_input_encoding.h>
+#include <tiny-cuda-nn/networks/fully_fused_mlp.h>
 
 #include <Math/Math.hpp>
 #include <Utils/File/FileLoader.hpp>
@@ -45,7 +46,6 @@
 #include "Volume/VolumeData.hpp"
 #include "MutualInformation.cuh"
 #include "TinyCudaNNCorrelationCalculator.hpp"
-#include "tiny-cuda-nn/networks/fully_fused_mlp.h"
 
 using precision_t = tcnn::network_precision_t;
 
@@ -113,13 +113,6 @@ void TinyCudaNNCorrelationCalculator::setVolumeData(VolumeData* _volumeData, boo
         calculatorConstructorUseCount = volumeData->getNewCalculatorUseCount(CalculatorType::TINY_CUDA_NN);
     }
 }
-
-const char* const TINY_CUDA_NN_NETWORK_IMPLEMENTATION_NAMES[] = {
-        "FullyFusedMLP", "CutlassMLP"
-};
-const char* const TINY_CUDA_NN_NETWORK_IMPLEMENTATION_UI_NAMES[] = {
-        "Fully Fused", "CUTLASS"
-};
 
 void TinyCudaNNCorrelationCalculator::renderGuiImplAdvanced(sgl::PropertyEditor& propertyEditor) {
     DeepLearningCudaCorrelationCalculator::renderGuiImplAdvanced(propertyEditor);

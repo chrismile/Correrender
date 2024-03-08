@@ -34,7 +34,18 @@
 #include "../../Renderer.hpp"
 #include "Calculators/CorrelationDefines.hpp"
 #include "Calculators/CorrelationMatrix.hpp"
+#include "Renderers/Diagram/DiagramColorMap.hpp"
 #include "TimeSeries.hpp"
+
+#ifdef SUPPORT_TINY_CUDA_NN
+#include "Calculators/SymmetrizerType.hpp"
+#include "Calculators/TinyCudaNNCorrelationDefines.hpp"
+namespace sgl { namespace vk {
+class BufferCudaDriverApiExternalMemoryVk;
+}}
+struct TinyCudaNNTimeSeriesModuleWrapper;
+struct TinyCudaNNTimeSeriesCacheWrapper;
+#endif
 
 class TimeSeriesCorrelationChart;
 
@@ -92,6 +103,7 @@ private:
     // Time series data.
     void loadTimeSeriesFromFile(const std::string& filePath);
     void loadModelFromFile(const std::string& filePath);
+    void unloadModel();
     TimeSeriesMetadata timeSeriesMetadata;
     TimeSeriesDataPtr timeSeriesData;
     int numWindows = -1;
@@ -101,6 +113,39 @@ private:
     int cachedNumSamples = -1, cachedNumWindows = -1;
     int sidxRef = 0; ///< Index of reference time series.
     bool diagramDataDirty = false;
+    bool memoryExported = false;
+
+#ifdef SUPPORT_TINY_CUDA_NN
+    void initializeCuda();
+    void cleanupCuda();
+    bool getIsModuleLoaded() { return moduleWrapper != nullptr; }
+    void recreateCache(int batchSize);
+    void runInferenceReference();
+    void runInferenceBatch(uint32_t batchOffset, uint32_t batchSize);
+    void recomputeCorrelationMatrixTcnn();
+    uint32_t getInputChannelAlignment() { return isInputEncodingIdentity ? 16 : 4; }
+    uint32_t getSrnStride() { return isInputEncodingIdentity ? 16 : 3; }
+    uint32_t numLayersInEncoder = 0, numLayersOutEncoder = 0, numLayersInDecoder = 0, numLayersOutDecoder = 0;
+    bool isInputEncodingIdentity = false;
+    bool deviceSupporsFullyFusedMlp = false;
+    TinyCudaNNNetworkImplementation networkImplementation = TinyCudaNNNetworkImplementation::FULLY_FUSED_MLP;
+    std::shared_ptr<TinyCudaNNTimeSeriesModuleWrapper> moduleWrapper;
+    std::shared_ptr<TinyCudaNNTimeSeriesCacheWrapper> cacheWrapper;
+
+    SymmetrizerType symmetrizerType = SymmetrizerType::Add;
+    bool isMutualInformationData = true;
+    bool calculateAbsoluteValue = false;
+    int srnGpuBatchSize1DBase = 131072;
+    size_t cachedNumSwapchainImages = 0;
+    std::vector<sgl::vk::CommandBufferPtr> postRenderCommandBuffers;
+    sgl::vk::SemaphoreVkCudaDriverApiInteropPtr vulkanFinishedSemaphore, cudaFinishedSemaphore;
+    uint64_t timelineValue = 0;
+    CUstream stream{};
+    std::shared_ptr<sgl::vk::BufferCudaDriverApiExternalMemoryVk> outputBufferInterop;
+    CUdeviceptr outputImageBufferCu{}; ///< Pointing to @see correlationDataBuffer.
+#else
+    bool getIsModuleLoaded() { return false; }
+#endif
 };
 
 #endif //CORRERENDER_TIMESERIESCORRELATIONRENDERER_HPP

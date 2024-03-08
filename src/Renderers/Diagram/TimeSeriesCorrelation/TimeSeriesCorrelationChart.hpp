@@ -57,7 +57,7 @@ public:
             int _samples, int _numWindows, const sgl::vk::BufferPtr& _correlationDataBuffer);
     void onCorrelationDataRecalculated(
             CorrelationMeasureType _correlationMeasureType,
-            const std::pair<float, float>& _minMaxCorrelationValue);
+            const std::pair<float, float>& _minMaxCorrelationValue, bool _isNetworkData);
     void renderPrepare();
 
 protected:
@@ -99,6 +99,7 @@ private:
 
     CorrelationMeasureType correlationMeasureType = CorrelationMeasureType::PEARSON;
     std::pair<float, float> minMaxCorrelationValue;
+    bool isNetworkData = false;
 
     int samples = 0;
     int numWindows = 0;

@@ -176,6 +176,7 @@ if (CUDA_ENABLED AND ${SUPPORT_TINY_CUDA_NN})
 else()
     list(REMOVE_ITEM SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/Calculators/TinyCudaNNCorrelationCalculator.hpp)
     list(REMOVE_ITEM CUDA_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/Calculators/TinyCudaNNCorrelationCalculator.cu)
+    list(REMOVE_ITEM CUDA_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/Renderers/Diagram/TimeSeriesCorrelation/TimeSeriesCorrelationRenderer.cu)
 endif()
 
 if (CUDA_ENABLED AND ${SUPPORT_QUICK_MLP})

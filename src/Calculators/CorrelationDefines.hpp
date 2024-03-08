@@ -46,6 +46,10 @@ const char* const CORRELATION_MEASURE_TYPE_NAMES[] = {
         "Pearson", "Spearman", "Kendall", "Mutual Information (Binned)", "Mutual Information (Kraskov)",
         "Binned MI Correlation Coefficient", "KMI Correlation Coefficient"
 };
+const char* const CORRELATION_MEASURE_TYPE_SHORT_NAMES[] = {
+        "Pearson", "Spearman", "Kendall", "MI (Binned)", "MI (Kraskov)",
+        "Binned MI CC", "KMI CC"
+};
 const char* const CORRELATION_MEASURE_TYPE_IDS[] = {
         "pearson", "spearman", "kendall", "mi_binned", "mi_kraskov",
         "binned_mi_correlation_coefficient", "kmi_correlation_coefficient"
