@@ -143,6 +143,8 @@ void TimeSeriesCorrelationRenderer::loadTimeSeriesFromFile(const std::string& fi
 #ifndef SUPPORT_TINY_CUDA_NN
 void TimeSeriesCorrelationRenderer::loadModelFromFile(const std::string& filePath) {
 }
+void TimeSeriesCorrelationRenderer::unloadModel() {
+}
 #endif
 
 void TimeSeriesCorrelationRenderer::recomputeCorrelationMatrix() {
