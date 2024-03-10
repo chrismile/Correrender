@@ -70,7 +70,6 @@ struct TinyCudaNNTimeSeriesCacheWrapper {
     tcnn::GPUMatrix<precision_t> queryInputHalf;
 #endif
     tcnn::GPUMatrix<precision_t> queryEncoded;
-    tcnn::GPUMatrix<precision_t> symmetrizedReferenceInput;
     tcnn::GPUMatrix<precision_t> symmetrizedQueryInput;
     tcnn::GPUMatrix<precision_t> referenceDecoded;
     tcnn::GPUMatrix<precision_t> queryDecoded;
@@ -396,7 +395,6 @@ void TimeSeriesCorrelationRenderer::recreateCache(int batchSize) {
     cacheWrapper->queryInputHalf = tcnn::GPUMatrix<precision_t>();
 #endif
     cacheWrapper->queryEncoded = tcnn::GPUMatrix<precision_t>();
-    cacheWrapper->symmetrizedReferenceInput = tcnn::GPUMatrix<precision_t>();
     cacheWrapper->symmetrizedQueryInput = tcnn::GPUMatrix<precision_t>();
     cacheWrapper->referenceDecoded = tcnn::GPUMatrix<precision_t>();
     cacheWrapper->queryDecoded = tcnn::GPUMatrix<precision_t>();
@@ -421,7 +419,6 @@ void TimeSeriesCorrelationRenderer::recreateCache(int batchSize) {
     cacheWrapper->queryInput = tcnn::GPUMatrix<float>(numInputLayers, batchSize);
     cacheWrapper->referenceEncoded = tcnn::GPUMatrix<precision_t>(numLayersOutEncoder, referenceInputBatchSize);
     cacheWrapper->queryEncoded = tcnn::GPUMatrix<precision_t>(numLayersOutEncoder, batchSize);
-    cacheWrapper->symmetrizedReferenceInput = tcnn::GPUMatrix<precision_t>(numLayersInDecoder, batchSize);
     cacheWrapper->symmetrizedQueryInput = tcnn::GPUMatrix<precision_t>(numLayersInDecoder, batchSize);
     cacheWrapper->referenceDecoded = tcnn::GPUMatrix<precision_t>(numLayersOutDecoder, batchSize);
     cacheWrapper->queryDecoded = tcnn::GPUMatrix<precision_t>(numLayersOutDecoder, batchSize);
@@ -437,7 +434,6 @@ void TimeSeriesCorrelationRenderer::recreateCache(int batchSize) {
     auxBuffersSizeInBytes += size_t(cacheWrapper->queryInput.n_bytes());
     auxBuffersSizeInBytes += size_t(cacheWrapper->referenceEncoded.n_bytes());
     auxBuffersSizeInBytes += size_t(cacheWrapper->queryEncoded.n_bytes());
-    auxBuffersSizeInBytes += size_t(cacheWrapper->symmetrizedReferenceInput.n_bytes());
     auxBuffersSizeInBytes += size_t(cacheWrapper->symmetrizedQueryInput.n_bytes());
     auxBuffersSizeInBytes += size_t(cacheWrapper->referenceDecoded.n_bytes());
     auxBuffersSizeInBytes += size_t(cacheWrapper->queryDecoded.n_bytes());
@@ -464,6 +460,76 @@ void TimeSeriesCorrelationRenderer::runInferenceReference() {
 #endif
 }
 
+template<class T> __global__ void symmetrizerTimeSeriesAdd(
+        const T* __restrict__ referenceValues, const T* __restrict__ queryValues, T* __restrict__ outputValues,
+        uint32_t batchOffset, uint32_t numWindows, uint32_t numChannels) {
+    uint32_t globalThreadIdx = blockIdx.x * blockDim.x + threadIdx.x;
+    uint32_t readOffset = globalThreadIdx;
+    uint32_t readOffsetRef =
+            ((batchOffset + globalThreadIdx / numChannels) % numWindows) * numChannels // Reference offset
+            + (globalThreadIdx % numChannels); // Channel index
+    outputValues[readOffset] = referenceValues[readOffsetRef] + queryValues[readOffset];
+}
+
+template<class T> __global__ void symmetrizerTimeSeriesAddDiff_Add(
+        const T* __restrict__ referenceValues, const T* __restrict__ queryValues, T* __restrict__ outputValues,
+        uint32_t batchOffset, uint32_t numWindows, uint32_t numChannels) {
+    uint32_t globalThreadIdx = blockIdx.x * blockDim.x + threadIdx.x;
+    uint32_t readOffset = globalThreadIdx;
+    uint32_t channelIdx = globalThreadIdx % numChannels;
+    uint32_t readOffsetRef =
+            ((batchOffset + globalThreadIdx / numChannels) % numWindows) * numChannels // Reference offset
+            + channelIdx; // Channel index
+    uint32_t batchEnsembleIdx = globalThreadIdx / numChannels;
+    uint32_t writeOffset = batchEnsembleIdx * numChannels * 2 + channelIdx;
+    outputValues[writeOffset] = referenceValues[readOffsetRef] + queryValues[readOffset];
+}
+
+template<class T> __global__ void symmetrizerTimeSeriesAddDiff_Diff(
+        const T* __restrict__ referenceValues, const T* __restrict__ queryValues, T* __restrict__ outputValues,
+        uint32_t batchOffset, uint32_t numWindows, uint32_t numChannels) {
+    uint32_t globalThreadIdx = blockIdx.x * blockDim.x + threadIdx.x;
+    uint32_t readOffset = globalThreadIdx;
+    uint32_t channelIdx = globalThreadIdx % numChannels;
+    uint32_t readOffsetRef =
+            ((batchOffset + globalThreadIdx / numChannels) % numWindows) * numChannels // Reference offset
+            + channelIdx; // Channel index
+    uint32_t batchEnsembleIdx = globalThreadIdx / numChannels;
+    uint32_t writeOffset = batchEnsembleIdx * numChannels * 2 + numChannels + channelIdx;
+    outputValues[writeOffset] = absT(referenceValues[readOffsetRef] - queryValues[readOffset]);
+}
+
+template<class T> __global__ void symmetrizerTimeSeriesMul(
+        const T* __restrict__ referenceValues, const T* __restrict__ queryValues, T* __restrict__ outputValues,
+        uint32_t batchOffset, uint32_t numWindows, uint32_t numChannels) {
+    uint32_t globalThreadIdx = blockIdx.x * blockDim.x + threadIdx.x;
+    uint32_t readOffset = globalThreadIdx;
+    uint32_t readOffsetRef =
+            ((batchOffset + globalThreadIdx / numChannels) % numWindows) * numChannels // Reference offset
+            + (globalThreadIdx % numChannels); // Channel index
+    outputValues[readOffset] = referenceValues[readOffsetRef] * queryValues[readOffset];
+}
+
+template<class T> void symmetrizerTimeSeries(
+        const T* __restrict__ referenceValues, const T* __restrict__ queryValues, T* __restrict__ symmetrizedValues,
+        uint32_t batchOffset, uint32_t batchSize, uint32_t numWindows, uint32_t numLayersOutEncoder,
+        SymmetrizerType symmetrizerType, CUstream stream) {
+    constexpr uint32_t blockSize = 256;
+    const uint32_t numBlocks = sgl::uiceil(batchSize * numLayersOutEncoder, blockSize);
+    if (symmetrizerType == SymmetrizerType::Add) {
+        symmetrizerTimeSeriesAdd<<<numBlocks, blockSize, 0, stream>>>(
+                referenceValues, queryValues, symmetrizedValues, batchOffset, numWindows, numLayersOutEncoder);
+    } else if (symmetrizerType == SymmetrizerType::AddDiff) {
+        symmetrizerTimeSeriesAddDiff_Add<<<numBlocks, blockSize, 0, stream>>>(
+                referenceValues, queryValues, symmetrizedValues, batchOffset, numWindows, numLayersOutEncoder);
+        symmetrizerTimeSeriesAddDiff_Diff<<<numBlocks, blockSize, 0, stream>>>(
+                referenceValues, queryValues, symmetrizedValues, batchOffset, numWindows, numLayersOutEncoder);
+    } else if (symmetrizerType == SymmetrizerType::Mul) {
+        symmetrizerTimeSeriesMul<<<numBlocks, blockSize, 0, stream>>>(
+                referenceValues, queryValues, symmetrizedValues, batchOffset, numWindows, numLayersOutEncoder);
+    }
+}
+
 void TimeSeriesCorrelationRenderer::runInferenceBatch(uint32_t batchOffset, uint32_t batchSize)  {
 #if TCNN_HALF_PRECISION
     if (moduleWrapper->networkEncoderHalf) {
@@ -481,10 +547,10 @@ void TimeSeriesCorrelationRenderer::runInferenceBatch(uint32_t batchOffset, uint
                 stream, cacheWrapper->queryInput, cacheWrapper->queryEncoded);
 #endif
 
-    symmetrizerSrn(
+    symmetrizerTimeSeries(
             cacheWrapper->referenceEncoded.data(), cacheWrapper->queryEncoded.data(),
             cacheWrapper->symmetrizedQueryInput.data(),
-            batchSize, numLayersOutEncoder, symmetrizerType, stream);
+            batchOffset, batchSize, numWindows, numLayersOutEncoder, symmetrizerType, stream);
 
 #if TCNN_HALF_PRECISION
     moduleWrapper->networkDecoder->inference_mixed_precision(

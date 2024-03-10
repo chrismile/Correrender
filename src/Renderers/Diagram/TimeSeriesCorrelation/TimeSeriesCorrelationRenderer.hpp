@@ -81,6 +81,7 @@ private:
             sgl::PropertyEditor& propertyEditor, const std::string& name, uint32_t& diagramViewIdx);
     bool adaptIdxOnViewRemove(uint32_t viewIdx, uint32_t& diagramViewIdx);
 
+    void updateCorrelationRange();
     void recomputeCorrelationMatrix();
     VolumeDataPtr volumeData;
     uint32_t diagramViewIdx = 0;
@@ -88,8 +89,11 @@ private:
     std::shared_ptr<TimeSeriesCorrelationChart> parentDiagram; //< Parent diagram.
     bool alignWithParentWindow = false;
     CorrelationMeasureType correlationMeasureType = CorrelationMeasureType::PEARSON;
+    int k = 1, kMax = 1, numBins = 1;
     float minCorrelationValue = 0.0f;
     float maxCorrelationValue = 1.0f;
+    float minCorrelationValueGlobal = 0.0f;
+    float maxCorrelationValueGlobal = 1.0f;
     DiagramColorMap colorMap = DiagramColorMap::COOL_TO_WARM;
 
     // Time series data presets.

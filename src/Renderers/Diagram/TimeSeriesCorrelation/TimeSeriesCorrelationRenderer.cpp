@@ -35,6 +35,7 @@
 
 #include <Graphics/Vulkan/Render/Renderer.hpp>
 #include <ImGui/Widgets/PropertyEditor.hpp>
+#include <ImGui/imgui_custom.h>
 
 #include "Widgets/DataView.hpp"
 #include "Widgets/ViewManager.hpp"
@@ -147,6 +148,20 @@ void TimeSeriesCorrelationRenderer::unloadModel() {
 }
 #endif
 
+void TimeSeriesCorrelationRenderer::updateCorrelationRange() {
+    if (getIsModuleLoaded()) {
+#ifdef SUPPORT_TINY_CUDA_NN
+        parentDiagram->onCorrelationDataRecalculated(
+                isMutualInformationData ? CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV
+                                        : CorrelationMeasureType::PEARSON,
+                {minCorrelationValue, maxCorrelationValue}, true);
+#endif
+    } else {
+        parentDiagram->onCorrelationDataRecalculated(
+                correlationMeasureType, {minCorrelationValue, maxCorrelationValue}, false);
+    }
+}
+
 void TimeSeriesCorrelationRenderer::recomputeCorrelationMatrix() {
     if (!timeSeriesData && !getIsModuleLoaded()) {
         return;
@@ -157,12 +172,15 @@ void TimeSeriesCorrelationRenderer::recomputeCorrelationMatrix() {
     } else {
         numWindows = timeSeriesMetadata.time;
     }
-
     auto cs = windowLength;
     auto cmt = correlationMeasureType;
 
-    int k = std::clamp(sgl::iceil(3 * cs, 100), 1, 100);
-    int numBins = sgl::iceil(cs, 10); // TODO: Move to member variable?
+    if (numWindows != cachedNumWindows) {
+        k = std::clamp(sgl::iceil(3 * cs, 100), 1, 100);
+        kMax = std::max(sgl::iceil(7 * cs, 100), 20);
+        numBins = sgl::iceil(cs, 10);
+    }
+
     float minFieldVal = 0.0f, maxFieldVal = 0.0f;
     if (isMeasureBinnedMI(correlationMeasureType)) {
         minFieldVal = timeSeriesData->getMinValue();
@@ -201,6 +219,8 @@ void TimeSeriesCorrelationRenderer::recomputeCorrelationMatrix() {
         } else if (!calculateAbsoluteValue) {
             minCorrelationValue = -maxCorrelationValue;
         }
+        minCorrelationValueGlobal = minCorrelationValue;
+        maxCorrelationValueGlobal = maxCorrelationValue;
         parentDiagram->onCorrelationDataRecalculated(
                 isMutualInformationData ? CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV : CorrelationMeasureType::PEARSON,
                 {minCorrelationValue, maxCorrelationValue}, true);
@@ -222,6 +242,8 @@ void TimeSeriesCorrelationRenderer::recomputeCorrelationMatrix() {
         || correlationMeasureType == CorrelationMeasureType::KENDALL) {
         minCorrelationValue = -maxCorrelationValue;
     }
+    minCorrelationValueGlobal = minCorrelationValue;
+    maxCorrelationValueGlobal = maxCorrelationValue;
 
     auto* buffer = reinterpret_cast<float*>(correlationDataStagingBuffer->mapMemory());
 
@@ -685,11 +707,43 @@ void TimeSeriesCorrelationRenderer::renderGuiImpl(sgl::PropertyEditor& propertyE
         reRender = true;
         reRenderTriggeredByDiagram = true;
     }
+    if (!getIsModuleLoaded()) {
+        if (isMeasureBinnedMI(correlationMeasureType) && propertyEditor.addSliderIntEdit(
+                "#Bins", &numBins, 10, 100) == ImGui::EditMode::INPUT_FINISHED) {
+            recomputeCorrelationMatrix();
+            reRender = true;
+            reRenderTriggeredByDiagram = true;
+        }
+        if (isMeasureKraskovMI(correlationMeasureType) && propertyEditor.addSliderIntEdit(
+                "#Neighbors", &k, 1, kMax) == ImGui::EditMode::INPUT_FINISHED) {
+            recomputeCorrelationMatrix();
+            reRender = true;
+            reRenderTriggeredByDiagram = true;
+        }
+    }
 
     if (propertyEditor.addCombo(
             "Color Map", (int*)&colorMap, DIAGRAM_COLOR_MAP_NAMES,
             IM_ARRAYSIZE(DIAGRAM_COLOR_MAP_NAMES))) {
         parentDiagram->setColorMap(colorMap);
+        reRender = true;
+        reRenderTriggeredByDiagram = true;
+    }
+
+    updateCorrelationRange();
+    glm::vec2 correlationMinMax(minCorrelationValue, maxCorrelationValue);
+    if (propertyEditor.addSliderFloat2(
+            "Value Range", (float*)&correlationMinMax.x, minCorrelationValueGlobal, maxCorrelationValueGlobal)) {
+        minCorrelationValue = correlationMinMax.x;
+        maxCorrelationValue = correlationMinMax.y;
+        updateCorrelationRange();
+        reRender = true;
+        reRenderTriggeredByDiagram = true;
+    }
+    if (propertyEditor.addButton("", "Reset Range")) {
+        minCorrelationValue = minCorrelationValueGlobal;
+        maxCorrelationValue = maxCorrelationValueGlobal;
+        updateCorrelationRange();
         reRender = true;
         reRenderTriggeredByDiagram = true;
     }
