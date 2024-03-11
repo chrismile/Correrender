@@ -274,10 +274,10 @@ void TimeSeriesCorrelationChart::update(float dt) {
     glm::vec2 pctMousePos = (mousePosition - glm::vec2(startX, startY)) / glm::vec2(matrixWidth, matrixHeight);
 
     // Check whether the mouse is hovering a button. In this case, window move and resize events should be disabled.
-    bool isMatrixHovered =
-            pctMousePos.x >= 0.0f && pctMousePos.y >= 0.0f
-            && pctMousePos.x < 1.0f && pctMousePos.y < 1.0f;
-    isMouseGrabbedByParent = isMouseGrabbedByParent || isMatrixHovered;
+    //bool isMatrixHovered =
+    //        pctMousePos.x >= 0.0f && pctMousePos.y >= 0.0f
+    //        && pctMousePos.x < 1.0f && pctMousePos.y < 1.0f;
+    //isMouseGrabbedByParent = isMouseGrabbedByParent || isMatrixHovered;
 
     DiagramBase::update(dt);
 
@@ -287,7 +287,7 @@ void TimeSeriesCorrelationChart::update(float dt) {
     int series = gridPosition.y;
 
     if (pctMousePos.x >= 0.0f && pctMousePos.y >= 0.0f && pctMousePos.x < 1.0f && pctMousePos.y < 1.0f
-            && sgl::Mouse->buttonReleased(1)) {
+            && sgl::Mouse->buttonReleased(1) && !isMouseGrabbedByParent) {
         diagramSelectionCallback(series, time);
     }
 }

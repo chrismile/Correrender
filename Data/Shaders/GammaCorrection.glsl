@@ -94,5 +94,5 @@ void main() {
 
     int totalNumSamples = supersamplingFactor * supersamplingFactor;
     color /= float(totalNumSamples);
-    fragColor = toSRGB(toSRGB(linearColor.rgb), color.a);
+    fragColor = vec4(toSRGB(linearColor.rgb), color.a);
 }

@@ -28,6 +28,7 @@
 
 #include <iostream>
 #include <set>
+#include <stdexcept>
 #include <cassert>
 #include <cstring>
 
@@ -51,8 +52,7 @@
 #define myassert(x)                                   \
 	if (!(x))                                         \
 	{                                                 \
-		std::cerr << "assertion failed" << std::endl; \
-		exit(1);                                      \
+		throw std::runtime_error("assertion failed"); \
 	}
 #endif
 
@@ -307,6 +307,19 @@ bool NetCdfLoader::setInputFiles(
                 }
             }
         }
+        // Get the first variable with two dimensions.
+        if (varIdRepresentative == -1) {
+            for (int varid = 0; varid < nvarsp; varid++) {
+                nc_type type = NC_FLOAT;
+                int ndims = 0;
+                int natts = 0;
+                nc_inq_var(ncid, varid, varname, &type, &ndims, dimids, &natts);
+                if ((type == NC_FLOAT || type == NC_DOUBLE) && ndims == 2) {
+                    varIdRepresentative = varid;
+                    break;
+                }
+            }
+        }
         if (varIdRepresentative < 0) {
             sgl::Logfile::get()->throwError(
                     "Error in NetCdfLoader::load: Could not find u, v, w (or U, V, W) wind speeds or any other "
@@ -435,6 +448,38 @@ bool NetCdfLoader::setInputFiles(
                 isLatLonData = false;
             }
         }
+    } else if (numDims == 2) {
+        // Assuming (zdim, ydim, xdim).
+        int dimensionIds[2];
+        char dimNameY[NC_MAX_NAME + 1];
+        char dimNameX[NC_MAX_NAME + 1];
+        myassert(nc_inq_vardimid(ncid, varIdRepresentative, dimensionIds) == NC_NOERR);
+        size_t ys64, xs64;
+        myassert(nc_inq_dim(ncid, dimensionIds[0], dimNameY, &ys64) == NC_NOERR);
+        myassert(nc_inq_dim(ncid, dimensionIds[1], dimNameX, &xs64) == NC_NOERR);
+        foundDims[0] = dimensionIds[0];
+        foundDims[1] = dimensionIds[1];
+        zs = 1;
+        ys = int(ys64);
+        xs = int(xs64);
+        zCoords = new float[zs];
+        yCoords = new float[ys];
+        xCoords = new float[xs];
+        int varid;
+        int retval = nc_inq_varid(ncid, dimNameY, &varid);
+        if (retval != NC_ENOTVAR) {
+            zCoords[0] = 0.0f;
+            loadFloatArray1D(dimNameY, ys, yCoords);
+            loadFloatArray1D(dimNameX, xs, xCoords);
+        } else {
+            zCoords[0] = 0.0f;
+            for (int i = 0; i < ys; i++) {
+                yCoords[i] = float(i);
+            }
+            for (int i = 0; i < xs; i++) {
+                xCoords[i] = float(i);
+            }
+        }
     } else {
         sgl::Logfile::get()->throwError(
                 "Error in NetCdfLoader::load: Invalid number of dimensions in file \""
@@ -538,7 +583,7 @@ bool NetCdfLoader::setInputFiles(
             }
         }
 
-        if (!isFloatingPointData || (ndims != 3 && ndims != 4)) {
+        if (!isFloatingPointData || (zs != 1 && ndims != 3 && ndims != 4) || (zs == 1 && ndims != 2 && ndims != 3 && ndims != 4)) {
             continue;
         }
 
@@ -641,6 +686,8 @@ bool NetCdfLoader::getFieldEntry(
         loadFloatArray3D(varid, timestepIdx, zs, ys, xs, fieldEntryBuffer);
     } else if (numDims == 4 && es > 1) {
         loadFloatArray3D(varid, memberIdx, zs, ys, xs, fieldEntryBuffer);
+    } else if (numDims == 2) {
+        loadFloatArray2D(varid, ys, xs, fieldEntryBuffer);
     }
 
     if (varHasFillValueMap.at(varid)) {
