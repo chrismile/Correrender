@@ -100,18 +100,27 @@ void TimeSeriesRasterPass::setSettings(int samples, int numWindows, float minAtt
 }
 
 void TimeSeriesRasterPass::setColorPoints(const std::vector<glm::vec3>& colorPoints) {
+    const int TFRES = 256;
+    const auto numColorPoints = int(colorPoints.size());
     std::vector<sgl::Color16> colorPointsRgba16;
-    colorPointsRgba16.reserve(colorPoints.size());
-    for (const auto& colorPoint : colorPoints) {
-        colorPointsRgba16.push_back(sgl::color16FromVec3(colorPoint));
+    colorPointsRgba16.reserve(TFRES);
+    for (int i = 0; i < TFRES; i++) {
+        float t = static_cast<float>(i) / float(TFRES - 1) * float(numColorPoints - 1);
+        auto t0 = sgl::clamp(int(std::floor(t)), 0, numColorPoints - 1);
+        auto t1 = sgl::clamp(t0 + 1, 0, numColorPoints - 1);
+        auto factor = t - float(t0);
+        glm::vec3 color0 = colorPoints.at(t0);
+        glm::vec3 color1 = colorPoints.at(t1);
+        auto color = glm::mix(color0, color1, factor);
+        colorPointsRgba16.push_back(sgl::color16FromVec3(color));
     }
     renderer->getDevice()->waitGraphicsQueueIdle();
     sgl::vk::ImageSettings imageSettings{};
     imageSettings.imageType = VK_IMAGE_TYPE_1D;
     imageSettings.format = VK_FORMAT_R16G16B16A16_UNORM;
-    imageSettings.width = colorPoints.size();
+    imageSettings.width = uint32_t(colorPointsRgba16.size());
     transferFunctionTexture = std::make_shared<sgl::vk::Texture>(renderer->getDevice(), imageSettings);
-    transferFunctionTexture->getImage()->uploadData(colorPoints.size() * 8, colorPointsRgba16.data());
+    transferFunctionTexture->getImage()->uploadData(colorPointsRgba16.size() * 8, colorPointsRgba16.data());
     if (rasterData) {
         rasterData->setStaticTexture(transferFunctionTexture, "transferFunctionTexture");
     }
