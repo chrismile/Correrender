@@ -1452,6 +1452,10 @@ void MainApp::renderGuiMenuBar() {
                 if (ImGui::MenuItem("Transfer Function Window", nullptr, tfWindow.getShowWindow())) {
                     tfWindow.setShowWindow(!tfWindow.getShowWindow());
                 }
+                if (ImGui::MenuItem(
+                        "Color Legend Widget Background", nullptr, sgl::ColorLegendWidget::getShowBackground())) {
+                    sgl::ColorLegendWidget::setShowBackground(!sgl::ColorLegendWidget::getShowBackground());
+                }
             }
             //if (ImGui::MenuItem("Replay Widget", nullptr, replayWidget.getShowWindow())) {
             //    replayWidget.setShowWindow(!replayWidget.getShowWindow());
