@@ -293,7 +293,7 @@ void MainApp::loadStateFromJsonObject(Json::Value root) {
             volumeData->dirty = true;
             numCalculatorsOld--;
         }
-        int calculatorListIdxCurr = 0;
+        int calculatorListIdxCurr = numCalculatorsBase;
         int calculatorJsonIdxCurr = 0;
         while (calculatorJsonIdxCurr < int(calculatorsNode.size())) {
             const Json::Value& calculatorNode = calculatorsNode[calculatorJsonIdxCurr];
@@ -332,6 +332,11 @@ void MainApp::loadStateFromJsonObject(Json::Value root) {
             CalculatorType calculatorTypePrev = calculator->getCalculatorType();
             if (calculatorTypePrev == calculatorTypeNew) {
                 calculator->setSettings(jsonToSettingsMap(calculatorNode["state"]));
+                if (calculator->getHasNameChanged()) {
+                    volumeData->updateCalculatorName(calculator);
+                    volumeData->dirty = true;
+                    volumeData->reRender = true;
+                }
             } else {
                 // Remove incompatible renderers
                 for (size_t i = calculatorListIdxCurr; i < calculators.size(); i++) {
