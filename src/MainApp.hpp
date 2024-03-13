@@ -148,7 +148,9 @@ private:
     std::string customDataSetFileName;
     std::vector<std::string> customDataSetFileNames;
     bool isProgramStart = true, isFileWatchReload = false;
+#ifdef __linux__
     sgl::PathWatch datasetsWatch;
+#endif
     ImGuiFileDialog* fileDialogInstance = nullptr;
     std::string fileDialogDirectory;
     std::vector<sgl::dialog::MsgBoxHandlePtr> nonBlockingMsgBoxHandles;

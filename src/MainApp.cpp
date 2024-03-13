@@ -239,8 +239,10 @@ MainApp::MainApp()
 
     const std::string volumeDataSetsDirectory = sgl::AppSettings::get()->getDataDirectory() + "VolumeDataSets/";
     sgl::FileUtils::get()->ensureDirectoryExists(volumeDataSetsDirectory);
+#ifdef __linux__
     datasetsWatch.setPath(volumeDataSetsDirectory + "datasets.json", false);
     datasetsWatch.initialize();
+#endif
 
     if (!recording && !usePerformanceMeasurementMode) {
         // Just for convenience...
@@ -1752,11 +1754,13 @@ void MainApp::renderGuiPropertyEditorCustomNodes() {
 void MainApp::update(float dt) {
     sgl::SciVisApp::update(dt);
 
+#ifdef __linux__
     datasetsWatch.update([this] {
         isFileWatchReload = true;
         this->loadAvailableDataSetInformation();
         isFileWatchReload = false;
     });
+#endif
 
     for (int i = 0; i < int(nonBlockingMsgBoxHandles.size()); i++) {
         auto& handle = nonBlockingMsgBoxHandles.at(i);

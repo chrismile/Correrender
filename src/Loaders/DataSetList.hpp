@@ -93,6 +93,8 @@ struct DataSetInformation {
     // Whether to use normalized velocity or normalized vorticity in helicity computation.
     bool useNormalizedVelocity = false;
     bool useNormalizedVorticity = false;
+    // Optionally the user can restrict the domain (0,0,0) to (xs-1, ys-1, zs-1) to a smaller selection.
+    std::vector<int> domainSubselection;
 
     // Standard selection for time and attribute in UI.
     std::string standardScalarFieldName;
