@@ -41,6 +41,7 @@
 #include "Widgets/ViewManager.hpp"
 #include "Volume/VolumeData.hpp"
 #include "ReferencePointSelectionRenderer.hpp"
+#include "ShadowCircleRasterPass.hpp"
 
 void getSphereSurfaceRenderData(
         const glm::vec3& center, float radius, int sectorCount, int stackCount,
@@ -127,14 +128,30 @@ void ReferencePointSelectionRenderer::setReferencePosition(const glm::ivec3& _re
     for (auto& referencePointSelectionRasterPass : referencePointSelectionRasterPasses) {
         referencePointSelectionRasterPass->setReferencePosition(referencePosition);
     }
+    if (volumeData) {
+        sgl::AABB3 volumeAABB = volumeData->getBoundingBoxRendering();
+        const float epsilon = 1e-4f;
+        glm::vec3 lower(
+                float(referencePosition.x) / float(volumeData->getGridSizeX() - 1) * (volumeAABB.max.x - volumeAABB.min.x) + volumeAABB.min.x,
+                float(referencePosition.y) / float(volumeData->getGridSizeY() - 1) * (volumeAABB.max.y - volumeAABB.min.y) + volumeAABB.min.y,
+                volumeAABB.min.z + epsilon);
+        for (auto& shadowCircleRasterPass : shadowCircleRasterPasses) {
+            shadowCircleRasterPass->setCenter(lower);
+        }
+    }
 }
 
 void ReferencePointSelectionRenderer::recreateSwapchainView(uint32_t viewIdx, uint32_t width, uint32_t height) {
     referencePointSelectionRasterPasses.at(viewIdx)->recreateSwapchain(width, height);
+    shadowCircleRasterPasses.at(viewIdx)->recreateSwapchain(width, height);
 }
 
 void ReferencePointSelectionRenderer::renderViewImpl(uint32_t viewIdx) {
     referencePointSelectionRasterPasses.at(viewIdx)->render();
+}
+
+void ReferencePointSelectionRenderer::renderViewPostOpaqueImpl(uint32_t viewIdx) {
+    shadowCircleRasterPasses.at(viewIdx)->render();
 }
 
 void ReferencePointSelectionRenderer::addViewImpl(uint32_t viewIdx) {
@@ -148,10 +165,23 @@ void ReferencePointSelectionRenderer::addViewImpl(uint32_t viewIdx) {
     referencePointSelectionRasterPass->setSphereRadius(0.006f);
     referencePointSelectionRasterPass->setSphereColor(sgl::Color(255, 40, 0).getFloatColorRGBA());
     referencePointSelectionRasterPasses.push_back(referencePointSelectionRasterPass);
+
+    auto shadowCircleRasterPass = std::make_shared<ShadowCircleRasterPass>(
+            renderer, viewManager->getViewSceneData(viewIdx));
+    sgl::AABB3 volumeAABB = volumeData->getBoundingBoxRendering();
+    const float epsilon = 1e-4f;
+    glm::vec3 lower(
+            float(referencePosition.x) / float(volumeData->getGridSizeX() - 1) * (volumeAABB.max.x - volumeAABB.min.x) + volumeAABB.min.x,
+            float(referencePosition.y) / float(volumeData->getGridSizeY() - 1) * (volumeAABB.max.y - volumeAABB.min.y) + volumeAABB.min.y,
+            volumeAABB.min.z + epsilon);
+    shadowCircleRasterPass->setCenter(lower);
+    shadowCircleRasterPass->setRadius(0.006f);
+    shadowCircleRasterPasses.push_back(shadowCircleRasterPass);
 }
 
 void ReferencePointSelectionRenderer::removeViewImpl(uint32_t viewIdx) {
     referencePointSelectionRasterPasses.erase(referencePointSelectionRasterPasses.begin() + viewIdx);
+    shadowCircleRasterPasses.erase(shadowCircleRasterPasses.begin() + viewIdx);
 }
 
 void ReferencePointSelectionRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {

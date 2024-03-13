@@ -33,6 +33,7 @@
 #include "../Renderers/Renderer.hpp"
 
 class ReferencePointSelectionRasterPass;
+class ShadowCircleRasterPass;
 
 class ReferencePointSelectionRenderer : public Renderer {
 public:
@@ -48,11 +49,13 @@ protected:
     void renderViewImpl(uint32_t viewIdx) override;
     void addViewImpl(uint32_t viewIdx) override;
     void removeViewImpl(uint32_t viewIdx) override;
+    void renderViewPostOpaqueImpl(uint32_t viewIdx) override;
     void renderGuiImpl(sgl::PropertyEditor& propertyEditor) override;
 
 private:
     VolumeData* volumeData;
     std::vector<std::shared_ptr<ReferencePointSelectionRasterPass>> referencePointSelectionRasterPasses;
+    std::vector<std::shared_ptr<ShadowCircleRasterPass>> shadowCircleRasterPasses;
 
     glm::ivec3 referencePosition{};
 
