@@ -38,13 +38,13 @@
 #include "Utils/InternalState.hpp"
 #include "Loaders/DataSet.hpp"
 #include "Volume/VolumeData.hpp"
-#include "EnsembleVarianceCalculator.hpp"
+#include "EnsembleSpreadCalculator.hpp"
 
-EnsembleVarianceCalculator::EnsembleVarianceCalculator(sgl::vk::Renderer* renderer) : Calculator(renderer) {
-    ensembleVarianceComputePass = std::make_shared<EnsembleVarianceComputePass>(renderer);
+EnsembleSpreadCalculator::EnsembleSpreadCalculator(sgl::vk::Renderer* renderer) : Calculator(renderer) {
+    ensembleVarianceComputePass = std::make_shared<EnsembleSpreadComputePass>(renderer);
 }
 
-std::string EnsembleVarianceCalculator::getOutputFieldName() {
+std::string EnsembleSpreadCalculator::getOutputFieldName() {
     std::string outputFieldName = "Ensemble Variance";
     if (calculatorConstructorUseCount > 1) {
         outputFieldName += " (" + std::to_string(calculatorConstructorUseCount) + ")";
@@ -52,10 +52,10 @@ std::string EnsembleVarianceCalculator::getOutputFieldName() {
     return outputFieldName;
 }
 
-void EnsembleVarianceCalculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
+void EnsembleSpreadCalculator::setVolumeData(VolumeData* _volumeData, bool isNewData) {
     Calculator::setVolumeData(_volumeData, isNewData);
     if (isNewData) {
-        calculatorConstructorUseCount = volumeData->getNewCalculatorUseCount(CalculatorType::ENSEMBLE_VARIANCE);
+        calculatorConstructorUseCount = volumeData->getNewCalculatorUseCount(CalculatorType::ENSEMBLE_SPREAD);
     }
     ensembleVarianceComputePass->setVolumeData(volumeData, isNewData);
 
@@ -77,7 +77,7 @@ void EnsembleVarianceCalculator::setVolumeData(VolumeData* _volumeData, bool isN
     }
 }
 
-void EnsembleVarianceCalculator::onFieldRemoved(FieldType fieldType, int fieldIdx) {
+void EnsembleSpreadCalculator::onFieldRemoved(FieldType fieldType, int fieldIdx) {
     if (fieldType == FieldType::SCALAR) {
         if (scalarFieldIndex == fieldIdx) {
             scalarFieldIndex = 0;
@@ -91,7 +91,7 @@ void EnsembleVarianceCalculator::onFieldRemoved(FieldType fieldType, int fieldId
     }
 }
 
-void EnsembleVarianceCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float* buffer) {
+void EnsembleSpreadCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float* buffer) {
     int xs = volumeData->getGridSizeX();
     int ys = volumeData->getGridSizeY();
     int zs = volumeData->getGridSizeZ();
@@ -148,7 +148,7 @@ void EnsembleVarianceCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, 
 #endif
 }
 
-void EnsembleVarianceCalculator::calculateDevice(int timeStepIdx, int ensembleIdx, const DeviceCacheEntry& deviceCacheEntry) {
+void EnsembleSpreadCalculator::calculateDevice(int timeStepIdx, int ensembleIdx, const DeviceCacheEntry& deviceCacheEntry) {
     int es = volumeData->getEnsembleMemberCount();
 
     std::vector<VolumeData::DeviceCacheEntry> ensembleEntryFields;
@@ -178,7 +178,7 @@ void EnsembleVarianceCalculator::calculateDevice(int timeStepIdx, int ensembleId
     ensembleVarianceComputePass->render();
 }
 
-void EnsembleVarianceCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
+void EnsembleSpreadCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
     std::string comboName = "Scalar Field";
     if (propertyEditor.addCombo(
             comboName, &scalarFieldIndexGui, scalarFieldNames.data(), int(scalarFieldNames.size()))) {
@@ -189,7 +189,7 @@ void EnsembleVarianceCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEdit
     }
 }
 
-void EnsembleVarianceCalculator::setSettings(const SettingsMap& settings) {
+void EnsembleSpreadCalculator::setSettings(const SettingsMap& settings) {
     Calculator::setSettings(settings);
     if (settings.getValueOpt("scalar_field_idx", scalarFieldIndexGui)) {
         volumeData->releaseScalarField(this, scalarFieldIndex);
@@ -199,21 +199,21 @@ void EnsembleVarianceCalculator::setSettings(const SettingsMap& settings) {
     }
 }
 
-void EnsembleVarianceCalculator::getSettings(SettingsMap& settings) {
+void EnsembleSpreadCalculator::getSettings(SettingsMap& settings) {
     Calculator::getSettings(settings);
     settings.addKeyValue("scalar_field_idx", scalarFieldIndexGui);
 }
 
 
 
-EnsembleVarianceComputePass::EnsembleVarianceComputePass(sgl::vk::Renderer* renderer) : ComputePass(renderer) {
+EnsembleSpreadComputePass::EnsembleSpreadComputePass(sgl::vk::Renderer* renderer) : ComputePass(renderer) {
     uniformBuffer = std::make_shared<sgl::vk::Buffer>(
             device, sizeof(UniformData),
             VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
             VMA_MEMORY_USAGE_GPU_ONLY);
 }
 
-void EnsembleVarianceComputePass::setVolumeData(VolumeData *_volumeData, bool isNewData) {
+void EnsembleSpreadComputePass::setVolumeData(VolumeData *_volumeData, bool isNewData) {
     volumeData = _volumeData;
     uniformData.xs = uint32_t(volumeData->getGridSizeX());
     uniformData.ys = uint32_t(volumeData->getGridSizeY());
@@ -231,7 +231,7 @@ void EnsembleVarianceComputePass::setVolumeData(VolumeData *_volumeData, bool is
 }
 
 
-void EnsembleVarianceComputePass::setEnsembleImageViews(const std::vector<sgl::vk::ImageViewPtr>& _ensembleImageViews) {
+void EnsembleSpreadComputePass::setEnsembleImageViews(const std::vector<sgl::vk::ImageViewPtr>& _ensembleImageViews) {
     if (ensembleImageViews != _ensembleImageViews) {
         ensembleImageViews = _ensembleImageViews;
         if (computeData) {
@@ -240,7 +240,7 @@ void EnsembleVarianceComputePass::setEnsembleImageViews(const std::vector<sgl::v
     }
 }
 
-void EnsembleVarianceComputePass::setOutputImage(const sgl::vk::ImageViewPtr& _outputImage) {
+void EnsembleSpreadComputePass::setOutputImage(const sgl::vk::ImageViewPtr& _outputImage) {
     if (outputImage != _outputImage) {
         outputImage = _outputImage;
         if (computeData) {
@@ -249,7 +249,7 @@ void EnsembleVarianceComputePass::setOutputImage(const sgl::vk::ImageViewPtr& _o
     }
 }
 
-void EnsembleVarianceComputePass::loadShader() {
+void EnsembleSpreadComputePass::loadShader() {
     sgl::vk::ShaderManager->invalidateShaderCache();
     std::map<std::string, std::string> preprocessorDefines;
     preprocessorDefines.insert(std::make_pair("BLOCK_SIZE_X", std::to_string(computeBlockSizeX)));
@@ -257,11 +257,11 @@ void EnsembleVarianceComputePass::loadShader() {
     preprocessorDefines.insert(std::make_pair("BLOCK_SIZE_Z", std::to_string(computeBlockSizeZ)));
     preprocessorDefines.insert(std::make_pair(
             "ENSEMBLE_MEMBER_COUNT", std::to_string(volumeData->getEnsembleMemberCount())));
-    std::string shaderName = "EnsembleVarianceCalculator.Compute";
+    std::string shaderName = "EnsembleSpreadCalculator.Compute";
     shaderStages = sgl::vk::ShaderManager->getShaderStages({ shaderName }, preprocessorDefines);
 }
 
-void EnsembleVarianceComputePass::createComputeData(
+void EnsembleSpreadComputePass::createComputeData(
         sgl::vk::Renderer* renderer, sgl::vk::ComputePipelinePtr& computePipeline) {
     computeData = std::make_shared<sgl::vk::ComputeData>(renderer, computePipeline);
     computeData->setStaticBuffer(uniformBuffer, "UniformBuffer");
@@ -270,7 +270,7 @@ void EnsembleVarianceComputePass::createComputeData(
     computeData->setStaticImageView(outputImage, "outputImage");
 }
 
-void EnsembleVarianceComputePass::_render() {
+void EnsembleSpreadComputePass::_render() {
     renderer->dispatch(
             computeData,
             sgl::uiceil(uniformData.xs, computeBlockSizeX),

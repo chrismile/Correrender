@@ -80,7 +80,7 @@
 #include "Calculators/VelocityCalculator.hpp"
 #include "Calculators/BinaryOperatorCalculator.hpp"
 #include "Calculators/NoiseReductionCalculator.hpp"
-#include "Calculators/EnsembleVarianceCalculator.hpp"
+#include "Calculators/EnsembleSpreadCalculator.hpp"
 #include "Calculators/SetPredicateCalculator.hpp"
 #include "Calculators/ResidualColorCalculator.hpp"
 #include "Calculators/CorrelationCalculator.hpp"
@@ -189,7 +189,7 @@ VolumeData::VolumeData(sgl::vk::Renderer* renderer) : renderer(renderer), multiV
     factoriesCalculator.emplace_back(
             "Noise Reduction", [renderer]() { return new NoiseReductionCalculator(renderer); });
     factoriesCalculator.emplace_back(
-            "Ensemble Variance", [renderer]() { return new EnsembleVarianceCalculator(renderer); });
+            "Ensemble Spread", [renderer]() { return new EnsembleSpreadCalculator(renderer); });
     factoriesCalculator.emplace_back(
             "Set Predicate", [renderer]() { return new SetPredicateCalculator(renderer); });
     factoriesCalculator.emplace_back(

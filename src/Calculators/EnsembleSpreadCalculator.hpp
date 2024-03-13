@@ -26,19 +26,19 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef CORRERENDER_ENSEMBLEVARIANCECALCULATOR_HPP
-#define CORRERENDER_ENSEMBLEVARIANCECALCULATOR_HPP
+#ifndef CORRERENDER_ENSEMBLESPREADCALCULATOR_HPP
+#define CORRERENDER_ENSEMBLESPREADCALCULATOR_HPP
 
 #include <Graphics/Vulkan/Render/Passes/Pass.hpp>
 
 #include "Calculator.hpp"
 
-class EnsembleVarianceComputePass;
+class EnsembleSpreadComputePass;
 
-class EnsembleVarianceCalculator : public Calculator {
+class EnsembleSpreadCalculator : public Calculator {
 public:
-    explicit EnsembleVarianceCalculator(sgl::vk::Renderer* renderer);
-    [[nodiscard]] CalculatorType getCalculatorType() const override { return CalculatorType::ENSEMBLE_VARIANCE; }
+    explicit EnsembleSpreadCalculator(sgl::vk::Renderer* renderer);
+    [[nodiscard]] CalculatorType getCalculatorType() const override { return CalculatorType::ENSEMBLE_SPREAD; }
     void setVolumeData(VolumeData* _volumeData, bool isNewData) override;
     void onFieldRemoved(FieldType fieldType, int fieldIdx) override;
     [[nodiscard]] bool getShouldRenderGui() const override { return true; }
@@ -58,12 +58,12 @@ private:
     std::vector<size_t> scalarFieldIndexArray;
     int scalarFieldIndex = 0;
     int scalarFieldIndexGui = 0;
-    std::shared_ptr<EnsembleVarianceComputePass> ensembleVarianceComputePass;
+    std::shared_ptr<EnsembleSpreadComputePass> ensembleVarianceComputePass;
 };
 
-class EnsembleVarianceComputePass : public sgl::vk::ComputePass {
+class EnsembleSpreadComputePass : public sgl::vk::ComputePass {
 public:
-    explicit EnsembleVarianceComputePass(sgl::vk::Renderer* renderer);
+    explicit EnsembleSpreadComputePass(sgl::vk::Renderer* renderer);
     void setVolumeData(VolumeData* _volumeData, bool isNewData);
     void setEnsembleImageViews(const std::vector<sgl::vk::ImageViewPtr>& _ensembleImageViews);
     void setOutputImage(const sgl::vk::ImageViewPtr& _outputImage);
@@ -88,4 +88,4 @@ private:
     sgl::vk::ImageViewPtr outputImage;
 };
 
-#endif //CORRERENDER_ENSEMBLEVARIANCECALCULATOR_HPP
+#endif //CORRERENDER_ENSEMBLESPREADCALCULATOR_HPP

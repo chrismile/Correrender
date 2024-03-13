@@ -57,7 +57,7 @@ typedef std::shared_ptr<DeviceCacheEntryType> DeviceCacheEntry;
 
 enum class CalculatorType : uint32_t {
     VELOCITY, VECTOR_MAGNITUDE, VORTICITY, HELICITY,
-    BINARY_OPERATOR, NOISE_REDUCTION, ENSEMBLE_VARIANCE, SET_PREDICATE, RESIDUAL_COLOR,
+    BINARY_OPERATOR, NOISE_REDUCTION, ENSEMBLE_SPREAD, SET_PREDICATE, RESIDUAL_COLOR,
     CORRELATION, TORCH, TINY_CUDA_NN, QUICK_MLP, VMLP,
     INVALID
 };
@@ -65,13 +65,13 @@ const CalculatorType firstCorrelationCalculatorType = CalculatorType::CORRELATIO
 const CalculatorType lastCorrelationCalculatorType = CalculatorType::VMLP;
 const char* const CALCULATOR_TYPE_IDS[] = {
         "velocity", "vector_magnitude", "vorticity", "helicity",
-        "binary_operator", "noise_reduction", "ensemble_variance", "set_predicate", "residual_color",
+        "binary_operator", "noise_reduction", "ensemble_spread", "set_predicate", "residual_color",
         "correlation", "correlation_torch", "correlation_tiny_cuda_nn", "correlation_quick_mlp",
         "correlation_vmlp"
 };
 const char* const CALCULATOR_NAMES[] = {
         "Velocity Calculator", "Vector Magnitude Calculator", "Vorticity Calculator", "Helicity Calculator",
-        "Binary Operator", "Noise Reduction", "Ensemble Variance", "Set Predicate", "Residual Color Calculator",
+        "Binary Operator", "Noise Reduction", "Ensemble Spread", "Set Predicate", "Residual Color Calculator",
         "Correlation Calculator", "PyTorch Similarity Calculator", "tiny-cuda-nn Similarity Calculator",
         "QuickMLP Similarity Calculator", "VMLP Similarity Calculator"
 };
