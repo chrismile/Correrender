@@ -235,6 +235,12 @@ MainApp::MainApp()
     fileDialogInstance = IGFD_Create();
     customDataSetFileName = sgl::FileUtils::get()->getUserDirectory();
     loadAvailableDataSetInformation();
+    isProgramStart = false;
+
+    const std::string volumeDataSetsDirectory = sgl::AppSettings::get()->getDataDirectory() + "VolumeDataSets/";
+    sgl::FileUtils::get()->ensureDirectoryExists(volumeDataSetsDirectory);
+    datasetsWatch.setPath(volumeDataSetsDirectory + "datasets.json", false);
+    datasetsWatch.initialize();
 
     if (!recording && !usePerformanceMeasurementMode) {
         // Just for convenience...
@@ -828,6 +834,7 @@ void MainApp::renderGui() {
                     || boost::ends_with(filenameLower, ".ctl")) {
                 selectedDataSetIndex = 0;
                 customDataSetFileName = filename;
+                customDataSetFileNames.clear();
                 dataSetType = DataSetType::VOLUME;
                 loadVolumeDataSet(getSelectedDataSetFilenames());
             } else {
@@ -1201,34 +1208,54 @@ void MainApp::renderGui() {
 }
 
 void MainApp::loadAvailableDataSetInformation() {
+    const std::string volumeDataSetsDirectory = sgl::AppSettings::get()->getDataDirectory() + "VolumeDataSets/";
+    bool datasetsJsonExists = sgl::FileUtils::get()->exists(volumeDataSetsDirectory + "datasets.json");
+    DataSetInformationPtr dataSetInformationRootNew;
+    if (datasetsJsonExists) {
+        dataSetInformationRootNew = loadDataSetList(volumeDataSetsDirectory + "datasets.json", isFileWatchReload);
+        if (!dataSetInformationRootNew && !isProgramStart) {
+            return;
+        }
+    } else if (!isProgramStart) {
+        return;
+    }
+
+    if (!isProgramStart && currentlyLoadedDataSetIndex >= NUM_MANUAL_LOADERS) {
+        customDataSetFileNames = dataSetInformationList.at(currentlyLoadedDataSetIndex - NUM_MANUAL_LOADERS)->filenames;
+        selectedDataSetIndex = 0;
+        currentlyLoadedDataSetIndex = 0;
+    }
+
+    dataSetInformationRoot = {};
+    dataSetInformationList.clear();
     dataSetNames.clear();
     dataSetNames.emplace_back("Local file...");
     selectedDataSetIndex = 0;
 
-    const std::string volumeDataSetsDirectory = sgl::AppSettings::get()->getDataDirectory() + "VolumeDataSets/";
-    if (sgl::FileUtils::get()->exists(volumeDataSetsDirectory + "datasets.json")) {
-        dataSetInformationRoot = loadDataSetList(volumeDataSetsDirectory + "datasets.json");
+    dataSetInformationRoot = dataSetInformationRootNew;
+    if (!datasetsJsonExists || !dataSetInformationRoot) {
+        return;
+    }
 
-        std::stack<std::pair<DataSetInformationPtr, size_t>> dataSetInformationStack;
-        dataSetInformationStack.push(std::make_pair(dataSetInformationRoot, 0));
-        while (!dataSetInformationStack.empty()) {
-            std::pair<DataSetInformationPtr, size_t> dataSetIdxPair = dataSetInformationStack.top();
-            DataSetInformationPtr dataSetInformationParent = dataSetIdxPair.first;
-            size_t idx = dataSetIdxPair.second;
-            dataSetInformationStack.pop();
-            while (idx < dataSetInformationParent->children.size()) {
-                DataSetInformationPtr dataSetInformationChild =
-                        dataSetInformationParent->children.at(idx);
-                idx++;
-                if (dataSetInformationChild->type == DataSetType::NODE) {
-                    dataSetInformationStack.push(std::make_pair(dataSetInformationRoot, idx));
-                    dataSetInformationStack.push(std::make_pair(dataSetInformationChild, 0));
-                    break;
-                } else {
-                    dataSetInformationChild->sequentialIndex = int(dataSetNames.size());
-                    dataSetInformationList.push_back(dataSetInformationChild);
-                    dataSetNames.push_back(dataSetInformationChild->name);
-                }
+    std::stack<std::pair<DataSetInformationPtr, size_t>> dataSetInformationStack;
+    dataSetInformationStack.push(std::make_pair(dataSetInformationRoot, 0));
+    while (!dataSetInformationStack.empty()) {
+        std::pair<DataSetInformationPtr, size_t> dataSetIdxPair = dataSetInformationStack.top();
+        DataSetInformationPtr dataSetInformationParent = dataSetIdxPair.first;
+        size_t idx = dataSetIdxPair.second;
+        dataSetInformationStack.pop();
+        while (idx < dataSetInformationParent->children.size()) {
+            DataSetInformationPtr dataSetInformationChild =
+                    dataSetInformationParent->children.at(idx);
+            idx++;
+            if (dataSetInformationChild->type == DataSetType::NODE) {
+                dataSetInformationStack.push(std::make_pair(dataSetInformationRoot, idx));
+                dataSetInformationStack.push(std::make_pair(dataSetInformationChild, 0));
+                break;
+            } else {
+                dataSetInformationChild->sequentialIndex = int(dataSetNames.size());
+                dataSetInformationList.push_back(dataSetInformationChild);
+                dataSetNames.push_back(dataSetInformationChild->name);
             }
         }
     }
@@ -1237,7 +1264,11 @@ void MainApp::loadAvailableDataSetInformation() {
 std::vector<std::string> MainApp::getSelectedDataSetFilenames() {
     std::vector<std::string> filenames;
     if (selectedDataSetIndex == 0) {
-        filenames.push_back(customDataSetFileName);
+        if (customDataSetFileNames.empty()) {
+            filenames.push_back(customDataSetFileName);
+        } else {
+            filenames = customDataSetFileNames;
+        }
     } else {
         dataSetType = dataSetInformationList.at(selectedDataSetIndex - NUM_MANUAL_LOADERS)->type;
         for (const std::string& filename : dataSetInformationList.at(
@@ -1406,6 +1437,10 @@ void MainApp::renderGuiMenuBar() {
                 }
 
                 ImGui::EndMenu();
+            }
+
+            if (ImGui::MenuItem("Reload Datasets")) {
+                loadAvailableDataSetInformation();
             }
 
             if (ImGui::MenuItem("Quit", "CTRL+Q")) {
@@ -1716,6 +1751,12 @@ void MainApp::renderGuiPropertyEditorCustomNodes() {
 
 void MainApp::update(float dt) {
     sgl::SciVisApp::update(dt);
+
+    datasetsWatch.update([this] {
+        isFileWatchReload = true;
+        this->loadAvailableDataSetInformation();
+        isFileWatchReload = false;
+    });
 
     for (int i = 0; i < int(nonBlockingMsgBoxHandles.size()); i++) {
         auto& handle = nonBlockingMsgBoxHandles.at(i);

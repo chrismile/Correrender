@@ -33,6 +33,7 @@
 #include <vector>
 #include <map>
 
+#include <Utils/File/PathWatch.hpp>
 #include <Utils/SciVis/SciVisApp.hpp>
 
 #ifdef SUPPORT_CUDA_INTEROP
@@ -145,6 +146,9 @@ private:
     int selectedDataSetIndex = 0; //< Contains "Local file..." at beginning, thus starts actually at 1.
     int currentlyLoadedDataSetIndex = -1;
     std::string customDataSetFileName;
+    std::vector<std::string> customDataSetFileNames;
+    bool isProgramStart = true, isFileWatchReload = false;
+    sgl::PathWatch datasetsWatch;
     ImGuiFileDialog* fileDialogInstance = nullptr;
     std::string fileDialogDirectory;
     std::vector<sgl::dialog::MsgBoxHandlePtr> nonBlockingMsgBoxHandles;

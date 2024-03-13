@@ -315,14 +315,14 @@ void processDataSetNodeChildren(Json::Value& childList, DataSetInformation* data
     }
 }
 
-DataSetInformationPtr loadDataSetList(const std::string& filename) {
+DataSetInformationPtr loadDataSetList(const std::string& filename, bool isFileWatchReload) {
     // Parse the passed JSON file.
     std::ifstream jsonFileStream(filename.c_str());
     Json::CharReaderBuilder builder;
     JSONCPP_STRING errorString;
     Json::Value root;
     if (!parseFromStream(builder, jsonFileStream, &root, &errorString)) {
-        sgl::Logfile::get()->writeError(errorString);
+        sgl::Logfile::get()->writeError(errorString, !isFileWatchReload);
         return {};
     }
     jsonFileStream.close();
