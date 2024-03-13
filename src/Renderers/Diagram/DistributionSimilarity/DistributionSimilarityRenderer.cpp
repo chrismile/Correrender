@@ -26,8 +26,13 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <random>
+
+#include <Utils/Parallel/Reduction.hpp>
 #include <Graphics/Vulkan/Render/Renderer.hpp>
 #include <ImGui/Widgets/PropertyEditor.hpp>
+
+#include "bhtsne/tsne.h"
 
 #include "Widgets/DataView.hpp"
 #include "Widgets/ViewManager.hpp"
@@ -35,31 +40,31 @@
 #include "Calculators/CorrelationDefines.hpp"
 #include "Calculators/Similarity.hpp"
 #include "Volume/VolumeData.hpp"
-#include "CorrelationMatrixChart.hpp"
-#include "CorrelationMatrixRenderer.hpp"
+#include "DistributionSimilarityChart.hpp"
+#include "DistributionSimilarityRenderer.hpp"
 
-CorrelationMatrixRenderer::CorrelationMatrixRenderer(ViewManager* viewManager)
-        : Renderer(RENDERING_MODE_NAMES[int(RENDERING_MODE_CORRELATION_MATRIX)], viewManager) {
+DistributionSimilarityRenderer::DistributionSimilarityRenderer(ViewManager* viewManager)
+        : Renderer(RENDERING_MODE_NAMES[int(RENDERING_MODE_DISTRIBUTION_SIMILARITY)], viewManager) {
 }
 
-CorrelationMatrixRenderer::~CorrelationMatrixRenderer() {
+DistributionSimilarityRenderer::~DistributionSimilarityRenderer() {
     parentDiagram = {};
 }
 
-void CorrelationMatrixRenderer::initialize() {
+void DistributionSimilarityRenderer::initialize() {
     Renderer::initialize();
 
-    parentDiagram = std::make_shared<CorrelationMatrixChart>();
+    parentDiagram = std::make_shared<DistributionSimilarityChart>();
     parentDiagram->setRendererVk(renderer);
     parentDiagram->initialize();
     if (volumeData) {
         parentDiagram->setAlignWithParentWindow(alignWithParentWindow);
         parentDiagram->setClearColor(viewManager->getClearColor());
-        parentDiagram->setColorMap(colorMap);
+        //parentDiagram->setColorMap(colorMap);
     }
 }
 
-void CorrelationMatrixRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) {
+void DistributionSimilarityRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) {
     if (!volumeData) {
         isNewData = true;
     }
@@ -72,66 +77,67 @@ void CorrelationMatrixRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool i
     if (isNewData) {
         parentDiagram->setAlignWithParentWindow(alignWithParentWindow);
         parentDiagram->setClearColor(viewManager->getClearColor());
-        parentDiagram->setColorMap(colorMap);
+        //parentDiagram->setColorMap(colorMap);
     }
 }
 
-void CorrelationMatrixRenderer::recomputeCorrelationMatrix() {
-    const std::vector<std::string>& fieldNames = volumeData->getFieldNamesBase(FieldType::SCALAR);
-    const auto numFields = int(fieldNames.size());
-    std::shared_ptr<CorrelationMatrix> similarityMatrix = std::make_shared<SymmetricCorrelationMatrix>(numFields);
+void DistributionSimilarityRenderer::recomputeCorrelationMatrix() {
+    //const std::vector<std::string>& fieldNames = volumeData->getFieldNamesBase(FieldType::SCALAR);
+    //const auto numFields = int(fieldNames.size());
 
-    float minCorrelationValueGlobal = 0.0f;
-    float maxCorrelationValueGlobal = 0.0f;
-    for (int fieldIdx0 = 0; fieldIdx0 < numFields; fieldIdx0++) {
-        for (int fieldIdx1 = fieldIdx0 + 1; fieldIdx1 < numFields; fieldIdx1++) {
-            float similarityMetricNumber;
-            float maxCorrelationValueLocal = 0.0f;
-            if (useFieldAccuracyDouble) {
-                similarityMetricNumber = computeFieldSimilarity<double>(
-                        volumeData.get(), fieldIdx0, fieldIdx1, correlationMeasureType, maxCorrelationValueLocal,
-                        useAllTimeSteps, useAllEnsembleMembers);
-            } else {
-                similarityMetricNumber = computeFieldSimilarity<float>(
-                        volumeData.get(), fieldIdx0, fieldIdx1, correlationMeasureType, maxCorrelationValueLocal,
-                        useAllTimeSteps, useAllEnsembleMembers);
-            }
-            maxCorrelationValueGlobal = std::max(maxCorrelationValueGlobal, maxCorrelationValueLocal);
-            similarityMatrix->set(fieldIdx0, fieldIdx1, similarityMetricNumber);
+    std::mt19937 generator(17);
+    std::normal_distribution<float> distribution(0.0f, 1.0f);
+    int numVectors = 10000;
+    //int numFeatures = 17 * 17 * 17;
+    int numFeatures = 100;
+    auto* featureVectorArray = new double[numFeatures * numVectors];
+    auto* outputPoints = new double[2 * numVectors];
+    for (int ptIdx = 0; ptIdx < numVectors; ptIdx++) {
+        for (int featureIdx = 0; featureIdx < numFeatures; featureIdx++) {
+            featureVectorArray[ptIdx * numFeatures + featureIdx] = distribution(generator);
         }
     }
 
-    //for (int fieldIdx = 0; fieldIdx < numFields; fieldIdx++) {
-    //    similarityMatrix->set(fieldIdx, fieldIdx, maxCorrelationValueGlobal);
-    //}
+    float perplexity = 30.0f;
+    float theta = 0.5f;
+    int randomSeed = 17; // -1 for pseudo-random
+    int maxIter = 500;
+    int stopLyingIter = 0;
+    int momSwitchIter = 700;
+    TSNE::run(
+            featureVectorArray, numVectors, numFeatures, outputPoints, 2,
+            double(perplexity), double(theta), randomSeed, false, maxIter, stopLyingIter, momSwitchIter);
 
-    if (correlationMeasureType == CorrelationMeasureType::PEARSON
-            || correlationMeasureType == CorrelationMeasureType::SPEARMAN
-            || correlationMeasureType == CorrelationMeasureType::KENDALL) {
-        minCorrelationValueGlobal = -maxCorrelationValueGlobal;
+    std::vector<glm::vec2> points(numVectors);
+    for (int ptIdx = 0; ptIdx < numVectors; ptIdx++) {
+        points.at(ptIdx) = glm::vec2(float(featureVectorArray[ptIdx * 2]), float(featureVectorArray[ptIdx * 2 + 1]));
     }
-
-    parentDiagram->setMatrixData(
-            correlationMeasureType, fieldNames, similarityMatrix,
-            {minCorrelationValueGlobal, maxCorrelationValueGlobal});
+    parentDiagram->setPointData(points);
+    auto bbData = sgl::reduceVec2ArrayAabb(points);
+    //auto bbRender = bbData;
+    //bbRender.min -= glm::vec2(bbData.getExtent() * 0.02f);
+    //bbRender.min += glm::vec2(bbData.getExtent() * 0.02f);
+    parentDiagram->setBoundingBox(bbData);
+    delete[] featureVectorArray;
+    delete[] outputPoints;
 
     reRender = true;
     reRenderTriggeredByDiagram = true;
 }
 
-void CorrelationMatrixRenderer::onFieldRemoved(FieldType fieldType, int fieldIdx) {
+void DistributionSimilarityRenderer::onFieldRemoved(FieldType fieldType, int fieldIdx) {
     if (fieldType == FieldType::SCALAR) {
         // TODO
     }
 }
 
-void CorrelationMatrixRenderer::recreateSwapchainView(uint32_t viewIdx, uint32_t width, uint32_t height) {
+void DistributionSimilarityRenderer::recreateSwapchainView(uint32_t viewIdx, uint32_t width, uint32_t height) {
     if (viewIdx == diagramViewIdx) {
         recreateDiagramSwapchain();
     }
 }
 
-void CorrelationMatrixRenderer::recreateDiagramSwapchain(int diagramIdx) {
+void DistributionSimilarityRenderer::recreateDiagramSwapchain(int diagramIdx) {
     SceneData* sceneData = viewManager->getViewSceneData(diagramViewIdx);
     if (!(*sceneData->sceneTexture)) {
         return;
@@ -148,7 +154,7 @@ void CorrelationMatrixRenderer::recreateDiagramSwapchain(int diagramIdx) {
     reRenderTriggeredByDiagram = true;
 }
 
-void CorrelationMatrixRenderer::update(float dt, bool isMouseGrabbed) {
+void DistributionSimilarityRenderer::update(float dt, bool isMouseGrabbed) {
     reRenderTriggeredByDiagram = false;
     parentDiagram->setIsMouseGrabbedByParent(isMouseGrabbed);
     parentDiagram->update(dt);
@@ -163,22 +169,22 @@ void CorrelationMatrixRenderer::update(float dt, bool isMouseGrabbed) {
     //isMouseGrabbed |= parentDiagram->getIsMouseGrabbed() || parentDiagram->getIsMouseOverDiagramImGui();
 }
 
-void CorrelationMatrixRenderer::onHasMoved(uint32_t viewIdx) {
+void DistributionSimilarityRenderer::onHasMoved(uint32_t viewIdx) {
 }
 
-bool CorrelationMatrixRenderer::getHasGrabbedMouse() const {
+bool DistributionSimilarityRenderer::getHasGrabbedMouse() const {
     if (parentDiagram->getIsMouseGrabbed() || parentDiagram->getIsMouseOverDiagramImGui()) {
         return true;
     }
     return false;
 }
 
-void CorrelationMatrixRenderer::setClearColor(const sgl::Color& clearColor) {
+void DistributionSimilarityRenderer::setClearColor(const sgl::Color& clearColor) {
     parentDiagram->setClearColor(clearColor);
     reRenderTriggeredByDiagram = true;
 }
 
-void CorrelationMatrixRenderer::renderViewImpl(uint32_t viewIdx) {
+void DistributionSimilarityRenderer::renderViewImpl(uint32_t viewIdx) {
     if (viewIdx != diagramViewIdx) {
         return;
     }
@@ -199,22 +205,22 @@ void CorrelationMatrixRenderer::renderViewImpl(uint32_t viewIdx) {
     parentDiagram->blitToTargetVk();
 }
 
-void CorrelationMatrixRenderer::renderViewPreImpl(uint32_t viewIdx) {
+void DistributionSimilarityRenderer::renderViewPreImpl(uint32_t viewIdx) {
     if ((viewIdx == diagramViewIdx) && alignWithParentWindow) {
         return;
     }
 }
 
-void CorrelationMatrixRenderer::renderViewPostOpaqueImpl(uint32_t viewIdx) {
+void DistributionSimilarityRenderer::renderViewPostOpaqueImpl(uint32_t viewIdx) {
     if (viewIdx == diagramViewIdx && alignWithParentWindow) {
         return;
     }
 }
 
-void CorrelationMatrixRenderer::addViewImpl(uint32_t viewIdx) {
+void DistributionSimilarityRenderer::addViewImpl(uint32_t viewIdx) {
 }
 
-bool CorrelationMatrixRenderer::adaptIdxOnViewRemove(uint32_t viewIdx, uint32_t& diagramViewIdx) {
+bool DistributionSimilarityRenderer::adaptIdxOnViewRemove(uint32_t viewIdx, uint32_t& diagramViewIdx) {
     if (diagramViewIdx >= viewIdx && diagramViewIdx != 0) {
         if (diagramViewIdx != 0) {
             diagramViewIdx--;
@@ -227,7 +233,7 @@ bool CorrelationMatrixRenderer::adaptIdxOnViewRemove(uint32_t viewIdx, uint32_t&
     return false;
 }
 
-void CorrelationMatrixRenderer::removeViewImpl(uint32_t viewIdx) {
+void DistributionSimilarityRenderer::removeViewImpl(uint32_t viewIdx) {
     bool diagramViewIdxChanged = false;
     diagramViewIdxChanged |= adaptIdxOnViewRemove(viewIdx, diagramViewIdx);
     if (diagramViewIdxChanged) {
@@ -237,7 +243,7 @@ void CorrelationMatrixRenderer::removeViewImpl(uint32_t viewIdx) {
     }
 }
 
-void CorrelationMatrixRenderer::renderDiagramViewSelectionGui(
+void DistributionSimilarityRenderer::renderDiagramViewSelectionGui(
         sgl::PropertyEditor& propertyEditor, const std::string& name, uint32_t& diagramViewIdx) {
     std::string textDefault = "View " + std::to_string(diagramViewIdx + 1);
     if (propertyEditor.addBeginCombo(name, textDefault, ImGuiComboFlags_NoArrowButton)) {
@@ -259,34 +265,19 @@ void CorrelationMatrixRenderer::renderDiagramViewSelectionGui(
     }
 }
 
-void CorrelationMatrixRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
+void DistributionSimilarityRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
     renderDiagramViewSelectionGui(propertyEditor, "Diagram View", diagramViewIdx);
 
-    if (volumeData && volumeData->getTimeStepCount() > 1) {
-        if (propertyEditor.addCheckbox("Use All Time Steps", &useAllTimeSteps)) {
-            recomputeCorrelationMatrix();
-        }
-    }
-    if (volumeData && volumeData->getEnsembleMemberCount() > 1) {
-        if (propertyEditor.addCheckbox("Use All Ensemble Members", &useAllEnsembleMembers)) {
-            recomputeCorrelationMatrix();
-        }
+    if (propertyEditor.addSliderFloat("Point Size", &pointSize, 1.0f, 10.0f)) {
+        parentDiagram->setPointRadius(pointSize);
+        reRender = true;
+        reRenderTriggeredByDiagram = true;
     }
 
-    if (propertyEditor.addCombo(
-            "Correlation Measure", (int*)&correlationMeasureType,
-            CORRELATION_MEASURE_TYPE_NAMES, IM_ARRAYSIZE(CORRELATION_MEASURE_TYPE_NAMES))) {
-        recomputeCorrelationMatrix();
-    }
-    if (propertyEditor.addCombo(
-            "Accuracy", (int*)&useFieldAccuracyDouble, FIELD_ACCURACY_NAMES, 2)) {
-        recomputeCorrelationMatrix();
-    }
-
-    if (propertyEditor.addCombo(
-            "Color Map", (int*)&colorMap, DIAGRAM_COLOR_MAP_NAMES,
-            IM_ARRAYSIZE(DIAGRAM_COLOR_MAP_NAMES))) {
-        parentDiagram->setColorMap(colorMap);
+    glm::vec4 pointColorVec = pointColor.getFloatColorRGBA();
+    if (propertyEditor.addColorEdit4("Point Color", &pointColorVec.x)) {
+        pointColor = sgl::colorFromVec4(pointColorVec);
+        parentDiagram->setPointColor(pointColor);
         reRender = true;
         reRenderTriggeredByDiagram = true;
     }
@@ -303,7 +294,7 @@ void CorrelationMatrixRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEdito
     }
 }
 
-void CorrelationMatrixRenderer::setSettings(const SettingsMap& settings) {
+void DistributionSimilarityRenderer::setSettings(const SettingsMap& settings) {
     Renderer::setSettings(settings);
 
     bool diagramChanged = false;
@@ -315,37 +306,17 @@ void CorrelationMatrixRenderer::setSettings(const SettingsMap& settings) {
         parentDiagram->setAlignWithParentWindow(alignWithParentWindow);
     }
 
-    if (settings.getValueOpt("use_all_time_steps", useAllTimeSteps)) {
-        recomputeCorrelationMatrix();
+    if (settings.getValueOpt("point_size", pointSize)) {
+        parentDiagram->setPointRadius(pointSize);
+        reRender = true;
+        reRenderTriggeredByDiagram = true;
     }
-    if (settings.getValueOpt("use_all_ensemble_members", useAllEnsembleMembers)) {
-        recomputeCorrelationMatrix();
-    }
-
-    std::string correlationMeasureTypeName;
-    if (settings.getValueOpt("correlation_measure_type", correlationMeasureTypeName)) {
-        for (int i = 0; i < IM_ARRAYSIZE(CORRELATION_MEASURE_TYPE_IDS); i++) {
-            if (correlationMeasureTypeName == CORRELATION_MEASURE_TYPE_IDS[i]) {
-                correlationMeasureType = CorrelationMeasureType(i);
-                break;
-            }
-        }
-        recomputeCorrelationMatrix();
-    }
-    if (settings.getValueOpt("use_field_accuracy_double", useFieldAccuracyDouble)) {
-        recomputeCorrelationMatrix();
-    }
-
-    std::string colorMapName;
-    std::string colorMapIdx = "color_map";
-    if (settings.getValueOpt(colorMapIdx.c_str(), colorMapName)) {
-        for (int i = 0; i < IM_ARRAYSIZE(DIAGRAM_COLOR_MAP_NAMES); i++) {
-            if (colorMapName == DIAGRAM_COLOR_MAP_NAMES[i]) {
-                colorMap = DiagramColorMap(i);
-                parentDiagram->setColorMap(colorMap);
-                break;
-            }
-        }
+    glm::vec4 pointColorVec = pointColor.getFloatColorRGBA();
+    if (settings.getValueOpt("point_color", pointColorVec)) {
+        pointColor = sgl::colorFromVec4(pointColorVec);
+        parentDiagram->setPointColor(pointColor);
+        reRender = true;
+        reRenderTriggeredByDiagram = true;
     }
 
     dirty = true;
@@ -353,17 +324,13 @@ void CorrelationMatrixRenderer::setSettings(const SettingsMap& settings) {
     reRenderTriggeredByDiagram = true;
 }
 
-void CorrelationMatrixRenderer::getSettings(SettingsMap& settings) {
+void DistributionSimilarityRenderer::getSettings(SettingsMap& settings) {
     Renderer::getSettings(settings);
 
     settings.addKeyValue("diagram_view", diagramViewIdx);
     settings.addKeyValue("align_with_parent_window", alignWithParentWindow);
-    settings.addKeyValue("use_all_time_steps", useAllTimeSteps);
-    settings.addKeyValue("use_all_ensemble_members", useAllEnsembleMembers);
-    settings.addKeyValue(
-            "correlation_measure_type", CORRELATION_MEASURE_TYPE_IDS[int(correlationMeasureType)]);
-    settings.addKeyValue("use_field_accuracy_double", useFieldAccuracyDouble);
-    settings.addKeyValue("color_map", DIAGRAM_COLOR_MAP_NAMES[int(colorMap)]);
+    settings.addKeyValue("point_size", pointSize);
+    settings.addKeyValue("point_color", pointColor.getFloatColorRGBA());
 
     // No vector widget settings for now.
 }

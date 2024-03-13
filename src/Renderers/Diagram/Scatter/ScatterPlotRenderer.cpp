@@ -501,6 +501,19 @@ void ScatterPlotRenderer::setSettings(const SettingsMap& settings) {
         parentDiagram->setAlignWithParentWindow(alignWithParentWindow);
     }
 
+    if (settings.getValueOpt("point_size", pointSize)) {
+        parentDiagram->setPointRadius(pointSize);
+        reRender = true;
+        reRenderTriggeredByDiagram = true;
+    }
+    glm::vec4 pointColorVec = pointColor.getFloatColorRGBA();
+    if (settings.getValueOpt("point_color", pointColorVec)) {
+        pointColor = sgl::colorFromVec4(pointColorVec);
+        parentDiagram->setPointColor(pointColor);
+        reRender = true;
+        reRenderTriggeredByDiagram = true;
+    }
+
     settings.getValueOpt("fix_picking_z", fixPickingZPlane);
     if (settings.getValueOpt("fixed_z_plane_percentage", fixedZPlanePercentage)) {
         for (int i = 0; i < 2; i++) {
@@ -516,12 +529,14 @@ void ScatterPlotRenderer::setSettings(const SettingsMap& settings) {
 void ScatterPlotRenderer::getSettings(SettingsMap& settings) {
     Renderer::getSettings(settings);
 
-    settings.addKeyValue("context_diagram_view", diagramViewIdx);
+    settings.addKeyValue("diagram_view", diagramViewIdx);
     settings.addKeyValue("correlation_mode", CORRELATION_MODE_NAMES[isEnsembleMode ? 0 : 1]);
     settings.addKeyValue("align_with_parent_window", alignWithParentWindow);
     settings.addKeyValue("use_same_field", useSameField);
     settings.addKeyValue("field0", fieldName0);
     settings.addKeyValue("field1", fieldName1);
+    settings.addKeyValue("point_size", pointSize);
+    settings.addKeyValue("point_color", pointColor.getFloatColorRGBA());
     settings.addKeyValue("fix_picking_z", fixPickingZPlane);
     settings.addKeyValue("fixed_z_plane_percentage", fixedZPlanePercentage);
 

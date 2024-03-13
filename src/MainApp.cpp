@@ -81,6 +81,7 @@
 #include "Renderers/Diagram/Scatter/ScatterPlotRenderer.hpp"
 #include "Renderers/Diagram/CorrelationMatrix/CorrelationMatrixRenderer.hpp"
 #include "Renderers/Diagram/TimeSeriesCorrelation/TimeSeriesCorrelationRenderer.hpp"
+#include "Renderers/Diagram/DistributionSimilarity/DistributionSimilarityRenderer.hpp"
 #include "Utils/CurlWrapper.hpp"
 #include "Utils/AutomaticPerformanceMeasurer.hpp"
 #include "Optimization/TFOptimization.hpp"
@@ -505,12 +506,14 @@ void MainApp::addNewRenderer(RenderingMode renderingMode) {
             && renderingMode != RenderingMode::RENDERING_MODE_DIAGRAM_RENDERER
             && renderingMode != RenderingMode::RENDERING_MODE_SCATTER_PLOT
             && renderingMode != RenderingMode::RENDERING_MODE_CORRELATION_MATRIX
-            && renderingMode != RenderingMode::RENDERING_MODE_TIME_SERIES_CORRELATION;
+            && renderingMode != RenderingMode::RENDERING_MODE_TIME_SERIES_CORRELATION
+            && renderingMode != RenderingMode::RENDERING_MODE_DISTRIBUTION_SIMILARITY;
     bool isOverlayRenderer =
             renderingMode == RenderingMode::RENDERING_MODE_DIAGRAM_RENDERER
             || renderingMode == RenderingMode::RENDERING_MODE_SCATTER_PLOT
             || renderingMode == RenderingMode::RENDERING_MODE_CORRELATION_MATRIX
-            || renderingMode == RenderingMode::RENDERING_MODE_TIME_SERIES_CORRELATION;
+            || renderingMode == RenderingMode::RENDERING_MODE_TIME_SERIES_CORRELATION
+            || renderingMode == RenderingMode::RENDERING_MODE_DISTRIBUTION_SIMILARITY;
     if (isOpaqueRenderer && !isOverlayRenderer) {
         // Push after last opaque renderer (or at the beginning).
         auto it = volumeRenderers.begin();
@@ -561,6 +564,8 @@ void MainApp::setRenderer(RenderingMode newRenderingMode, RendererPtr& newVolume
         newVolumeRenderer = std::make_shared<CorrelationMatrixRenderer>(viewManager);
     } else if (newRenderingMode == RENDERING_MODE_TIME_SERIES_CORRELATION) {
         newVolumeRenderer = std::make_shared<TimeSeriesCorrelationRenderer>(viewManager);
+    } else if (newRenderingMode == RENDERING_MODE_DISTRIBUTION_SIMILARITY) {
+        newVolumeRenderer = std::make_shared<DistributionSimilarityRenderer>(viewManager);
     } else {
         int idx = std::clamp(int(newRenderingMode), 0, IM_ARRAYSIZE(RENDERING_MODE_NAMES) - 1);
         std::string warningText =

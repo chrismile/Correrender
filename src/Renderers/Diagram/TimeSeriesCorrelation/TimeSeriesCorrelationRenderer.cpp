@@ -860,7 +860,7 @@ void TimeSeriesCorrelationRenderer::setSettings(const SettingsMap& settings) {
 void TimeSeriesCorrelationRenderer::getSettings(SettingsMap& settings) {
     Renderer::getSettings(settings);
 
-    settings.addKeyValue("context_diagram_view", diagramViewIdx);
+    settings.addKeyValue("diagram_view", diagramViewIdx);
     settings.addKeyValue("align_with_parent_window", alignWithParentWindow);
 
     settings.addKeyValue("time_series_file_path", timeSeriesFilePath);

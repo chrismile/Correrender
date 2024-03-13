@@ -28,6 +28,7 @@
 
 #include <iostream>
 #include <boost/algorithm/string/replace.hpp>
+#include <Utils/Dialog.hpp>
 
 #include "Download.hpp"
 
@@ -42,7 +43,20 @@ static size_t writeDataCallbackCurl(void *pointer, size_t size, size_t numMember
     return written;
 }
 
+static bool userGaveDownloadConsent = false;
+
 bool downloadFile(const std::string &url, const std::string &localFileName) {
+    if (!userGaveDownloadConsent) {
+        auto button = sgl::dialog::openMessageBoxBlocking(
+                "Download world map data",
+                "Download world map data from naturalearthdata.com?",
+                sgl::dialog::Choice::YES_NO, sgl::dialog::Icon::QUESTION);
+        if (button != sgl::dialog::Button::YES && button != sgl::dialog::Button::OK) {
+            return false;
+        }
+        userGaveDownloadConsent = true;
+    }
+
     CURL* curlHandle = curl_easy_init();
     if (!curlHandle) {
         return false;
@@ -59,6 +73,8 @@ bool downloadFile(const std::string &url, const std::string &localFileName) {
     //curl_easy_setopt(curlHandle, CURLOPT_VERBOSE, 1L);
     curl_easy_setopt(curlHandle, CURLOPT_NOPROGRESS, 0L);
     curl_easy_setopt(curlHandle, CURLOPT_FOLLOWLOCATION, 1L);
+    // TODO: Migrate to naciscdn.org? https://github.com/nvkelso/natural-earth-vector/issues/895
+    curl_easy_setopt(curlHandle, CURLOPT_REFERER, "https://www.naturalearthdata.com/downloads/");
     curl_easy_setopt(curlHandle, CURLOPT_WRITEFUNCTION, writeDataCallbackCurl);
     FILE* pagefile = fopen(localFileName.c_str(), "wb");
     if (pagefile) {
