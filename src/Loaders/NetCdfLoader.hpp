@@ -94,6 +94,20 @@ private:
      * Loads a 3D floating point variable.
      * @param ncid The NetCDF file ID.
      * @param varid The ID of the variable.
+     * @param time The time step to load.
+     * @param yoff Read offset in the y dimension.
+     * @param xoff Read offset in the x dimension.
+     * @param ylen Dimension size queried by @ref getDim.
+     * @param xlen Dimension size queried by @ref getDim.
+     * @param array A pointer to a float array where the variable data is to be stored. The function will automatically
+     * allocate the memory. The caller needs to deallocate the allocated memory using "delete[]".
+     */
+    void loadFloatArray2D(int varid, size_t time, size_t yoff, size_t xoff, size_t ylen, size_t xlen, float*& array);
+
+    /**
+     * Loads a 3D floating point variable.
+     * @param ncid The NetCDF file ID.
+     * @param varid The ID of the variable.
      * @param zoff Read offset in the z dimension.
      * @param yoff Read offset in the y dimension.
      * @param xoff Read offset in the x dimension.
@@ -150,6 +164,7 @@ private:
     int xs = 0, ys = 0, zs = 0, ts = 0, es = 0;
     int xmin = 0, ymin = 0, zmin = 0; // In case of subselection: Offset in each dimension.
     int xst = 0, yst = 0, zst = 0; // In case of subselection: True domain size.
+    std::vector<float> timeDependent2dMap;
     bool reusedMetadata = false;
 
     // Fill values are optional and replaced with NaN for visualization purposes.

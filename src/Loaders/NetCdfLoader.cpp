@@ -138,6 +138,27 @@ void NetCdfLoader::loadFloatArray2D(int varid, size_t yoff, size_t xoff, size_t 
     }
 }
 
+void NetCdfLoader::loadFloatArray2D(
+        int varid, size_t time, size_t yoff, size_t xoff, size_t ylen, size_t xlen, float*& array) {
+    array = new float[ylen * xlen];
+    size_t startp[] = { time, yoff, xoff };
+    size_t countp[] = { 1, ylen, xlen };
+
+    nc_type vartype;
+    myassert(nc_inq_vartype(ncid, varid, &vartype) == NC_NOERR);
+    if (vartype == NC_FLOAT) {
+        myassert(nc_get_vara_float(ncid, varid, startp, countp, array) == NC_NOERR);
+    } else if (vartype == NC_DOUBLE) {
+        size_t len = ylen * xlen;
+        auto* arrayDouble = new double[len];
+        myassert(nc_get_vara_double(ncid, varid, startp, countp, arrayDouble) == NC_NOERR);
+        for (size_t i = 0; i < len; i++) {
+            array[i] = float(arrayDouble[i]);
+        }
+        delete[] arrayDouble;
+    }
+}
+
 void NetCdfLoader::loadFloatArray3D(
         int varid, size_t zoff, size_t yoff, size_t xoff, size_t zlen, size_t ylen, size_t xlen, float*& array) {
     array = new float[zlen * ylen * xlen];
@@ -241,6 +262,7 @@ bool NetCdfLoader::setInputFiles(
 
     // Get the wind speed variable IDs.
     int foundDims[3] = { -1, -1, -1 };
+    int foundTimeDim = -1;
     int varIdRepresentative = -1, varIdU = -1, varIdV = -1, varIdW = -1;
     if (uLowerCaseVariableExists && vLowerCaseVariableExists && wLowerCaseVariableExists) {
         myassert(nc_inq_varid(ncid, "u", &varIdU) == NC_NOERR);
@@ -267,6 +289,9 @@ bool NetCdfLoader::setInputFiles(
                 if (names.find(dimNameString) != names.end()) {
                     foundDims[dimIdx] = dimid;
                 }
+            }
+            if (strcmp(dimname, "time") == 0) {
+                foundTimeDim = dimid;
             }
         }
 
@@ -416,8 +441,12 @@ bool NetCdfLoader::setInputFiles(
         myassert(nc_inq_dim(ncid, dimensionIdsU[1], dimNameZ, &zs64) == NC_NOERR);
         myassert(nc_inq_dim(ncid, dimensionIdsW[2], dimNameY, &ys64) == NC_NOERR);
         myassert(nc_inq_dim(ncid, dimensionIdsW[3], dimNameX, &xs64) == NC_NOERR);
+        foundDims[0] = dimensionIdsU[1];
+        foundDims[1] = dimensionIdsW[2];
+        foundDims[2] = dimensionIdsW[3];
         if (strcmp(dimNameTimeOrEnsemble, "time") == 0) {
             ts = int(tes64);
+            foundTimeDim = dimensionIdsU[0];
         } else if (strcmp(dimNameTimeOrEnsemble, "ensemble") == 0
                 || strcmp(dimNameTimeOrEnsemble, "member") == 0
                 || strcmp(dimNameTimeOrEnsemble, "members") == 0) {
@@ -570,6 +599,7 @@ bool NetCdfLoader::setInputFiles(
     std::unordered_map<FieldType, std::vector<std::string>> fieldNameMap;
     varHasFillValueMap.resize(nvarsp);
     fillValueMap.resize(nvarsp);
+    timeDependent2dMap.resize(nvarsp, false);
     float* lonData = nullptr;
     float* latData = nullptr;
     float* heightData = nullptr;
@@ -637,12 +667,18 @@ bool NetCdfLoader::setInputFiles(
             continue;
         }
 
+        bool isTimeDependent2d = false;
         if (ndims == 3 && (foundDims[0] != dimids[0] || foundDims[1] != dimids[1] || foundDims[2] != dimids[2])) {
             size_t zs64, ys64, xs64;
             myassert(nc_inq_dimlen(ncid, dimids[0], &zs64) == NC_NOERR);
             myassert(nc_inq_dimlen(ncid, dimids[1], &ys64) == NC_NOERR);
             myassert(nc_inq_dimlen(ncid, dimids[2], &xs64) == NC_NOERR);
-            if (xst != int(xs64) || yst != int(ys64) || zst != int(zs64)) {
+            if (dimids[0] == foundTimeDim) {
+                if (xst != int(xs64) || yst != int(ys64)) {
+                    continue;
+                }
+                isTimeDependent2d = true;
+            } else if (xst != int(xs64) || yst != int(ys64) || zst != int(zs64)) {
                 continue;
             }
         }
@@ -684,6 +720,7 @@ bool NetCdfLoader::setInputFiles(
         datasetNameMap.insert(std::make_pair(variableDisplayName, varid));
         varHasFillValueMap.at(varid) = hasFillValue;
         fillValueMap.at(varid) = fillValue;
+        timeDependent2dMap.at(varid) = isTimeDependent2d;
     }
     volumeData->setFieldNames(fieldNameMap);
 
@@ -747,7 +784,19 @@ bool NetCdfLoader::getFieldEntry(
 
     float* fieldEntryBuffer = nullptr;
     if (numDims == 3) {
-        loadFloatArray3D(varid, zmin, ymin, xmin, zs, ys, xs, fieldEntryBuffer);
+        if (timeDependent2dMap.at(varid)) {
+            loadFloatArray2D(varid, timestepIdx, ymin, xmin, ys, xs, fieldEntryBuffer);
+            if (zs != 1) {
+                auto* data2d = fieldEntryBuffer;
+                fieldEntryBuffer = new float[xs * ys * zs];
+                for (int z = 0; z < zs; z++) {
+                    memcpy(fieldEntryBuffer + z * xs * ys, data2d, sizeof(float) * xs * ys);
+                }
+                delete[] data2d;
+            }
+        } else {
+            loadFloatArray3D(varid, zmin, ymin, xmin, zs, ys, xs, fieldEntryBuffer);
+        }
     } else if (numDims == 4 && ts > 1) {
         loadFloatArray3D(varid, timestepIdx, zmin, ymin, xmin, zs, ys, xs, fieldEntryBuffer);
     } else if (numDims == 4 && es > 1) {
@@ -755,9 +804,12 @@ bool NetCdfLoader::getFieldEntry(
     } else if (numDims == 2) {
         loadFloatArray2D(varid, ymin, xmin, ys, xs, fieldEntryBuffer);
         if (zs != 1) {
-            for (int z = 1; z < zs; z++) {
-                memcpy(fieldEntryBuffer + z * xs * ys, fieldEntryBuffer, sizeof(float) * xs * ys);
+            auto* data2d = fieldEntryBuffer;
+            fieldEntryBuffer = new float[xs * ys * zs];
+            for (int z = 0; z < zs; z++) {
+                memcpy(fieldEntryBuffer + z * xs * ys, data2d, sizeof(float) * xs * ys);
             }
+            delete[] data2d;
         }
     }
 
