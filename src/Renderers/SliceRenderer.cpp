@@ -257,6 +257,7 @@ void SliceRenderer::addViewImpl(uint32_t viewIdx) {
         sliceRasterPass->setRenderData(indexBuffer, vertexPositionBuffer, vertexNormalBuffer);
     }
     sliceRasterPass->setLightingFactor(lightingFactor);
+    sliceRasterPass->setFixOnGround(fixOnGround);
     sliceRasterPass->setNaNHandling(nanHandling);
     sliceRasterPasses.push_back(sliceRasterPass);
 }
@@ -283,13 +284,35 @@ void SliceRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
     if (!volumeData || volumeData->getGridSizeZ() > 1) {
         if (propertyEditor.addSliderFloat3("Normal", &planeNormalUi.x, -1.0f, 1.0f)) {
             planeNormal = glm::normalize(planeNormalUi);
+            if (fixOnGround && planeNormal != glm::vec3(0.0f, 0.0f, 1.0f)) {
+                fixOnGround = false;
+                for (auto& sliceRasterPass : sliceRasterPasses) {
+                    sliceRasterPass->setFixOnGround(fixOnGround);
+                }
+            }
             dirty = true;
             reRender = true;
         }
-        if (propertyEditor.addDragFloat("Distance", &planeDist, 0.001f)) {
-            dirty = true;
-            reRender = true;
+        if (volumeData->getHasHeightData() && planeNormal == glm::vec3(0.0f, 0.0f, 1.0f)) {
+            std::string heightString = volumeData->getHeightString(volumeData->getHeightDataForZWorld(planeDist));
+            if (propertyEditor.addDragFloat("Distance", &planeDist, 0.001f, 0.0f, 0.0f, heightString.c_str())) {
+                dirty = true;
+                reRender = true;
+            }
+        } else {
+            if (propertyEditor.addDragFloat("Distance", &planeDist, 0.001f)) {
+                dirty = true;
+                reRender = true;
+            }
         }
+    }
+
+    if (planeNormal == glm::vec3(0.0f, 0.0f, 1.0f) && propertyEditor.addCheckbox("Fix on Ground", &fixOnGround)) {
+        for (auto& sliceRasterPass : sliceRasterPasses) {
+            sliceRasterPass->setFixOnGround(fixOnGround);
+        }
+        dirty = true;
+        reRender = true;
     }
 
     if (propertyEditor.addSliderFloat("Lighting Factor", &lightingFactor, 0.0f, 1.0f)) {
@@ -346,6 +369,16 @@ void SliceRenderer::setSettings(const SettingsMap& settings) {
         dirty = true;
         reRender = true;
     }
+    if (settings.getValueOpt("fix_on_ground", fixOnGround)) {
+        if (planeNormal != glm::vec3(0.0f, 0.0f, 1.0f)) {
+            fixOnGround = false;
+        }
+        for (auto& sliceRasterPass : sliceRasterPasses) {
+            sliceRasterPass->setFixOnGround(fixOnGround);
+        }
+        dirty = true;
+        reRender = true;
+    }
     if (settings.getValueOpt("lighting_factor", lightingFactor)) {
         for (auto& sliceRasterPass : sliceRasterPasses) {
             sliceRasterPass->setLightingFactor(lightingFactor);
@@ -374,6 +407,7 @@ void SliceRenderer::getSettings(SettingsMap& settings) {
     settings.addKeyValue("normal_y", planeNormalUi.y);
     settings.addKeyValue("normal_z", planeNormalUi.z);
     settings.addKeyValue("plane_dist", planeDist);
+    settings.addKeyValue("fix_on_ground", fixOnGround);
     settings.addKeyValue("lighting_factor", lightingFactor);
     settings.addKeyValue("nan_handling", NAN_HANDLING_IDS[int(nanHandling)]);
 }
@@ -575,7 +609,7 @@ void SliceRasterPass::_render() {
             sizeof(RenderSettingsData), &renderSettingsData, renderer->getVkCommandBuffer());
     renderer->insertMemoryBarrier(
             VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_UNIFORM_READ_BIT,
-            VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+            VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
 
     sceneData->switchColorState(RenderTargetAccess::RASTERIZER);
     if (sceneData->useDepthBuffer) {

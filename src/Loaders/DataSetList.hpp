@@ -88,13 +88,14 @@ struct DataSetInformation {
     // Optional downscaling for the flow field.
     int subsamplingFactor = 1;
     bool subsamplingFactorSet = false;
+    // Optionally the user can restrict the domain (0,0,0) to (xs-1, ys-1, zs-1) to a smaller selection.
+    bool useDomainSubselection = false;
+    glm::ivec3 domainSubselectionMin{}, domainSubselectionMax{};
     // Name of the velocity field to use (if multiple are available).
     std::string velocityFieldName;
     // Whether to use normalized velocity or normalized vorticity in helicity computation.
     bool useNormalizedVelocity = false;
     bool useNormalizedVorticity = false;
-    // Optionally the user can restrict the domain (0,0,0) to (xs-1, ys-1, zs-1) to a smaller selection.
-    std::vector<int> domainSubselection;
 
     // Standard selection for time and attribute in UI.
     std::string standardScalarFieldName;

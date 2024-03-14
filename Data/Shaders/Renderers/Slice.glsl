@@ -26,25 +26,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
--- Vertex
-
-#version 450 core
-
-layout(location = 0) in vec3 vertexPosition;
-layout(location = 1) in vec3 vertexNormal;
-layout(location = 0) out vec3 fragmentPositionWorld;
-layout(location = 1) out vec3 fragmentNormal;
-
-void main() {
-    fragmentPositionWorld = vertexPosition;
-    fragmentNormal = vertexNormal;
-    gl_Position = mvpMatrix * vec4(vertexPosition, 1.0);
-}
-
-
--- Fragment
-
-#version 450 core
+-- Uniform
 
 layout(binding = 0) uniform RendererUniformDataBuffer {
     vec3 cameraPosition;
@@ -52,14 +34,45 @@ layout(binding = 0) uniform RendererUniformDataBuffer {
     vec3 minBoundingBox;
     float lightingFactor;
     vec3 maxBoundingBox;
-    float padding0;
+    uint fixOnGround;
 };
 
-layout (binding = 1) uniform sampler3D scalarField;
+
+-- Vertex
+
+#version 450 core
+
+layout(location = 0) in vec3 vertexPosition;
+layout(location = 1) in vec3 vertexNormal;
+layout(location = 0) out vec3 fragmentPositionWorld;
+layout(location = 1) out vec3 fragmentPositionWorldReal;
+layout(location = 2) out vec3 fragmentNormal;
+
+#import ".Uniform"
+
+void main() {
+    fragmentPositionWorld = vertexPosition;
+    fragmentNormal = vertexNormal;
+    vec3 positionOut = vertexPosition;
+    if (fixOnGround != 0u) {
+        positionOut.z = minBoundingBox.z;
+    }
+    fragmentPositionWorldReal = positionOut;
+    gl_Position = mvpMatrix * vec4(positionOut, 1.0);
+}
+
+
+-- Fragment
+
+#version 450 core
 
 layout(location = 0) in vec3 fragmentPositionWorld;
-layout(location = 1) in vec3 fragmentNormal;
+layout(location = 1) in vec3 fragmentPositionWorldReal;
+layout(location = 2) in vec3 fragmentNormal;
 layout(location = 0) out vec4 fragColor;
+
+#import ".Uniform"
+layout (binding = 1) uniform sampler3D scalarField;
 
 #include "UniformData.glsl"
 #include "TransferFunction.glsl"
@@ -71,7 +84,7 @@ void main() {
     vec4 volumeColor = transferFunction(scalarValue, fieldIndex);
     volumeColor.a = 1.0;
     vec3 n = normalize(fragmentNormal);
-    vec4 color = blinnPhongShadingSurface(volumeColor, fragmentPositionWorld, n);
+    vec4 color = blinnPhongShadingSurface(volumeColor, fragmentPositionWorldReal, n);
     color = mix(volumeColor, color, lightingFactor);
     fragColor = color;
 }

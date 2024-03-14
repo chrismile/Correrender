@@ -76,6 +76,7 @@ private:
     glm::vec3 planeNormal = glm::vec3(0.0f, 0.0f, 1.0f);
     float planeDist = 0.0f;
     float lightingFactor = 0.5f;
+    bool fixOnGround = false; ///< Always show the plane on the ground, even if the plane distance is above?
     NaNHandling nanHandling = NaNHandling::IGNORE;
 };
 
@@ -94,6 +95,7 @@ public:
             const sgl::vk::BufferPtr& _vertexNormalBuffer);
     inline void setNaNHandling(NaNHandling _nanHandling) { nanHandling = _nanHandling; shaderDirty = true; }
     inline void setLightingFactor(float factor) { renderSettingsData.lightingFactor = factor; }
+    inline void setFixOnGround(bool fixOnGround) { renderSettingsData.fixOnGround = fixOnGround ? 1 : 0; }
     void recreateSwapchain(uint32_t width, uint32_t height) override;
     [[nodiscard]] inline sgl::CameraPtr& getCamera() { return *camera; }
 
@@ -119,7 +121,7 @@ private:
         glm::vec3 minBoundingBox;
         float lightingFactor = 0.5f;
         glm::vec3 maxBoundingBox;
-        float padding0 = 0.0f;
+        uint32_t fixOnGround = 0;
     };
     RenderSettingsData renderSettingsData{};
     sgl::vk::BufferPtr rendererUniformDataBuffer;

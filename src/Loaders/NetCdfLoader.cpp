@@ -77,12 +77,12 @@ bool NetCdfLoader::getVariableExists(const std::string& variableName) {
     return status != NC_ENOTVAR;
 }
 
-void NetCdfLoader::loadFloatArray1D(const char* varname, size_t len, float*& array) {
+void NetCdfLoader::loadFloatArray1D(const char* varname, size_t offset, size_t len, float*& array) {
     int varid;
     myassert(nc_inq_varid(ncid, varname, &varid) == NC_NOERR);
 
     array = new float[len];
-    size_t startp[] = { 0 };
+    size_t startp[] = { offset };
     size_t countp[] = { len };
 
     nc_type vartype;
@@ -99,9 +99,9 @@ void NetCdfLoader::loadFloatArray1D(const char* varname, size_t len, float*& arr
     }
 }
 
-void NetCdfLoader::loadFloatArray1D(int varid, size_t len, float*& array) {
+void NetCdfLoader::loadFloatArray1D(int varid, size_t offset, size_t len, float*& array) {
     array = new float[len];
-    size_t startp[] = { 0 };
+    size_t startp[] = { offset };
     size_t countp[] = { len };
 
     nc_type vartype;
@@ -118,9 +118,9 @@ void NetCdfLoader::loadFloatArray1D(int varid, size_t len, float*& array) {
     }
 }
 
-void NetCdfLoader::loadFloatArray2D(int varid, size_t ylen, size_t xlen, float*& array) {
+void NetCdfLoader::loadFloatArray2D(int varid, size_t yoff, size_t xoff, size_t ylen, size_t xlen, float*& array) {
     array = new float[ylen * xlen];
-    size_t startp[] = { 0, 0 };
+    size_t startp[] = { yoff, xoff };
     size_t countp[] = { ylen, xlen };
 
     nc_type vartype;
@@ -138,9 +138,10 @@ void NetCdfLoader::loadFloatArray2D(int varid, size_t ylen, size_t xlen, float*&
     }
 }
 
-void NetCdfLoader::loadFloatArray3D(int varid, size_t zlen, size_t ylen, size_t xlen, float*& array) {
+void NetCdfLoader::loadFloatArray3D(
+        int varid, size_t zoff, size_t yoff, size_t xoff, size_t zlen, size_t ylen, size_t xlen, float*& array) {
     array = new float[zlen * ylen * xlen];
-    size_t startp[] = { 0, 0, 0 };
+    size_t startp[] = { zoff, yoff, xoff };
     size_t countp[] = { zlen, ylen, xlen };
 
     nc_type vartype;
@@ -158,9 +159,10 @@ void NetCdfLoader::loadFloatArray3D(int varid, size_t zlen, size_t ylen, size_t 
     }
 }
 
-void NetCdfLoader::loadFloatArray3D(int varid, size_t time, size_t zlen, size_t ylen, size_t xlen, float*& array) {
+void NetCdfLoader::loadFloatArray3D(
+        int varid, size_t time, size_t zoff, size_t yoff, size_t xoff, size_t zlen, size_t ylen, size_t xlen, float*& array) {
     array = new float[zlen * ylen * xlen];
-    size_t startp[] = { time, 0, 0, 0 };
+    size_t startp[] = { time, zoff, yoff, xoff };
     size_t countp[] = { 1, zlen, ylen, xlen };
 
     nc_type vartype;
@@ -353,18 +355,33 @@ bool NetCdfLoader::setInputFiles(
         foundDims[0] = dimensionIds[0];
         foundDims[1] = dimensionIds[1];
         foundDims[2] = dimensionIds[2];
-        zs = int(zs64);
-        ys = int(ys64);
-        xs = int(xs64);
+        zst = int(zs64);
+        yst = int(ys64);
+        xst = int(xs64);
+        if (dataSetInformation.useDomainSubselection) {
+            xmin = dataSetInformation.domainSubselectionMin.x;
+            ymin = dataSetInformation.domainSubselectionMin.y;
+            zmin = dataSetInformation.domainSubselectionMin.z;
+            xs = dataSetInformation.domainSubselectionMax.x - dataSetInformation.domainSubselectionMin.x + 1;
+            ys = dataSetInformation.domainSubselectionMax.y - dataSetInformation.domainSubselectionMin.y + 1;
+            zs = dataSetInformation.domainSubselectionMax.z - dataSetInformation.domainSubselectionMin.z + 1;
+        } else {
+            xmin = 0;
+            ymin = 0;
+            zmin = 0;
+            xs = xst;
+            ys = yst;
+            zs = zst;
+        }
         zCoords = new float[zs];
         yCoords = new float[ys];
         xCoords = new float[xs];
         int varid;
         int retval = nc_inq_varid(ncid, dimNameZ, &varid);
         if (retval != NC_ENOTVAR) {
-            loadFloatArray1D(dimNameZ, zs, zCoords);
-            loadFloatArray1D(dimNameY, ys, yCoords);
-            loadFloatArray1D(dimNameX, xs, xCoords);
+            loadFloatArray1D(dimNameZ, zmin, zs, zCoords);
+            loadFloatArray1D(dimNameY, ymin, ys, yCoords);
+            loadFloatArray1D(dimNameX, xmin, xs, xCoords);
         } else {
             for (int i = 0; i < zs; i++) {
                 zCoords[i] = float(i);
@@ -410,9 +427,24 @@ bool NetCdfLoader::setInputFiles(
                     "Warning in NetCdfLoader::setInputFiles: Unknown dimension name. Assuming time.");
             ts = int(tes64);
         }
-        zs = int(zs64);
-        ys = int(ys64);
-        xs = int(xs64);
+        zst = int(zs64);
+        yst = int(ys64);
+        xst = int(xs64);
+        if (dataSetInformation.useDomainSubselection) {
+            xmin = dataSetInformation.domainSubselectionMin.x;
+            ymin = dataSetInformation.domainSubselectionMin.y;
+            zmin = dataSetInformation.domainSubselectionMin.z;
+            xs = dataSetInformation.domainSubselectionMax.x - dataSetInformation.domainSubselectionMin.x + 1;
+            ys = dataSetInformation.domainSubselectionMax.y - dataSetInformation.domainSubselectionMin.y + 1;
+            zs = dataSetInformation.domainSubselectionMax.z - dataSetInformation.domainSubselectionMin.z + 1;
+        } else {
+            xmin = 0;
+            ymin = 0;
+            zmin = 0;
+            xs = xst;
+            ys = yst;
+            zs = zst;
+        }
         zCoords = new float[zs];
         yCoords = new float[ys];
         xCoords = new float[xs];
@@ -425,16 +457,16 @@ bool NetCdfLoader::setInputFiles(
         }
 
         if (!getVariableExists(dimNameZ) && getVariableExists("vcoord")) {
-            loadFloatArray1D("vcoord", zs, zCoords);
-            loadFloatArray1D(dimNameY, ys, yCoords);
-            loadFloatArray1D(dimNameX, xs, xCoords);
+            loadFloatArray1D("vcoord", zmin, zs, zCoords);
+            loadFloatArray1D(dimNameY, ymin, ys, yCoords);
+            loadFloatArray1D(dimNameX, xmin, xs, xCoords);
         } else {
             int varid;
             int retval = nc_inq_varid(ncid, dimNameZ, &varid);
             if (retval != NC_ENOTVAR) {
-                loadFloatArray1D(dimNameZ, zs, zCoords);
-                loadFloatArray1D(dimNameY, ys, yCoords);
-                loadFloatArray1D(dimNameX, xs, xCoords);
+                loadFloatArray1D(dimNameZ, zmin, zs, zCoords);
+                loadFloatArray1D(dimNameY, ymin, ys, yCoords);
+                loadFloatArray1D(dimNameX, xmin, xs, xCoords);
             } else {
                 for (int i = 0; i < zs; i++) {
                     zCoords[i] = float(i);
@@ -459,9 +491,24 @@ bool NetCdfLoader::setInputFiles(
         myassert(nc_inq_dim(ncid, dimensionIds[1], dimNameX, &xs64) == NC_NOERR);
         foundDims[0] = dimensionIds[0];
         foundDims[1] = dimensionIds[1];
-        zs = 1;
-        ys = int(ys64);
-        xs = int(xs64);
+        zst = 1;
+        yst = int(ys64);
+        xst = int(xs64);
+        if (dataSetInformation.useDomainSubselection) {
+            xmin = dataSetInformation.domainSubselectionMin.x;
+            ymin = dataSetInformation.domainSubselectionMin.y;
+            zmin = dataSetInformation.domainSubselectionMin.z;
+            xs = dataSetInformation.domainSubselectionMax.x - dataSetInformation.domainSubselectionMin.x + 1;
+            ys = dataSetInformation.domainSubselectionMax.y - dataSetInformation.domainSubselectionMin.y + 1;
+            zs = dataSetInformation.domainSubselectionMax.z - dataSetInformation.domainSubselectionMin.z + 1;
+        } else {
+            xmin = 0;
+            ymin = 0;
+            zmin = 0;
+            xs = xst;
+            ys = yst;
+            zs = zst;
+        }
         zCoords = new float[zs];
         yCoords = new float[ys];
         xCoords = new float[xs];
@@ -469,8 +516,8 @@ bool NetCdfLoader::setInputFiles(
         int retval = nc_inq_varid(ncid, dimNameY, &varid);
         if (retval != NC_ENOTVAR) {
             zCoords[0] = 0.0f;
-            loadFloatArray1D(dimNameY, ys, yCoords);
-            loadFloatArray1D(dimNameX, xs, xCoords);
+            loadFloatArray1D(dimNameY, ymin, ys, yCoords);
+            loadFloatArray1D(dimNameX, xmin, xs, xCoords);
         } else {
             zCoords[0] = 0.0f;
             for (int i = 0; i < ys; i++) {
@@ -539,7 +586,7 @@ bool NetCdfLoader::setInputFiles(
         bool isHeightData = ndims == 1 && isFloatingPointData && strcmp(varname, "z") == 0;
         if ((isLon || isLat) && ndims == 1) {
             float* data1D = nullptr;
-            loadFloatArray1D(varid, isLon ? xs : ys, data1D);
+            loadFloatArray1D(varid, isLon ? xmin : ymin, isLon ? xs : ys, data1D);
             if (isLon) {
                 lonData = new float[xs * ys];
                 for (int y = 0; y < ys; y++) {
@@ -559,9 +606,9 @@ bool NetCdfLoader::setInputFiles(
             continue;
         } else if ((isLon || isLat) && ndims == 2) {
             if (isLon) {
-                loadFloatArray2D(varid, ys, xs, lonData);
+                loadFloatArray2D(varid, ymin, xmin, ys, xs, lonData);
             } else if (isLat) {
-                loadFloatArray2D(varid, ys, xs, latData);
+                loadFloatArray2D(varid, ymin, xmin, ys, xs, latData);
             }
             continue;
         }
@@ -579,11 +626,14 @@ bool NetCdfLoader::setInputFiles(
             size_t zs64 = 0;
             myassert(nc_inq_dimlen(ncid, dimids[0], &zs64) == NC_NOERR);
             if (hasUnitM && zs == int(zs64)) {
-                loadFloatArray1D(varid, zs, heightData);
+                loadFloatArray1D(varid, zmin, zs, heightData);
             }
         }
 
-        if (!isFloatingPointData || (zs != 1 && ndims != 3 && ndims != 4) || (zs == 1 && ndims != 2 && ndims != 3 && ndims != 4)) {
+        //if (!isFloatingPointData || (zs != 1 && ndims != 3 && ndims != 4) || (zs == 1 && ndims != 2 && ndims != 3 && ndims != 4)) {
+        //    continue;
+        //}
+        if (!isFloatingPointData || (ndims != 2 && ndims != 3 && ndims != 4)) {
             continue;
         }
 
@@ -592,7 +642,23 @@ bool NetCdfLoader::setInputFiles(
             myassert(nc_inq_dimlen(ncid, dimids[0], &zs64) == NC_NOERR);
             myassert(nc_inq_dimlen(ncid, dimids[1], &ys64) == NC_NOERR);
             myassert(nc_inq_dimlen(ncid, dimids[2], &xs64) == NC_NOERR);
-            if (xs != int(xs64) || ys != int(ys64) || zs != int(zs64)) {
+            if (xst != int(xs64) || yst != int(ys64) || zst != int(zs64)) {
+                continue;
+            }
+        }
+        if (ndims == 2 && numDims == 2 && (foundDims[0] != dimids[0] || foundDims[1] != dimids[1])) {
+            size_t ys64, xs64;
+            myassert(nc_inq_dimlen(ncid, dimids[0], &ys64) == NC_NOERR);
+            myassert(nc_inq_dimlen(ncid, dimids[1], &xs64) == NC_NOERR);
+            if (xst != int(xs64) || yst != int(ys64)) {
+                continue;
+            }
+        }
+        if (ndims == 2 && numDims == 3 && (foundDims[1] != dimids[0] || foundDims[2] != dimids[1])) {
+            size_t ys64, xs64;
+            myassert(nc_inq_dimlen(ncid, dimids[0], &ys64) == NC_NOERR);
+            myassert(nc_inq_dimlen(ncid, dimids[1], &xs64) == NC_NOERR);
+            if (xst != int(xs64) || yst != int(ys64)) {
                 continue;
             }
         }
@@ -681,13 +747,18 @@ bool NetCdfLoader::getFieldEntry(
 
     float* fieldEntryBuffer = nullptr;
     if (numDims == 3) {
-        loadFloatArray3D(varid, zs, ys, xs, fieldEntryBuffer);
+        loadFloatArray3D(varid, zmin, ymin, xmin, zs, ys, xs, fieldEntryBuffer);
     } else if (numDims == 4 && ts > 1) {
-        loadFloatArray3D(varid, timestepIdx, zs, ys, xs, fieldEntryBuffer);
+        loadFloatArray3D(varid, timestepIdx, zmin, ymin, xmin, zs, ys, xs, fieldEntryBuffer);
     } else if (numDims == 4 && es > 1) {
-        loadFloatArray3D(varid, memberIdx, zs, ys, xs, fieldEntryBuffer);
+        loadFloatArray3D(varid, memberIdx, zmin, ymin, xmin, zs, ys, xs, fieldEntryBuffer);
     } else if (numDims == 2) {
-        loadFloatArray2D(varid, ys, xs, fieldEntryBuffer);
+        loadFloatArray2D(varid, ymin, xmin, ys, xs, fieldEntryBuffer);
+        if (zs != 1) {
+            for (int z = 1; z < zs; z++) {
+                memcpy(fieldEntryBuffer + z * xs * ys, fieldEntryBuffer, sizeof(float) * xs * ys);
+            }
+        }
     }
 
     if (varHasFillValueMap.at(varid)) {

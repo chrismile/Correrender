@@ -47,6 +47,7 @@
 #include <Graphics/Vulkan/Render/Data.hpp>
 #include <Graphics/Vulkan/Render/Renderer.hpp>
 #include <ImGui/Widgets/PropertyEditor.hpp>
+#include <ImGui/Widgets/NumberFormatting.hpp>
 #include <ImGui/imgui_custom.h>
 
 #ifdef SUPPORT_CUDA_INTEROP
@@ -608,6 +609,11 @@ bool VolumeData::setInputFiles(
 
     if (dataSetInformation.subsamplingFactorSet) {
         subsamplingFactor = dataSetInformation.subsamplingFactor;
+    }
+    if (dataSetInformation.axes != glm::ivec3(0, 1, 2)) {
+        setTransposeAxes(dataSetInformation.axes);
+    } else {
+        transpose = false;
     }
     if (dataSetInformation.separateFilesPerAttribute) {
         separateFilesPerAttribute = dataSetInformation.separateFilesPerAttribute;
@@ -1615,6 +1621,7 @@ void VolumeData::popAuxiliaryMemoryDevice(AuxiliaryMemoryToken token) {
     deviceFieldCache->popAuxiliaryMemory(token);
 }
 
+
 bool VolumeData::getHasLatLonData() {
     return latData && lonData;
 }
@@ -1627,9 +1634,33 @@ void VolumeData::getLatLonData(const float*& _latData, const float*& _lonData) {
 void VolumeData::displayLayerInfo(sgl::PropertyEditor& propertyEditor, int zPlaneCoord) {
     zPlaneCoord = std::clamp(zPlaneCoord, 0, zs - 1);
     if (heightData) {
-        propertyEditor.addText("Z Level Height", std::to_string(heightData[zPlaneCoord]) + "m");
+        propertyEditor.addText("Z Level Height", getHeightString(heightData[zPlaneCoord]));
     }
 }
+
+bool VolumeData::getHasHeightData() const {
+    return heightData != nullptr;
+}
+
+float VolumeData::getHeightDataForZ(int z) const {
+    z = std::clamp(z, 0, zs - 1);
+    return heightData[z];
+}
+
+float VolumeData::getHeightDataForZWorld(float zWorld) const {
+    // Opposite of: float(z) / float(zs > 1 ? zs - 1 : 1) * (boxRendering.max.z - boxRendering.min.z) + boxRendering.min.z
+    float z = (zWorld - boxRendering.min.z) / (boxRendering.max.z - boxRendering.min.z) * float(zs - 1);
+    float zFloor = std::floor(z);
+    auto factor = z - zFloor;
+    auto h0 = getHeightDataForZ(int(zFloor));
+    auto h1 = getHeightDataForZ(int(zFloor) + 1);
+    return glm::mix(h0, h1, factor);
+}
+
+std::string VolumeData::getHeightString(float height) const {
+    return sgl::getNiceNumberString(height, 5) + "m";
+}
+
 
 void VolumeData::update(float dtFrame) {
     for (CalculatorPtr& calculator : calculators) {

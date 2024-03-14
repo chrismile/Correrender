@@ -289,6 +289,24 @@ void processDataSetNodeChildren(Json::Value& childList, DataSetInformation* data
             }
         }
 
+        if (source.isMember("domain_subselection_min") && source.isMember("domain_subselection_max")) {
+            auto minElement = source["domain_subselection_min"];
+            auto maxElement = source["domain_subselection_max"];
+            if (minElement.isArray() && maxElement.isArray()) {
+                int dim = 0;
+                for (const auto& element : minElement) {
+                    dataSetInformation->domainSubselectionMin[dim] = element.asInt();
+                    dim++;
+                }
+                dim = 0;
+                for (const auto& element : maxElement) {
+                    dataSetInformation->domainSubselectionMax[dim] = element.asInt();
+                    dim++;
+                }
+                dataSetInformation->useDomainSubselection = true;
+            }
+        }
+
         if (source.isMember("standard_scalar_field")) {
             auto standardScalarFieldElement = source["standard_scalar_field"];
             if (standardScalarFieldElement.isString()) {

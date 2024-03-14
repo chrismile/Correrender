@@ -276,6 +276,16 @@ void ICorrelationCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEditor) 
         dirty = true;
     }
 
+    if (isEnsembleMode && useTimeLagCorrelations && volumeData->getTimeStepCount() > 1) {
+        ImGui::EditMode editMode = propertyEditor.addSliderIntEdit(
+                "Reference Time Step", &timeLagTimeStepIdx, 0, volumeData->getTimeStepCount() - 1);
+        if ((isRealtime && editMode != ImGui::EditMode::NO_CHANGE)
+                || (!isRealtime && editMode == ImGui::EditMode::INPUT_FINISHED)) {
+            clearFieldDeviceData();
+            dirty = true;
+        }
+    }
+
     if (scalarFieldNames.size() > 1 && getSupportsSeparateFields() && propertyEditor.addCheckbox(
             "Two Fields Mode", &useSeparateFields)) {
         if (useSeparateFields) {
@@ -285,6 +295,15 @@ void ICorrelationCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEditor) 
         }
         clearFieldDeviceData();
         dirty = true;
+    }
+
+    if (useSeparateFields && isEnsembleMode && volumeData->getTimeStepCount() > 1
+            && propertyEditor.addCheckbox("Time Lag Correlations", &useTimeLagCorrelations)) {
+        useTimeLagCorrelations = volumeData->getCurrentTimeStepIdx();
+        if (!useTimeLagCorrelations) {
+            clearFieldDeviceData();
+            dirty = true;
+        }
     }
 
     renderGuiImplSub(propertyEditor);
@@ -455,6 +474,15 @@ void ICorrelationCalculator::setSettings(const SettingsMap& settings) {
         pointPicker->onUpdatePositionFixed();
     }
 
+    if (settings.getValueOpt("use_time_lag_correlations", useTimeLagCorrelations)) {
+        clearFieldDeviceData();
+        dirty = true;
+    }
+    if (settings.getValueOpt("time_lag_time_step_idx", timeLagTimeStepIdx)) {
+        clearFieldDeviceData();
+        dirty = true;
+    }
+
     bool useRenderRestrictionDirty = false;
     if (settings.getValueOpt("restrict_rendering", useRenderRestriction)) {
         useRenderRestrictionDirty = true;
@@ -502,6 +530,11 @@ void ICorrelationCalculator::getSettings(SettingsMap& settings) {
     settings.addKeyValue("use_buffer_tiling", useBufferTiling);
     settings.addKeyValue("fix_picking_z", fixPickingZPlane);
     settings.addKeyValue("fixed_z_plane_percentage", fixedZPlanePercentage);
+
+    if (getSupportsSeparateFields()) {
+        settings.addKeyValue("use_time_lag_correlations", useTimeLagCorrelations);
+        settings.addKeyValue("time_lag_time_step_idx", timeLagTimeStepIdx);
+    }
 
     settings.addKeyValue("restrict_rendering", useRenderRestriction);
     if (useRenderRestriction) {
@@ -1140,9 +1173,13 @@ void CorrelationCalculator::calculateDevice(int timeStepIdx, int ensembleIdx, co
         int xs = volumeData->getGridSizeX();
         int ys = volumeData->getGridSizeY();
         size_t referencePointIdx = IDXS(referencePointIndex.x, referencePointIndex.y, referencePointIndex.z);
+        int timeStepIdxReference = timeStepIdx;
+        if (useTimeLagCorrelations) {
+            timeStepIdxReference = timeLagTimeStepIdx;
+        }
         for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
             VolumeData::HostCacheEntry fieldEntry = getFieldEntryCpu(
-                    scalarFieldNames.at(fieldIndex2Gui), fieldIdx, timeStepIdx, ensembleIdx);
+                    scalarFieldNames.at(fieldIndex2Gui), fieldIdx, timeStepIdxReference, ensembleIdx);
             referenceValuesCpu[fieldIdx] = fieldEntry->dataAt<float>(referencePointIdx);
         }
         referenceValuesBuffer->updateData(

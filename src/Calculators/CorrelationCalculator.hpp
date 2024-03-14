@@ -114,6 +114,8 @@ protected:
 
     virtual void onCorrelationMemberCountChanged() {}
     bool isEnsembleMode = true; //< Ensemble or time mode?
+    bool useTimeLagCorrelations = false;
+    int timeLagTimeStepIdx = 0;
 
     // Focus point picking/moving information.
     std::shared_ptr<PointPicker> pointPicker;

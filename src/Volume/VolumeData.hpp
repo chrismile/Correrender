@@ -258,6 +258,10 @@ public:
     // For querying height and pressure data for individual levels.
     /// Uses PropertyEditor to display z layer info (height in m or pressure in hPa).
     void displayLayerInfo(sgl::PropertyEditor& propertyEditor, int zPlaneCoord);
+    [[nodiscard]] bool getHasHeightData() const;
+    [[nodiscard]] float getHeightDataForZ(int z) const;
+    [[nodiscard]] float getHeightDataForZWorld(float zWorld) const;
+    [[nodiscard]] std::string getHeightString(float height) const;
 
     // Keep track of transfer function use in renderers to display overlays in renderer.
     void acquireTf(Renderer* renderer, int varIdx);
