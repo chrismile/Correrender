@@ -44,6 +44,15 @@ typedef std::shared_ptr<DeviceCacheEntryType> DeviceCacheEntry;
 
 class DistributionSimilarityChart;
 
+struct TSNESettings {
+    float perplexity = 30.0f;
+    float theta = 0.5f;
+    int randomSeed = 17; // -1 for pseudo-random
+    int maxIter = 500;
+    int stopLyingIter = 0;
+    int momSwitchIter = 700;
+};
+
 class DistributionSimilarityRenderer : public Renderer {
 public:
     explicit DistributionSimilarityRenderer(ViewManager* viewManager);
@@ -85,6 +94,11 @@ private:
     sgl::Color pointColor = sgl::Color(80, 120, 255, 255);
     float pointSize = 5.0f;
 
+    // Internal point data.
+    int selectedPointIdx = -1;
+    std::vector<glm::ivec3> pointGridPositions;
+    int neighborhoodRadius = 3;
+
     // Correlation computation data.
     CorrelationMeasureType correlationMeasureType = CorrelationMeasureType::PEARSON;
     bool calculateAbsoluteValue = false; ///< Whether to use absolute value for non-MI correlations.
@@ -116,6 +130,10 @@ private:
     bool isEnsembleMode = true; //< Ensemble or time mode?
     bool useTimeLagCorrelations = false;
     int timeLagTimeStepIdx = 0;
+
+    // t-SNE settings.
+    TSNESettings tsneSettings{};
+    int subsampling = 2;
 };
 
 #endif //CORRERENDER_DISTRIBUTIONSIMILARITYRENDERER_HPP

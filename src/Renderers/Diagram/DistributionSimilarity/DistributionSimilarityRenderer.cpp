@@ -44,6 +44,7 @@
 #include "Calculators/CorrelationDefines.hpp"
 #include "Calculators/Correlation.hpp"
 #include "Calculators/MutualInformation.hpp"
+#include "Calculators/CorrelationCalculator.hpp"
 #include "Volume/VolumeData.hpp"
 #include "../CorrelationCache.hpp"
 #include "DistributionSimilarityChart.hpp"
@@ -249,7 +250,7 @@ void DistributionSimilarityRenderer::recomputeCorrelationMatrix() {
 
     int numGridPoints = xs * ys * zs;
     int numVectors = numGridPoints;
-    int localRadius = 3;
+    int localRadius = std::max(neighborhoodRadius, 1);
     int featureDimLen = 2 * localRadius + 1;
     int numFeatures = featureDimLen * featureDimLen * featureDimLen;
     auto* featureVectorArray = new double[numFeatures * numVectors];
@@ -343,18 +344,19 @@ void DistributionSimilarityRenderer::recomputeCorrelationMatrix() {
     }
 #endif
 
-    float perplexity = 30.0f;
-    float theta = 0.5f;
-    int randomSeed = 17; // -1 for pseudo-random
-    int maxIter = 500;
-    int stopLyingIter = 0;
-    int momSwitchIter = 700;
     TSNE::run(
             featureVectorArray, numVectors, numFeatures, outputPoints, 2,
-            double(perplexity), double(theta), randomSeed, false, maxIter, stopLyingIter, momSwitchIter);
+            double(tsneSettings.perplexity), double(tsneSettings.theta), tsneSettings.randomSeed, false,
+            tsneSettings.maxIter, tsneSettings.stopLyingIter, tsneSettings.momSwitchIter);
 
     std::vector<glm::vec2> points(numVectors);
+    pointGridPositions.clear();
+    pointGridPositions.resize(numVectors);
     for (int ptIdx = 0; ptIdx < numVectors; ptIdx++) {
+        int xr = ptIdx % xs;
+        int yr = (ptIdx / xs) % ys;
+        int zr = ptIdx / (xs * ys);
+        pointGridPositions.at(ptIdx) = glm::ivec3(xr, yr, zr);
         points.at(ptIdx) = glm::vec2(float(featureVectorArray[ptIdx * 2]), float(featureVectorArray[ptIdx * 2 + 1]));
     }
     parentDiagram->setPointData(points);
@@ -458,6 +460,17 @@ void DistributionSimilarityRenderer::update(float dt, bool isMouseGrabbed) {
             }
         }
         reRenderTriggeredByDiagram = true;
+    }
+    auto selectedPointIdxNew = parentDiagram->getSelectedPointIdx();
+    if (selectedPointIdxNew >= 0) {
+        selectedPointIdx = selectedPointIdxNew;
+        auto correlationCalculators = volumeData->getCorrelationCalculatorsUsed();
+        for (auto& calculator : correlationCalculators) {
+            if (calculator->getIsEnsembleMode() != isEnsembleMode) {
+                continue;
+            }
+            calculator->setReferencePoint(pointGridPositions.at(selectedPointIdx));
+        }
     }
     //isMouseGrabbed |= parentDiagram->getIsMouseGrabbed() || parentDiagram->getIsMouseOverDiagramImGui();
 }
@@ -685,6 +698,39 @@ void DistributionSimilarityRenderer::renderGuiImpl(sgl::PropertyEditor& property
         reRenderTriggeredByDiagram = true;
     }
 
+    if (propertyEditor.addSliderIntEdit(
+            "Neighborhood Radius", &neighborhoodRadius, 1, 9) == ImGui::EditMode::INPUT_FINISHED) {
+        setRecomputeFlag();
+    }
+
+    if (propertyEditor.beginNode("t-SNE settings")) {
+        if (propertyEditor.addSliderFloatEdit(
+                "Perplexity", &tsneSettings.perplexity, 5.0f, 50.0f) == ImGui::EditMode::INPUT_FINISHED) {
+            setRecomputeFlag();
+        }
+        if (propertyEditor.addSliderFloatEdit(
+                "Theta", &tsneSettings.theta, 0.1f, 1.0f) == ImGui::EditMode::INPUT_FINISHED) {
+            setRecomputeFlag();
+        }
+        if (propertyEditor.addSliderIntEdit(
+                "Random Seed", &tsneSettings.randomSeed, -1, 50) == ImGui::EditMode::INPUT_FINISHED) {
+            setRecomputeFlag();
+        }
+        if (propertyEditor.addSliderIntEdit(
+                "#Iterations (max)", &tsneSettings.maxIter, 1, 1000) == ImGui::EditMode::INPUT_FINISHED) {
+            setRecomputeFlag();
+        }
+        if (propertyEditor.addSliderIntEdit(
+                "#Stop Lying Iterations", &tsneSettings.stopLyingIter, 0, 1000) == ImGui::EditMode::INPUT_FINISHED) {
+            setRecomputeFlag();
+        }
+        if (propertyEditor.addSliderIntEdit(
+                "#Moment Switch Iterations", &tsneSettings.momSwitchIter, 0, 1000) == ImGui::EditMode::INPUT_FINISHED) {
+            setRecomputeFlag();
+        }
+        propertyEditor.endNode();
+    }
+
     if (propertyEditor.beginNode("Advanced Settings")) {
         if (!scalarFieldNames.empty() && getSupportsBufferMode() && propertyEditor.addCombo(
                 "Data Mode", (int*)&dataMode, DATA_MODE_NAMES, IM_ARRAYSIZE(DATA_MODE_NAMES))) {
@@ -868,6 +914,29 @@ void DistributionSimilarityRenderer::setSettings(const SettingsMap& settings) {
         reRenderTriggeredByDiagram = true;
     }
 
+    if (settings.getValueOpt("neighborhood_radius", neighborhoodRadius)) {
+        setRecomputeFlag();
+    }
+
+    if (settings.getValueOpt("tsne_perplexity", tsneSettings.perplexity)) {
+        setRecomputeFlag();
+    }
+    if (settings.getValueOpt("tsne_theta", tsneSettings.theta)) {
+        setRecomputeFlag();
+    }
+    if (settings.getValueOpt("tsne_random_seed", tsneSettings.randomSeed)) {
+        setRecomputeFlag();
+    }
+    if (settings.getValueOpt("tsne_max_iter", tsneSettings.maxIter)) {
+        setRecomputeFlag();
+    }
+    if (settings.getValueOpt("tsne_stop_lying_iter", tsneSettings.stopLyingIter)) {
+        setRecomputeFlag();
+    }
+    if (settings.getValueOpt("tsne_mom_switch_iter", tsneSettings.momSwitchIter)) {
+        setRecomputeFlag();
+    }
+
     setRecomputeFlag();
 }
 
@@ -903,6 +972,16 @@ void DistributionSimilarityRenderer::getSettings(SettingsMap& settings) {
 
     settings.addKeyValue("point_size", pointSize);
     settings.addKeyValue("point_color", pointColor.getFloatColorRGBA());
+
+    settings.addKeyValue("neighborhood_radius", neighborhoodRadius);
+
+    // t-SNE settings.
+    settings.addKeyValue("tsne_perplexity", tsneSettings.perplexity);
+    settings.addKeyValue("tsne_theta", tsneSettings.theta);
+    settings.addKeyValue("tsne_random_seed", tsneSettings.randomSeed);
+    settings.addKeyValue("tsne_max_iter", tsneSettings.maxIter);
+    settings.addKeyValue("tsne_stop_lying_iter", tsneSettings.stopLyingIter);
+    settings.addKeyValue("tsne_mom_switch_iter", tsneSettings.momSwitchIter);
 
     // No vector widget settings for now.
 }

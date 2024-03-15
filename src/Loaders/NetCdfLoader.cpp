@@ -745,6 +745,13 @@ bool NetCdfLoader::setMetadataFrom(VolumeLoader* other) {
     this->zs = otherNc->zs;
     this->ts = otherNc->ts;
     this->es = otherNc->es;
+    this->xmin = otherNc->xmin;
+    this->ymin = otherNc->ymin;
+    this->zmin = otherNc->zmin;
+    this->xst = otherNc->xst;
+    this->yst = otherNc->yst;
+    this->zst = otherNc->zst;
+    this->timeDependent2dMap = otherNc->timeDependent2dMap;
     this->varHasFillValueMap = otherNc->varHasFillValueMap;
     this->fillValueMap = otherNc->fillValueMap;
     reusedMetadata = true;

@@ -52,6 +52,7 @@ public:
     void setPointRadius(float _pointRadius);
     void setPointData(const std::vector<glm::vec2>& _pointData);
     void setBoundingBox(const sgl::AABB2& _bb);
+    [[nodiscard]] inline int getSelectedPointIdx() const { return selectedPointIdx; }
 
 protected:
     bool hasData() override {
@@ -76,10 +77,14 @@ private:
     bool alignWithParentWindow = false;
     float ox = 0, oy = 0, dw = 0, dh = 0;
     sgl::Color pointColor = sgl::Color(31, 119, 180);
+    sgl::Color hoveredPointColor = sgl::Color(240, 40, 10);
     float pointRadius = 5.0f;
     float strokeWidth = 1.5f;
     std::vector<glm::vec2> pointData;
     sgl::AABB2 bb;
+    int hoveredPointIdx = -1;
+    int clickedPointIdx = -1;
+    int selectedPointIdx = -1;
 
     sgl::Color textColorDark = sgl::Color(255, 255, 255, 255);
     sgl::Color textColorBright = sgl::Color(0, 0, 0, 255);

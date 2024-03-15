@@ -27,6 +27,7 @@
  */
 
 #include <Math/Math.hpp>
+#include <Input/Mouse.hpp>
 #include <Graphics/Vector/nanovg/nanovg.h>
 #include <Graphics/Vector/VectorBackendNanoVG.hpp>
 
@@ -145,29 +146,71 @@ void DistributionSimilarityChart::setBoundingBox(const sgl::AABB2& _bb) {
 void DistributionSimilarityChart::update(float dt) {
     DiagramBase::update(dt);
 
-    /*float startX = windowWidth / 2.0f - chartRadius;
-    float startY = windowHeight / 2.0f - chartRadius;
-    float matrixWidth = 2.0f * chartRadius;
-    float matrixHeight = 2.0f * chartRadius;
-    glm::vec2 pctMousePos = (mousePosition - glm::vec2(startX, startY)) / glm::vec2(matrixWidth, matrixHeight);
-    glm::vec2 gridMousePos = pctMousePos * glm::vec2(correlationMatrix->getNumRows(), correlationMatrix->getNumColumns());
-    auto gridPosition = glm::ivec2(gridMousePos);
-    int i = gridPosition.x;
-    int j = gridPosition.y;
+    glm::vec2 mousePosition(sgl::Mouse->getX(), sgl::Mouse->getY());
+    if (sgl::ImGuiWrapper::get()->getUseDockSpaceMode()) {
+        mousePosition -= glm::vec2(imGuiWindowOffsetX, imGuiWindowOffsetY);
+    }
+    mousePosition -= glm::vec2(getWindowOffsetX(), getWindowOffsetY());
+    mousePosition /= getScaleFactor();
 
-    if (pctMousePos.x >= 0.0f && pctMousePos.y >= 0.0f && pctMousePos.x < 1.0f && pctMousePos.y < 1.0f
-        && (!correlationMatrix->getIsSymmetric() || i > j)) {
-        if (!regionsEqual) {
-            gridPosition.y += int(leafIdxOffset1 - leafIdxOffset);
+    float pointSizeReal = pointRadius * std::min(windowWidth, windowHeight) / 1024.0f;
+    float minX = ox;
+    float minY = oy;
+    float maxX = ox + dw;
+    float maxY = oy + dh;
+    float minXPt = minX + pointSizeReal * 1.5f;
+    float minYPt = minY + pointSizeReal * 1.5f;
+    float maxXPt = maxX - pointSizeReal * 1.5f;
+    float maxYPt = maxY - pointSizeReal * 1.5f;
+    glm::vec2 mousePosPct = (mousePosition - glm::vec2(minXPt, minYPt)) / glm::vec2(maxXPt - minXPt, maxYPt - minYPt);
+    bool isMouseInWindow = mousePosPct.x >= 0.0f && mousePosPct.y >= 0.0f && mousePosPct.x < 1.0f && mousePosPct.y < 1.0f;
+    bool isMouseInWindowAll = mousePosition.x >= 0.0f && mousePosition.y >= 0.0f && mousePosition.x < windowWidth && mousePosition.y < windowHeight;
+
+    if (!isMouseInWindow) {
+        hoveredPointIdx = -1;
+    }
+    if (isMouseInWindow && !isMouseGrabbedByParent) {
+        int closestPointIdx = -1;
+        float closestPointDist = std::numeric_limits<float>::max();
+        auto numPoints = int(pointData.size());
+        for (int i = 0; i < numPoints; i++) {
+            float x = (pointData.at(i).x - bb.min.x) / (bb.max.x - bb.min.x);
+            float y = (pointData.at(i).y - bb.min.y) / (bb.max.y - bb.min.y);
+            y = 1 - y;
+            x = minXPt + (maxXPt - minXPt) * x;
+            y = minYPt + (maxYPt - minYPt) * y;
+            float distToMouse = glm::distance(glm::vec2(x, y), mousePosition);
+            if (distToMouse < closestPointDist) {
+                closestPointDist = distToMouse;
+                closestPointIdx = i;
+            }
         }
-        hoveredGridIdx = gridPosition;
-    } else {
-        hoveredGridIdx = {};
+        const float minDist = 4.0f;
+        if (closestPointDist >= 0 && closestPointDist > minDist) {
+            closestPointIdx = -1;
+        }
+        hoveredPointIdx = closestPointIdx;
+    }
+    if (isMouseInWindowAll) {
+        if ((sgl::Mouse->buttonReleased(1) || sgl::Mouse->buttonReleased(3)) && !windowMoveOrResizeJustFinished) {
+            clickedPointIdx = -1;
+            if (hoveredPointIdx >= 0) {
+                clickedPointIdx = hoveredPointIdx;
+            }
+        }
     }
 
-    hoveredPointIdx = -1;
-    hoveredLineIdx = -1;
-    selectedLineIdx = -1;*/
+    int newSelectedPointIdx = -1;
+    if (hoveredPointIdx >= 0) {
+        newSelectedPointIdx = hoveredPointIdx;
+    } else if (clickedPointIdx >= 0) {
+        newSelectedPointIdx = clickedPointIdx;
+    }
+
+    if (selectedPointIdx != newSelectedPointIdx) {
+        selectedPointIdx = newSelectedPointIdx;
+        needsReRender = true;
+    }
 }
 
 void DistributionSimilarityChart::updateData() {
@@ -226,6 +269,9 @@ void DistributionSimilarityChart::renderScatterPlot() {
 
     auto numPoints = int(pointData.size());
     for (int i = 0; i < numPoints; i++) {
+        if (i == hoveredPointIdx) {
+            continue;
+        }
         float x = (pointData.at(i).x - bb.min.x) / (bb.max.x - bb.min.x);
         float y = (pointData.at(i).y - bb.min.y) / (bb.max.y - bb.min.y);
         y = 1 - y;
@@ -248,6 +294,34 @@ void DistributionSimilarityChart::renderScatterPlot() {
         else if (context) {
             vkvg_set_source_color(context, pointColor.getColorRGBA());
             vkvg_arc(context, x * s, y * s, pointSizeReal * s, 0.0f, sgl::TWO_PI);
+            vkvg_fill(context);
+        }
+#endif
+    }
+
+    if (selectedPointIdx >= 0) {
+        float x = (pointData.at(selectedPointIdx).x - bb.min.x) / (bb.max.x - bb.min.x);
+        float y = (pointData.at(selectedPointIdx).y - bb.min.y) / (bb.max.y - bb.min.y);
+        y = 1 - y;
+        x = minXPt + (maxXPt - minXPt) * x;
+        y = minYPt + (maxYPt - minYPt) * y;
+        if (vg) {
+            nvgBeginPath(vg);
+            nvgCircle(vg, x, y, pointSizeReal * 2.0f);
+            nvgFillColor(vg, nvgRGB(hoveredPointColor.getR(), hoveredPointColor.getG(), hoveredPointColor.getB()));
+            nvgFill(vg);
+        }
+#ifdef SUPPORT_SKIA
+        else if (canvas) {
+            paint->setColor(toSkColor(hoveredPointColor));
+            paint->setStroke(false);
+            canvas->drawCircle(x * s, y * s, pointSizeReal * 2.0f * s, *paint);
+        }
+#endif
+#ifdef SUPPORT_VKVG
+        else if (context) {
+            vkvg_set_source_color(context, hoveredPointColor.getColorRGBA());
+            vkvg_arc(context, x * s, y * s, pointSizeReal * 2.0f * s, 0.0f, sgl::TWO_PI);
             vkvg_fill(context);
         }
 #endif
