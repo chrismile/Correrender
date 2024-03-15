@@ -833,6 +833,13 @@ void TimeSeriesCorrelationRenderer::setSettings(const SettingsMap& settings) {
         }
     }
 
+    if (settings.getValueOpt("mi_bins", numBins)) {
+        dirty = true;
+    }
+    if (settings.getValueOpt("kmi_neighbors", k)) {
+        dirty = true;
+    }
+
 #ifdef SUPPORT_TINY_CUDA_NN
     std::string networkImplementationString;
     if (settings.getValueOpt("network_implementation", networkImplementationString)) {
@@ -872,6 +879,8 @@ void TimeSeriesCorrelationRenderer::getSettings(SettingsMap& settings) {
     settings.addKeyValue(
             "correlation_measure_type", CORRELATION_MEASURE_TYPE_IDS[int(correlationMeasureType)]);
     settings.addKeyValue("color_map", DIAGRAM_COLOR_MAP_NAMES[int(colorMap)]);
+    settings.addKeyValue("mi_bins", numBins);
+    settings.addKeyValue("kmi_neighbors", k);
 
 #ifdef SUPPORT_TINY_CUDA_NN
     settings.addKeyValue("calculate_absolute_value", calculateAbsoluteValue);

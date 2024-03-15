@@ -780,9 +780,13 @@ void CorrelationCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float
     size_t referencePointIdx = IDXS(referencePointIndex.x, referencePointIndex.y, referencePointIndex.z);
     auto* referenceValues = new float[cs];
     if (useSeparateFields) {
+        int timeStepIdxReference = timeStepIdx;
+        if (useTimeLagCorrelations) {
+            timeStepIdxReference = timeLagTimeStepIdx;
+        }
         for (int c = 0; c < cs; c++) {
             VolumeData::HostCacheEntry fieldEntry = getFieldEntryCpu(
-                    scalarFieldNames.at(fieldIndex2Gui), c, timeStepIdx, ensembleIdx);
+                    scalarFieldNames.at(fieldIndex2Gui), c, timeStepIdxReference, ensembleIdx);
             referenceValues[c] = fieldEntry->dataAt<float>(referencePointIdx);
         }
     } else {
@@ -1222,9 +1226,13 @@ void CorrelationCalculator::calculateDevice(int timeStepIdx, int ensembleIdx, co
                 float minFieldValQuery = std::numeric_limits<float>::max();
                 float maxFieldValQuery = std::numeric_limits<float>::lowest();
                 if (isMeasureBinnedMI(correlationMeasureType)) {
+                    int timeStepIdxReference = timeStepIdx;
+                    if (useTimeLagCorrelations) {
+                        timeStepIdxReference = timeLagTimeStepIdx;
+                    }
                     for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
                         auto [minValRef, maxValRef] = getMinMaxScalarFieldValue(
-                                scalarFieldNames.at(fieldIndex2Gui), fieldIdx, timeStepIdx, ensembleIdx);
+                                scalarFieldNames.at(fieldIndex2Gui), fieldIdx, timeStepIdxReference, ensembleIdx);
                         minFieldValRef = std::min(minFieldValRef, minValRef);
                         maxFieldValRef = std::max(maxFieldValRef, maxValRef);
                         auto [minValQuery, maxValQuery] = getMinMaxScalarFieldValue(

@@ -32,8 +32,15 @@
 #include <Graphics/Color.hpp>
 
 #include "../../Renderer.hpp"
+#include "Volume/Cache/HostCacheEntry.hpp"
+#include "Volume/Cache/DeviceCacheEntry.hpp"
 #include "Calculators/CorrelationDefines.hpp"
 #include "Calculators/CorrelationMatrix.hpp"
+
+class HostCacheEntryType;
+typedef std::shared_ptr<HostCacheEntryType> HostCacheEntry;
+class DeviceCacheEntryType;
+typedef std::shared_ptr<DeviceCacheEntryType> DeviceCacheEntry;
 
 class DistributionSimilarityChart;
 
@@ -77,6 +84,38 @@ private:
     bool alignWithParentWindow = false;
     sgl::Color pointColor = sgl::Color(80, 120, 255, 255);
     float pointSize = 5.0f;
+
+    // Correlation computation data.
+    CorrelationMeasureType correlationMeasureType = CorrelationMeasureType::PEARSON;
+    bool calculateAbsoluteValue = false; ///< Whether to use absolute value for non-MI correlations.
+    int numBins = 80; ///< For CorrelationMeasureType::MUTUAL_INFORMATION_BINNED.
+    int k = 3; ///< For CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV.
+    int kMax = 20; ///< For CorrelationMeasureType::MUTUAL_INFORMATION_KRASKOV.
+    std::vector<std::string> scalarFieldNames;
+    std::vector<size_t> scalarFieldIndexArray;
+    int fieldIndex = 0, fieldIndexGui = 0;
+    int fieldIndex2 = 0, fieldIndex2Gui = 0;
+    CorrelationDataMode dataMode = CorrelationDataMode::BUFFER_ARRAY;
+    bool useBufferTiling = true;
+    bool useSeparateFields = false;
+
+    void setRecomputeFlag();
+    bool dataDirty = true;
+
+    bool getSupportsBufferMode();
+    int getCorrelationMemberCount();
+    HostCacheEntry getFieldEntryCpu(
+            const std::string& fieldName, int fieldIdx, int timeStepIdx, int ensembleIdx);
+    DeviceCacheEntry getFieldEntryDevice(
+            const std::string& fieldName, int fieldIdx, int timeStepIdx, int ensembleIdx, bool wantsImageData = true);
+    std::pair<float, float> getMinMaxScalarFieldValue(
+            const std::string& fieldName, int fieldIdx, int timeStepIdx, int ensembleIdx);
+
+    void clearFieldDeviceData();
+    void onCorrelationMemberCountChanged();
+    bool isEnsembleMode = true; //< Ensemble or time mode?
+    bool useTimeLagCorrelations = false;
+    int timeLagTimeStepIdx = 0;
 };
 
 #endif //CORRERENDER_DISTRIBUTIONSIMILARITYRENDERER_HPP

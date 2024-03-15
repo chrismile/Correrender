@@ -49,6 +49,7 @@
 #include "Calculators/CorrelationCalculator.hpp"
 #include "Calculators/MutualInformation.hpp"
 #include "Test/MultivariateGaussian.hpp"
+#include "CorrelationCache.hpp"
 #include "HEBChart.hpp"
 #include "BayOpt.hpp"
 
@@ -451,47 +452,6 @@ void HEBChart::computeCorrelations(
     //auto elapsedTimeSort = std::chrono::duration_cast<std::chrono::milliseconds>(endTimeSort - startTimeSort);
     //std::cout << "Elapsed time sort: " << elapsedTimeSort.count() << "ms" << std::endl;
 }
-
-#define CORRELATION_CACHE                                         \
-    std::vector<float> X(cs);                                     \
-    std::vector<float> Y(cs);                                     \
-                                                                  \
-    std::vector<std::pair<float, int>> ordinalRankArraySpearman;  \
-    std::vector<float> referenceRanks;                            \
-    std::vector<float> gridPointRanks;                            \
-    if (cmt == CorrelationMeasureType::SPEARMAN)                  \
-    {                                                             \
-        ordinalRankArraySpearman.reserve(cs);                     \
-        referenceRanks.resize(cs);                                \
-        gridPointRanks.resize(cs);                                \
-    }                                                             \
-                                                                  \
-    std::vector<std::pair<float, float>> jointArray;              \
-    std::vector<float> ordinalRankArray;                          \
-    std::vector<std::pair<float, int>> ordinalRankArrayRef;       \
-    std::vector<float> y;                                         \
-    std::vector<float> sortArray;                                 \
-    std::vector<std::pair<int, int>> stack;                       \
-    if (cmt == CorrelationMeasureType::KENDALL)                   \
-    {                                                             \
-        jointArray.reserve(cs);                                   \
-        ordinalRankArray.reserve(cs);                             \
-        ordinalRankArrayRef.reserve(cs);                          \
-        y.reserve(cs);                                            \
-        sortArray.reserve(cs);                                    \
-    }                                                             \
-                                                                  \
-    std::vector<double> histogram0;                               \
-    std::vector<double> histogram1;                               \
-    std::vector<double> histogram2d;                              \
-    if (isMeasureBinnedMI(cmt))                                   \
-    {                                                             \
-        histogram0.reserve(numBins);                              \
-        histogram1.reserve(numBins);                              \
-        histogram2d.reserve(numBins *numBins);                    \
-    }                                                             \
-                                                                  \
-    KraskovEstimatorCache<double> kraskovEstimatorCache;
 
 void HEBChart::computeCorrelationsMean(
     HEBChartFieldData *fieldData,
