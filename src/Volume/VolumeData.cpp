@@ -59,6 +59,7 @@
 #include "Loaders/VolumeLoader.hpp"
 #include "Loaders/AmiraMeshLoader.hpp"
 #include "Loaders/DatRawFileLoader.hpp"
+#include "Loaders/MhdRawFileLoader.hpp"
 #include "Loaders/FieldFileLoader.hpp"
 #include "Loaders/CvolLoader.hpp"
 #include "Loaders/NiftiLoader.hpp"
@@ -81,6 +82,7 @@
 #include "Calculators/VelocityCalculator.hpp"
 #include "Calculators/BinaryOperatorCalculator.hpp"
 #include "Calculators/NoiseReductionCalculator.hpp"
+#include "Calculators/EnsembleMeanCalculator.hpp"
 #include "Calculators/EnsembleSpreadCalculator.hpp"
 #include "Calculators/SetPredicateCalculator.hpp"
 #include "Calculators/ResidualColorCalculator.hpp"
@@ -152,6 +154,7 @@ VolumeData::VolumeData(sgl::vk::Renderer* renderer) : renderer(renderer), multiV
     std::map<std::vector<std::string>, std::function<VolumeLoader*()>> factoriesLoaderMap = {
             registerVolumeLoader<AmiraMeshLoader>(),
             registerVolumeLoader<DatRawFileLoader>(),
+            registerVolumeLoader<MhdRawFileLoader>(),
             registerVolumeLoader<FieldFileLoader>(),
             registerVolumeLoader<CvolLoader>(),
             registerVolumeLoader<NiftiLoader>(),
@@ -189,6 +192,8 @@ VolumeData::VolumeData(sgl::vk::Renderer* renderer) : renderer(renderer), multiV
             "Binary Operator", [renderer]() { return new BinaryOperatorCalculator(renderer); });
     factoriesCalculator.emplace_back(
             "Noise Reduction", [renderer]() { return new NoiseReductionCalculator(renderer); });
+    factoriesCalculator.emplace_back(
+            "Ensemble Mean", [renderer]() { return new EnsembleMeanCalculator(renderer); });
     factoriesCalculator.emplace_back(
             "Ensemble Spread", [renderer]() { return new EnsembleSpreadCalculator(renderer); });
     factoriesCalculator.emplace_back(

@@ -1,7 +1,7 @@
 /*
  * BSD 2-Clause License
  *
- * Copyright (c) 2023-2024, Christoph Neuhauser
+ * Copyright (c) 2024, Christoph Neuhauser
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -59,21 +59,11 @@ void main() {
             nanValue = val;
         }
     }
-    float stdDev;
-    if (numValid > 1) {
+    if (numValid >= 1) {
         ensembleMean = ensembleMean / float(numValid);
-        float ensembleVarianceSum = 0.0f;
-        for (int e = 0; e < es; e++) {
-            float val = texelFetch(sampler3D(scalarFieldEnsembles[nonuniformEXT(e)], scalarFieldSampler), currentPointIdx, 0).r;
-            if (!isnan(val)) {
-                float diff = ensembleMean - val;
-                ensembleVarianceSum += diff * diff;
-            }
-        }
-        stdDev = sqrt(ensembleVarianceSum / float(numValid - 1));
     } else {
-        stdDev = nanValue;
+        ensembleMean = nanValue;
     }
 
-    imageStore(outputImage, currentPointIdx, vec4(stdDev));
+    imageStore(outputImage, currentPointIdx, vec4(ensembleMean));
 }

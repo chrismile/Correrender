@@ -833,6 +833,7 @@ void MainApp::renderGui() {
 #endif
                     || boost::ends_with(filenameLower, ".dat")
                     || boost::ends_with(filenameLower, ".raw")
+                    || boost::ends_with(filenameLower, ".mhd")
                     || boost::ends_with(filenameLower, ".ctl")) {
                 selectedDataSetIndex = 0;
                 customDataSetFileName = filename;
@@ -1360,7 +1361,7 @@ void MainApp::openFileDialog() {
     IGFD_OpenModal(
             fileDialogInstance,
             "ChooseDataSetFile", "Choose a File",
-            ".*,.vtk,.vti,.vts,.vtr,.nc,.zarr,.am,.bin,.field,.cvol,.grib,.grb,.dat,.raw,.ctl",
+            ".*,.vtk,.vti,.vts,.vtr,.nc,.zarr,.am,.bin,.field,.cvol,.grib,.grb,.dat,.raw,.mhd,.ctl",
             fileDialogDirectory.c_str(),
             "", 1, nullptr,
             ImGuiFileDialogFlags_None);

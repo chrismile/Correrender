@@ -293,8 +293,8 @@ bool DatRawFileLoader::getFieldEntry(
                 "Error in DatRawFileLoader::load: Invalid number of entries for file \"" + rawFilename + "\".");
     }
 
-    int vectorFieldNumEntries = xs * ys * zs * 3;
-    int scalarFieldNumEntries = xs * ys * zs;
+    auto vectorFieldNumEntries = size_t(xs) * size_t(ys) * size_t(zs) * 3;
+    auto scalarFieldNumEntries = size_t(xs) * size_t(ys) * size_t(zs);
 
     float* velocityField = nullptr;
     float* velocityMagnitudeField = nullptr;
