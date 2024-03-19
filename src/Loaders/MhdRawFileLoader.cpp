@@ -162,15 +162,13 @@ bool MhdRawFileLoader::setInputFiles(
 
     existsAndEqual(mhdFilePath, mhdDict, "ObjectType", "Image");
     existsAndEqual(mhdFilePath, mhdDict, "NDims", "3");
-    existsAndEqual(mhdFilePath, mhdDict, "Offset", "0 0 0");
-    existsAndEqual(mhdFilePath, mhdDict, "TransformMatrix", "1 0 0 0 1 0 0 0 1");
-    existsAndEqual(mhdFilePath, mhdDict, "CenterOfRotation", "0 0 0");
-    existsAndEqual(mhdFilePath, mhdDict, "AnatomicalOrientation", "RAI");
     existsAndEqual(mhdFilePath, mhdDict, "BinaryData", "True");
     existsAndEqual(mhdFilePath, mhdDict, "BinaryDataByteOrderMSB", "False");
-    existsAndEqual(mhdFilePath, mhdDict, "InterceptSlope", "0 1");
-    existsAndEqual(mhdFilePath, mhdDict, "Modality", "MET_MOD_OTHER");
-    existsAndEqual(mhdFilePath, mhdDict, "SegmentationType", "UNKNOWN");
+    //existsAndEqual(mhdFilePath, mhdDict, "Offset", "0 0 0"); // Unnecessary; we normalize the coordinates anyways.
+    //existsAndEqual(mhdFilePath, mhdDict, "AnatomicalOrientation", "RAI"); // "RAI" or "LPI"
+    //existsAndEqual(mhdFilePath, mhdDict, "InterceptSlope", "0 1"); // "0 1" or "-1024 1"
+    //existsAndEqual(mhdFilePath, mhdDict, "Modality", "MET_MOD_OTHER"); // Unnecessary
+    //existsAndEqual(mhdFilePath, mhdDict, "SegmentationType", "UNKNOWN"); // Unnecessary
 
     auto itResolution = mhdDict.find("DimSize");
     if (itResolution == mhdDict.end()) {
@@ -205,6 +203,45 @@ bool MhdRawFileLoader::setInputFiles(
         dx *= tx;
         dy *= ty;
         dz *= tz;
+    }
+
+    auto itTransformMatrix = mhdDict.find("TransformMatrix");
+    if (itTransformMatrix == mhdDict.end()) {
+        sgl::Logfile::get()->throwError(
+                "Error in loadFromMhdRawFile::load: Entry 'TransformMatrix' missing in \"" + mhdFilePath + "\".");
+    }
+    if (itTransformMatrix->second != "1 0 0 0 1 0 0 0 1") {
+        useCustomTransform = true;
+        existsAndEqual(mhdFilePath, mhdDict, "CenterOfRotation", "0 0 0");
+        std::vector<std::string> transformStringList;
+        sgl::splitStringWhitespace(itTransformMatrix->second, transformStringList);
+        if (transformStringList.size() != 9) {
+            sgl::Logfile::get()->throwError(
+                    "Error in loadFromMhdRawFile::load: Entry 'TransformMatrix' in \"" + mhdFilePath
+                    + "\" does not have nine values.");
+        }
+        std::vector<float> transformMatrix;
+        for (const auto& str : transformStringList) {
+            transformMatrix.push_back(sgl::fromString<float>(str));
+        }
+        for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 3; j++) {
+                float val = transformMatrix.at(i * 3 + j);
+                if (i != j && val != 0.0f) {
+                    sgl::Logfile::get()->throwError(
+                            "Error in loadFromMhdRawFile::load: Entry 'TransformMatrix' in \"" + mhdFilePath
+                            + "\" contains a rotational part. This is currently not supported.");
+                }
+                if (i == j && val != 1.0f && val != -1.0f) {
+                    sgl::Logfile::get()->throwError(
+                            "Error in loadFromMhdRawFile::load: Entry 'TransformMatrix' in \"" + mhdFilePath
+                            + "\" contains a scaling part. This is currently not supported.");
+                }
+                if (i == j && val == -1.0f) {
+                    mirrorAxes[i] = true;
+                }
+            }
+        }
     }
 
     auto itFormat = mhdDict.find("ElementType");
@@ -250,6 +287,25 @@ bool MhdRawFileLoader::setInputFiles(
     return true;
 }
 
+template<class T>
+inline void transposeField(T*& data, uint32_t xs, uint32_t ys, uint32_t zs, bool axes[3]) {
+    auto* tmp = data;
+    data = new T[xs * ys * zs];
+    for (uint32_t z = 0; z < zs; z++) {
+        for (uint32_t y = 0; y < ys; y++) {
+            for (uint32_t x = 0; x < xs; x++) {
+                uint32_t writeIdx = x + (y + z * ys) * xs;
+                uint32_t xp = axes[0] ? xs - x - 1 : x;
+                uint32_t yp = axes[1] ? ys - y - 1 : y;
+                uint32_t zp = axes[2] ? zs - z - 1 : z;
+                uint32_t readIdx = xp + (yp + zp * ys) * xs;
+                data[writeIdx] = tmp[readIdx];
+            }
+        }
+    }
+    delete[] tmp;
+}
+
 bool MhdRawFileLoader::getFieldEntry(
         VolumeData* volumeData, FieldType fieldType, const std::string& fieldName,
         int timestepIdx, int memberIdx, HostCacheEntryType*& fieldEntry) {
@@ -276,14 +332,29 @@ bool MhdRawFileLoader::getFieldEntry(
     if (formatString == "MET_FLOAT") {
         scalarAttributeField = new float[scalarFieldNumEntries];
         memcpy(scalarAttributeField, bufferRaw, sizeof(float) * totalSize);
+        if (useCustomTransform) {
+            auto* data = reinterpret_cast<float*>(scalarAttributeField);
+            transposeField(data, uint32_t(xs), uint32_t(ys), uint32_t(zs), mirrorAxes);
+            scalarAttributeField = data;
+        }
     } else if (formatString == "MET_UCHAR") {
         dataFormat = ScalarDataFormat::BYTE;
         scalarAttributeField = new uint8_t[scalarFieldNumEntries];
         memcpy(scalarAttributeField, bufferRaw, sizeof(uint8_t) * totalSize);
+        if (useCustomTransform) {
+            auto* data = reinterpret_cast<uint8_t*>(scalarAttributeField);
+            transposeField(data, uint32_t(xs), uint32_t(ys), uint32_t(zs), mirrorAxes);
+            scalarAttributeField = data;
+        }
     } else if (formatString == "MET_USHORT") {
         dataFormat = ScalarDataFormat::SHORT;
         scalarAttributeField = new uint16_t[scalarFieldNumEntries];
         memcpy(scalarAttributeField, bufferRaw, sizeof(uint16_t) * totalSize);
+        if (useCustomTransform) {
+            auto* data = reinterpret_cast<uint16_t*>(scalarAttributeField);
+            transposeField(data, uint32_t(xs), uint32_t(ys), uint32_t(zs), mirrorAxes);
+            scalarAttributeField = data;
+        }
     }
 
     if (scalarAttributeField) {

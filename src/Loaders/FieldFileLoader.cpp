@@ -28,10 +28,10 @@
 
 #include <boost/algorithm/string/case_conv.hpp>
 
+#include <Math/half/half.hpp>
 #include <Utils/File/Logfile.hpp>
 #include <Utils/File/FileUtils.hpp>
 #include <Utils/File/FileLoader.hpp>
-#include "half/half.hpp"
 
 #include "Volume/VolumeData.hpp"
 #include "DataSet.hpp"

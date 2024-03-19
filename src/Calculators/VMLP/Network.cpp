@@ -32,12 +32,12 @@
 #include <json/json.h>
 
 #include <Math/Math.hpp>
+#include <Math/half/half.hpp>
 #include <Graphics/Vulkan/Utils/Device.hpp>
 #include <Graphics/Vulkan/Render/ComputePipeline.hpp>
 #include <Graphics/Vulkan/Render/Renderer.hpp>
 #include <Graphics/Vulkan/Render/Passes/Pass.hpp>
 
-#include "Loaders/half/half.hpp"
 #include "Encoding.hpp"
 #include "Network.hpp"
 

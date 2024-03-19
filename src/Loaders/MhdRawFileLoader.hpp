@@ -57,6 +57,8 @@ private:
     size_t bytesPerEntry = 0;
     std::string formatString;
     std::string scalarAttributeName;
+    bool useCustomTransform = false;
+    bool mirrorAxes[3] = {false, false, false};
 };
 
 #endif //CORRERENDER_MHDRAWFILELOADER_HPP

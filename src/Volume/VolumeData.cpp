@@ -39,6 +39,7 @@
 #include <Utils/Parallel/Reduction.hpp>
 #endif
 
+#include <Math/half/half.hpp>
 #include <Utils/StringUtils.hpp>
 #include <Utils/AppSettings.hpp>
 #include <Utils/File/FileUtils.hpp>
@@ -55,7 +56,6 @@
 #endif
 
 #include "Loaders/DataSet.hpp"
-#include "Loaders/half/half.hpp"
 #include "Loaders/VolumeLoader.hpp"
 #include "Loaders/AmiraMeshLoader.hpp"
 #include "Loaders/DatRawFileLoader.hpp"
@@ -1595,8 +1595,7 @@ std::pair<float, float> VolumeData::getMinMaxScalarFieldValue(
     } else if (scalarValues->getScalarDataFormatNative() == ScalarDataFormat::SHORT) {
         minMaxVal = sgl::reduceUnormShortArrayMinMax(scalarValues->data<uint16_t>(), getSlice3dEntryCount());
     } else if (scalarValues->getScalarDataFormatNative() == ScalarDataFormat::FLOAT16) {
-        // TODO: Change once support for float16 has been added to sgl.
-        minMaxVal = sgl::reduceFloatArrayMinMax(scalarValues->data<float>(), getSlice3dEntryCount());
+        minMaxVal = sgl::reduceHalfFloatArrayMinMax(scalarValues->data<HalfFloat>(), getSlice3dEntryCount());
     }
 
     // Is this a divergent scalar field? If yes, the transfer function etc. should be centered at zero.

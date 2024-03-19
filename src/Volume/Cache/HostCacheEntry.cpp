@@ -26,6 +26,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <Math/half/half.hpp>
 #include <Utils/File/Logfile.hpp>
 
 #ifdef USE_TBB
@@ -33,7 +34,6 @@
 #include <tbb/blocked_range.h>
 #endif
 
-#include "Loaders/half/half.hpp"
 #include "HostCacheEntry.hpp"
 
 HostCacheEntryType::~HostCacheEntryType() {
