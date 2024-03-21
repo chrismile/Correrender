@@ -45,7 +45,7 @@ EnsembleMeanCalculator::EnsembleMeanCalculator(sgl::vk::Renderer* renderer) : Ca
 }
 
 std::string EnsembleMeanCalculator::getOutputFieldName() {
-    std::string outputFieldName = "Ensemble Variance";
+    std::string outputFieldName = "Ensemble Mean";
     if (calculatorConstructorUseCount > 1) {
         outputFieldName += " (" + std::to_string(calculatorConstructorUseCount) + ")";
     }

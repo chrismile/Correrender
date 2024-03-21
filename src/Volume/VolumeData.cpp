@@ -97,6 +97,7 @@
 #include "Calculators/QuickMLPCorrelationCalculator.hpp"
 #endif
 #include "Calculators/VMLPCorrelationCalculator.hpp"
+#include "Calculators/DKLCalculator.hpp"
 #include "Renderers/RenderingModes.hpp"
 #include "Renderers/Renderer.hpp"
 #include "Renderers/SceneData.hpp"
@@ -221,6 +222,8 @@ VolumeData::VolumeData(sgl::vk::Renderer* renderer) : renderer(renderer), multiV
 #endif
     factoriesCalculator.emplace_back(
             "VMLP Similarity Calculator", [renderer]() { return new VMLPCorrelationCalculator(renderer); });
+    factoriesCalculator.emplace_back(
+            "KL-Divergence Calculator", [renderer]() { return new DKLCalculator(renderer); });
 
     sgl::vk::ImageSamplerSettings samplerSettings{};
     imageSampler = std::make_shared<sgl::vk::ImageSampler>(device, samplerSettings, 0.0f);
