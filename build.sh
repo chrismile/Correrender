@@ -690,7 +690,7 @@ if [ $search_for_vulkan_sdk = true ]; then
             mkdir -p VulkanSDK
             tar -xf vulkan-sdk.tar.gz -C VulkanSDK
             if [ "$os_arch" != "x86_64" ]; then
-                pushd VulkanSDK >/dev/null
+                pushd "VulkanSDK/$(ls VulkanSDK)" >/dev/null
                 ./vulkansdk -j $(nproc)
                 popd >/dev/null
             fi
