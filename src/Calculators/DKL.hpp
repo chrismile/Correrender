@@ -36,6 +36,18 @@
  * - An estimator based on binning.
  * - An estimator based on an estimation of the entropy of the ensemble distribution using a k-nearest neighbor search.
  *   This is based on the Kozachenko-Leonenko estimator of the Shannon entropy.
+ *
+ * Derivation for the Entropy-based KL-divergence estimator:
+ * P := The normalized sample distribution
+ * Q := N(0, 1)
+ * H: X -> \mathbb{R}^+_0 is the Shannon entropy
+ * PDF of Q, q(x) = 1 / sqrt(2 \pi) e^{-\frac{x^2}{2}}
+ * \log q(x) = -\frac{1}{2} \log(2 \pi) - \frac{x^2}{2}
+ * D_KL(P||Q) = \int_X p(x) \log \frac{p(x)}{q(x)} dx = \int_X p(x) \log p(x) dx - \int_X p(x) \log q(x) dx =
+ * = -H(P) - \int_X p(x) \cdot \left( -\frac{1}{2} \log(2 \pi) - \frac{x^2}{2} \right) dx =
+ * = -H(P) + \frac{1}{2} \log(2 \pi) \int_X p(x) dx + \frac{1}{2} \int_X x^2 p(x) dx =
+ * = -H(P) + \frac{1}{2} \log(2 \pi) + \frac{1}{2} \mathbb{E}[P^2]
+ * ... where \mathbb{E}[P^2] = \mu'_{2,P} is the second moment of P.
  */
 
 template<class Real>
