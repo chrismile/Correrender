@@ -199,7 +199,9 @@ void main() {
     uint currentIdx = IDXS(currentPointIdx.x, currentPointIdx.y, currentPointIdx.z);
 #endif
 
+    float factor = 1.0 / float(MEMBER_COUNT);
     float nanValue = 0.0;
+    float mean = 0.0;
     for (int c = 0; c < MEMBER_COUNT; c++) {
 #ifdef USE_SCALAR_FIELD_IMAGES
         float val = texelFetch(sampler3D(scalarFields[nonuniformEXT(c)], scalarFieldSampler), currentPointIdx, 0).r;
@@ -210,12 +212,23 @@ void main() {
             nanValue = val;
         }
         valueArray[c] = val;
+        mean += factor * val;
     }
+
+    float variance = 0.0;
+    for (int c = 0; c < MEMBER_COUNT; c++) {
+        float diff = mean - valueArray[c];
+        variance += factor * diff * diff;
+    }
+    float stdev = sqrt(variance);
+    for (int c = 0; c < MEMBER_COUNT; c++) {
+        valueArray[c] = (valueArray[c] - mean) / stdev;
+    }
+
     heapSort();
 
     float entropyEstimate = 0.0;
     float secondMoment = 0.0;
-    float factor = 1.0 / float(MEMBER_COUNT);
     for (uint c = 0; c < MEMBER_COUNT; c++) {
         float nnDist = findKNearestNeighbors(c);
         entropyEstimate += factor * log(nnDist);
@@ -294,7 +307,7 @@ void main() {
     }
     for (int binIdx = 0; binIdx < numBins; binIdx++) {
         if (histogram[binIdx] > 0) {
-            float px = histogram[binIdx] / float(numBins);
+            float px = histogram[binIdx] / float(MEMBER_COUNT);
             float center = (float(binIdx) + 0.5) * binFactorInv + minVal;
             dkl += log(px * binFactor / (sqrt(0.5 / PI) * exp(-0.5 * sqr(center)))) * px;
         }

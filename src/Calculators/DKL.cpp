@@ -72,7 +72,7 @@ float computeDKLBinned(float* valueArray, int numBins, int es, Real* histogram) 
     }
     for (int binIdx = 0; binIdx < numBins; binIdx++) {
         if (histogram[binIdx] > 0) {
-            Real px = histogram[binIdx] / Real(numBins);
+            Real px = histogram[binIdx] / Real(es);
             Real center = (Real(binIdx) + Real(0.5)) * binFactorInv + minVal;
             dkl += std::log(px * binFactor / (std::sqrt(Real(0.5) / Real(sgl::PI)) * std::exp(Real(-0.5) * sgl::sqr(center)))) * px;
         }
@@ -127,11 +127,25 @@ inline Real findKNearestNeighbors(const Real* data, int N, int k, int i) {
 
 template<class Real>
 float computeDKLKNNEstimate(float* valueArray, int k, int es) {
+    Real factor = Real(1) / Real(es);
+    Real mean = 0;
+    Real variance = 0;
+    for (int c = 0; c < es; c++) {
+        mean += factor * valueArray[c];
+    }
+    for (int c = 0; c < es; c++) {
+        Real diff = mean - valueArray[c];
+        variance += factor * diff * diff;
+    }
+    Real stdev = std::sqrt(variance);
+    for (int c = 0; c < es; c++) {
+        valueArray[c] = (valueArray[c] - mean) / stdev;
+    }
+
     std::sort(valueArray, valueArray + es);
 
     Real entropyEstimate = 0;
     Real secondMoment = 0;
-    Real factor = Real(1) / Real(es);
     for (int c = 0; c < es; c++) {
         Real nnDist = findKNearestNeighbors(valueArray, es, k, c);
         entropyEstimate += factor * log(nnDist);
