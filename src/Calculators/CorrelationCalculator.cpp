@@ -299,7 +299,7 @@ void ICorrelationCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEditor) 
 
     if (useSeparateFields && isEnsembleMode && volumeData->getTimeStepCount() > 1
             && propertyEditor.addCheckbox("Time Lag Correlations", &useTimeLagCorrelations)) {
-        useTimeLagCorrelations = volumeData->getCurrentTimeStepIdx();
+        timeLagTimeStepIdx = volumeData->getCurrentTimeStepIdx();
         if (!useTimeLagCorrelations) {
             clearFieldDeviceData();
             dirty = true;

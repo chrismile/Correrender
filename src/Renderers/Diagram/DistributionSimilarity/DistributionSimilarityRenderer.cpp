@@ -47,6 +47,7 @@
 #include "Calculators/CorrelationCalculator.hpp"
 #include "Volume/VolumeData.hpp"
 #include "../CorrelationCache.hpp"
+#include "../Sampling.hpp"
 #include "DistributionSimilarityChart.hpp"
 #include "DistributionSimilarityRenderer.hpp"
 
@@ -187,13 +188,79 @@ void DistributionSimilarityRenderer::clearFieldDeviceData() {
 //#endif
 }
 
-void DistributionSimilarityRenderer::recomputeCorrelationMatrix() {
-    dataDirty = false;
-    if (fieldIndexGui == 0 || (useSeparateFields && fieldIndex2Gui == 0)) {
-        parentDiagram->setPointData({});
-        return;
-    }
+void DistributionSimilarityRenderer::samplePointPositions() {
+    auto xs = volumeData->getGridSizeX();
+    auto ys = volumeData->getGridSizeY();
+    auto zs = volumeData->getGridSizeZ();
 
+    if (usePredicateField && predicateFieldIdxGui != 0) {
+        int ensembleIdx = -1, timeStepIdx = -1;
+        VolumeData::HostCacheEntry fieldEntry = volumeData->getFieldEntryCpu(
+                FieldType::SCALAR, scalarFieldNames.at(predicateFieldIdxGui), timeStepIdx, ensembleIdx);
+        const float* field = fieldEntry->data<float>();
+
+        if (samplingPattern == SamplingPattern::ALL) {
+            int numGridPoints = xs * ys * zs;
+            pointGridPositions.clear();
+            pointGridPositions.reserve(numGridPoints);
+            for (int ptIdx = 0; ptIdx < numGridPoints; ptIdx++) {
+                int xr = ptIdx % xs;
+                int yr = (ptIdx / xs) % ys;
+                int zr = ptIdx / (xs * ys);
+                if (field[ptIdx] > 0.5f) {
+                    pointGridPositions.emplace_back(xr, yr, zr);
+                }
+            }
+        } else if (samplingPattern == SamplingPattern::QUASIRANDOM_PLASTIC) {
+            SampleGenerator3D* sampleGenerator = createSampleGenerator3D(
+                    SamplingMethodType::QUASIRANDOM_PLASTIC, false);
+            pointGridPositions.clear();
+            pointGridPositions.reserve(numRandomPoints);
+            int sampleIdx = 0;
+            // Use check "sampleIdx < 100 * numRandomPoints" to make sure rejection sampling terminates at some point.
+            while (int(pointGridPositions.size()) < numRandomPoints && sampleIdx < 100 * numRandomPoints) {
+                glm::vec3 sample = sampleGenerator->next();
+                int xr = std::clamp(int(std::round(sample[0] * float(xs) - 0.5f)), 0, xs - 1);
+                int yr = std::clamp(int(std::round(sample[1] * float(ys) - 0.5f)), 0, ys - 1);
+                int zr = std::clamp(int(std::round(sample[2] * float(zs) - 0.5f)), 0, zs - 1);
+                int gridIdx = IDXS(xr, yr, zr);
+                if (field[gridIdx] > 0.5f) {
+                    pointGridPositions.emplace_back(xr, yr, zr);
+                }
+                sampleIdx++;
+            }
+            delete sampleGenerator;
+        }
+    } else {
+        if (samplingPattern == SamplingPattern::ALL) {
+            int numGridPoints = xs * ys * zs;
+            pointGridPositions.clear();
+            pointGridPositions.resize(numGridPoints);
+            for (int ptIdx = 0; ptIdx < numGridPoints; ptIdx++) {
+                int xr = ptIdx % xs;
+                int yr = (ptIdx / xs) % ys;
+                int zr = ptIdx / (xs * ys);
+                pointGridPositions.at(ptIdx) = glm::ivec3(xr, yr, zr);
+            }
+        } else if (samplingPattern == SamplingPattern::QUASIRANDOM_PLASTIC) {
+            int numGridPoints = numRandomPoints;
+            auto* samples = new float[numGridPoints * 3];
+            generateSamples3D(samples, numGridPoints, SamplingMethodType::QUASIRANDOM_PLASTIC, false);
+            pointGridPositions.clear();
+            pointGridPositions.resize(numGridPoints);
+            for (int ptIdx = 0; ptIdx < numGridPoints; ptIdx++) {
+                int xr = std::clamp(int(std::round(samples[ptIdx * 3 + 0] * float(xs) - 0.5f)), 0, xs - 1);
+                int yr = std::clamp(int(std::round(samples[ptIdx * 3 + 1] * float(ys) - 0.5f)), 0, ys - 1);
+                int zr = std::clamp(int(std::round(samples[ptIdx * 3 + 2] * float(zs) - 0.5f)), 0, zs - 1);
+                pointGridPositions.at(ptIdx) = glm::ivec3(xr, yr, zr);
+            }
+            delete[] samples;
+        }
+    }
+}
+
+void DistributionSimilarityRenderer::computeFeatureVectorsCorrelation(
+        int& numVectors, int& numFeatures, double*& featureVectorArray) {
     auto xs = volumeData->getGridSizeX();
     auto ys = volumeData->getGridSizeY();
     auto zs = volumeData->getGridSizeZ();
@@ -248,13 +315,15 @@ void DistributionSimilarityRenderer::recomputeCorrelationMatrix() {
         fields2 = fields;
     }
 
-    int numGridPoints = xs * ys * zs;
-    int numVectors = numGridPoints;
+    samplePointPositions();
+    auto numGridPoints = int(pointGridPositions.size());
+
     int localRadius = std::max(neighborhoodRadius, 1);
     int featureDimLen = 2 * localRadius + 1;
-    int numFeatures = featureDimLen * featureDimLen * featureDimLen;
-    auto* featureVectorArray = new double[numFeatures * numVectors];
-    auto* outputPoints = new double[2 * numVectors];
+    numFeatures = featureDimLen * featureDimLen * featureDimLen;
+    numVectors = numGridPoints;
+    featureVectorArray = new double[numFeatures * numVectors];
+
     const CorrelationMeasureType cmt = correlationMeasureType;
 #ifdef USE_TBB
     tbb::parallel_for(tbb::blocked_range<int>(0, numGridPoints), [&](auto const& r) {
@@ -270,11 +339,17 @@ void DistributionSimilarityRenderer::recomputeCorrelationMatrix() {
         #pragma omp for
         for (int gridPointIdx = 0; gridPointIdx < numGridPoints; gridPointIdx++) {
 #endif
-            int xr = gridPointIdx % xs;
-            int yr = (gridPointIdx / xs) % ys;
-            int zr = gridPointIdx / (xs * ys);
+            auto gridPt = pointGridPositions.at(gridPointIdx);
+            //int xr = gridPointIdx % xs;
+            //int yr = (gridPointIdx / xs) % ys;
+            //int zr = gridPointIdx / (xs * ys);
+            int xr = gridPt.x;
+            int yr = gridPt.y;
+            int zr = gridPt.z;
+            int gridIdx = IDXS(xr, yr, zr);
             for (int c = 0; c < cs; c++) {
-                X[c] = fields.at(c)[gridPointIdx];
+                //X[c] = fields.at(c)[gridPointIdx];
+                X[c] = fields.at(c)[gridIdx];
                 if (std::isnan(X[c])) {
                     X[c] = 0.0f;
                 }
@@ -343,6 +418,82 @@ void DistributionSimilarityRenderer::recomputeCorrelationMatrix() {
 #else
     }
 #endif
+}
+
+void DistributionSimilarityRenderer::computeFeatureVectorsEnsemble(
+        int& numVectors, int& numFeatures, double*& featureVectorArray) {
+    auto xs = volumeData->getGridSizeX();
+    auto ys = volumeData->getGridSizeY();
+    //auto zs = volumeData->getGridSizeZ();
+    int cs = getCorrelationMemberCount();
+
+    int ensembleIdx = -1, timeStepIdx = -1;
+    std::vector<VolumeData::HostCacheEntry> fieldEntries;
+    std::vector<const float*> fields;
+    for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
+        VolumeData::HostCacheEntry fieldEntry = getFieldEntryCpu(
+                scalarFieldNames.at(useSeparateFields ? fieldIndex2Gui : fieldIndexGui), fieldIdx, timeStepIdx, ensembleIdx);
+        const float *field = fieldEntry->data<float>();
+        fieldEntries.push_back(fieldEntry);
+        fields.push_back(field);
+    }
+
+    samplePointPositions();
+    auto numGridPoints = int(pointGridPositions.size());
+
+    numFeatures = getCorrelationMemberCount();
+    numVectors = numGridPoints;
+    featureVectorArray = new double[numFeatures * numVectors];
+
+#ifdef USE_TBB
+    tbb::parallel_for(tbb::blocked_range<int>(0, numGridPoints), [&](auto const& r) {
+            for (auto gridPointIdx = r.begin(); gridPointIdx != r.end(); gridPointIdx++) {
+#else
+#if _OPENMP >= 200805
+    #pragma omp parallel shared(xs, ys, cs, numGridPoints, numFeatures, featureVectorArray, fields) default(none)
+#endif
+    {
+        #pragma omp for
+        for (int gridPointIdx = 0; gridPointIdx < numGridPoints; gridPointIdx++) {
+#endif
+            auto gridPt = pointGridPositions.at(gridPointIdx);
+            int xr = gridPt.x;
+            int yr = gridPt.y;
+            int zr = gridPt.z;
+            int gridIdx = IDXS(xr, yr, zr);
+            float val;
+            for (int c = 0; c < cs; c++) {
+                val = fields.at(c)[gridIdx];
+                if (std::isnan(val)) {
+                    val = 0.0f;
+                }
+                size_t offsetWrite = size_t(gridPointIdx) * size_t(numFeatures) + size_t(c);
+                featureVectorArray[offsetWrite] = val;
+            }
+        }
+#ifdef USE_TBB
+        });
+#else
+    }
+#endif
+}
+
+void DistributionSimilarityRenderer::recomputeCorrelationMatrix() {
+    dataDirty = false;
+    if (fieldIndexGui == 0 || (useSeparateFields && fieldIndex2Gui == 0)) {
+        parentDiagram->setPointData({});
+        return;
+    }
+
+    int numVectors = 0;
+    int numFeatures = 0;
+    double* featureVectorArray = nullptr;
+    if (useCorrelationMode) {
+        computeFeatureVectorsCorrelation(numVectors, numFeatures, featureVectorArray);
+    } else {
+        computeFeatureVectorsEnsemble(numVectors, numFeatures, featureVectorArray);
+    }
+    auto* outputPoints = new double[2 * numVectors];
 
     TSNE::run(
             featureVectorArray, numVectors, numFeatures, outputPoints, 2,
@@ -350,14 +501,8 @@ void DistributionSimilarityRenderer::recomputeCorrelationMatrix() {
             tsneSettings.maxIter, tsneSettings.stopLyingIter, tsneSettings.momSwitchIter);
 
     std::vector<glm::vec2> points(numVectors);
-    pointGridPositions.clear();
-    pointGridPositions.resize(numVectors);
     for (int ptIdx = 0; ptIdx < numVectors; ptIdx++) {
-        int xr = ptIdx % xs;
-        int yr = (ptIdx / xs) % ys;
-        int zr = ptIdx / (xs * ys);
-        pointGridPositions.at(ptIdx) = glm::ivec3(xr, yr, zr);
-        points.at(ptIdx) = glm::vec2(float(featureVectorArray[ptIdx * 2]), float(featureVectorArray[ptIdx * 2 + 1]));
+        points.at(ptIdx) = glm::vec2(float(outputPoints[ptIdx * 2]), float(outputPoints[ptIdx * 2 + 1]));
     }
     parentDiagram->setPointData(points);
     auto bbData = sgl::reduceVec2ArrayAabb(points);
@@ -633,7 +778,7 @@ void DistributionSimilarityRenderer::renderGuiImpl(sgl::PropertyEditor& property
         }
     }
 
-    if (volumeData && scalarFieldNames.size() > 1 && propertyEditor.addCheckbox(
+    if (volumeData && useCorrelationMode && scalarFieldNames.size() > 1 && propertyEditor.addCheckbox(
             "Two Fields Mode", &useSeparateFields)) {
         if (fieldIndex2 != 0xFFFFFF) {
             if (useSeparateFields) {
@@ -646,35 +791,92 @@ void DistributionSimilarityRenderer::renderGuiImpl(sgl::PropertyEditor& property
         setRecomputeFlag();
     }
 
-    if (volumeData && useSeparateFields && isEnsembleMode && volumeData->getTimeStepCount() > 1
+    if (volumeData && useCorrelationMode && useSeparateFields && isEnsembleMode && volumeData->getTimeStepCount() > 1
             && propertyEditor.addCheckbox("Time Lag Correlations", &useTimeLagCorrelations)) {
-        useTimeLagCorrelations = volumeData->getCurrentTimeStepIdx();
+        timeLagTimeStepIdx = volumeData->getCurrentTimeStepIdx();
         if (!useTimeLagCorrelations) {
             clearFieldDeviceData();
             setRecomputeFlag();
         }
     }
 
+    if (propertyEditor.addCheckbox("Use Correlation Mode", &useCorrelationMode)) {
+        if (!useCorrelationMode) {
+            if (useSeparateFields) {
+                if (fieldIndex2 != 0xFFFFFF) {
+                    volumeData->releaseScalarField(this, fieldIndex2);
+                }
+                useSeparateFields = false;
+            }
+            if (useTimeLagCorrelations) {
+                useTimeLagCorrelations = false;
+            }
+        }
+        clearFieldDeviceData();
+        setRecomputeFlag();
+    }
+
+    if (useCorrelationMode) {
+        if (propertyEditor.addCombo(
+                "Correlation Measure", (int*)&correlationMeasureType,
+                CORRELATION_MEASURE_TYPE_NAMES, IM_ARRAYSIZE(CORRELATION_MEASURE_TYPE_NAMES))) {
+            setRecomputeFlag();
+            //correlationComputePass->setCorrelationMeasureType(correlationMeasureType);
+        }
+
+        if (!isMeasureMI(correlationMeasureType) && propertyEditor.addCheckbox("Absolute Value", &calculateAbsoluteValue)) {
+            //correlationComputePass->setCalculateAbsoluteValue(calculateAbsoluteValue);
+            setRecomputeFlag();
+        }
+
+        if (isMeasureBinnedMI(correlationMeasureType) && propertyEditor.addSliderIntEdit(
+                "#Bins", &numBins, 10, 100) == ImGui::EditMode::INPUT_FINISHED) {
+            //correlationComputePass->setNumBins(numBins);
+            setRecomputeFlag();
+        }
+        if (isMeasureKraskovMI(correlationMeasureType) && propertyEditor.addSliderIntEdit(
+                "#Neighbors", &k, 1, kMax) == ImGui::EditMode::INPUT_FINISHED) {
+            //correlationComputePass->setKraskovNumNeighbors(k);
+            setRecomputeFlag();
+        }
+
+        if (propertyEditor.addSliderIntEdit(
+                "Neighborhood Radius", &neighborhoodRadius, 1, 9) == ImGui::EditMode::INPUT_FINISHED) {
+            setRecomputeFlag();
+        }
+    }
+
     if (propertyEditor.addCombo(
-            "Correlation Measure", (int*)&correlationMeasureType,
-            CORRELATION_MEASURE_TYPE_NAMES, IM_ARRAYSIZE(CORRELATION_MEASURE_TYPE_NAMES))) {
-        setRecomputeFlag();
-        //correlationComputePass->setCorrelationMeasureType(correlationMeasureType);
-    }
-
-    if (!isMeasureMI(correlationMeasureType) && propertyEditor.addCheckbox("Absolute Value", &calculateAbsoluteValue)) {
-        //correlationComputePass->setCalculateAbsoluteValue(calculateAbsoluteValue);
+            "Sampling Pattern", (int*)&samplingPattern, SAMPLING_PATTERN_NAMES, IM_ARRAYSIZE(SAMPLING_PATTERN_NAMES))) {
         setRecomputeFlag();
     }
-
-    if (isMeasureBinnedMI(correlationMeasureType) && propertyEditor.addSliderIntEdit(
-            "#Bins", &numBins, 10, 100) == ImGui::EditMode::INPUT_FINISHED) {
-        //correlationComputePass->setNumBins(numBins);
+    if (samplingPattern != SamplingPattern::ALL) {
+        if (propertyEditor.addSliderIntEdit(
+                "#Sampled Points", &numRandomPoints, 10, 10000) == ImGui::EditMode::INPUT_FINISHED) {
+            setRecomputeFlag();
+        }
+    }
+    if (propertyEditor.addCheckbox("Use Predicate Field", &usePredicateField)) {
+        if (predicateFieldIdx != 0xFFFFFF) {
+            if (usePredicateField) {
+                volumeData->acquireScalarField(this, predicateFieldIdx);
+            } else {
+                volumeData->releaseScalarField(this, predicateFieldIdx);
+            }
+        }
+        clearFieldDeviceData();
         setRecomputeFlag();
     }
-    if (isMeasureKraskovMI(correlationMeasureType) && propertyEditor.addSliderIntEdit(
-            "#Neighbors", &k, 1, kMax) == ImGui::EditMode::INPUT_FINISHED) {
-        //correlationComputePass->setKraskovNumNeighbors(k);
+    if (usePredicateField && propertyEditor.addCombo(
+            "Predicate Field", &predicateFieldIdxGui, scalarFieldNames.data(), int(scalarFieldNames.size()))) {
+        clearFieldDeviceData();
+        if (predicateFieldIdx != 0xFFFFFF) {
+            volumeData->releaseScalarField(this, predicateFieldIdx);
+        }
+        predicateFieldIdx = int(scalarFieldIndexArray.at(predicateFieldIdxGui));
+        if (predicateFieldIdx != 0xFFFFFF) {
+            volumeData->acquireScalarField(this, predicateFieldIdx);
+        }
         setRecomputeFlag();
     }
 
@@ -696,11 +898,6 @@ void DistributionSimilarityRenderer::renderGuiImpl(sgl::PropertyEditor& property
         parentDiagram->setAlignWithParentWindow(alignWithParentWindow);
         reRender = true;
         reRenderTriggeredByDiagram = true;
-    }
-
-    if (propertyEditor.addSliderIntEdit(
-            "Neighborhood Radius", &neighborhoodRadius, 1, 9) == ImGui::EditMode::INPUT_FINISHED) {
-        setRecomputeFlag();
     }
 
     if (propertyEditor.beginNode("t-SNE settings")) {
@@ -850,6 +1047,22 @@ void DistributionSimilarityRenderer::setSettings(const SettingsMap& settings) {
         setRecomputeFlag();
     }
 
+    if (settings.getValueOpt("use_correlation_mode", useCorrelationMode)) {
+        if (!useCorrelationMode) {
+            if (useSeparateFields) {
+                if (fieldIndex2 != 0xFFFFFF) {
+                    volumeData->releaseScalarField(this, fieldIndex2);
+                }
+                useSeparateFields = false;
+            }
+            if (useTimeLagCorrelations) {
+                useTimeLagCorrelations = false;
+            }
+        }
+        clearFieldDeviceData();
+        setRecomputeFlag();
+    }
+
     std::string correlationMeasureTypeName;
     if (settings.getValueOpt("correlation_measure_type", correlationMeasureTypeName)) {
         for (int i = 0; i < IM_ARRAYSIZE(CORRELATION_MEASURE_TYPE_IDS); i++) {
@@ -901,6 +1114,46 @@ void DistributionSimilarityRenderer::setSettings(const SettingsMap& settings) {
         setRecomputeFlag();
     }
 
+    if (settings.getValueOpt("neighborhood_radius", neighborhoodRadius)) {
+        setRecomputeFlag();
+    }
+
+    std::string samplingPatternName;
+    if (settings.getValueOpt("sampling_pattern", samplingPatternName)) {
+        for (int i = 0; i < IM_ARRAYSIZE(SAMPLING_PATTERN_NAMES); i++) {
+            if (samplingPatternName == SAMPLING_PATTERN_NAMES[i]) {
+                samplingPattern = SamplingPattern(i);
+                break;
+            }
+        }
+        setRecomputeFlag();
+    }
+    if (settings.getValueOpt("num_sampled_points", numRandomPoints)) {
+        setRecomputeFlag();
+    }
+    if (settings.getValueOpt("use_predicate_field", usePredicateField)) {
+        if (predicateFieldIdx != 0xFFFFFF) {
+            if (usePredicateField) {
+                volumeData->acquireScalarField(this, predicateFieldIdx);
+            } else {
+                volumeData->releaseScalarField(this, predicateFieldIdx);
+            }
+        }
+        clearFieldDeviceData();
+        setRecomputeFlag();
+    }
+    if (settings.getValueOpt("predicate_field_idx", predicateFieldIdxGui)) {
+        clearFieldDeviceData();
+        if (predicateFieldIdx != 0xFFFFFF) {
+            volumeData->releaseScalarField(this, predicateFieldIdx);
+        }
+        predicateFieldIdx = int(scalarFieldIndexArray.at(predicateFieldIdxGui));
+        if (predicateFieldIdx != 0xFFFFFF) {
+            volumeData->acquireScalarField(this, predicateFieldIdx);
+        }
+        setRecomputeFlag();
+    }
+
     if (settings.getValueOpt("point_size", pointSize)) {
         parentDiagram->setPointRadius(pointSize);
         reRender = true;
@@ -912,10 +1165,6 @@ void DistributionSimilarityRenderer::setSettings(const SettingsMap& settings) {
         parentDiagram->setPointColor(pointColor);
         reRender = true;
         reRenderTriggeredByDiagram = true;
-    }
-
-    if (settings.getValueOpt("neighborhood_radius", neighborhoodRadius)) {
-        setRecomputeFlag();
     }
 
     if (settings.getValueOpt("tsne_perplexity", tsneSettings.perplexity)) {
@@ -961,6 +1210,8 @@ void DistributionSimilarityRenderer::getSettings(SettingsMap& settings) {
     settings.addKeyValue("use_time_lag_correlations", useTimeLagCorrelations);
     settings.addKeyValue("time_lag_time_step_idx", timeLagTimeStepIdx);
 
+    settings.addKeyValue("use_correlation_mode", useCorrelationMode);
+
     settings.addKeyValue("correlation_measure_type", CORRELATION_MEASURE_TYPE_IDS[int(correlationMeasureType)]);
     //const char* const choices[] = {
     //        "CPU", "Vulkan", "CUDA"
@@ -970,10 +1221,15 @@ void DistributionSimilarityRenderer::getSettings(SettingsMap& settings) {
     settings.addKeyValue("mi_bins", numBins);
     settings.addKeyValue("kmi_neighbors", k);
 
+    settings.addKeyValue("neighborhood_radius", neighborhoodRadius);
+
+    settings.addKeyValue("sampling_pattern", SAMPLING_PATTERN_NAMES[int(samplingPattern)]);
+    settings.addKeyValue("num_sampled_points", numRandomPoints);
+    settings.addKeyValue("use_predicate_field", usePredicateField);
+    settings.addKeyValue("predicate_field_idx", predicateFieldIdxGui);
+
     settings.addKeyValue("point_size", pointSize);
     settings.addKeyValue("point_color", pointColor.getFloatColorRGBA());
-
-    settings.addKeyValue("neighborhood_radius", neighborhoodRadius);
 
     // t-SNE settings.
     settings.addKeyValue("tsne_perplexity", tsneSettings.perplexity);

@@ -141,6 +141,7 @@ public:
     void setTimeSteps(const std::vector<std::string>& timeSteps);
     void setEnsembleMemberCount(int _es);
     void setFieldNames(const std::unordered_map<FieldType, std::vector<std::string>>& fieldNamesMap);
+    void setFieldUnits(const std::unordered_map<FieldType, std::vector<std::string>>& fieldUnitsMap);
     void addField(float* fieldData, FieldType fieldType, const std::string& fieldName, int timeStepIdx, int ensembleIdx);
     void addField(uint8_t* fieldData, FieldType fieldType, const std::string& fieldName, int timeStepIdx, int ensembleIdx);
     void addField(uint16_t* fieldData, FieldType fieldType, const std::string& fieldName, int timeStepIdx, int ensembleIdx);
@@ -346,6 +347,7 @@ protected:
     std::unique_ptr<FieldMinMaxCache> fieldMinMaxCache;
     std::unordered_map<FieldType, std::vector<std::string>> typeToFieldNamesMap;
     std::unordered_map<FieldType, std::vector<std::string>> typeToFieldNamesMapBase; ///< Without calculator output.
+    std::unordered_map<FieldType, std::vector<std::string>> typeToFieldUnitsMap; ///< Without calculator output.
     sgl::vk::ImageSamplerPtr imageSampler{};
 
     // Utility functions.

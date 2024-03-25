@@ -597,6 +597,7 @@ bool NetCdfLoader::setInputFiles(
 
     // Set the names of the existing fields/datasets.
     std::unordered_map<FieldType, std::vector<std::string>> fieldNameMap;
+    std::unordered_map<FieldType, std::vector<std::string>> fieldUnitsMap;
     varHasFillValueMap.resize(nvarsp);
     fillValueMap.resize(nvarsp);
     timeDependent2dMap.resize(nvarsp, false);
@@ -702,6 +703,7 @@ bool NetCdfLoader::setInputFiles(
         bool hasFillValue = false;
         float fillValue = std::numeric_limits<float>::quiet_NaN();
         std::string variableDisplayName = varname;
+        std::string variableUnits;
         for (int attnum = 0; attnum < natts; attnum++) {
             nc_inq_attname(ncid, varid, attnum, attname);
             if (strcmp(attname, "standard_name") == 0) {
@@ -713,9 +715,13 @@ bool NetCdfLoader::setInputFiles(
                 hasFillValue = true;
                 fillValue = getFloatAttribute(varid, "_FillValue");
             }
+            if (strcmp(attname, "units") == 0) {
+                variableUnits = getStringAttribute(varid, "units");
+            }
         }
 
         fieldNameMap[FieldType::SCALAR].push_back(variableDisplayName);
+        fieldUnitsMap[FieldType::SCALAR].push_back(variableUnits);
         datasetNameMap.insert(std::make_pair(varname, varid));
         datasetNameMap.insert(std::make_pair(variableDisplayName, varid));
         varHasFillValueMap.at(varid) = hasFillValue;
@@ -723,6 +729,7 @@ bool NetCdfLoader::setInputFiles(
         timeDependent2dMap.at(varid) = isTimeDependent2d;
     }
     volumeData->setFieldNames(fieldNameMap);
+    volumeData->setFieldUnits(fieldUnitsMap);
 
     if (lonData || latData) {
         if (!lonData || !latData) {

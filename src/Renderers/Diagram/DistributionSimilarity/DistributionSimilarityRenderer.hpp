@@ -44,6 +44,13 @@ typedef std::shared_ptr<DeviceCacheEntryType> DeviceCacheEntry;
 
 class DistributionSimilarityChart;
 
+enum class SamplingPattern {
+    ALL, QUASIRANDOM_PLASTIC
+};
+const char* const SAMPLING_PATTERN_NAMES[] = {
+        "All", "Quasirandom Plastic"
+};
+
 struct TSNESettings {
     float perplexity = 30.0f;
     float theta = 0.5f;
@@ -85,13 +92,16 @@ private:
             sgl::PropertyEditor& propertyEditor, const std::string& name, uint32_t& diagramViewIdx);
     bool adaptIdxOnViewRemove(uint32_t viewIdx, uint32_t& diagramViewIdx);
 
+    void samplePointPositions();
+    void computeFeatureVectorsCorrelation(int& numVectors, int& numFeatures, double*& featureVectorArray);
+    void computeFeatureVectorsEnsemble(int& numVectors, int& numFeatures, double*& featureVectorArray);
     void recomputeCorrelationMatrix();
     VolumeDataPtr volumeData;
     uint32_t diagramViewIdx = 0;
     bool reRenderTriggeredByDiagram = false;
     std::shared_ptr<DistributionSimilarityChart> parentDiagram; //< Parent diagram.
     bool alignWithParentWindow = false;
-    sgl::Color pointColor = sgl::Color(80, 120, 255, 255);
+    sgl::Color pointColor = sgl::Color(31, 119, 180);
     float pointSize = 5.0f;
 
     // Internal point data.
@@ -130,6 +140,13 @@ private:
     bool isEnsembleMode = true; //< Ensemble or time mode?
     bool useTimeLagCorrelations = false;
     int timeLagTimeStepIdx = 0;
+    bool useCorrelationMode = true;
+
+    // Grid point sampling settings.
+    SamplingPattern samplingPattern = SamplingPattern::QUASIRANDOM_PLASTIC;
+    int numRandomPoints = 4000;
+    bool usePredicateField = false;
+    int predicateFieldIdx = 0, predicateFieldIdxGui = 0;
 
     // t-SNE settings.
     TSNESettings tsneSettings{};

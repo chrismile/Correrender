@@ -29,6 +29,8 @@
 #ifndef CORRERENDER_SAMPLING_HPP
 #define CORRERENDER_SAMPLING_HPP
 
+#include <glm/vec3.hpp>
+
 enum class SamplingMethodType {
     MEAN, RANDOM_UNIFORM, QUASIRANDOM_HALTON, QUASIRANDOM_PLASTIC, BAYESIAN_OPTIMIZATION
 };
@@ -39,5 +41,15 @@ const char* const SAMPLING_METHOD_TYPE_NAMES[] = {
 
 void generateSamples(
         float* samples, int numSamples, SamplingMethodType samplingMethodType, bool useRandomSeed);
+
+void generateSamples3D(
+        float* samples, int numSamples, SamplingMethodType samplingMethodType, bool useRandomSeed);
+
+class SampleGenerator3D {
+public:
+    virtual ~SampleGenerator3D() = default;
+    virtual glm::vec3 next() = 0;
+};
+SampleGenerator3D* createSampleGenerator3D(SamplingMethodType samplingMethodType, bool useRandomSeed);
 
 #endif //CORRERENDER_SAMPLING_HPP

@@ -77,7 +77,7 @@ private:
     bool isEnsembleMode = true; //< Ensemble or time mode?
     bool alignWithParentWindow = false;
     bool useGlobalMinMax = false;
-    sgl::Color pointColor = sgl::Color(80, 120, 255, 255);
+    sgl::Color pointColor = sgl::Color(31, 119, 180);
     float pointSize = 5.0f;
     bool useSameField = true;
     int fieldIdx0 = 0, fieldIdx1 = 0;

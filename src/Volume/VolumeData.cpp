@@ -150,6 +150,8 @@ VolumeData::VolumeData(sgl::vk::Renderer* renderer) : renderer(renderer), multiV
     typeToFieldNamesMap.insert(std::make_pair(FieldType::VECTOR, std::vector<std::string>()));
     typeToFieldNamesMapBase.insert(std::make_pair(FieldType::SCALAR, std::vector<std::string>()));
     typeToFieldNamesMapBase.insert(std::make_pair(FieldType::VECTOR, std::vector<std::string>()));
+    typeToFieldUnitsMap.insert(std::make_pair(FieldType::SCALAR, std::vector<std::string>()));
+    typeToFieldUnitsMap.insert(std::make_pair(FieldType::VECTOR, std::vector<std::string>()));
 
     // Create the list of volume loaders.
     std::map<std::vector<std::string>, std::function<VolumeLoader*()>> factoriesLoaderMap = {
@@ -344,6 +346,10 @@ void VolumeData::setFieldNames(const std::unordered_map<FieldType, std::vector<s
         typeToFieldNamesMap = fieldNamesMap;
         typeToFieldNamesMapBase = fieldNamesMap;
     }
+}
+
+void VolumeData::setFieldUnits(const std::unordered_map<FieldType, std::vector<std::string>>& fieldUnitsMap) {
+    typeToFieldUnitsMap = fieldUnitsMap;
 }
 
 template<class T>
@@ -745,6 +751,7 @@ bool VolumeData::setInputFiles(
     }
 
     const auto& scalarFieldNames = typeToFieldNamesMap[FieldType::SCALAR];
+    const auto& fieldsUnits = typeToFieldUnitsMap[FieldType::SCALAR];
     multiVarTransferFunctionWindow.setRequestAttributeValuesCallback([this](
             int varIdx, const void** values, ScalarDataFormat* fmt, size_t& numValues, float& minValue, float& maxValue) {
         std::string fieldName = typeToFieldNamesMap[FieldType::SCALAR].at(varIdx);
@@ -987,7 +994,12 @@ bool VolumeData::setInputFiles(
     colorLegendWidgets.resize(scalarFieldNames.size());
     for (size_t i = 0; i < colorLegendWidgets.size(); i++) {
         colorLegendWidgets.at(i).setPositionIndex(0, 1);
-        colorLegendWidgets.at(i).setAttributeDisplayName(scalarFieldNames.at(i));
+        std::string attributeDisplayName = scalarFieldNames.at(i);
+        std::string fieldUnits = i < fieldsUnits.size() ? fieldsUnits.at(i) : "";
+        if (!fieldUnits.empty()) {
+            attributeDisplayName += " [" + fieldUnits + "]";
+        }
+        colorLegendWidgets.at(i).setAttributeDisplayName(attributeDisplayName);
     }
     recomputeColorLegend();
 
