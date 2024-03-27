@@ -134,7 +134,11 @@ void ScatterPlotChart::update(float dt) {
 void ScatterPlotChart::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) {
     this->volumeData = _volumeData;
     auto numFieldsBase = int(volumeData->getFieldNamesBase(FieldType::SCALAR).size());
-    if (fieldIdx0 >= numFieldsBase || fieldIdx1 >= numFieldsBase) {
+    if (_volumeData->getCurrentTimeStepIdx() != cachedTimeStepIdx
+            || _volumeData->getCurrentEnsembleIdx() != cachedEnsembleIdx
+            || fieldIdx0 >= numFieldsBase || fieldIdx1 >= numFieldsBase) {
+        cachedTimeStepIdx = _volumeData->getCurrentTimeStepIdx();
+        cachedEnsembleIdx = _volumeData->getCurrentEnsembleIdx();
         dataDirty = true;
     }
     if (isNewData) {

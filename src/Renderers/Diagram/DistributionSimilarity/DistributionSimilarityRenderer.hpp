@@ -51,6 +51,17 @@ const char* const SAMPLING_PATTERN_NAMES[] = {
         "All", "Quasirandom Plastic"
 };
 
+enum class DistributionAnalysisMode {
+    GRID_CELL_NEIGHBORHOOD_CORRELATION_VECTOR,
+    GRID_CELL_MEMBER_VALUE_VECTOR,
+    MEMBER_GRID_CELL_VALUE_VECTOR
+};
+const char* const DISTRIBUTION_ANALYSIS_MODE_NAMES[] = {
+        "Grid Cell Neighborhood Correlation Vector",
+        "Grid Cell Member Value Vector",
+        "Member Grid Cell Value Vector"
+};
+
 struct TSNESettings {
     float perplexity = 30.0f;
     float theta = 0.5f;
@@ -94,7 +105,9 @@ private:
 
     void samplePointPositions();
     void computeFeatureVectorsCorrelation(int& numVectors, int& numFeatures, double*& featureVectorArray);
-    void computeFeatureVectorsEnsemble(int& numVectors, int& numFeatures, double*& featureVectorArray);
+    void computeFeatureVectorsGridCellsEnsembleValues(int& numVectors, int& numFeatures, double*& featureVectorArray);
+    void computeFeatureVectorsEnsembleMembersGridCellValues(
+            int& numVectors, int& numFeatures, double*& featureVectorArray);
     void recomputeCorrelationMatrix();
     VolumeDataPtr volumeData;
     uint32_t diagramViewIdx = 0;
@@ -122,6 +135,7 @@ private:
     CorrelationDataMode dataMode = CorrelationDataMode::BUFFER_ARRAY;
     bool useBufferTiling = true;
     bool useSeparateFields = false;
+    int cachedTimeStepIdx = -1, cachedEnsembleIdx = -1;
 
     void setRecomputeFlag();
     bool dataDirty = true;
@@ -140,7 +154,9 @@ private:
     bool isEnsembleMode = true; //< Ensemble or time mode?
     bool useTimeLagCorrelations = false;
     int timeLagTimeStepIdx = 0;
-    bool useCorrelationMode = true;
+    //bool useCorrelationMode = true;
+    DistributionAnalysisMode distributionAnalysisMode =
+            DistributionAnalysisMode::GRID_CELL_NEIGHBORHOOD_CORRELATION_VECTOR;
 
     // Grid point sampling settings.
     SamplingPattern samplingPattern = SamplingPattern::QUASIRANDOM_PLASTIC;

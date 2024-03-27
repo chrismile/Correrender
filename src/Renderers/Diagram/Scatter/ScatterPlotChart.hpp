@@ -81,6 +81,7 @@ private:
     void updateData();
 
     // GUI data.
+    int cachedTimeStepIdx = -1, cachedEnsembleIdx = -1;
     bool alignWithParentWindow = false;
     int fieldIdx0 = 0, fieldIdx1 = 1;
     std::string fieldName0, fieldName1;

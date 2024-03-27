@@ -33,6 +33,7 @@
 
 #include <Math/Math.hpp>
 #include <Graphics/Vulkan/Render/Renderer.hpp>
+#include <Graphics/Vulkan/Render/ComputePipeline.hpp>
 #include <ImGui/imgui_custom.h>
 #include <ImGui/Widgets/PropertyEditor.hpp>
 
@@ -591,6 +592,8 @@ void DKLComputePass::_render() {
     int blockSizeY = uniformData.zs < 4 ? computeBlockSize2dY : computeBlockSizeY;
     int blockSizeZ = uniformData.zs < 4 ? 1 : computeBlockSizeZ;
 
+    auto quietNan = std::numeric_limits<float>::quiet_NaN();
+    renderer->pushConstants(getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, sizeof(float), quietNan);
     renderer->dispatch(
             computeData,
             sgl::uiceil(int(uniformData.xs), blockSizeX),

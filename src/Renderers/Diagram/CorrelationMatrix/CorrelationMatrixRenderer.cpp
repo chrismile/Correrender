@@ -65,7 +65,10 @@ void CorrelationMatrixRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool i
     }
     volumeData = _volumeData;
 
-    if (isNewData) {
+    if (isNewData || _volumeData->getCurrentTimeStepIdx() != cachedTimeStepIdx
+            || _volumeData->getCurrentEnsembleIdx() != cachedEnsembleIdx) {
+        cachedTimeStepIdx = _volumeData->getCurrentTimeStepIdx();
+        cachedEnsembleIdx = _volumeData->getCurrentEnsembleIdx();
         recomputeCorrelationMatrix();
     }
 

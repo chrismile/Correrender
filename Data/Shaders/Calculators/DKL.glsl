@@ -33,6 +33,10 @@
 
 layout(local_size_x = BLOCK_SIZE_X, local_size_y = BLOCK_SIZE_Y, local_size_z = BLOCK_SIZE_Z) in;
 
+layout(push_constant) uniform PushConstants {
+    float quietNan;
+};
+
 /**
  * Kullback-Leibler Divergence (D_KL) calculator.
  * This calculator estimates the KL-Divergence between the distribution of the ensemble member samples after
@@ -250,7 +254,11 @@ void main() {
     entropyEstimate += digamma(MEMBER_COUNT) - digamma(k) + log(2.0);
 
     float dkl = -entropyEstimate + 0.5 * log(TWO_PI) + 0.5 * secondMoment;
-    dkl = max(dkl, 0.0);
+    if (isinf(dkl)) {
+        dkl = quietNan;
+    } else {
+        dkl = max(dkl, 0.0);
+    }
 
     imageStore(outputImage, currentPointIdx, vec4(isnan(nanValue) ? nanValue : dkl));
 }
@@ -323,6 +331,9 @@ void main() {
             float center = (float(binIdx) + 0.5) * binFactorInv + minVal;
             dkl += log(px * binFactor / (sqrt(0.5 / PI) * exp(-0.5 * sqr(center)))) * px;
         }
+    }
+    if (isinf(dkl)) {
+        dkl = quietNan;
     }
 
     imageStore(outputImage, currentPointIdx, vec4(isnan(nanValue) ? nanValue : dkl));

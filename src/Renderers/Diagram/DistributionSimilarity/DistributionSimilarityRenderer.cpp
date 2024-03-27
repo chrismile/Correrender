@@ -121,6 +121,12 @@ void DistributionSimilarityRenderer::setVolumeData(VolumeDataPtr& _volumeData, b
         }
     }
 
+    if (_volumeData->getCurrentTimeStepIdx() != cachedTimeStepIdx
+            || _volumeData->getCurrentEnsembleIdx() != cachedEnsembleIdx) {
+        cachedTimeStepIdx = _volumeData->getCurrentTimeStepIdx();
+        cachedEnsembleIdx = _volumeData->getCurrentEnsembleIdx();
+        dataDirty = true;
+    }
     if (fieldIndexGui + 1 >= int(volumeData->getFieldNamesBase(FieldType::SCALAR).size())) {
         dataDirty = true;
     }
@@ -420,7 +426,7 @@ void DistributionSimilarityRenderer::computeFeatureVectorsCorrelation(
 #endif
 }
 
-void DistributionSimilarityRenderer::computeFeatureVectorsEnsemble(
+void DistributionSimilarityRenderer::computeFeatureVectorsGridCellsEnsembleValues(
         int& numVectors, int& numFeatures, double*& featureVectorArray) {
     auto xs = volumeData->getGridSizeX();
     auto ys = volumeData->getGridSizeY();
@@ -441,7 +447,7 @@ void DistributionSimilarityRenderer::computeFeatureVectorsEnsemble(
     samplePointPositions();
     auto numGridPoints = int(pointGridPositions.size());
 
-    numFeatures = getCorrelationMemberCount();
+    numFeatures = cs;
     numVectors = numGridPoints;
     featureVectorArray = new double[numFeatures * numVectors];
 
@@ -478,6 +484,64 @@ void DistributionSimilarityRenderer::computeFeatureVectorsEnsemble(
 #endif
 }
 
+void DistributionSimilarityRenderer::computeFeatureVectorsEnsembleMembersGridCellValues(
+        int& numVectors, int& numFeatures, double*& featureVectorArray) {
+    auto xs = volumeData->getGridSizeX();
+    auto ys = volumeData->getGridSizeY();
+    //auto zs = volumeData->getGridSizeZ();
+    int cs = getCorrelationMemberCount();
+
+    int ensembleIdx = -1, timeStepIdx = -1;
+    std::vector<VolumeData::HostCacheEntry> fieldEntries;
+    std::vector<const float*> fields;
+    for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
+        VolumeData::HostCacheEntry fieldEntry = getFieldEntryCpu(
+                scalarFieldNames.at(useSeparateFields ? fieldIndex2Gui : fieldIndexGui), fieldIdx, timeStepIdx, ensembleIdx);
+        const float *field = fieldEntry->data<float>();
+        fieldEntries.push_back(fieldEntry);
+        fields.push_back(field);
+    }
+
+    samplePointPositions();
+    auto numGridPoints = int(pointGridPositions.size());
+
+    numFeatures = numGridPoints;
+    numVectors = cs;
+    featureVectorArray = new double[numFeatures * numVectors];
+
+#ifdef USE_TBB
+    tbb::parallel_for(tbb::blocked_range<int>(0, numGridPoints), [&](auto const& r) {
+            for (auto gridPointIdx = r.begin(); gridPointIdx != r.end(); gridPointIdx++) {
+#else
+#if _OPENMP >= 200805
+#pragma omp parallel shared(xs, ys, cs, numGridPoints, numFeatures, featureVectorArray, fields) default(none)
+#endif
+    {
+#pragma omp for
+        for (int gridPointIdx = 0; gridPointIdx < numGridPoints; gridPointIdx++) {
+#endif
+            auto gridPt = pointGridPositions.at(gridPointIdx);
+            int xr = gridPt.x;
+            int yr = gridPt.y;
+            int zr = gridPt.z;
+            int gridIdx = IDXS(xr, yr, zr);
+            float val;
+            for (int c = 0; c < cs; c++) {
+                val = fields.at(c)[gridIdx];
+                if (std::isnan(val)) {
+                    val = 0.0f;
+                }
+                size_t offsetWrite = size_t(c) * size_t(numFeatures) + size_t(gridPointIdx);
+                featureVectorArray[offsetWrite] = val;
+            }
+        }
+#ifdef USE_TBB
+        });
+#else
+    }
+#endif
+}
+
 void DistributionSimilarityRenderer::recomputeCorrelationMatrix() {
     dataDirty = false;
     if (fieldIndexGui == 0 || (useSeparateFields && fieldIndex2Gui == 0)) {
@@ -488,10 +552,12 @@ void DistributionSimilarityRenderer::recomputeCorrelationMatrix() {
     int numVectors = 0;
     int numFeatures = 0;
     double* featureVectorArray = nullptr;
-    if (useCorrelationMode) {
+    if (distributionAnalysisMode == DistributionAnalysisMode::GRID_CELL_NEIGHBORHOOD_CORRELATION_VECTOR) {
         computeFeatureVectorsCorrelation(numVectors, numFeatures, featureVectorArray);
-    } else {
-        computeFeatureVectorsEnsemble(numVectors, numFeatures, featureVectorArray);
+    } else if (distributionAnalysisMode == DistributionAnalysisMode::GRID_CELL_MEMBER_VALUE_VECTOR) {
+        computeFeatureVectorsGridCellsEnsembleValues(numVectors, numFeatures, featureVectorArray);
+    } else if (distributionAnalysisMode == DistributionAnalysisMode::MEMBER_GRID_CELL_VALUE_VECTOR) {
+        computeFeatureVectorsEnsembleMembersGridCellValues(numVectors, numFeatures, featureVectorArray);
     }
     auto* outputPoints = new double[2 * numVectors];
 
@@ -606,15 +672,17 @@ void DistributionSimilarityRenderer::update(float dt, bool isMouseGrabbed) {
         }
         reRenderTriggeredByDiagram = true;
     }
-    auto selectedPointIdxNew = parentDiagram->getSelectedPointIdx();
-    if (selectedPointIdxNew >= 0) {
-        selectedPointIdx = selectedPointIdxNew;
-        auto correlationCalculators = volumeData->getCorrelationCalculatorsUsed();
-        for (auto& calculator : correlationCalculators) {
-            if (calculator->getIsEnsembleMode() != isEnsembleMode) {
-                continue;
+    if (distributionAnalysisMode != DistributionAnalysisMode::MEMBER_GRID_CELL_VALUE_VECTOR) {
+        auto selectedPointIdxNew = parentDiagram->getSelectedPointIdx();
+        if (selectedPointIdxNew >= 0) {
+            selectedPointIdx = selectedPointIdxNew;
+            auto correlationCalculators = volumeData->getCorrelationCalculatorsUsed();
+            for (auto& calculator : correlationCalculators) {
+                if (calculator->getIsEnsembleMode() != isEnsembleMode) {
+                    continue;
+                }
+                calculator->setReferencePoint(pointGridPositions.at(selectedPointIdx));
             }
-            calculator->setReferencePoint(pointGridPositions.at(selectedPointIdx));
         }
     }
     //isMouseGrabbed |= parentDiagram->getIsMouseGrabbed() || parentDiagram->getIsMouseOverDiagramImGui();
@@ -778,8 +846,8 @@ void DistributionSimilarityRenderer::renderGuiImpl(sgl::PropertyEditor& property
         }
     }
 
-    if (volumeData && useCorrelationMode && scalarFieldNames.size() > 1 && propertyEditor.addCheckbox(
-            "Two Fields Mode", &useSeparateFields)) {
+    if (volumeData && distributionAnalysisMode == DistributionAnalysisMode::GRID_CELL_NEIGHBORHOOD_CORRELATION_VECTOR
+            && scalarFieldNames.size() > 1 && propertyEditor.addCheckbox("Two Fields Mode", &useSeparateFields)) {
         if (fieldIndex2 != 0xFFFFFF) {
             if (useSeparateFields) {
                 volumeData->acquireScalarField(this, fieldIndex2);
@@ -791,7 +859,8 @@ void DistributionSimilarityRenderer::renderGuiImpl(sgl::PropertyEditor& property
         setRecomputeFlag();
     }
 
-    if (volumeData && useCorrelationMode && useSeparateFields && isEnsembleMode && volumeData->getTimeStepCount() > 1
+    if (volumeData && distributionAnalysisMode == DistributionAnalysisMode::GRID_CELL_NEIGHBORHOOD_CORRELATION_VECTOR
+            && useSeparateFields && isEnsembleMode && volumeData->getTimeStepCount() > 1
             && propertyEditor.addCheckbox("Time Lag Correlations", &useTimeLagCorrelations)) {
         timeLagTimeStepIdx = volumeData->getCurrentTimeStepIdx();
         if (!useTimeLagCorrelations) {
@@ -800,8 +869,10 @@ void DistributionSimilarityRenderer::renderGuiImpl(sgl::PropertyEditor& property
         }
     }
 
-    if (propertyEditor.addCheckbox("Use Correlation Mode", &useCorrelationMode)) {
-        if (!useCorrelationMode) {
+    if (propertyEditor.addCombo(
+            "Use Correlation Mode", (int*)&distributionAnalysisMode, DISTRIBUTION_ANALYSIS_MODE_NAMES,
+            IM_ARRAYSIZE(DISTRIBUTION_ANALYSIS_MODE_NAMES))) {
+        if (distributionAnalysisMode != DistributionAnalysisMode::GRID_CELL_NEIGHBORHOOD_CORRELATION_VECTOR) {
             if (useSeparateFields) {
                 if (fieldIndex2 != 0xFFFFFF) {
                     volumeData->releaseScalarField(this, fieldIndex2);
@@ -816,7 +887,7 @@ void DistributionSimilarityRenderer::renderGuiImpl(sgl::PropertyEditor& property
         setRecomputeFlag();
     }
 
-    if (useCorrelationMode) {
+    if (distributionAnalysisMode == DistributionAnalysisMode::GRID_CELL_NEIGHBORHOOD_CORRELATION_VECTOR) {
         if (propertyEditor.addCombo(
                 "Correlation Measure", (int*)&correlationMeasureType,
                 CORRELATION_MEASURE_TYPE_NAMES, IM_ARRAYSIZE(CORRELATION_MEASURE_TYPE_NAMES))) {
@@ -1047,8 +1118,26 @@ void DistributionSimilarityRenderer::setSettings(const SettingsMap& settings) {
         setRecomputeFlag();
     }
 
+    bool dataAnalysisModeChanged = false;
+    bool useCorrelationMode = true;
     if (settings.getValueOpt("use_correlation_mode", useCorrelationMode)) {
-        if (!useCorrelationMode) {
+        distributionAnalysisMode =
+                useCorrelationMode ? DistributionAnalysisMode::GRID_CELL_NEIGHBORHOOD_CORRELATION_VECTOR
+                                   : DistributionAnalysisMode::GRID_CELL_MEMBER_VALUE_VECTOR;
+        dataAnalysisModeChanged = true;
+    }
+    std::string distributionAnalysisModeString;
+    if (settings.getValueOpt("distribution_analysis_mode", distributionAnalysisModeString)) {
+        for (int i = 0; i < IM_ARRAYSIZE(DISTRIBUTION_ANALYSIS_MODE_NAMES); i++) {
+            if (distributionAnalysisModeString == DISTRIBUTION_ANALYSIS_MODE_NAMES[i]) {
+                distributionAnalysisMode = DistributionAnalysisMode(i);
+                break;
+            }
+        }
+        dataAnalysisModeChanged = true;
+    }
+    if (dataAnalysisModeChanged) {
+        if (distributionAnalysisMode != DistributionAnalysisMode::GRID_CELL_NEIGHBORHOOD_CORRELATION_VECTOR) {
             if (useSeparateFields) {
                 if (fieldIndex2 != 0xFFFFFF) {
                     volumeData->releaseScalarField(this, fieldIndex2);
@@ -1210,7 +1299,7 @@ void DistributionSimilarityRenderer::getSettings(SettingsMap& settings) {
     settings.addKeyValue("use_time_lag_correlations", useTimeLagCorrelations);
     settings.addKeyValue("time_lag_time_step_idx", timeLagTimeStepIdx);
 
-    settings.addKeyValue("use_correlation_mode", useCorrelationMode);
+    settings.addKeyValue("distribution_analysis_mode", DISTRIBUTION_ANALYSIS_MODE_NAMES[int(distributionAnalysisMode)]);
 
     settings.addKeyValue("correlation_measure_type", CORRELATION_MEASURE_TYPE_IDS[int(correlationMeasureType)]);
     //const char* const choices[] = {

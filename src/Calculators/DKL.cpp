@@ -26,6 +26,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <iostream>
 #include <algorithm>
 #include <cmath>
 
@@ -76,6 +77,9 @@ float computeDKLBinned(float* valueArray, int numBins, int es, Real* histogram) 
             Real center = (Real(binIdx) + Real(0.5)) * binFactorInv + minVal;
             dkl += std::log(px * binFactor / (std::sqrt(Real(0.5) / Real(sgl::PI)) * std::exp(Real(-0.5) * sgl::sqr(center)))) * px;
         }
+    }
+    if (std::isinf(dkl)) {
+        dkl = std::numeric_limits<float>::quiet_NaN();
     }
     return dkl;
 }
@@ -154,8 +158,13 @@ float computeDKLKNNEstimate(float* valueArray, int k, int es) {
     }
     entropyEstimate += Real(boost::math::digamma(es)) - Real(boost::math::digamma(k)) + std::log(Real(2.0));
 
-    Real dkl = -entropyEstimate + Real(0.5) * log(sgl::TWO_PI) + Real(0.5) * secondMoment;
-    return std::max(float(dkl), 0.0f);
+    auto dkl = float(-entropyEstimate + Real(0.5) * std::log(sgl::TWO_PI) + Real(0.5) * secondMoment);
+    if (std::isinf(dkl)) {
+        dkl = std::numeric_limits<float>::quiet_NaN();
+    } else {
+        dkl = std::max(dkl, 0.0f);
+    }
+    return dkl;
 }
 
 template

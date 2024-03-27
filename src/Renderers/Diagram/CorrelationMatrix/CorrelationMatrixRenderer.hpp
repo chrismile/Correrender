@@ -71,6 +71,7 @@ private:
 
     void recomputeCorrelationMatrix();
     VolumeDataPtr volumeData;
+    int cachedTimeStepIdx = -1, cachedEnsembleIdx = -1;
     uint32_t diagramViewIdx = 0;
     bool reRenderTriggeredByDiagram = false;
     std::shared_ptr<CorrelationMatrixChart> parentDiagram; //< Parent diagram.
