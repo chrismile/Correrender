@@ -106,7 +106,9 @@ private:
     std::function<void(int series, int time)> diagramSelectionCallback;
 
     sgl::vk::BufferPtr correlationDataBuffer;
+#ifdef SUPPORT_OPENGL
     sgl::TexturePtr correlationTextureGl;
+#endif
     sgl::vk::TexturePtr correlationTextureVk;
     sgl::vk::ImageViewPtr correlationImageViewVk;
     bool imageHandleDirty = false;

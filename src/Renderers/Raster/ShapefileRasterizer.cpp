@@ -104,11 +104,15 @@ ShapefileRasterizer::ShapefileRasterizer(sgl::vk::Renderer* renderer) : renderer
     customScaleFactor = 1.0f; // Overwrite automatic UI scale.
 
     sgl::NanoVGSettings nanoVgSettings{};
+#ifdef SUPPORT_OPENGL
     if (sgl::AppSettings::get()->getOffscreenContext()) {
         nanoVgSettings.renderBackend = sgl::RenderSystem::OPENGL;
     } else {
+#endif
         nanoVgSettings.renderBackend = sgl::RenderSystem::VULKAN;
+#ifdef SUPPORT_OPENGL
     }
+#endif
 
     registerRenderBackendIfSupported<sgl::VectorBackendNanoVG>([this]() { this->renderBaseNanoVG(); }, nanoVgSettings);
 #ifdef SUPPORT_SKIA
