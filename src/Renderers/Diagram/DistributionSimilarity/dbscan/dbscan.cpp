@@ -122,7 +122,8 @@ auto dbscan(const Adaptor& adapt, float eps, int min_pts)
 
             if (sub_matches.size() >= static_cast<size_t>(min_pts))
             {
-                std::copy(sub_matches.begin(), sub_matches.end(), std::back_inserter(matches));
+                //std::copy(sub_matches.begin(), sub_matches.end(), std::back_inserter(matches));
+                matches.insert(matches.end(), sub_matches.begin(), sub_matches.end());
             }
             cluster.push_back(nb_idx);
         }

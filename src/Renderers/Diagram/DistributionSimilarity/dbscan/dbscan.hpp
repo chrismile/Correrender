@@ -26,7 +26,6 @@
 
 #include <cassert>
 #include <cstddef>
-#include <span>
 #include <vector>
 #include <cstdlib>
 #include <glm/vec2.hpp>
