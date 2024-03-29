@@ -32,20 +32,27 @@
 #endif
 
 #include <Utils/Parallel/Reduction.hpp>
+#include <Utils/Mesh/IndexMesh.hpp>
 #include <Graphics/Vulkan/Render/Renderer.hpp>
 #include <ImGui/imgui_custom.h>
 #include <ImGui/Widgets/PropertyEditor.hpp>
 
+#include <IsosurfaceCpp/src/MarchingCubes.hpp>
+#include <IsosurfaceCpp/src/SnapMC.hpp>
+
 #include "bhtsne/tsne.h"
+#include "dbscan/dbscan.hpp"
 
 #include "Widgets/DataView.hpp"
 #include "Widgets/ViewManager.hpp"
 #include "Utils/InternalState.hpp"
+#include "Utils/Normalization.hpp"
 #include "Calculators/CorrelationDefines.hpp"
 #include "Calculators/Correlation.hpp"
 #include "Calculators/MutualInformation.hpp"
 #include "Calculators/CorrelationCalculator.hpp"
 #include "Volume/VolumeData.hpp"
+#include "Renderers/IsoSurfaceRasterizer.hpp"
 #include "../CorrelationCache.hpp"
 #include "../Sampling.hpp"
 #include "DistributionSimilarityChart.hpp"
@@ -514,7 +521,7 @@ void DistributionSimilarityRenderer::computeFeatureVectorsEnsembleMembersGridCel
             for (auto gridPointIdx = r.begin(); gridPointIdx != r.end(); gridPointIdx++) {
 #else
 #if _OPENMP >= 200805
-#pragma omp parallel shared(xs, ys, cs, numGridPoints, numFeatures, featureVectorArray, fields) default(none)
+    #pragma omp parallel shared(xs, ys, cs, numGridPoints, numFeatures, featureVectorArray, fields) default(none)
 #endif
     {
 #pragma omp for
@@ -543,6 +550,15 @@ void DistributionSimilarityRenderer::computeFeatureVectorsEnsembleMembersGridCel
 }
 
 void DistributionSimilarityRenderer::recomputeCorrelationMatrix() {
+    indexBuffer = {};
+    vertexPositionBuffer = {};
+    vertexNormalBuffer = {};
+    vertexColorBuffer = {};
+    for (auto& isoSurfaceRasterPass : isoSurfaceRasterPasses) {
+        isoSurfaceRasterPass->setVolumeData(volumeData, false);
+        isoSurfaceRasterPass->setRenderData(indexBuffer, vertexPositionBuffer, vertexNormalBuffer, vertexColorBuffer);
+    }
+
     dataDirty = false;
     if (fieldIndexGui == 0 || (useSeparateFields && fieldIndex2Gui == 0)) {
         parentDiagram->setPointData({});
@@ -570,14 +586,152 @@ void DistributionSimilarityRenderer::recomputeCorrelationMatrix() {
     for (int ptIdx = 0; ptIdx < numVectors; ptIdx++) {
         points.at(ptIdx) = glm::vec2(float(outputPoints[ptIdx * 2]), float(outputPoints[ptIdx * 2 + 1]));
     }
-    parentDiagram->setPointData(points);
     auto bbData = sgl::reduceVec2ArrayAabb(points);
-    parentDiagram->setBoundingBox(bbData);
     delete[] featureVectorArray;
     delete[] outputPoints;
 
+    std::vector<std::vector<size_t>> clusters;
+    if (useDbscanClustering) {
+        float epsilon = dbscanSettings.epsilon * glm::length(bbData.getExtent());
+        clusters = dbscan(points.data(), points.size(), epsilon, dbscanSettings.minPts);
+        if (showClustering3d && distributionAnalysisMode != DistributionAnalysisMode::MEMBER_GRID_CELL_VALUE_VECTOR) {
+            computeClusteringSurfacesByMetaballs(points, clusters);
+        }
+    }
+
+    parentDiagram->setPointData(points);
+    parentDiagram->setBoundingBox(bbData);
+    parentDiagram->setClusterData(clusters);
+
     reRender = true;
     reRenderTriggeredByDiagram = true;
+}
+
+// Defined in DistributionSimilarityChart.cpp.
+extern const std::vector<sgl::Color> clusterColorsPredefined;
+
+void DistributionSimilarityRenderer::computeClusteringSurfacesByMetaballs(
+        const std::vector<glm::vec2>& points, const std::vector<std::vector<size_t>>& clusters) {
+    // TODO: Move to the UI.
+    float isoValue = 0.5f;
+    float gammaSnapMC = 0.3f;
+    int metaballRadius = 3;
+    IsoSurfaceExtractionTechnique isoSurfaceExtractionTechnique = IsoSurfaceExtractionTechnique::SNAP_MC;
+
+    int xs = volumeData->getGridSizeX();
+    int ys = volumeData->getGridSizeY();
+    int zs = volumeData->getGridSizeZ();
+    size_t numGridCells = size_t(xs) * size_t(ys) * size_t(zs);
+    auto* clusterDensityField = new float[numGridCells];
+
+    std::vector<uint32_t> triangleIndicesAll;
+    std::vector<glm::vec3> vertexPositionsAll;
+    std::vector<glm::vec3> vertexNormalsAll;
+    std::vector<glm::vec4> vertexColorsAll;
+
+    for (size_t clusterIdx = 0; clusterIdx < clusters.size(); clusterIdx++) {
+        memset(clusterDensityField, 0, numGridCells  * sizeof(float));
+
+        const std::vector<size_t>& cluster = clusters.at(clusterIdx);
+        for (size_t clusterPointIdx = 0; clusterPointIdx < cluster.size(); clusterPointIdx++) {
+            size_t i = cluster.at(clusterPointIdx);
+            const glm::ivec3& pos = pointGridPositions.at(i);
+            for (int oz = -metaballRadius; oz <= metaballRadius; oz++) {
+                for (int oy = -metaballRadius; oy <= metaballRadius; oy++) {
+                    for (int ox = -metaballRadius; ox <= metaballRadius; ox++) {
+                        int x = pos.x + ox;
+                        int y = pos.y + oy;
+                        int z = pos.z + oz;
+                        if (x >= 0 && y >= 0 && z >= 0 && x < xs && y < ys && z < zs) {
+                            float val = 1.0f / std::sqrt(float(ox * ox + oy * oy + oz * oz));
+                            clusterDensityField[IDXS(x, y, z)] += val;
+                        }
+                    }
+                }
+            }
+        }
+
+        sgl::AABB3 gridAabb;
+        //gridAabb.min = glm::vec3(0.0f, 0.0f, 0.0f);
+        //gridAabb.max = glm::vec3(volumeData->getGridSizeX(), volumeData->getGridSizeY(), volumeData->getGridSizeZ());
+        //gridAabb.min = glm::vec3(-0.5f, -0.5f, -0.5f);
+        //gridAabb.max = glm::vec3(volumeData->getGridSizeX(), volumeData->getGridSizeY(), volumeData->getGridSizeZ()) - glm::vec3(0.5f, 0.5f, 0.5f);
+        gridAabb.min = glm::vec3(-0.5f, -0.5f, -0.5f);
+        gridAabb.max = glm::vec3(volumeData->getGridSizeX(), volumeData->getGridSizeY(), volumeData->getGridSizeZ()) - glm::vec3(0.5f, 0.5f, 0.5f);
+        gridAabb.min *= glm::vec3(volumeData->getDx(), volumeData->getDy(), volumeData->getDz());
+        gridAabb.max *= glm::vec3(volumeData->getDx(), volumeData->getDy(), volumeData->getDz());
+
+        std::vector<uint32_t> triangleIndices;
+        std::vector<glm::vec3> vertexPositions;
+        std::vector<glm::vec3> vertexNormals;
+
+        std::vector<glm::vec3> isosurfaceVertexPositions;
+        std::vector<glm::vec3> isosurfaceVertexNormals;
+        if (isoSurfaceExtractionTechnique == IsoSurfaceExtractionTechnique::MARCHING_CUBES) {
+            polygonizeMarchingCubes(
+                    clusterDensityField,
+                    volumeData->getGridSizeX(), volumeData->getGridSizeY(), volumeData->getGridSizeZ(),
+                    volumeData->getDx(), volumeData->getDy(), volumeData->getDz(),
+                    isoValue, isosurfaceVertexPositions, isosurfaceVertexNormals);
+        } else {
+            polygonizeSnapMC(
+                    clusterDensityField,
+                    volumeData->getGridSizeX(), volumeData->getGridSizeY(), volumeData->getGridSizeZ(),
+                    volumeData->getDx(), volumeData->getDy(), volumeData->getDz(),
+                    isoValue, gammaSnapMC, isosurfaceVertexPositions, isosurfaceVertexNormals);
+        }
+
+        float step = std::min(volumeData->getDx(), std::min(volumeData->getDy(), volumeData->getDz()));
+        sgl::computeSharedIndexRepresentation(
+                isosurfaceVertexPositions, isosurfaceVertexNormals,
+                triangleIndices, vertexPositions, vertexNormals,
+                1e-5f * step);
+        normalizeVertexPositions(vertexPositions, gridAabb, nullptr);
+
+        vertexPositionsAll.reserve(vertexPositionsAll.size() + vertexPositions.size());
+        vertexNormalsAll.reserve(vertexNormalsAll.size() + vertexPositions.size());
+        vertexColorsAll.reserve(vertexColorsAll.size() + vertexPositions.size());
+        triangleIndicesAll.reserve(triangleIndicesAll.size() + triangleIndices.size());
+        const sgl::Color& pointColorCluster =
+                clusterColorsPredefined.at(clusterIdx % clusterColorsPredefined.size());
+        auto idxOffset = uint32_t(vertexPositionsAll.size());
+        for (size_t i = 0; i < vertexPositions.size(); i++) {
+            vertexPositionsAll.push_back(vertexPositions.at(i));
+            vertexNormalsAll.push_back(vertexNormals.at(i));
+            vertexColorsAll.push_back(pointColorCluster.getFloatColorRGBA());
+        }
+        for (size_t i = 0; i < triangleIndices.size(); i++) {
+            triangleIndicesAll.push_back(triangleIndices.at(i) + idxOffset);
+        }
+    }
+
+    delete[] clusterDensityField;
+
+    if (triangleIndicesAll.empty()) {
+        return;
+    }
+
+    sgl::vk::Device* device = renderer->getDevice();
+    indexBuffer = std::make_shared<sgl::vk::Buffer>(
+            device, sizeof(uint32_t) * triangleIndicesAll.size(), triangleIndicesAll.data(),
+            VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+            VMA_MEMORY_USAGE_GPU_ONLY);
+    vertexPositionBuffer = std::make_shared<sgl::vk::Buffer>(
+            device, sizeof(glm::vec3) * vertexPositionsAll.size(), vertexPositionsAll.data(),
+            VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+            VMA_MEMORY_USAGE_GPU_ONLY);
+    vertexNormalBuffer = std::make_shared<sgl::vk::Buffer>(
+            device, sizeof(glm::vec3) * vertexNormalsAll.size(), vertexNormalsAll.data(),
+            VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+            VMA_MEMORY_USAGE_GPU_ONLY);
+    vertexColorBuffer = std::make_shared<sgl::vk::Buffer>(
+            device, sizeof(glm::vec4) * vertexColorsAll.size(), vertexColorsAll.data(),
+            VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+            VMA_MEMORY_USAGE_GPU_ONLY);
+
+    for (auto& isoSurfaceRasterPass : isoSurfaceRasterPasses) {
+        isoSurfaceRasterPass->setRenderData(indexBuffer, vertexPositionBuffer, vertexNormalBuffer, vertexColorBuffer);
+    }
 }
 
 int DistributionSimilarityRenderer::getCorrelationMemberCount() {
@@ -641,6 +795,7 @@ void DistributionSimilarityRenderer::recreateSwapchainView(uint32_t viewIdx, uin
     if (viewIdx == diagramViewIdx) {
         recreateDiagramSwapchain();
     }
+    isoSurfaceRasterPasses.at(viewIdx)->recreateSwapchain(width, height);
 }
 
 void DistributionSimilarityRenderer::recreateDiagramSwapchain(int diagramIdx) {
@@ -728,15 +883,29 @@ void DistributionSimilarityRenderer::renderViewPreImpl(uint32_t viewIdx) {
     if ((viewIdx == diagramViewIdx) && alignWithParentWindow) {
         return;
     }
+
+    // Render opaque objects.
+    if (useDbscanClustering && showClustering3d
+            && distributionAnalysisMode != DistributionAnalysisMode::MEMBER_GRID_CELL_VALUE_VECTOR) {
+        isoSurfaceRasterPasses.at(viewIdx)->render();
+    }
 }
 
 void DistributionSimilarityRenderer::renderViewPostOpaqueImpl(uint32_t viewIdx) {
     if (viewIdx == diagramViewIdx && alignWithParentWindow) {
         return;
     }
+
+    // Render transparent objects.
 }
 
 void DistributionSimilarityRenderer::addViewImpl(uint32_t viewIdx) {
+    auto isoSurfaceRasterPass = std::make_shared<IsoSurfaceRasterPass>(renderer, viewManager->getViewSceneData(viewIdx));
+    if (volumeData) {
+        isoSurfaceRasterPass->setVolumeData(volumeData, true);
+        isoSurfaceRasterPass->setRenderData(indexBuffer, vertexPositionBuffer, vertexNormalBuffer, vertexColorBuffer);
+    }
+    isoSurfaceRasterPasses.push_back(isoSurfaceRasterPass);
 }
 
 bool DistributionSimilarityRenderer::adaptIdxOnViewRemove(uint32_t viewIdx, uint32_t& diagramViewIdx) {
@@ -760,6 +929,7 @@ void DistributionSimilarityRenderer::removeViewImpl(uint32_t viewIdx) {
         reRenderTriggeredByDiagram = true;
         recreateDiagramSwapchain();
     }
+    isoSurfaceRasterPasses.erase(isoSurfaceRasterPasses.begin() + viewIdx);
 }
 
 void DistributionSimilarityRenderer::renderDiagramViewSelectionGui(
@@ -971,7 +1141,7 @@ void DistributionSimilarityRenderer::renderGuiImpl(sgl::PropertyEditor& property
         reRenderTriggeredByDiagram = true;
     }
 
-    if (propertyEditor.beginNode("t-SNE settings")) {
+    if (propertyEditor.beginNode("t-SNE Settings")) {
         if (propertyEditor.addSliderFloatEdit(
                 "Perplexity", &tsneSettings.perplexity, 5.0f, 50.0f) == ImGui::EditMode::INPUT_FINISHED) {
             setRecomputeFlag();
@@ -997,6 +1167,26 @@ void DistributionSimilarityRenderer::renderGuiImpl(sgl::PropertyEditor& property
             setRecomputeFlag();
         }
         propertyEditor.endNode();
+    }
+
+    if (propertyEditor.addCheckbox("Use DBSCAN Clustering", &useDbscanClustering)) {
+        setRecomputeFlag();
+    }
+    if (useDbscanClustering) {
+        if (propertyEditor.beginNode("DBSCAN Settings")) {
+            if (propertyEditor.addSliderFloatEdit(
+                    "Epsilon", &dbscanSettings.epsilon, 0.01f, 1.0f) == ImGui::EditMode::INPUT_FINISHED) {
+                setRecomputeFlag();
+            }
+            if (propertyEditor.addSliderIntEdit(
+                    "minPts", &dbscanSettings.minPts, 1, 100) == ImGui::EditMode::INPUT_FINISHED) {
+                setRecomputeFlag();
+            }
+            propertyEditor.endNode();
+        }
+        if (propertyEditor.addCheckbox("Show Clustering in 3D", &showClustering3d)) {
+            setRecomputeFlag();
+        }
     }
 
     if (propertyEditor.beginNode("Advanced Settings")) {
@@ -1275,6 +1465,19 @@ void DistributionSimilarityRenderer::setSettings(const SettingsMap& settings) {
         setRecomputeFlag();
     }
 
+    if (settings.getValueOpt("use_dbscan_clustering", useDbscanClustering)) {
+        setRecomputeFlag();
+    }
+    if (settings.getValueOpt("dbscan_epsilon", dbscanSettings.epsilon)) {
+        setRecomputeFlag();
+    }
+    if (settings.getValueOpt("dbscan_minpts", dbscanSettings.minPts)) {
+        setRecomputeFlag();
+    }
+    if (settings.getValueOpt("show_clustering_3d", showClustering3d)) {
+        setRecomputeFlag();
+    }
+
     setRecomputeFlag();
 }
 
@@ -1327,6 +1530,13 @@ void DistributionSimilarityRenderer::getSettings(SettingsMap& settings) {
     settings.addKeyValue("tsne_max_iter", tsneSettings.maxIter);
     settings.addKeyValue("tsne_stop_lying_iter", tsneSettings.stopLyingIter);
     settings.addKeyValue("tsne_mom_switch_iter", tsneSettings.momSwitchIter);
+
+    // DBSCAN settings.
+    settings.addKeyValue("use_dbscan_clustering", useDbscanClustering);
+    settings.addKeyValue("dbscan_epsilon", dbscanSettings.epsilon);
+    settings.addKeyValue("dbscan_minpts", dbscanSettings.minPts);
+    settings.addKeyValue("dbscan_minpts", dbscanSettings.minPts);
+    settings.addKeyValue("show_clustering_3d", showClustering3d);
 
     // No vector widget settings for now.
 }

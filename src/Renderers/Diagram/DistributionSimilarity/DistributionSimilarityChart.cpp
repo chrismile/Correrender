@@ -139,6 +139,19 @@ void DistributionSimilarityChart::setPointData(const std::vector<glm::vec2>& _po
     pointData = _pointData;
 }
 
+void DistributionSimilarityChart::setClusterData(const std::vector<std::vector<size_t>> &_clusterData) {
+    clusterData = _clusterData;
+    pointToClusterArray.clear();
+    pointToClusterArray.resize(pointData.size(), -1);
+    for (size_t clusterIdx = 0; clusterIdx < clusterData.size(); clusterIdx++) {
+        const std::vector<size_t>& cluster = clusterData.at(clusterIdx);
+        for (size_t clusterPointIdx = 0; clusterPointIdx < cluster.size(); clusterPointIdx++) {
+            size_t i = cluster.at(clusterPointIdx);
+            pointToClusterArray.at(i) = int(clusterIdx);
+        }
+    }
+}
+
 void DistributionSimilarityChart::setBoundingBox(const sgl::AABB2& _bb) {
     bb = _bb;
 }
@@ -217,6 +230,26 @@ void DistributionSimilarityChart::updateData() {
     ;
 }
 
+extern const std::vector<sgl::Color> clusterColorsPredefined;
+const std::vector<sgl::Color> clusterColorsPredefined = {
+        // RED
+        sgl::Color(228, 26, 28),
+        // BLUE
+        sgl::Color(55, 126, 184),
+        // GREEN
+        sgl::Color(5, 139, 69),
+        // PURPLE
+        sgl::Color(129, 15, 124),
+        // ORANGE
+        sgl::Color(217, 72, 1),
+        // PINK
+        sgl::Color(231, 41, 138),
+        // GOLD
+        sgl::Color(254, 178, 76),
+        // DARK BLUE
+        sgl::Color(0, 7, 255)
+};
+
 void DistributionSimilarityChart::renderScatterPlot() {
     sgl::Color textColor = isDarkMode ? textColorDark : textColorBright;
     NVGcolor textColorNvg;
@@ -268,8 +301,10 @@ void DistributionSimilarityChart::renderScatterPlot() {
 #endif
 
     auto numPoints = int(pointData.size());
+    auto pointColorDefault =
+            clusterData.empty() ? pointColor : (isDarkMode ? pointColorGreyDark : pointColorGreyBright);
     for (int i = 0; i < numPoints; i++) {
-        if (i == hoveredPointIdx) {
+        if (i == hoveredPointIdx || pointToClusterArray.at(i) >= 0) {
             continue;
         }
         float x = (pointData.at(i).x - bb.min.x) / (bb.max.x - bb.min.x);
@@ -280,23 +315,62 @@ void DistributionSimilarityChart::renderScatterPlot() {
         if (vg) {
             nvgBeginPath(vg);
             nvgCircle(vg, x, y, pointSizeReal);
-            nvgFillColor(vg, nvgRGB(pointColor.getR(), pointColor.getG(), pointColor.getB()));
+            nvgFillColor(vg, nvgRGB(pointColorDefault.getR(), pointColorDefault.getG(), pointColorDefault.getB()));
             nvgFill(vg);
         }
 #ifdef SUPPORT_SKIA
         else if (canvas) {
-            paint->setColor(toSkColor(pointColor));
+            paint->setColor(toSkColor(pointColorDefault));
             paint->setStroke(false);
             canvas->drawCircle(x * s, y * s, pointSizeReal * s, *paint);
         }
 #endif
 #ifdef SUPPORT_VKVG
         else if (context) {
-            vkvg_set_source_color(context, pointColor.getColorRGBA());
+            vkvg_set_source_color(context, pointColorDefault.getColorRGBA());
             vkvg_arc(context, x * s, y * s, pointSizeReal * s, 0.0f, sgl::TWO_PI);
             vkvg_fill(context);
         }
 #endif
+    }
+
+    if (!clusterData.empty()) {
+        for (size_t clusterIdx = 0; clusterIdx < clusterData.size(); clusterIdx++) {
+            const std::vector<size_t>& cluster = clusterData.at(clusterIdx);
+            const sgl::Color& pointColorCluster =
+                    clusterColorsPredefined.at(clusterIdx % clusterColorsPredefined.size());
+            for (size_t clusterPointIdx = 0; clusterPointIdx < cluster.size(); clusterPointIdx++) {
+                auto i = int(cluster.at(clusterPointIdx));
+                if (i == hoveredPointIdx) {
+                    continue;
+                }
+                float x = (pointData.at(i).x - bb.min.x) / (bb.max.x - bb.min.x);
+                float y = (pointData.at(i).y - bb.min.y) / (bb.max.y - bb.min.y);
+                y = 1 - y;
+                x = minXPt + (maxXPt - minXPt) * x;
+                y = minYPt + (maxYPt - minYPt) * y;
+                if (vg) {
+                    nvgBeginPath(vg);
+                    nvgCircle(vg, x, y, pointSizeReal);
+                    nvgFillColor(vg, nvgRGB(pointColorCluster.getR(), pointColorCluster.getG(), pointColorCluster.getB()));
+                    nvgFill(vg);
+                }
+#ifdef SUPPORT_SKIA
+                else if (canvas) {
+                    paint->setColor(toSkColor(pointColorCluster));
+                    paint->setStroke(false);
+                    canvas->drawCircle(x * s, y * s, pointSizeReal * s, *paint);
+                }
+#endif
+#ifdef SUPPORT_VKVG
+                else if (context) {
+                    vkvg_set_source_color(context, pointColorCluster.getColorRGBA());
+                    vkvg_arc(context, x * s, y * s, pointSizeReal * s, 0.0f, sgl::TWO_PI);
+                    vkvg_fill(context);
+                }
+#endif
+            }
+        }
     }
 
     if (selectedPointIdx >= 0) {

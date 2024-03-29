@@ -51,6 +51,7 @@ public:
     void setPointColor(const sgl::Color& _pointColor);
     void setPointRadius(float _pointRadius);
     void setPointData(const std::vector<glm::vec2>& _pointData);
+    void setClusterData(const std::vector<std::vector<size_t>>& _clusterData);
     void setBoundingBox(const sgl::AABB2& _bb);
     [[nodiscard]] inline int getSelectedPointIdx() const { return selectedPointIdx; }
 
@@ -77,10 +78,14 @@ private:
     bool alignWithParentWindow = false;
     float ox = 0, oy = 0, dw = 0, dh = 0;
     sgl::Color pointColor = sgl::Color(31, 119, 180);
+    sgl::Color pointColorGreyDark = sgl::Color(115, 115, 115);
+    sgl::Color pointColorGreyBright = sgl::Color(175, 175, 175);
     sgl::Color hoveredPointColor = sgl::Color(240, 40, 10);
     float pointRadius = 5.0f;
     float strokeWidth = 1.5f;
     std::vector<glm::vec2> pointData;
+    std::vector<std::vector<size_t>> clusterData;
+    std::vector<int> pointToClusterArray;
     sgl::AABB2 bb;
     int hoveredPointIdx = -1;
     int clickedPointIdx = -1;

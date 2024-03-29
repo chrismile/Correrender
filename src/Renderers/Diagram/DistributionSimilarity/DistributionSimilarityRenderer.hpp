@@ -36,6 +36,7 @@
 #include "Volume/Cache/DeviceCacheEntry.hpp"
 #include "Calculators/CorrelationDefines.hpp"
 #include "Calculators/CorrelationMatrix.hpp"
+#include "Renderers/IsoSurfaces.hpp"
 
 class HostCacheEntryType;
 typedef std::shared_ptr<HostCacheEntryType> HostCacheEntry;
@@ -43,6 +44,7 @@ class DeviceCacheEntryType;
 typedef std::shared_ptr<DeviceCacheEntryType> DeviceCacheEntry;
 
 class DistributionSimilarityChart;
+class IsoSurfaceRasterPass;
 
 enum class SamplingPattern {
     ALL, QUASIRANDOM_PLASTIC
@@ -69,6 +71,11 @@ struct TSNESettings {
     int maxIter = 500;
     int stopLyingIter = 0;
     int momSwitchIter = 700;
+};
+
+struct DBSCANSettings {
+    float epsilon = 0.05f;
+    int minPts = 8;
 };
 
 class DistributionSimilarityRenderer : public Renderer {
@@ -166,7 +173,18 @@ private:
 
     // t-SNE settings.
     TSNESettings tsneSettings{};
-    int subsampling = 2;
+
+    // DBSCAN settings.
+    bool useDbscanClustering = true;
+    DBSCANSettings dbscanSettings{};
+    void computeClusteringSurfacesByMetaballs(
+            const std::vector<glm::vec2>& points, const std::vector<std::vector<size_t>>& clusters);
+    bool showClustering3d = true;
+    std::vector<std::shared_ptr<IsoSurfaceRasterPass>> isoSurfaceRasterPasses;
+    sgl::vk::BufferPtr indexBuffer;
+    sgl::vk::BufferPtr vertexPositionBuffer;
+    sgl::vk::BufferPtr vertexNormalBuffer;
+    sgl::vk::BufferPtr vertexColorBuffer;
 };
 
 #endif //CORRERENDER_DISTRIBUTIONSIMILARITYRENDERER_HPP

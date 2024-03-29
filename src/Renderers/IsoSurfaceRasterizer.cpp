@@ -77,9 +77,6 @@ void IsoSurfaceRasterizer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewD
     minMaxScalarFieldValue = volumeData->getMinMaxScalarFieldValue(selectedScalarFieldName);
     if (isNewData || oldSelectedScalarFieldName != selectedScalarFieldName) {
         isoValue = (minMaxScalarFieldValue.first + minMaxScalarFieldValue.second) / 2.0f;
-        for (auto& isoSurfaceRasterPass : isoSurfaceRasterPasses) {
-            isoSurfaceRasterPass->setIsoValue(isoValue);
-        }
     }
     volumeData->acquireScalarField(this, selectedFieldIdx);
     oldSelectedFieldIdx = selectedFieldIdx;
@@ -126,7 +123,6 @@ void IsoSurfaceRasterizer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewD
 
     for (auto& isoSurfaceRasterPass : isoSurfaceRasterPasses) {
         isoSurfaceRasterPass->setRenderData(indexBuffer, vertexPositionBuffer, vertexNormalBuffer);
-        isoSurfaceRasterPass->setSelectedScalarFieldName(selectedScalarFieldName);
     }
 }
 
@@ -201,9 +197,7 @@ void IsoSurfaceRasterizer::addViewImpl(uint32_t viewIdx) {
     if (volumeData) {
         isoSurfaceRasterPass->setVolumeData(volumeData, true);
         isoSurfaceRasterPass->setRenderData(indexBuffer, vertexPositionBuffer, vertexNormalBuffer);
-        isoSurfaceRasterPass->setSelectedScalarFieldName(selectedScalarFieldName);
     }
-    isoSurfaceRasterPass->setIsoValue(isoValue);
     isoSurfaceRasterPass->setIsoSurfaceColor(isoSurfaceColor);
     isoSurfaceRasterPasses.push_back(isoSurfaceRasterPass);
 }
@@ -228,9 +222,6 @@ void IsoSurfaceRasterizer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
     if (propertyEditor.addSliderFloatEdit(
             "Iso Value", &isoValue, minMaxScalarFieldValue.first,
             minMaxScalarFieldValue.second) == ImGui::EditMode::INPUT_FINISHED) {
-        for (auto& isoSurfaceRasterPass : isoSurfaceRasterPasses) {
-            isoSurfaceRasterPass->setIsoValue(isoValue);
-        }
         dirty = true;
         reRender = true;
     }
@@ -284,9 +275,6 @@ void IsoSurfaceRasterizer::setSettings(const SettingsMap& settings) {
         reRender = true;
     }
     if (settings.getValueOpt("iso_value", isoValue)) {
-        for (auto& isoSurfaceRasterPass : isoSurfaceRasterPasses) {
-            isoSurfaceRasterPass->setIsoValue(isoValue);
-        }
         dirty = true;
         reRender = true;
     }
@@ -357,32 +345,43 @@ void IsoSurfaceRasterPass::setVolumeData(VolumeDataPtr& _volumeData, bool isNewD
     dataDirty = true;
 }
 
-void IsoSurfaceRasterPass::setSelectedScalarFieldName(const std::string& _field) {
-    selectedScalarFieldName = _field;
-    /*if (volumeData && rasterData) {
-        auto scalarFieldData = volumeData->getFieldEntryDevice(FieldType::SCALAR, selectedScalarFieldName);
-        rasterData->setStaticTexture(scalarFieldData->getVulkanTexture(), "scalarField");
-    }*/
+void IsoSurfaceRasterPass::setRenderData(
+        const sgl::vk::BufferPtr& _indexBuffer, const sgl::vk::BufferPtr& _vertexPositionBuffer,
+        const sgl::vk::BufferPtr& _vertexNormalBuffer) {
+    bool useVertexColorsOld = vertexColorBuffer != nullptr;
+    if (useVertexColorsOld) {
+        setShaderDirty();
+    }
+    indexBuffer = _indexBuffer;
+    vertexPositionBuffer = _vertexPositionBuffer;
+    vertexNormalBuffer = _vertexNormalBuffer;
+    vertexColorBuffer = {};
+
+    setDataDirty();
 }
 
 void IsoSurfaceRasterPass::setRenderData(
         const sgl::vk::BufferPtr& _indexBuffer, const sgl::vk::BufferPtr& _vertexPositionBuffer,
-        const sgl::vk::BufferPtr& _vertexNormalBuffer) {
+        const sgl::vk::BufferPtr& _vertexNormalBuffer, const sgl::vk::BufferPtr& _vertexColorBuffer) {
+    bool useVertexColorsOld = vertexColorBuffer != nullptr;
+    if (!useVertexColorsOld) {
+        setShaderDirty();
+    }
     indexBuffer = _indexBuffer;
     vertexPositionBuffer = _vertexPositionBuffer;
     vertexNormalBuffer = _vertexNormalBuffer;
+    vertexColorBuffer = _vertexColorBuffer;
 
     setDataDirty();
-    //if (rasterData) {
-    //    rasterData->setIndexBuffer(indexBuffer);
-    //    rasterData->setVertexBuffer(vertexPositionBuffer, "vertexPosition");
-    //    rasterData->setVertexBuffer(vertexNormalBuffer, "vertexNormal");
-    //}
 }
 
 void IsoSurfaceRasterPass::loadShader() {
     sgl::vk::ShaderManager->invalidateShaderCache();
     std::map<std::string, std::string> preprocessorDefines;
+    bool useVertexColors = vertexColorBuffer != nullptr;
+    if (useVertexColors) {
+        preprocessorDefines.insert({ "MULTI_COLOR_ISOSURFACE", "" });
+    }
     shaderStages = sgl::vk::ShaderManager->getShaderStages(
             {"IsoSurfaceRasterization.Vertex", "IsoSurfaceRasterization.Fragment"}, preprocessorDefines);
 }
@@ -392,6 +391,10 @@ void IsoSurfaceRasterPass::setGraphicsPipelineInfo(sgl::vk::GraphicsPipelineInfo
     pipelineInfo.setCullMode(sgl::vk::CullMode::CULL_NONE);
     pipelineInfo.setVertexBufferBindingByLocationIndex("vertexPosition", sizeof(glm::vec3));
     pipelineInfo.setVertexBufferBindingByLocationIndex("vertexNormal", sizeof(glm::vec3));
+    bool useVertexColors = vertexColorBuffer != nullptr;
+    if (useVertexColors) {
+        pipelineInfo.setVertexBufferBindingByLocationIndex("vertexColor", sizeof(glm::vec4));
+    }
 }
 
 void IsoSurfaceRasterPass::createRasterData(sgl::vk::Renderer* renderer, sgl::vk::GraphicsPipelinePtr& graphicsPipeline) {
@@ -400,6 +403,9 @@ void IsoSurfaceRasterPass::createRasterData(sgl::vk::Renderer* renderer, sgl::vk
     rasterData->setIndexBuffer(indexBuffer);
     rasterData->setVertexBuffer(vertexPositionBuffer, "vertexPosition");
     rasterData->setVertexBuffer(vertexNormalBuffer, "vertexNormal");
+    if (vertexColorBuffer) {
+        rasterData->setVertexBuffer(vertexColorBuffer, "vertexColor");
+    }
     rasterData->setStaticBuffer(rendererUniformDataBuffer, "RendererUniformDataBuffer");
 }
 

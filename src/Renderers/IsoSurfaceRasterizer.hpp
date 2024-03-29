@@ -31,15 +31,9 @@
 
 #include <Graphics/Vulkan/Render/Passes/Pass.hpp>
 #include "Renderer.hpp"
+#include "IsoSurfaces.hpp"
 
 class IsoSurfaceRasterPass;
-
-enum class IsoSurfaceExtractionTechnique {
-    MARCHING_CUBES, SNAP_MC
-};
-const char* const ISO_SURFACE_EXTRACTION_TECHNIQUE_NAMES[] = {
-        "Marching Cubes", "SnapMC"
-};
 
 class IsoSurfaceRasterizer : public Renderer {
 public:
@@ -92,11 +86,12 @@ public:
 
     // Public interface.
     void setVolumeData(VolumeDataPtr& _volumeData, bool isNewData);
-    void setSelectedScalarFieldName(const std::string& _scalarFieldName);
     void setRenderData(
             const sgl::vk::BufferPtr& _indexBuffer, const sgl::vk::BufferPtr& _vertexPositionBuffer,
             const sgl::vk::BufferPtr& _vertexNormalBuffer);
-    inline void setIsoValue(float _isoValue) { renderSettingsData.isoValue = _isoValue; }
+    void setRenderData(
+            const sgl::vk::BufferPtr& _indexBuffer, const sgl::vk::BufferPtr& _vertexPositionBuffer,
+            const sgl::vk::BufferPtr& _vertexNormalBuffer, const sgl::vk::BufferPtr& _vertexColorBuffer);
     inline void setIsoSurfaceColor(const glm::vec4& _color) { renderSettingsData.isoSurfaceColor = _color; }
     void recreateSwapchain(uint32_t width, uint32_t height) override;
 
@@ -112,11 +107,9 @@ private:
     VolumeDataPtr volumeData;
 
     // Renderer settings.
-    std::string selectedScalarFieldName;
-
     struct RenderSettingsData {
         glm::vec3 cameraPosition;
-        float isoValue;
+        float padding;
         glm::vec4 isoSurfaceColor;
     };
     RenderSettingsData renderSettingsData{};
@@ -125,6 +118,7 @@ private:
     sgl::vk::BufferPtr indexBuffer;
     sgl::vk::BufferPtr vertexPositionBuffer;
     sgl::vk::BufferPtr vertexNormalBuffer;
+    sgl::vk::BufferPtr vertexColorBuffer; ///< Optional; if not present, last entry of uniform buffer is used.
 };
 
 #endif //CORRERENDER_ISOSURFACERASTERIZER_HPP

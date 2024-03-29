@@ -34,10 +34,17 @@ layout(location = 0) in vec3 vertexPosition;
 layout(location = 1) in vec3 vertexNormal;
 layout(location = 0) out vec3 fragmentPositionWorld;
 layout(location = 1) out vec3 fragmentNormal;
+#ifdef MULTI_COLOR_ISOSURFACE
+layout(location = 2) in vec4 vertexColor;
+layout(location = 2) out vec4 isoSurfaceColor;
+#endif
 
 void main() {
     fragmentPositionWorld = vertexPosition;
     fragmentNormal = vertexNormal;
+#ifdef MULTI_COLOR_ISOSURFACE
+    isoSurfaceColor = vertexColor;
+#endif
     gl_Position = mvpMatrix * vec4(vertexPosition, 1.0);
 }
 
@@ -48,19 +55,29 @@ void main() {
 
 layout(binding = 0) uniform RendererUniformDataBuffer {
     vec3 cameraPosition;
-    float isoValue;
+    float padding;
+#ifndef MULTI_COLOR_ISOSURFACE
     vec4 isoSurfaceColor;
+#endif
 };
 
 layout(location = 0) in vec3 fragmentPositionWorld;
 layout(location = 1) in vec3 fragmentNormal;
-layout(location = 0) out vec4 fragColor;
+#ifdef MULTI_COLOR_ISOSURFACE
+layout(location = 2) in vec4 isoSurfaceColor;
+#endif
 
 #include "Lighting.glsl"
 
 #ifdef USE_RENDER_RESTRICTION
 #include "UniformData.glsl"
 #include "RenderRestriction.glsl"
+#endif
+
+#ifdef USE_OIT
+#include "LinkedListGather.glsl"
+#else
+layout(location = 0) out vec4 fragColor;
 #endif
 
 void main() {
@@ -70,11 +87,15 @@ void main() {
     }
 #endif
 
-    vec3 tangentX = dFdx(fragmentPositionWorld);
-    vec3 tangentY = dFdy(fragmentPositionWorld);
+    //vec3 tangentX = dFdx(fragmentPositionWorld);
+    //vec3 tangentY = dFdy(fragmentPositionWorld);
     //vec3 n = normalize(cross(tangentX, tangentY));
     vec3 n = normalize(fragmentNormal);
     vec4 color = blinnPhongShadingSurface(isoSurfaceColor, fragmentPositionWorld, n);
+
+#ifdef USE_OIT
+    gatherFragment(color);
+#else
     fragColor = color;
-    //fragColor = vec4(n * 0.5 + vec3(0.5), 1.0);
+#endif
 }
