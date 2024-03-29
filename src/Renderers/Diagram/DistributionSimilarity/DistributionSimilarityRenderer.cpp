@@ -885,7 +885,7 @@ void DistributionSimilarityRenderer::renderViewPreImpl(uint32_t viewIdx) {
     }
 
     // Render opaque objects.
-    if (useDbscanClustering && showClustering3d
+    if (useDbscanClustering && showClustering3d && indexBuffer
             && distributionAnalysisMode != DistributionAnalysisMode::MEMBER_GRID_CELL_VALUE_VECTOR) {
         isoSurfaceRasterPasses.at(viewIdx)->render();
     }
@@ -1184,7 +1184,8 @@ void DistributionSimilarityRenderer::renderGuiImpl(sgl::PropertyEditor& property
             }
             propertyEditor.endNode();
         }
-        if (propertyEditor.addCheckbox("Show Clustering in 3D", &showClustering3d)) {
+        if (distributionAnalysisMode != DistributionAnalysisMode::MEMBER_GRID_CELL_VALUE_VECTOR
+                && propertyEditor.addCheckbox("Show Clustering in 3D", &showClustering3d)) {
             setRecomputeFlag();
         }
     }
