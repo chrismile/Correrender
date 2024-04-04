@@ -170,6 +170,7 @@ private:
     int numRandomPoints = 4000;
     bool usePredicateField = false;
     int predicateFieldIdx = 0, predicateFieldIdxGui = 0;
+    bool keepDistanceToBorder = false; //< for DistributionAnalysisMode::GRID_CELL_NEIGHBORHOOD_CORRELATION_VECTOR
 
     // t-SNE settings.
     TSNESettings tsneSettings{};

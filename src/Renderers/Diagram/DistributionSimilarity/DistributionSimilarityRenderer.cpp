@@ -220,7 +220,14 @@ void DistributionSimilarityRenderer::samplePointPositions() {
                 int xr = ptIdx % xs;
                 int yr = (ptIdx / xs) % ys;
                 int zr = ptIdx / (xs * ys);
-                if (field[ptIdx] > 0.5f) {
+                bool valid = field[ptIdx] > 0.5f;
+                if (keepDistanceToBorder && distributionAnalysisMode == DistributionAnalysisMode::GRID_CELL_NEIGHBORHOOD_CORRELATION_VECTOR) {
+                    if (xr - neighborhoodRadius < 0 || yr - neighborhoodRadius < 0 || zr - neighborhoodRadius < 0
+                            || xr + neighborhoodRadius >= xs || yr + neighborhoodRadius >= ys || zr + neighborhoodRadius >= zs) {
+                        valid = false;
+                    }
+                }
+                if (valid) {
                     pointGridPositions.emplace_back(xr, yr, zr);
                 }
             }
@@ -237,7 +244,56 @@ void DistributionSimilarityRenderer::samplePointPositions() {
                 int yr = std::clamp(int(std::round(sample[1] * float(ys) - 0.5f)), 0, ys - 1);
                 int zr = std::clamp(int(std::round(sample[2] * float(zs) - 0.5f)), 0, zs - 1);
                 int gridIdx = IDXS(xr, yr, zr);
-                if (field[gridIdx] > 0.5f) {
+                bool valid = field[gridIdx] > 0.5f;
+                if (keepDistanceToBorder && distributionAnalysisMode == DistributionAnalysisMode::GRID_CELL_NEIGHBORHOOD_CORRELATION_VECTOR) {
+                    if (xr - neighborhoodRadius < 0 || yr - neighborhoodRadius < 0 || zr - neighborhoodRadius < 0
+                            || xr + neighborhoodRadius >= xs || yr + neighborhoodRadius >= ys || zr + neighborhoodRadius >= zs) {
+                        valid = false;
+                    }
+                }
+                if (valid) {
+                    pointGridPositions.emplace_back(xr, yr, zr);
+                }
+                sampleIdx++;
+            }
+            delete sampleGenerator;
+        }
+    } else if (keepDistanceToBorder && distributionAnalysisMode == DistributionAnalysisMode::GRID_CELL_NEIGHBORHOOD_CORRELATION_VECTOR) {
+        if (samplingPattern == SamplingPattern::ALL) {
+            int numGridPoints = xs * ys * zs;
+            pointGridPositions.clear();
+            pointGridPositions.reserve(numGridPoints);
+            for (int ptIdx = 0; ptIdx < numGridPoints; ptIdx++) {
+                int xr = ptIdx % xs;
+                int yr = (ptIdx / xs) % ys;
+                int zr = ptIdx / (xs * ys);
+                bool valid = true;
+                if (xr - neighborhoodRadius < 0 || yr - neighborhoodRadius < 0 || zr - neighborhoodRadius < 0
+                        || xr + neighborhoodRadius >= xs || yr + neighborhoodRadius >= ys || zr + neighborhoodRadius >= zs) {
+                    valid = false;
+                }
+                if (valid) {
+                    pointGridPositions.emplace_back(xr, yr, zr);
+                }
+            }
+        } else if (samplingPattern == SamplingPattern::QUASIRANDOM_PLASTIC) {
+            SampleGenerator3D* sampleGenerator = createSampleGenerator3D(
+                    SamplingMethodType::QUASIRANDOM_PLASTIC, false);
+            pointGridPositions.clear();
+            pointGridPositions.reserve(numRandomPoints);
+            int sampleIdx = 0;
+            // Use check "sampleIdx < 100 * numRandomPoints" to make sure rejection sampling terminates at some point.
+            while (int(pointGridPositions.size()) < numRandomPoints && sampleIdx < 100 * numRandomPoints) {
+                glm::vec3 sample = sampleGenerator->next();
+                int xr = std::clamp(int(std::round(sample[0] * float(xs) - 0.5f)), 0, xs - 1);
+                int yr = std::clamp(int(std::round(sample[1] * float(ys) - 0.5f)), 0, ys - 1);
+                int zr = std::clamp(int(std::round(sample[2] * float(zs) - 0.5f)), 0, zs - 1);
+                bool valid = true;
+                if (xr - neighborhoodRadius < 0 || yr - neighborhoodRadius < 0 || zr - neighborhoodRadius < 0
+                        || xr + neighborhoodRadius >= xs || yr + neighborhoodRadius >= ys || zr + neighborhoodRadius >= zs) {
+                    valid = false;
+                }
+                if (valid) {
                     pointGridPositions.emplace_back(xr, yr, zr);
                 }
                 sampleIdx++;
@@ -1120,6 +1176,11 @@ void DistributionSimilarityRenderer::renderGuiImpl(sgl::PropertyEditor& property
         }
         setRecomputeFlag();
     }
+    if (distributionAnalysisMode == DistributionAnalysisMode::GRID_CELL_NEIGHBORHOOD_CORRELATION_VECTOR) {
+        if (propertyEditor.addCheckbox("Keep Distance to Border", &keepDistanceToBorder)) {
+            setRecomputeFlag();
+        }
+    }
 
     if (propertyEditor.addSliderFloat("Point Size", &pointSize, 1.0f, 10.0f)) {
         parentDiagram->setPointRadius(pointSize);
@@ -1433,6 +1494,9 @@ void DistributionSimilarityRenderer::setSettings(const SettingsMap& settings) {
         }
         setRecomputeFlag();
     }
+    if (settings.getValueOpt("keep_distance_to_border", keepDistanceToBorder)) {
+        setRecomputeFlag();
+    }
 
     if (settings.getValueOpt("point_size", pointSize)) {
         parentDiagram->setPointRadius(pointSize);
@@ -1520,6 +1584,7 @@ void DistributionSimilarityRenderer::getSettings(SettingsMap& settings) {
     settings.addKeyValue("num_sampled_points", numRandomPoints);
     settings.addKeyValue("use_predicate_field", usePredicateField);
     settings.addKeyValue("predicate_field_idx", predicateFieldIdxGui);
+    settings.addKeyValue("keep_distance_to_border", keepDistanceToBorder);
 
     settings.addKeyValue("point_size", pointSize);
     settings.addKeyValue("point_color", pointColor.getFloatColorRGBA());
