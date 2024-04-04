@@ -618,6 +618,7 @@ void DistributionSimilarityRenderer::recomputeCorrelationMatrix() {
     dataDirty = false;
     if (fieldIndexGui == 0 || (useSeparateFields && fieldIndex2Gui == 0)) {
         parentDiagram->setPointData({});
+        parentDiagram->setClusterData({});
         return;
     }
 
