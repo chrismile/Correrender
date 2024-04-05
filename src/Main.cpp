@@ -135,6 +135,7 @@ int main(int argc, char *argv[]) {
     sgl::AppSettings::get()->initializeDataDirectory();
 
     std::string iconPath = sgl::AppSettings::get()->getDataDirectory() + "Fonts/icon_256.png";
+    sgl::AppSettings::get()->setApplicationDescription("A visualization tool for correlation fields");
     sgl::AppSettings::get()->loadApplicationIconFromFile(iconPath);
 
 #ifdef __linux__

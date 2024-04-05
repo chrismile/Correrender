@@ -791,7 +791,7 @@ if [ $use_vcpkg = true ] && [ ! -d "./vcpkg" ]; then
         echo "The environment variable VULKAN_SDK is not set but is required in the installation process."
         exit 1
     fi
-    git clone --depth 1 https://github.com/Microsoft/vcpkg.git
+    git clone --depth 1 -b lzma-workaround https://github.com/chrismile/vcpkg.git
     vcpkg/bootstrap-vcpkg.sh -disableMetrics
     vcpkg/vcpkg install
 fi
