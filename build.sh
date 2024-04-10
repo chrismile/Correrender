@@ -354,15 +354,16 @@ elif command -v apt &> /dev/null && ! $use_conda; then
     if $use_vcpkg; then
         if ! is_installed_apt "libgl-dev" || ! is_installed_apt "libxmu-dev" || ! is_installed_apt "libxi-dev" \
                 || ! is_installed_apt "libx11-dev" || ! is_installed_apt "libxft-dev" \
-                || ! is_installed_apt "libxext-dev" || ! is_installed_apt "libwayland-dev" \
-                || ! is_installed_apt "libxkbcommon-dev" || ! is_installed_apt "libegl1-mesa-dev" \
-                || ! is_installed_apt "libibus-1.0-dev" || ! is_installed_apt "autoconf" \
-                || ! is_installed_apt "automake" || ! is_installed_apt "autoconf-archive"; then
+                || ! is_installed_apt "libxext-dev" || ! is_installed_apt "libxrandr-dev" \
+                || ! is_installed_apt "libwayland-dev" || ! is_installed_apt "libxkbcommon-dev" \
+                || ! is_installed_apt "libegl1-mesa-dev" || ! is_installed_apt "libibus-1.0-dev" \
+                || ! is_installed_apt "autoconf" || ! is_installed_apt "automake" \
+                || ! is_installed_apt "autoconf-archive"; then
             echo "------------------------"
             echo "installing dependencies "
             echo "------------------------"
-            sudo apt install -y libgl-dev libxmu-dev libxi-dev libx11-dev libxft-dev libxext-dev libwayland-dev \
-            libxkbcommon-dev libegl1-mesa-dev libibus-1.0-dev autoconf automake autoconf-archive
+            sudo apt install -y libgl-dev libxmu-dev libxi-dev libx11-dev libxft-dev libxext-dev libxrandr-dev \
+            libwayland-dev libxkbcommon-dev libegl1-mesa-dev libibus-1.0-dev autoconf automake autoconf-archive
         fi
     else
         if ! is_installed_apt "libboost-filesystem-dev" || ! is_installed_apt "libglm-dev" \
@@ -795,7 +796,7 @@ if [ $use_vcpkg = true ] && [ ! -d "./vcpkg" ]; then
         echo "The environment variable VULKAN_SDK is not set but is required in the installation process."
         exit 1
     fi
-    git clone --depth 1 -b rpath-lzma-workaround https://github.com/chrismile/vcpkg.git
+    git clone --depth 1 -b fix-libarchive-rpath https://github.com/chrismile/vcpkg.git
     vcpkg/bootstrap-vcpkg.sh -disableMetrics
     vcpkg/vcpkg install
 fi

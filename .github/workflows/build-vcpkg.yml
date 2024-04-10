@@ -83,7 +83,7 @@ jobs:
               fi
             fi
             # Also install the dependencies for building ports like GLEW here.
-            sudo apt install -y libgl-dev libxmu-dev libxi-dev libx11-dev libxft-dev libxext-dev \
+            sudo apt install -y libgl-dev libxmu-dev libxi-dev libx11-dev libxft-dev libxext-dev libxrandr-dev \
             libwayland-dev libxkbcommon-dev libegl1-mesa-dev libibus-1.0-dev autoconf-archive
           elif [ "$RUNNER_OS" == "Windows" ]; then
             # Chocolatey is broken as of 2023-07-07
@@ -119,7 +119,7 @@ jobs:
         uses: lukka/run-vcpkg@v11
         with:
           vcpkgGitURL: 'https://github.com/chrismile/vcpkg.git'
-          vcpkgGitCommitId: '3a0b82e69003f3839e9eef842a64354492a2babe'
+          vcpkgGitCommitId: '00e25d7ae041fea1075e79f017693cfce26088d1'
           vcpkgDirectory: ${{env.VCPKG_ROOT}}
           doNotCacheOnWorkflowFailure: true
 
