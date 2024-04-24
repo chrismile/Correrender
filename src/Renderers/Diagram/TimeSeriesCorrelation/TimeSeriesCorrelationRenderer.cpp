@@ -238,14 +238,18 @@ void TimeSeriesCorrelationRenderer::recomputeCorrelationMatrix() {
         }
     }
     if (correlationMeasureType == CorrelationMeasureType::PEARSON
-        || correlationMeasureType == CorrelationMeasureType::SPEARMAN
-        || correlationMeasureType == CorrelationMeasureType::KENDALL) {
+            || correlationMeasureType == CorrelationMeasureType::SPEARMAN
+            || correlationMeasureType == CorrelationMeasureType::KENDALL) {
         minCorrelationValue = -maxCorrelationValue;
     }
     minCorrelationValueGlobal = minCorrelationValue;
     maxCorrelationValueGlobal = maxCorrelationValue;
 
     auto* buffer = reinterpret_cast<float*>(correlationDataStagingBuffer->mapMemory());
+
+#ifdef TEST_INFERENCE_SPEED
+    auto startCompute = std::chrono::system_clock::now();
+#endif
 
     int numGridPoints = timeSeriesMetadata.samples * numWindows;
     if (correlationMeasureType == CorrelationMeasureType::PEARSON) {
@@ -515,6 +519,13 @@ void TimeSeriesCorrelationRenderer::recomputeCorrelationMatrix() {
         });
 #endif
     }
+
+#ifdef TEST_INFERENCE_SPEED
+    renderer->syncWithCpu();
+    auto endCompute = std::chrono::system_clock::now();
+    auto elapsedCompute = std::chrono::duration_cast<std::chrono::milliseconds>(endCompute - startCompute);
+    std::cout << "Elapsed time compute: " << elapsedCompute.count() << "ms" << std::endl;
+#endif
 
     correlationDataStagingBuffer->unmapMemory();
     correlationDataStagingBuffer->copyDataTo(correlationDataBuffer, renderer->getVkCommandBuffer());
