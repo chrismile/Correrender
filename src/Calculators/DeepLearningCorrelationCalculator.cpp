@@ -214,7 +214,7 @@ void DeepLearningCorrelationCalculator::getSettings(SettingsMap& settings) {
 }
 
 bool DeepLearningCorrelationCalculator::getSupportsSeparateFields() {
-    useSeparateFields = false;
+    correlationFieldMode = CorrelationFieldMode::SINGLE;
     return false;
 }
 

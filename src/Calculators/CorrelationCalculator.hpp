@@ -56,6 +56,13 @@ class ReferencePointSelectionRenderer;
 typedef std::shared_ptr<HostCacheEntryType> HostCacheEntry;
 typedef std::shared_ptr<DeviceCacheEntryType> DeviceCacheEntry;
 
+enum class CorrelationFieldMode {
+    SINGLE, SEPARATE, SEPARATE_SYMMETRIC
+};
+const char* const CORRELATION_FIELD_MODE_NAMES[] = {
+        "Single", "Separate", "Separate Symmetric"
+};
+
 class ICorrelationCalculator : public Calculator {
 public:
     explicit ICorrelationCalculator(sgl::vk::Renderer* renderer);
@@ -69,7 +76,13 @@ public:
     FieldType getOutputFieldType() override { return FieldType::SCALAR; }
     FilterDevice getFilterDevice() override { return FilterDevice::CPU; }
     [[nodiscard]] bool getHasFixedRange() const override { return false; }
-    RendererPtr getCalculatorRenderer() override { return calculatorRenderer; }
+    RendererPtr getCalculatorRenderer() override {
+        if (correlationFieldMode == CorrelationFieldMode::SEPARATE_SYMMETRIC) {
+            return {};
+        } else {
+            return calculatorRenderer;
+        }
+    }
     void update(float dt) override;
     void setReferencePoint(const glm::ivec3& referencePoint);
     void setReferencePointFromWorld(const glm::vec3& worldPosition);
@@ -107,7 +120,7 @@ protected:
     bool dataFromState = false;
     CorrelationDataMode dataMode = CorrelationDataMode::BUFFER_ARRAY;
     bool useBufferTiling = true;
-    bool useSeparateFields = false;
+    CorrelationFieldMode correlationFieldMode = CorrelationFieldMode::SINGLE;
     RendererPtr calculatorRenderer;
     ReferencePointSelectionRenderer* referencePointSelectionRenderer = nullptr;
     bool continuousRecompute = false; ///< Debug option.
@@ -213,7 +226,7 @@ public:
     void setCorrelationMemberCount(int correlationMemberCount);
     void setDataMode(CorrelationDataMode _dataMode);
     void setUseBufferTiling(bool _useBufferTiling);
-    void setUseSeparateFields(bool _useSeparateFields);
+    void setCorrelationFieldMode(CorrelationFieldMode _correlationFieldMode);
     void setFieldBuffers(const std::vector<sgl::vk::BufferPtr>& _fieldBuffers);
     void setFieldImageViews(const std::vector<sgl::vk::ImageViewPtr>& _fieldImageViews);
     void setReferenceValuesBuffer(const sgl::vk::BufferPtr& _referenceValuesBuffer);
@@ -276,7 +289,7 @@ private:
 
     CorrelationDataMode dataMode = CorrelationDataMode::BUFFER_ARRAY;
     bool useBufferTiling = true;
-    bool useSeparateFields = false;
+    CorrelationFieldMode correlationFieldMode = CorrelationFieldMode::SINGLE;
     bool useSecondaryFields = false;
     std::vector<sgl::vk::BufferPtr> fieldBuffers, fieldBuffersSecondary;
     std::vector<sgl::vk::ImageViewPtr> fieldImageViews, fieldImageViewsSecondary;

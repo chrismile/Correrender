@@ -111,7 +111,7 @@ void ICorrelationCalculator::setVolumeData(VolumeData* _volumeData, bool isNewDa
         fieldIndex = fieldIndex2 = volumeData->getStandardScalarFieldIdx();
         fieldIndexGui = fieldIndex2Gui = volumeData->getStandardScalarFieldIdx();
         volumeData->acquireScalarField(this, fieldIndex);
-        if (useSeparateFields) {
+        if (correlationFieldMode != CorrelationFieldMode::SINGLE) {
             volumeData->acquireScalarField(this, fieldIndex2);
         }
 
@@ -167,7 +167,7 @@ void ICorrelationCalculator::onFieldRemoved(FieldType fieldType, int fieldIdx) {
 
         if (fieldIndex2 == fieldIdx) {
             fieldIndex2 = 0;
-            if (useSeparateFields) {
+            if (correlationFieldMode != CorrelationFieldMode::SINGLE) {
                 volumeData->acquireScalarField(this, fieldIndex2);
                 dirty = true;
             }
@@ -217,7 +217,7 @@ void ICorrelationCalculator::setReferencePointFromWorld(const glm::vec3& worldPo
 
 void ICorrelationCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
     bool needsScalarFieldData = getNeedsScalarFieldData();
-    if (needsScalarFieldData && useSeparateFields) {
+    if (needsScalarFieldData && correlationFieldMode != CorrelationFieldMode::SINGLE) {
         if (propertyEditor.addCombo(
                 "Scalar Field Reference", &fieldIndex2Gui, scalarFieldNames.data(), int(scalarFieldNames.size()))) {
             clearFieldDeviceData();
@@ -234,7 +234,7 @@ void ICorrelationCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEditor) 
             volumeData->acquireScalarField(this, fieldIndex);
             dirty = true;
         }
-    } else if (needsScalarFieldData && !useSeparateFields) {
+    } else if (needsScalarFieldData && correlationFieldMode == CorrelationFieldMode::SINGLE) {
         if (propertyEditor.addCombo(
                 "Scalar Field", &fieldIndexGui, scalarFieldNames.data(), int(scalarFieldNames.size()))) {
             clearFieldDeviceData();
@@ -286,9 +286,10 @@ void ICorrelationCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEditor) 
         }
     }
 
-    if (scalarFieldNames.size() > 1 && getSupportsSeparateFields() && propertyEditor.addCheckbox(
-            "Two Fields Mode", &useSeparateFields)) {
-        if (useSeparateFields) {
+    if (scalarFieldNames.size() > 1 && getSupportsSeparateFields() && propertyEditor.addCombo(
+            "Fields Mode", (int*)&correlationFieldMode,
+            CORRELATION_FIELD_MODE_NAMES, IM_ARRAYSIZE(CORRELATION_FIELD_MODE_NAMES))) {
+        if (correlationFieldMode != CorrelationFieldMode::SINGLE) {
             volumeData->acquireScalarField(this, fieldIndex2);
         } else {
             volumeData->releaseScalarField(this, fieldIndex2);
@@ -297,7 +298,7 @@ void ICorrelationCalculator::renderGuiImpl(sgl::PropertyEditor& propertyEditor) 
         dirty = true;
     }
 
-    if (useSeparateFields && isEnsembleMode && volumeData->getTimeStepCount() > 1
+    if (correlationFieldMode != CorrelationFieldMode::SINGLE && isEnsembleMode && volumeData->getTimeStepCount() > 1
             && propertyEditor.addCheckbox("Time Lag Correlations", &useTimeLagCorrelations)) {
         timeLagTimeStepIdx = volumeData->getCurrentTimeStepIdx();
         if (!useTimeLagCorrelations) {
@@ -378,7 +379,7 @@ bool ICorrelationCalculator::getSupportsBufferMode() {
     if (!volumeData->getScalarFieldSupportsBufferMode(fieldIndex)) {
         supportsBufferMode = false;
     }
-    if (useSeparateFields && !volumeData->getScalarFieldSupportsBufferMode(fieldIndex2)) {
+    if (correlationFieldMode != CorrelationFieldMode::SINGLE && !volumeData->getScalarFieldSupportsBufferMode(fieldIndex2)) {
         supportsBufferMode = false;
     }
     if (!supportsBufferMode && dataMode == CorrelationDataMode::BUFFER_ARRAY) {
@@ -395,8 +396,26 @@ bool ICorrelationCalculator::getSupportsSeparateFields() {
 void ICorrelationCalculator::setSettings(const SettingsMap& settings) {
     Calculator::setSettings(settings);
 
+    bool useSeparateFields = false;
     if (settings.getValueOpt("use_separate_fields", useSeparateFields)) {
-        if (useSeparateFields) {
+        if (correlationFieldMode != CorrelationFieldMode::SINGLE) {
+            volumeData->acquireScalarField(this, fieldIndex2);
+        } else {
+            volumeData->releaseScalarField(this, fieldIndex2);
+        }
+        clearFieldDeviceData();
+        dirty = true;
+    }
+
+    std::string correlationFieldModeString;
+    if (settings.getValueOpt("correlation_field_mode", correlationFieldModeString)) {
+        for (int i = 0; i < IM_ARRAYSIZE(CORRELATION_FIELD_MODE_NAMES); i++) {
+            if (correlationFieldModeString == CORRELATION_FIELD_MODE_NAMES[i]) {
+                correlationFieldMode = CorrelationFieldMode(i);
+                break;
+            }
+        }
+        if (correlationFieldMode != CorrelationFieldMode::SINGLE) {
             volumeData->acquireScalarField(this, fieldIndex2);
         } else {
             volumeData->releaseScalarField(this, fieldIndex2);
@@ -406,7 +425,7 @@ void ICorrelationCalculator::setSettings(const SettingsMap& settings) {
     }
 
     bool needsScalarFieldData = getNeedsScalarFieldData();
-    if (needsScalarFieldData && useSeparateFields) {
+    if (needsScalarFieldData && correlationFieldMode != CorrelationFieldMode::SINGLE) {
         if (settings.getValueOpt("scalar_field_idx_ref", fieldIndex2Gui)) {
             clearFieldDeviceData();
             volumeData->releaseScalarField(this, fieldIndex2);
@@ -511,9 +530,10 @@ void ICorrelationCalculator::setSettings(const SettingsMap& settings) {
 void ICorrelationCalculator::getSettings(SettingsMap& settings) {
     Calculator::getSettings(settings);
 
-    settings.addKeyValue("use_separate_fields", useSeparateFields);
+    //settings.addKeyValue("use_separate_fields", useSeparateFields);
+    settings.addKeyValue("correlation_field_mode", CORRELATION_FIELD_MODE_NAMES[int(correlationFieldMode)]);
     bool needsScalarFieldData = getNeedsScalarFieldData();
-    if (needsScalarFieldData && useSeparateFields) {
+    if (needsScalarFieldData && correlationFieldMode != CorrelationFieldMode::SINGLE) {
         settings.addKeyValue("scalar_field_idx_ref", fieldIndex2Gui);
         settings.addKeyValue("scalar_field_idx_query", fieldIndexGui);
     } else {
@@ -596,7 +616,9 @@ void CorrelationCalculator::onCorrelationMemberCountChanged() {
 
 void CorrelationCalculator::clearFieldDeviceData() {
     correlationComputePass->setFieldImageViews({});
+    correlationComputePass->setFieldImageViewsSecondary({});
     correlationComputePass->setFieldBuffers({});
+    correlationComputePass->setFieldBuffersSecondary({});
     correlationComputePass->setReferenceValuesBuffer({});
 #ifdef SUPPORT_CUDA_INTEROP
     correlationComputePass->setReferenceValuesCudaBuffer({});
@@ -779,7 +801,7 @@ void CorrelationCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float
 
     size_t referencePointIdx = IDXS(referencePointIndex.x, referencePointIndex.y, referencePointIndex.z);
     auto* referenceValues = new float[cs];
-    if (useSeparateFields) {
+    if (correlationFieldMode == CorrelationFieldMode::SEPARATE) {
         int timeStepIdxReference = timeStepIdx;
         if (useTimeLagCorrelations) {
             timeStepIdxReference = timeLagTimeStepIdx;
@@ -800,7 +822,7 @@ void CorrelationCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float
     if (isMeasureBinnedMI(correlationMeasureType)) {
         for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
             auto [minVal, maxVal] = getMinMaxScalarFieldValue(
-                    scalarFieldNames.at(useSeparateFields ? fieldIndex2Gui : fieldIndexGui),
+                    scalarFieldNames.at(correlationFieldMode != CorrelationFieldMode::SINGLE ? fieldIndex2Gui : fieldIndexGui),
                     fieldIdx, timeStepIdx, ensembleIdx);
             minFieldValRef = std::min(minFieldValRef, minVal);
             maxFieldValRef = std::max(maxFieldValRef, maxVal);
@@ -811,7 +833,7 @@ void CorrelationCalculator::calculateCpu(int timeStepIdx, int ensembleIdx, float
     }
     float minFieldValQuery = std::numeric_limits<float>::max();
     float maxFieldValQuery = std::numeric_limits<float>::lowest();
-    if (useSeparateFields && isMeasureBinnedMI(correlationMeasureType)) {
+    if (correlationFieldMode != CorrelationFieldMode::SINGLE && isMeasureBinnedMI(correlationMeasureType)) {
         for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
             auto [minVal, maxVal] = getMinMaxScalarFieldValue(
                     scalarFieldNames.at(fieldIndexGui), fieldIdx, timeStepIdx, ensembleIdx);
@@ -1144,15 +1166,26 @@ void CorrelationCalculator::calculateDevice(int timeStepIdx, int ensembleIdx, co
     std::vector<VolumeData::DeviceCacheEntry> fieldEntries;
     std::vector<sgl::vk::ImageViewPtr> fieldImageViews;
     std::vector<sgl::vk::BufferPtr> fieldBuffers;
+    std::vector<VolumeData::DeviceCacheEntry> fieldEntriesSecondary;
+    std::vector<sgl::vk::ImageViewPtr> fieldImageViewsSecondary;
+    std::vector<sgl::vk::BufferPtr> fieldBuffersSecondary;
     correlationComputePass->setDataMode(dataMode);
     correlationComputePass->setUseBufferTiling(useBufferTiling);
-    correlationComputePass->setUseSeparateFields(useSeparateFields);
+    correlationComputePass->setCorrelationFieldMode(correlationFieldMode);
     bool useImageArray = dataMode == CorrelationDataMode::IMAGE_3D_ARRAY;
     fieldEntries.reserve(cs);
     if (useImageArray) {
         fieldBuffers.reserve(cs);
     } else {
         fieldImageViews.reserve(cs);
+    }
+    if (correlationFieldMode == CorrelationFieldMode::SEPARATE_SYMMETRIC) {
+        fieldEntriesSecondary.reserve(cs);
+        if (useImageArray) {
+            fieldBuffersSecondary.reserve(cs);
+        } else {
+            fieldImageViewsSecondary.reserve(cs);
+        }
     }
     for (int fieldIdx = 0; fieldIdx < cs; fieldIdx++) {
         VolumeData::DeviceCacheEntry fieldEntry = getFieldEntryDevice(
@@ -1167,13 +1200,35 @@ void CorrelationCalculator::calculateDevice(int timeStepIdx, int ensembleIdx, co
         } else {
             fieldBuffers.push_back(fieldEntry->getVulkanBuffer());
         }
+        if (correlationFieldMode == CorrelationFieldMode::SEPARATE_SYMMETRIC) {
+            VolumeData::DeviceCacheEntry fieldEntrySecondary = getFieldEntryDevice(
+                    scalarFieldNames.at(fieldIndex2Gui), fieldIdx, timeStepIdx, ensembleIdx, useImageArray);
+            fieldEntriesSecondary.push_back(fieldEntrySecondary);
+            if (useImageArray) {
+                fieldImageViewsSecondary.push_back(fieldEntrySecondary->getVulkanImageView());
+                if (fieldEntrySecondary->getVulkanImage()->getVkImageLayout() != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+                    fieldEntrySecondary->getVulkanImage()->transitionImageLayout(
+                            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, renderer->getVkCommandBuffer());
+                }
+            } else {
+                fieldBuffersSecondary.push_back(fieldEntrySecondary->getVulkanBuffer());
+            }
+        }
     }
+    correlationComputePass->setUseSecondaryFields(correlationFieldMode == CorrelationFieldMode::SEPARATE_SYMMETRIC);
     if (useImageArray) {
         correlationComputePass->setFieldImageViews(fieldImageViews);
     } else {
         correlationComputePass->setFieldBuffers(fieldBuffers);
     }
-    if (useSeparateFields) {
+    if (correlationFieldMode == CorrelationFieldMode::SEPARATE_SYMMETRIC) {
+        if (useImageArray) {
+            correlationComputePass->setFieldImageViewsSecondary(fieldImageViewsSecondary);
+        } else {
+            correlationComputePass->setFieldBuffersSecondary(fieldBuffersSecondary);
+        }
+    }
+    if (correlationFieldMode == CorrelationFieldMode::SEPARATE) {
         int xs = volumeData->getGridSizeX();
         int ys = volumeData->getGridSizeY();
         size_t referencePointIdx = IDXS(referencePointIndex.x, referencePointIndex.y, referencePointIndex.z);
@@ -1208,7 +1263,9 @@ void CorrelationCalculator::calculateDevice(int timeStepIdx, int ensembleIdx, co
     auto startInference = std::chrono::system_clock::now();
 #endif
 
-    if (!isMeasureKraskovMI(correlationMeasureType) || !useCuda) {
+    // TODO: Support CorrelationFieldMode::SEPARATE_SYMMETRIC with CUDA.
+    if (!isMeasureKraskovMI(correlationMeasureType) || !useCuda
+            || correlationFieldMode == CorrelationFieldMode::SEPARATE_SYMMETRIC) {
         correlationComputePass->setOutputImage(deviceCacheEntry->getVulkanImageView());
 
         renderer->insertImageMemoryBarrier(
@@ -1220,7 +1277,7 @@ void CorrelationCalculator::calculateDevice(int timeStepIdx, int ensembleIdx, co
         correlationComputePass->buildIfNecessary();
         correlationComputePass->setReferencePoint(referencePointIndex);
         if (isMeasureBinnedMI(correlationMeasureType)) {
-            if (useSeparateFields) {
+            if (correlationFieldMode != CorrelationFieldMode::SINGLE) {
                 float minFieldValRef = std::numeric_limits<float>::max();
                 float maxFieldValRef = std::numeric_limits<float>::lowest();
                 float minFieldValQuery = std::numeric_limits<float>::max();
@@ -1403,12 +1460,12 @@ void CorrelationComputePass::setUseBufferTiling(bool _useBufferTiling) {
     spearmanReferenceRankComputePass->setUseBufferTiling(_useBufferTiling);
 }
 
-void CorrelationComputePass::setUseSeparateFields(bool _useSeparateFields) {
-    if (useSeparateFields != _useSeparateFields) {
-        useSeparateFields = _useSeparateFields;
+void CorrelationComputePass::setCorrelationFieldMode(CorrelationFieldMode _correlationFieldMode) {
+    if (correlationFieldMode != _correlationFieldMode) {
+        correlationFieldMode = _correlationFieldMode;
         setShaderDirty();
     }
-    spearmanReferenceRankComputePass->setUseSeparateFields(_useSeparateFields);
+    spearmanReferenceRankComputePass->setUseSeparateFields(correlationFieldMode == CorrelationFieldMode::SEPARATE);
 }
 
 void CorrelationComputePass::setFieldBuffers(const std::vector<sgl::vk::BufferPtr>& _fieldBuffers) {
@@ -1578,7 +1635,10 @@ void CorrelationComputePass::loadShader() {
     } else if (useBufferTiling) {
         preprocessorDefines.insert(std::make_pair("SUPPORT_TILING", ""));
     }
-    if (useSeparateFields) {
+    if (correlationFieldMode == CorrelationFieldMode::SEPARATE_SYMMETRIC) {
+        preprocessorDefines.insert(std::make_pair("USE_SECONDARY_FIELDS", ""));
+        preprocessorDefines.insert(std::make_pair("USE_SECONDARY_FIELDS_SYMMETRIC", ""));
+    } else if (correlationFieldMode == CorrelationFieldMode::SEPARATE) {
         preprocessorDefines.insert(std::make_pair("SEPARATE_REFERENCE_AND_QUERY_FIELDS", ""));
     }
     if (useRequestEvaluationMode) {
@@ -1640,7 +1700,7 @@ void CorrelationComputePass::createComputeData(sgl::vk::Renderer* renderer, sgl:
             computeData->setStaticBufferArray(fieldBuffersSecondary, "ScalarFieldBuffersSecondary");
         }
     }
-    if (useSeparateFields) {
+    if (correlationFieldMode == CorrelationFieldMode::SEPARATE) {
         computeData->setStaticBuffer(referenceValuesBuffer, "ReferenceValuesBuffer");
     }
     if (useRequestEvaluationMode) {
@@ -1879,7 +1939,10 @@ void CorrelationComputePass::computeCuda(
     } else if (useBufferTiling) {
         preprocessorDefines.insert(std::make_pair("SUPPORT_TILING", ""));
     }
-    if (useSeparateFields) {
+    if (correlationFieldMode == CorrelationFieldMode::SEPARATE_SYMMETRIC) {
+        preprocessorDefines.insert(std::make_pair("USE_SECONDARY_FIELDS", ""));
+        preprocessorDefines.insert(std::make_pair("USE_SECONDARY_FIELDS_SYMMETRIC", ""));
+    } else if (correlationFieldMode == CorrelationFieldMode::SEPARATE) {
         preprocessorDefines.insert(std::make_pair("SEPARATE_REFERENCE_AND_QUERY_FIELDS", ""));
     }
 
@@ -1973,7 +2036,8 @@ void CorrelationComputePass::computeCuda(
     CUdeviceptr scalarFields =
             dataMode == CorrelationDataMode::IMAGE_3D_ARRAY ? fieldTextureArrayCu : fieldBufferArrayCu;
     CUdeviceptr miArray = outputImageBufferCu;
-    CUdeviceptr referenceValuesPtr = useSeparateFields ? referenceValuesCudaBuffer->getCudaDevicePtr() : 0;
+    CUdeviceptr referenceValuesPtr =
+            correlationFieldMode == CorrelationFieldMode::SEPARATE ? referenceValuesCudaBuffer->getCudaDevicePtr() : 0;
     auto batchSize = uint32_t(M);
     if (batchCount == 1) {
         auto batchOffset = uint32_t(0);

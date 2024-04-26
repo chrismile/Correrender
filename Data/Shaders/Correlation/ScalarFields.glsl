@@ -1,7 +1,7 @@
 #ifndef COMBINE_CORRELATION_MEMBERS
 layout (binding = 0) uniform UniformBuffer {
     uint xs, ys, zs, cs;
-#ifdef USE_SECONDARY_FIELDS
+#if defined(USE_SECONDARY_FIELDS) && !defined(USE_SECONDARY_FIELDS_SYMMETRIC)
     uint xsr, ysr, zsr, paddingUniform0;
     uint xsq, ysq, zsq, paddingUniform1;
 #endif
@@ -20,7 +20,7 @@ layout (binding = 0) uniform UniformBuffer {
     float maxFieldVal;
 };
 #endif
-#if !defined(COMBINE_CORRELATION_MEMBERS) && !defined(USE_SECONDARY_FIELDS)
+#if !defined(COMBINE_CORRELATION_MEMBERS) && (!defined(USE_SECONDARY_FIELDS) || defined(USE_SECONDARY_FIELDS_SYMMETRIC))
 #define xsr xs
 #define ysr ys
 #define zsr zs
@@ -49,7 +49,7 @@ uint IDXS(uint x, uint y, uint z) {
     return tileAddressLinear | voxelAddressLinear;
 }
 
-#ifdef USE_SECONDARY_FIELDS
+#if defined(USE_SECONDARY_FIELDS) && !defined(USE_SECONDARY_FIELDS_SYMMETRIC)
 uint IDXSR(uint x, uint y, uint z) {
     uint xst = (xsr - 1) / TILE_SIZE_X + 1;
     uint yst = (ysr - 1) / TILE_SIZE_Y + 1;
@@ -86,7 +86,7 @@ uint IDXSQ(uint x, uint y, uint z) {
 #else
 
 #define IDXS(x,y,z) ((z)*xs*ys + (y)*xs + (x))
-#ifdef USE_SECONDARY_FIELDS
+#if defined(USE_SECONDARY_FIELDS) && !defined(USE_SECONDARY_FIELDS_SYMMETRIC)
 #define IDXSR(x,y,z) ((z)*xsr*ysr + (y)*xsr + (x))
 #define IDXSQ(x,y,z) ((z)*xsq*ysq + (y)*xsq + (x))
 #else
