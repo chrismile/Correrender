@@ -137,7 +137,15 @@ params_vcpkg=()
 build_sgl_release_only=false
 if [ $use_custom_vcpkg_triplet = true ]; then
     params_link+=(-DVCPKG_TARGET_TRIPLET=$vcpkg_triplet)
-    if grep -q "VCPKG_BUILD_TYPE release" "$projectpath/third_party/vcpkg/triplets/$vcpkg_triplet.cmake"; then
+    if [ -f "$projectpath/third_party/vcpkg/triplets/$vcpkg_triplet.cmake" ]; then
+        triplet_file_path="$projectpath/third_party/vcpkg/triplets/$vcpkg_triplet.cmake"
+    elif [ -f "$projectpath/third_party/vcpkg/triplets/community/$vcpkg_triplet.cmake" ]; then
+        triplet_file_path="$projectpath/third_party/vcpkg/triplets/community/$vcpkg_triplet.cmake"
+    else
+        echo "Custom vcpkg triplet set, but file not found."
+        exit 1
+    fi
+    if grep -q "VCPKG_BUILD_TYPE release" "$triplet_file_path"; then
         build_sgl_release_only=true
     fi
 elif [ $use_vcpkg = true ] && [ $use_macos = false ] && [ $link_dynamic = true ]; then
