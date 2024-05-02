@@ -134,8 +134,12 @@ fi
 
 params_link=()
 params_vcpkg=()
+build_sgl_release_only=false
 if [ $use_custom_vcpkg_triplet = true ]; then
     params_link+=(-DVCPKG_TARGET_TRIPLET=$vcpkg_triplet)
+    if grep -q "VCPKG_BUILD_TYPE release" "$projectpath/third_party/vcpkg/triplets/$vcpkg_triplet.cmake"; then
+        build_sgl_release_only=true
+    fi
 elif [ $use_vcpkg = true ] && [ $use_macos = false ] && [ $link_dynamic = true ]; then
     params_link+=(-DVCPKG_TARGET_TRIPLET=x64-linux-dynamic)
 fi
@@ -853,20 +857,24 @@ if [ ! -d "./sgl/install" ]; then
     echo "------------------------"
 
     pushd "./sgl" >/dev/null
-    mkdir -p $build_dir_debug
+    if ! $build_sgl_release_only; then
+        mkdir -p $build_dir_debug
+    fi
     mkdir -p $build_dir_release
 
-    pushd "$build_dir_debug" >/dev/null
-    cmake .. \
-         -DCMAKE_BUILD_TYPE=Debug \
-         -DCMAKE_INSTALL_PREFIX="../install" \
-         ${params_gen[@]+"${params_gen[@]}"} ${params_link[@]+"${params_link[@]}"} \
-         ${params_vcpkg[@]+"${params_vcpkg[@]}"} ${params_sgl[@]+"${params_sgl[@]}"}
-    if [ $use_vcpkg = false ] && [ $use_macos = false ]; then
-        make -j $(nproc)
-        make install
+    if ! $build_sgl_release_only; then
+        pushd "$build_dir_debug" >/dev/null
+        cmake .. \
+             -DCMAKE_BUILD_TYPE=Debug \
+             -DCMAKE_INSTALL_PREFIX="../install" \
+             ${params_gen[@]+"${params_gen[@]}"} ${params_link[@]+"${params_link[@]}"} \
+             ${params_vcpkg[@]+"${params_vcpkg[@]}"} ${params_sgl[@]+"${params_sgl[@]}"}
+        if [ $use_vcpkg = false ] && [ $use_macos = false ]; then
+            make -j $(nproc)
+            make install
+        fi
+        popd >/dev/null
     fi
-    popd >/dev/null
 
     pushd $build_dir_release >/dev/null
     cmake .. \
@@ -881,16 +889,20 @@ if [ ! -d "./sgl/install" ]; then
     popd >/dev/null
 
     if [ $use_macos = true ]; then
-        cmake --build $build_dir_debug --parallel $(sysctl -n hw.ncpu)
-        cmake --build $build_dir_debug --target install
+        if ! $build_sgl_release_only; then
+            cmake --build $build_dir_debug --parallel $(sysctl -n hw.ncpu)
+            cmake --build $build_dir_debug --target install
+        fi
 
         cmake --build $build_dir_release --parallel $(sysctl -n hw.ncpu)
         cmake --build $build_dir_release --target install
     elif [ $use_vcpkg = true ]; then
-        cmake --build $build_dir_debug --parallel $(nproc)
-        cmake --build $build_dir_debug --target install
-        if [ $link_dynamic = true ]; then
-            cp $build_dir_debug/libsgld.so install/lib/libsgld.so
+        if ! $build_sgl_release_only; then
+            cmake --build $build_dir_debug --parallel $(nproc)
+            cmake --build $build_dir_debug --target install
+            if [ $link_dynamic = true ]; then
+                cp $build_dir_debug/libsgld.so install/lib/libsgld.so
+            fi
         fi
 
         cmake --build $build_dir_release --parallel $(nproc)
