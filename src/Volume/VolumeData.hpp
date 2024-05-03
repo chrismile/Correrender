@@ -280,6 +280,9 @@ public:
     const std::vector<CalculatorPtr>& getCalculators();
     std::vector<std::shared_ptr<ICorrelationCalculator>> getCorrelationCalculatorsUsed();
     [[nodiscard]] inline int getStandardScalarFieldIdx() const { return standardScalarFieldIdx; }
+    void setPrepareVisualizationPipelineCallback(std::function<void()> _prepareVisualizationPipelineCallback) {
+        prepareVisualizationPipelineCallback = _prepareVisualizationPipelineCallback;
+    }
 
     /// Sets data bindings used across renderers.
     virtual void setRenderDataBindings(const sgl::vk::RenderDataPtr& renderData);
@@ -435,6 +438,7 @@ protected:
     sgl::vk::BufferPtr stagingBuffer; ///< For transferring calculator output from the GPU to the CPU.
     std::vector<std::pair<std::string, std::function<Calculator*()>>> factoriesCalculator;
     std::unordered_map<CalculatorType, size_t> calculatorTypeUseCounts;
+    std::function<void()> prepareVisualizationPipelineCallback;
 
     // Associated lat/lon data (may be nullptr).
     float* latData = nullptr;

@@ -1697,14 +1697,14 @@ void VolumeData::resetDirty() {
         // 2023-03-30: Make sure no data is reset for base fields to avoid recomputing on every calculator change.
         int startIdx = isFirstDirty ? int(0) : int(scalarFieldNamesBase.size());
         int numScalarFields = int(scalarFieldNames.size());
+        for (auto& calculator : calculators) {
+            calculator->setVolumeData(this, false);
+        }
         for (int varIdx = startIdx; varIdx < numScalarFields; varIdx++) {
             if (isFirstDirty && varIdx == standardScalarFieldIdx) {
                 continue;
             }
             multiVarTransferFunctionWindow.setAttributeDataDirty(varIdx);
-        }
-        for (auto& calculator : calculators) {
-            calculator->setVolumeData(this, false);
         }
     }
     dirty = false;
@@ -1853,6 +1853,13 @@ void VolumeData::renderGuiCalculators(sgl::PropertyEditor& propertyEditor) {
 
     // The code below was moved outside updateCalculator to avoid the use of invalid cache resources in
     // setAttributeDataDirty.
+    if (!calculatorResetTfWindowList.empty()) {
+        /*
+         * 2024-05-02: In case of a dirty calculator, we should prepare the visualization pipeline first before
+         * multiVarTransferFunctionWindow.setAttributeDataDirty may trigger a recompute using invalid data.
+         */
+        prepareVisualizationPipelineCallback();
+    }
     auto& fieldNames = typeToFieldNamesMap[FieldType::SCALAR];
     for (Calculator* calculator : calculatorResetTfWindowList) {
         if (calculator->getOutputFieldType() == FieldType::SCALAR) {

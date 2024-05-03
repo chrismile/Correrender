@@ -1970,6 +1970,7 @@ void MainApp::loadVolumeDataSet(const std::vector<std::string>& fileNames) {
 
     if (dataLoaded) {
         volumeData = newVolumeData;
+        volumeData->setPrepareVisualizationPipelineCallback([this]() { this->prepareVisualizationPipeline(); });
         //lineData->onMainThreadDataInit();
         volumeData->recomputeHistogram();
         volumeData->setClearColor(clearColor);
