@@ -107,6 +107,7 @@ public:
     virtual void update(float dt) {}
     void renderGui(sgl::PropertyEditor& propertyEditor);
     virtual RendererPtr getCalculatorRenderer() { return {}; }
+    [[nodiscard]] virtual bool getIsCalculatorRendererEnabled() const { return true; }
     [[nodiscard]] virtual bool getShouldRenderGui() const { return false; }
     void setFileDialogInstance(ImGuiFileDialog* _fileDialogInstance) { this->fileDialogInstance = _fileDialogInstance; }
 

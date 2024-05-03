@@ -1887,7 +1887,8 @@ void VolumeData::renderViewCalculator(uint32_t viewIdx) {
     auto varIdx = uint32_t(typeToFieldNamesMapBase[FieldType::SCALAR].size());
     for (const CalculatorPtr& calculator : calculators) {
         auto calculatorRenderer = calculator->getCalculatorRenderer();
-        if (calculatorRenderer && getIsScalarFieldUsedInView(viewIdx, varIdx, calculator.get())) {
+        if (calculatorRenderer && getIsScalarFieldUsedInView(viewIdx, varIdx, calculator.get())
+                && calculator->getIsCalculatorRendererEnabled()) {
             calculatorRenderer->renderViewImpl(viewIdx);
         }
         if (calculator->getOutputFieldType() == FieldType::SCALAR) {
@@ -1900,7 +1901,8 @@ void VolumeData::renderViewCalculatorPostOpaque(uint32_t viewIdx) {
     auto varIdx = uint32_t(typeToFieldNamesMapBase[FieldType::SCALAR].size());
     for (const CalculatorPtr& calculator : calculators) {
         auto calculatorRenderer = calculator->getCalculatorRenderer();
-        if (calculatorRenderer && getIsScalarFieldUsedInView(viewIdx, varIdx, calculator.get())) {
+        if (calculatorRenderer && getIsScalarFieldUsedInView(viewIdx, varIdx, calculator.get())
+                && calculator->getIsCalculatorRendererEnabled()) {
             calculatorRenderer->renderViewPostOpaqueImpl(viewIdx);
         }
         if (calculator->getOutputFieldType() == FieldType::SCALAR) {

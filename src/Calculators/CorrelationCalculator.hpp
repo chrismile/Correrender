@@ -76,12 +76,9 @@ public:
     FieldType getOutputFieldType() override { return FieldType::SCALAR; }
     FilterDevice getFilterDevice() override { return FilterDevice::CPU; }
     [[nodiscard]] bool getHasFixedRange() const override { return false; }
-    RendererPtr getCalculatorRenderer() override {
-        if (correlationFieldMode == CorrelationFieldMode::SEPARATE_SYMMETRIC) {
-            return {};
-        } else {
-            return calculatorRenderer;
-        }
+    RendererPtr getCalculatorRenderer() override { return calculatorRenderer; }
+    [[nodiscard]] bool getIsCalculatorRendererEnabled() const override {
+        return correlationFieldMode != CorrelationFieldMode::SEPARATE_SYMMETRIC;
     }
     void update(float dt) override;
     void setReferencePoint(const glm::ivec3& referencePoint);
