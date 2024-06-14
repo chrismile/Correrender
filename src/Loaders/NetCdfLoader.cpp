@@ -201,6 +201,41 @@ void NetCdfLoader::loadFloatArray3D(
     }
 }
 
+void NetCdfLoader::loadFloatArrayColorCZYX(
+        int varid, size_t coff, size_t zoff, size_t yoff, size_t xoff,
+        size_t clen, size_t zlen, size_t ylen, size_t xlen, float *&array) {
+    array = new float[clen * zlen * ylen * xlen];
+    size_t startp[] = { coff, zoff, yoff, xoff };
+    size_t countp[] = { clen, zlen, ylen, xlen };
+
+    size_t len = clen * zlen * ylen * xlen;
+    auto* arrayChannelLast = new float[len];
+    nc_type vartype;
+    myassert(nc_inq_vartype(ncid, varid, &vartype) == NC_NOERR);
+    if (vartype == NC_FLOAT) {
+        myassert(nc_get_vara_float(ncid, varid, startp, countp, arrayChannelLast) == NC_NOERR);
+    } else if (vartype == NC_DOUBLE) {
+        auto* arrayDouble = new double[len];
+        myassert(nc_get_vara_double(ncid, varid, startp, countp, arrayDouble) == NC_NOERR);
+        for (size_t i = 0; i < len; i++) {
+            arrayChannelLast[i] = float(arrayDouble[i]);
+        }
+        delete[] arrayDouble;
+    }
+    for (size_t c = 0; c < clen; c++) {
+        for (size_t z = 0; z < zlen; z++) {
+            for (size_t y = 0; y < ylen; y++) {
+                for (size_t x = 0; x < xlen; x++) {
+                    size_t idxRead = ((c * zlen + z) * ylen + y) * xlen + x; // CZYX
+                    size_t idxWrite = ((z * ylen + y) * xlen + x) * clen + c; // ZYXC
+                    array[idxWrite] = arrayChannelLast[idxRead];
+                }
+            }
+        }
+    }
+    delete[] arrayChannelLast;
+}
+
 std::string NetCdfLoader::getStringAttribute(int varid, const char* attname) {
     nc_type type;
     size_t length = 0;
@@ -451,6 +486,8 @@ bool NetCdfLoader::setInputFiles(
                 || strcmp(dimNameTimeOrEnsemble, "member") == 0
                 || strcmp(dimNameTimeOrEnsemble, "members") == 0) {
             es = int(tes64);
+        } else if (strcmp(dimNameTimeOrEnsemble, "c") == 0) {
+            isColorData = true;
         } else {
             sgl::Logfile::get()->writeWarning(
                     "Warning in NetCdfLoader::setInputFiles: Unknown dimension name. Assuming time.");
@@ -720,8 +757,13 @@ bool NetCdfLoader::setInputFiles(
             }
         }
 
-        fieldNameMap[FieldType::SCALAR].push_back(variableDisplayName);
-        fieldUnitsMap[FieldType::SCALAR].push_back(variableUnits);
+        if (isColorData) {
+            fieldNameMap[FieldType::COLOR].push_back(variableDisplayName);
+            fieldUnitsMap[FieldType::COLOR].push_back(variableUnits);
+        } else {
+            fieldNameMap[FieldType::SCALAR].push_back(variableDisplayName);
+            fieldUnitsMap[FieldType::SCALAR].push_back(variableUnits);
+        }
         datasetNameMap.insert(std::make_pair(varname, varid));
         datasetNameMap.insert(std::make_pair(variableDisplayName, varid));
         varHasFillValueMap.at(varid) = hasFillValue;
@@ -761,6 +803,7 @@ bool NetCdfLoader::setMetadataFrom(VolumeLoader* other) {
     this->timeDependent2dMap = otherNc->timeDependent2dMap;
     this->varHasFillValueMap = otherNc->varHasFillValueMap;
     this->fillValueMap = otherNc->fillValueMap;
+    this->isColorData = otherNc->isColorData;
     reusedMetadata = true;
     return true;
 }
@@ -813,6 +856,8 @@ bool NetCdfLoader::getFieldEntry(
         }
     } else if (numDims == 4 && ts > 1) {
         loadFloatArray3D(varid, timestepIdx, zmin, ymin, xmin, zs, ys, xs, fieldEntryBuffer);
+    } else if (numDims == 4 && isColorData) {
+        loadFloatArrayColorCZYX(varid, 0, zmin, ymin, xmin, 4, zs, ys, xs, fieldEntryBuffer);
     } else if (numDims == 4 && es > 1) {
         loadFloatArray3D(varid, memberIdx, zmin, ymin, xmin, zs, ys, xs, fieldEntryBuffer);
     } else if (numDims == 2) {
@@ -827,7 +872,7 @@ bool NetCdfLoader::getFieldEntry(
         }
     }
 
-    if (varHasFillValueMap.at(varid)) {
+    if (varHasFillValueMap.at(varid) && !isColorData) {
         int numEntries = xs * ys * zs;
         float fillValue = fillValueMap.at(varid);
         for (int i = 0; i < numEntries; i++) {
@@ -837,7 +882,7 @@ bool NetCdfLoader::getFieldEntry(
         }
     }
 
-    if (dataSetInformation.subsamplingFactorSet) {
+    if (dataSetInformation.subsamplingFactorSet && !isColorData) {
         int subsamplingFactor = dataSetInformation.subsamplingFactor;
         int xsd = xs / subsamplingFactor;
         int ysd = ys / subsamplingFactor;
@@ -870,7 +915,11 @@ bool NetCdfLoader::getFieldEntry(
         delete[] scalarFieldOld;
     }
 
-    fieldEntry = new HostCacheEntryType(xs * ys * zs, fieldEntryBuffer);
+    size_t numEntries = size_t(xs) * size_t(ys) * size_t(zs);
+    if (isColorData) {
+        numEntries *= 4;
+    }
+    fieldEntry = new HostCacheEntryType(numEntries, fieldEntryBuffer);
     if (dataSetInformation.useFormatCast) {
         fieldEntry->switchNativeFormat(dataSetInformation.formatTarget);
     }

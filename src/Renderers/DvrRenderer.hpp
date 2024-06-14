@@ -99,6 +99,7 @@ private:
     sgl::vk::ImageViewPtr sceneImageView;
     float voxelSize = 1.0f;
     NaNHandling nanHandling = NaNHandling::IGNORE;
+    bool isRgba = false;
 
     // Renderer settings.
     int selectedFieldIdx = 0;

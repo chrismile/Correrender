@@ -64,6 +64,7 @@ public:
     DeviceCacheEntryType(sgl::vk::ImagePtr vulkanImage, sgl::vk::ImageSamplerPtr vulkanSampler);
     inline const sgl::vk::ImagePtr& getVulkanImage() { return vulkanImage; }
     [[nodiscard]] ScalarDataFormat getScalarDataFormat() const;
+    [[nodiscard]] bool getIsRGBA() const;
     [[nodiscard]] std::string getImageFormatGlslString() const;
     const sgl::vk::ImageViewPtr& getVulkanImageView();
     const sgl::vk::TexturePtr& getVulkanTexture();

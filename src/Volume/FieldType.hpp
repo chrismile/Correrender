@@ -30,7 +30,7 @@
 #define CORRERENDER_FIELDTYPE_HPP
 
 enum class FieldType : uint32_t {
-    SCALAR, VECTOR
+    SCALAR = 1, VECTOR = 2, COLOR = 4, SCALAR_OR_COLOR = 5
 };
 
 #endif //CORRERENDER_FIELDTYPE_HPP

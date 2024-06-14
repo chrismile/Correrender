@@ -573,11 +573,23 @@ void VolumeData::addField(
 }
 
 const std::vector<std::string>& VolumeData::getFieldNames(FieldType fieldType) {
+    if (fieldType == FieldType::SCALAR_OR_COLOR) {
+        auto& scalarFieldNames = typeToFieldNamesMap[FieldType::SCALAR];
+        fieldNamesMapColorOrScalar = typeToFieldNamesMap[FieldType::COLOR];
+        for (const std::string& name : scalarFieldNames) {
+            fieldNamesMapColorOrScalar.push_back(name);
+        }
+        return fieldNamesMapColorOrScalar;
+    }
     return typeToFieldNamesMap[fieldType];
 }
 
 const std::vector<std::string>& VolumeData::getFieldNamesBase(FieldType fieldType) {
     return typeToFieldNamesMapBase[fieldType];
+}
+
+bool VolumeData::getIsColorField(int fieldIdx) {
+    return fieldIdx < typeToFieldNamesMap[FieldType::COLOR].size();
 }
 
 bool VolumeData::getFieldExists(FieldType fieldType, const std::string& fieldName) const {
@@ -680,6 +692,9 @@ bool VolumeData::setInputFiles(
     } else {
         standardScalarFieldIdx = std::clamp(
                 dataSetInformation.standardScalarFieldIdx, 0, int(getFieldNames(FieldType::SCALAR).size()) - 1);
+        if (standardScalarFieldIdx < 0) {
+            standardScalarFieldIdx = 0;
+        }
     }
 
     // Automatically add calculators for velocity, vorticity and helicity if possible.
@@ -1374,6 +1389,14 @@ void VolumeData::copyCacheEntryImageToBuffer(
 VolumeData::DeviceCacheEntry VolumeData::getFieldEntryDevice(
         FieldType fieldType, const std::string& fieldName, int timeStepIdx, int ensembleIdx,
         bool wantsImageData, const glm::uvec3& bufferTileSize) {
+    if (fieldType == FieldType::SCALAR_OR_COLOR) {
+        auto& fieldNamesColor = typeToFieldNamesMap[FieldType::COLOR];
+        if (std::find(fieldNamesColor.begin(), fieldNamesColor.end(), fieldName) == fieldNamesColor.end()) {
+            fieldType = FieldType::SCALAR;
+        } else {
+            fieldType = FieldType::COLOR;
+        }
+    }
     FieldAccess access = createFieldAccessStruct(fieldType, fieldName, timeStepIdx, ensembleIdx);
     access.isImageData = wantsImageData;
     access.bufferTileSize = bufferTileSize;
@@ -1428,9 +1451,9 @@ VolumeData::DeviceCacheEntry VolumeData::getFieldEntryDevice(
         }
     } else if (wantsImageData) {
         auto& image = deviceCacheEntry->getVulkanImage();
-        if (fieldType == FieldType::SCALAR) {
+        if (fieldType == FieldType::SCALAR || fieldType == FieldType::COLOR) {
             image->uploadData(access.sizeInBytes, bufferCpu->getDataNative());
-        } else {
+        } else if (fieldType == FieldType::VECTOR) {
             size_t bufferEntriesCount = size_t(xs) * size_t(ys) * size_t(zs);
             if (scalarDataFormat == ScalarDataFormat::FLOAT) {
                 const float* bufferIn = bufferCpu->data<float>();

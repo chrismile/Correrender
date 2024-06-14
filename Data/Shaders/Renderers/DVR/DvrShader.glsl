@@ -57,7 +57,9 @@ float closestDepth;
 #include "RayIntersectionTests.glsl"
 #include "Blending.glsl"
 #include "UniformData.glsl"
+#ifndef PRESHADED_VOLUME
 #include "TransferFunction.glsl"
+#endif
 
 #ifdef USE_RENDER_RESTRICTION
 #include "RenderRestriction.glsl"
@@ -108,8 +110,12 @@ void main() {
                 
             vec3 texCoords = (currentPoint - minBoundingBox) / (maxBoundingBox - minBoundingBox);
 
+#ifdef PRESHADED_VOLUME
+            vec4 volumeColor = texture(scalarField, texCoords);
+#else
             float scalarValue = texture(scalarField, texCoords).r;
             vec4 volumeColor = transferFunction(scalarValue, fieldIndex);
+#endif
             float alpha = 1.0 - exp(-volumeColor.a * stepSize * attenuationCoefficient);
             vec4 color = vec4(volumeColor.rgb, alpha);
 

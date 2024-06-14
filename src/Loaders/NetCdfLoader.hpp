@@ -139,6 +139,25 @@ private:
             float*& array);
 
     /**
+     * Loads a 4D floating point variable.
+     * @param ncid The NetCDF file ID.
+     * @param varid The ID of the variable.
+     * @param coff Read offset in the channel dimension.
+     * @param zoff Read offset in the z dimension.
+     * @param yoff Read offset in the y dimension.
+     * @param xoff Read offset in the x dimension.
+     * @param clen Dimension size queried by @ref getDim.
+     * @param zlen Dimension size queried by @ref getDim.
+     * @param ylen Dimension size queried by @ref getDim.
+     * @param xlen Dimension size queried by @ref getDim.
+     * @param array A pointer to a float array where the variable data is to be stored. The function will automatically
+     * allocate the memory. The caller needs to deallocate the allocated memory using "delete[]".
+     */
+    void loadFloatArrayColorCZYX(
+            int varid, size_t coff, size_t zoff, size_t yoff, size_t xoff,
+            size_t clen, size_t zlen, size_t ylen, size_t xlen, float*& array);
+
+    /**
      * Queries a string attribute of a variable.
      * @param ncid The NetCDF file ID.
      * @param varid The ID of the variable.
@@ -166,6 +185,7 @@ private:
     int xst = 0, yst = 0, zst = 0; // In case of subselection: True domain size.
     std::vector<float> timeDependent2dMap;
     bool reusedMetadata = false;
+    bool isColorData = false; // For storing pre-shaded volume data.
 
     // Fill values are optional and replaced with NaN for visualization purposes.
     std::vector<bool> varHasFillValueMap;

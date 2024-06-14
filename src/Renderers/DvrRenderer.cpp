@@ -45,8 +45,10 @@ DvrRenderer::DvrRenderer(ViewManager* viewManager)
 
 DvrRenderer::~DvrRenderer() {
     if (!selectedScalarFieldName.empty()) {
-        volumeData->releaseTf(this, selectedFieldIdx);
-        volumeData->releaseScalarField(this, selectedFieldIdx);
+        if (!volumeData->getIsColorField(selectedFieldIdx)) {
+            volumeData->releaseTf(this, selectedFieldIdx);
+            volumeData->releaseScalarField(this, selectedFieldIdx);
+        }
     }
 }
 
@@ -60,10 +62,12 @@ void DvrRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) {
     }
     volumeData = _volumeData;
     if (!selectedScalarFieldName.empty()) {
-        volumeData->releaseTf(this, oldSelectedFieldIdx);
-        volumeData->releaseScalarField(this, oldSelectedFieldIdx);
+        if (!volumeData->getIsColorField(oldSelectedFieldIdx)) {
+            volumeData->releaseTf(this, oldSelectedFieldIdx);
+            volumeData->releaseScalarField(this, oldSelectedFieldIdx);
+        }
     }
-    const std::vector<std::string>& fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
+    const std::vector<std::string>& fieldNames = volumeData->getFieldNames(FieldType::SCALAR_OR_COLOR);
     if (isNewData) {
         selectedFieldIdx = volumeData->getStandardScalarFieldIdx();
 
@@ -74,8 +78,10 @@ void DvrRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) {
         }
     }
     selectedScalarFieldName = fieldNames.at(selectedFieldIdx);
-    volumeData->acquireTf(this, selectedFieldIdx);
-    volumeData->acquireScalarField(this, selectedFieldIdx);
+    if (!volumeData->getIsColorField(selectedFieldIdx)) {
+        volumeData->acquireTf(this, selectedFieldIdx);
+        volumeData->acquireScalarField(this, selectedFieldIdx);
+    }
     oldSelectedFieldIdx = selectedFieldIdx;
 
     for (auto& dvrPass : dvrPasses) {
@@ -86,7 +92,7 @@ void DvrRenderer::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) {
 }
 
 void DvrRenderer::onFieldRemoved(FieldType fieldType, int fieldIdx) {
-    if (fieldType == FieldType::SCALAR) {
+    if (fieldType == FieldType::SCALAR || fieldType == FieldType::COLOR) {
         if (selectedFieldIdx == fieldIdx) {
             selectedFieldIdx = 0;
         } else if (selectedFieldIdx > fieldIdx) {
@@ -230,7 +236,7 @@ void DvrRenderer::removeViewImpl(uint32_t viewIdx) {
 
 void DvrRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
     if (volumeData) {
-        const std::vector<std::string>& fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
+        const std::vector<std::string>& fieldNames = volumeData->getFieldNames(FieldType::SCALAR_OR_COLOR);
         int selectedFieldIdxGui = selectedFieldIdx;
         if (propertyEditor.addCombo("Scalar Field", &selectedFieldIdxGui, fieldNames.data(), int(fieldNames.size()))) {
             selectedFieldIdx = selectedFieldIdxGui;
@@ -287,7 +293,7 @@ void DvrRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
 void DvrRenderer::setSettings(const SettingsMap& settings) {
     Renderer::setSettings(settings);
     if (settings.getValueOpt("selected_field_idx", selectedFieldIdx)) {
-        const std::vector<std::string>& fieldNames = volumeData->getFieldNames(FieldType::SCALAR);
+        const std::vector<std::string>& fieldNames = volumeData->getFieldNames(FieldType::SCALAR_OR_COLOR);
         selectedFieldIdx = std::clamp(selectedFieldIdx, 0, int(fieldNames.size()) - 1);
         selectedScalarFieldName = fieldNames.at(selectedFieldIdx);
         for (auto& dvrPass : dvrPasses) {
@@ -368,9 +374,15 @@ void DvrPass::setVolumeData(VolumeDataPtr& _volumeData, bool isNewData) {
 void DvrPass::setSelectedScalarField(int _selectedFieldIdx, const std::string& _scalarFieldName) {
     selectedFieldIdx = _selectedFieldIdx;
     selectedScalarFieldName = _scalarFieldName;
-    if (volumeData && computeData) {
-        auto scalarFieldData = volumeData->getFieldEntryDevice(FieldType::SCALAR, selectedScalarFieldName);
-        computeData->setStaticTexture(scalarFieldData->getVulkanTexture(), "scalarField");
+    if (volumeData) {
+        auto scalarFieldData = volumeData->getFieldEntryDevice(FieldType::SCALAR_OR_COLOR, selectedScalarFieldName);
+        if (scalarFieldData->getIsRGBA() != isRgba) {
+            isRgba = scalarFieldData->getIsRGBA();
+            shaderDirty = true;
+        }
+        if (computeData) {
+            computeData->setStaticTexture(scalarFieldData->getVulkanTexture(), "scalarField");
+        }
     }
 }
 
@@ -386,13 +398,18 @@ void DvrPass::loadShader() {
     } else if (nanHandling == NaNHandling::SHOW_AS_YELLOW) {
         preprocessorDefines.insert(std::make_pair("NAN_YELLOW", ""));
     }
+    if (isRgba) {
+        preprocessorDefines.insert(std::make_pair("PRESHADED_VOLUME", ""));
+    }
     shaderStages = sgl::vk::ShaderManager->getShaderStages({"DvrShader.Compute"}, preprocessorDefines);
 }
 
 void DvrPass::createComputeData(sgl::vk::Renderer* renderer, sgl::vk::ComputePipelinePtr& computePipeline) {
-    auto scalarFieldData = volumeData->getFieldEntryDevice(FieldType::SCALAR, selectedScalarFieldName);
+    auto scalarFieldData = volumeData->getFieldEntryDevice(FieldType::SCALAR_OR_COLOR, selectedScalarFieldName);
     computeData = std::make_shared<sgl::vk::ComputeData>(renderer, computePipeline);
-    volumeData->setRenderDataBindings(computeData);
+    if (!isRgba) {
+        volumeData->setRenderDataBindings(computeData);
+    }
     computeData->setStaticBuffer(rendererUniformDataBuffer, "RendererUniformDataBuffer");
     computeData->setStaticTexture(scalarFieldData->getVulkanTexture(), "scalarField");
     computeData->setStaticImageView(sceneImageView, "outputImage");
