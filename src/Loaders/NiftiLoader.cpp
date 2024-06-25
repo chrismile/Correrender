@@ -85,7 +85,7 @@ bool NiftiLoader::setInputFiles(
     float sx = std::abs(header->srow_x[0]);
     float sy = std::abs(header->srow_y[1]);
     float sz = std::abs(header->srow_z[2]);
-    if (!std::isnan(sx) && !std::isnan(sy) && !std::isnan(sz)) {
+    if (!std::isnan(sx) && !std::isnan(sy) && !std::isnan(sz) && sx != 0 && sy != 0 && sz != 0) {
         dx *= sx;
         dy *= sy;
         dz *= sz;
@@ -128,7 +128,7 @@ bool NiftiLoader::getFieldEntry(
     }
 
     ScalarDataFormat dataFormat = ScalarDataFormat::FLOAT;
-    if (header->datatype == DT_FLOAT) {
+    if (header->datatype == DT_FLOAT || header->datatype == DT_DOUBLE) {
         dataFormat = ScalarDataFormat::FLOAT;
     } else if (header->datatype == DT_SIGNED_SHORT) {
         dataFormat = ScalarDataFormat::SHORT;
@@ -141,6 +141,18 @@ bool NiftiLoader::getFieldEntry(
 
     auto* scalarAttributeField = new uint8_t[imageSizeInBytes];
     memcpy(scalarAttributeField, buffer + dataOffset, imageSizeInBytes);
+
+    if (header->datatype == DT_DOUBLE) {
+        auto* scalarAttributeFieldDouble = reinterpret_cast<double*>(scalarAttributeField);
+        scalarAttributeField = new uint8_t[imageSizeInBytes];
+        auto* scalarAttributeFieldFloat = reinterpret_cast<float*>(scalarAttributeField);
+        ptrdiff_t numEntries = imageSizeInBytes / ptrdiff_t(sizeof(double));
+        for (ptrdiff_t i = 0; i < numEntries; i++) {
+            scalarAttributeFieldFloat[i] = float(scalarAttributeFieldDouble[i]);
+        }
+        memcpy(scalarAttributeField, buffer + dataOffset, imageSizeInBytes);
+        delete[] scalarAttributeFieldDouble;
+    }
 
     // TODO: value = header->scl_slope * valueOld + header->scl_inter
     if (std::abs(header->scl_slope - 1.0f) > 1e-4) {
