@@ -150,7 +150,6 @@ bool NiftiLoader::getFieldEntry(
         for (ptrdiff_t i = 0; i < numEntries; i++) {
             scalarAttributeFieldFloat[i] = float(scalarAttributeFieldDouble[i]);
         }
-        memcpy(scalarAttributeField, buffer + dataOffset, imageSizeInBytes);
         delete[] scalarAttributeFieldDouble;
     }
 

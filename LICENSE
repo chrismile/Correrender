@@ -475,3 +475,18 @@ DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
 THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
 THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+
+----------------------------------------------------------------------------
+
+The following license applies to src/Loaders/nifti/nifti1.h.
+
+Niftilib has been developed by members of the NIFTI DFWG and volunteers in the
+neuroimaging community and serves as a reference implementation of the nifti-1
+file format.
+
+http://nifti.nimh.nih.gov/
+
+Nifticlib code is released into the public domain, developers are encouraged to
+incorporate niftilib code into their applications, and, to contribute changes
+and enhancements to niftilib.

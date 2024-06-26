@@ -589,7 +589,7 @@ const std::vector<std::string>& VolumeData::getFieldNamesBase(FieldType fieldTyp
 }
 
 bool VolumeData::getIsColorField(int fieldIdx) {
-    return fieldIdx < typeToFieldNamesMap[FieldType::COLOR].size();
+    return fieldIdx < int(typeToFieldNamesMap[FieldType::COLOR].size());
 }
 
 bool VolumeData::getFieldExists(FieldType fieldType, const std::string& fieldName) const {
