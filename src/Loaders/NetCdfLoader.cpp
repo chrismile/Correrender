@@ -222,7 +222,15 @@ void NetCdfLoader::loadFloatArrayColorCZYX(
         }
         delete[] arrayDouble;
     }
+#ifdef USE_TBB
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, clen), [&](auto const& r) {
+            for (auto c = r.begin(); c != r.end(); c++) {
+#else
+#if _OPENMP >= 201107
+    #pragma omp parallel for shared(clen, zlen, ylen, xlen, array, arrayChannelLast) default(none)
+#endif
     for (size_t c = 0; c < clen; c++) {
+#endif
         for (size_t z = 0; z < zlen; z++) {
             for (size_t y = 0; y < ylen; y++) {
                 for (size_t x = 0; x < xlen; x++) {
@@ -233,6 +241,9 @@ void NetCdfLoader::loadFloatArrayColorCZYX(
             }
         }
     }
+#ifdef USE_TBB
+    });
+#endif
     delete[] arrayChannelLast;
 }
 
@@ -271,7 +282,7 @@ bool NetCdfLoader::setInputFiles(
     int status = nc_open(filePath.c_str(), NC_NOWRITE, &ncid);
     if (status != 0) {
         sgl::Logfile::get()->writeError(
-                "Error in NetCdfLoader::load: File \"" + filePath + "\" couldn't be opened.");
+                "Error in NetCdfLoader::setInputFiles: File \"" + filePath + "\" couldn't be opened.");
         return false;
     }
     isOpen = true;
@@ -384,7 +395,7 @@ bool NetCdfLoader::setInputFiles(
         }
         if (varIdRepresentative < 0) {
             sgl::Logfile::get()->throwError(
-                    "Error in NetCdfLoader::load: Could not find u, v, w (or U, V, W) wind speeds or any other "
+                    "Error in NetCdfLoader::setInputFiles: Could not find u, v, w (or U, V, W) wind speeds or any other "
                     "representative variable in file \"" + filePath + "\".");
         }
     }
@@ -595,7 +606,7 @@ bool NetCdfLoader::setInputFiles(
         }
     } else {
         sgl::Logfile::get()->throwError(
-                "Error in NetCdfLoader::load: Invalid number of dimensions in file \""
+                "Error in NetCdfLoader::setInputFiles: Invalid number of dimensions in file \""
                 + filePath + "\".");
     }
 

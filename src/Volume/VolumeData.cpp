@@ -68,6 +68,9 @@
 #include "Loaders/GribLoader.hpp"
 #endif
 #include "Loaders/NetCdfLoader.hpp"
+#ifdef USE_HDF5
+#include "Loaders/Hdf5Loader.hpp"
+#endif
 #include "Loaders/RbcBinFileLoader.hpp"
 #include "Loaders/StructuredGridVtkLoader.hpp"
 #include "Loaders/VtkXmlLoader.hpp"
@@ -166,6 +169,9 @@ VolumeData::VolumeData(sgl::vk::Renderer* renderer) : renderer(renderer), multiV
             registerVolumeLoader<GribLoader>(),
 #endif
             registerVolumeLoader<NetCdfLoader>(),
+#ifdef USE_HDF5
+            registerVolumeLoader<Hdf5Loader>(),
+#endif
             registerVolumeLoader<RbcBinFileLoader>(),
             registerVolumeLoader<StructuredGridVtkLoader>(),
             registerVolumeLoader<VtkXmlLoader>(),
@@ -747,7 +753,14 @@ bool VolumeData::setInputFiles(
         }
     }*/
 
-    if ((ts > 1 || es > 1) && viewManager) {
+    bool hasScalarData = false;
+    {
+        auto it = typeToFieldNamesMap.find(FieldType::SCALAR);
+        if (it != typeToFieldNamesMap.end() && !it->second.empty()) {
+            hasScalarData = true;
+        }
+    }
+    if ((ts > 1 || es > 1) && hasScalarData && viewManager) {
         addCalculator(std::make_shared<CorrelationCalculator>(renderer));
 /*#ifdef SUPPORT_PYTORCH
         addCalculator(std::make_shared<PyTorchCorrelationCalculator>(renderer));

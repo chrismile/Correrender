@@ -50,6 +50,7 @@
         "nlohmann-json",
         "python3",
         "netcdf-c",
+        "hdf5",
         "blosc",
         "eigen3",
         "nlopt",

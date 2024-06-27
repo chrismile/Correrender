@@ -1342,7 +1342,7 @@ void MainApp::openFileDialog() {
     IGFD_OpenModal(
             fileDialogInstance,
             "ChooseDataSetFile", "Choose a File",
-            ".*,.vtk,.vti,.vts,.vtr,.nc,.zarr,.am,.bin,.field,.cvol,.grib,.grb,.dat,.raw,.mhd,.ctl",
+            ".*,.vtk,.vti,.vts,.vtr,.nc,.hdf5,.zarr,.am,.bin,.field,.cvol,.grib,.grb,.dat,.raw,.mhd,.ctl",
             fileDialogDirectory.c_str(),
             "", 1, nullptr,
             ImGuiFileDialogFlags_None);
@@ -1908,6 +1908,9 @@ bool MainApp::checkHasValidExtension(const std::string& filenameLower) {
             || boost::ends_with(filenameLower, ".vts")
             || boost::ends_with(filenameLower, ".vtr")
             || boost::ends_with(filenameLower, ".nc")
+#ifdef USE_HDF5
+            || boost::ends_with(filenameLower, ".hdf5")
+#endif
             || boost::ends_with(filenameLower, ".zarr")
             || boost::ends_with(filenameLower, ".am")
             || boost::ends_with(filenameLower, ".bin")

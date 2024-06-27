@@ -33,7 +33,7 @@
 #include "VolumeLoader.hpp"
 
 /**
- * For more details on the zarr file format see: https://zarr.readthedocs.io/en/stable/
+ * For more details on the NetCDF file format see: https://zarr.readthedocs.io/en/stable/
  * Used underlying loader library: https://github.com/constantinpape/z5
  */
 class NetCdfLoader : public VolumeLoader {

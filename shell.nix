@@ -28,6 +28,7 @@ pkgs.mkShell {
     nlohmann_json
     c-blosc
     netcdf
+    hdf5
     eccodes
     eigen
     libtiff
