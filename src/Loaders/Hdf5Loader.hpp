@@ -32,6 +32,8 @@
 #include <unordered_map>
 #include "VolumeLoader.hpp"
 
+#include <hdf5.h>
+
 /**
  * For more details on the HDF5 file format see: https://portal.hdfgroup.org/documentation/
  */
@@ -49,9 +51,9 @@ public:
 
 private:
     bool isOpen = false;
-    int64_t fileAccessPropertyList = -1, fileId = -1, volumeDataId = -1, dataSpaceId = -1, memSpaceId = -1;
+    hid_t fileAccessPropertyList = -1, fileId = -1, volumeDataId = -1, dataSpaceId = -1, memSpaceId = -1;
     int rank = 0;
-    std::vector<unsigned long long> dims;
+    std::vector<hsize_t> dims;
     std::string filePath;
     DataSetInformation dataSetInformation;
     std::unordered_map<std::string, int> datasetNameMap;

@@ -37,8 +37,6 @@
 #include <tbb/blocked_range.h>
 #endif
 
-#include <hdf5.h>
-
 #include <Utils/StringUtils.hpp>
 #include <Utils/File/Logfile.hpp>
 
