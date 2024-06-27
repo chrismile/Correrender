@@ -815,26 +815,7 @@ void MainApp::renderGui() {
             fileDialogDirectory = sgl::FileUtils::get()->getPathToFile(filename);
 
             std::string filenameLower = boost::to_lower_copy(filename);
-
-            if (boost::ends_with(filenameLower, ".vtk")
-                    || boost::ends_with(filenameLower, ".vti")
-                    || boost::ends_with(filenameLower, ".vts")
-                    || boost::ends_with(filenameLower, ".vtr")
-                    || boost::ends_with(filenameLower, ".nc")
-                    || boost::ends_with(filenameLower, ".zarr")
-                    || boost::ends_with(filenameLower, ".am")
-                    || boost::ends_with(filenameLower, ".bin")
-                    || boost::ends_with(filenameLower, ".field")
-                    || boost::ends_with(filenameLower, ".cvol")
-                    || boost::ends_with(filenameLower, ".nii")
-#ifdef USE_ECCODES
-                    || boost::ends_with(filenameLower, ".grib")
-                    || boost::ends_with(filenameLower, ".grb")
-#endif
-                    || boost::ends_with(filenameLower, ".dat")
-                    || boost::ends_with(filenameLower, ".raw")
-                    || boost::ends_with(filenameLower, ".mhd")
-                    || boost::ends_with(filenameLower, ".ctl")) {
+            if (checkHasValidExtension(filenameLower)) {
                 selectedDataSetIndex = 0;
                 customDataSetFileName = filename;
                 customDataSetFileNames.clear();
@@ -1918,6 +1899,48 @@ void MainApp::onCameraReset() {
             dataView->camera->setPosition(camera->getPosition());
             dataView->camera->resetLookAtLocation();
         }
+    }
+}
+
+bool MainApp::checkHasValidExtension(const std::string& filenameLower) {
+    if (boost::ends_with(filenameLower, ".vtk")
+            || boost::ends_with(filenameLower, ".vti")
+            || boost::ends_with(filenameLower, ".vts")
+            || boost::ends_with(filenameLower, ".vtr")
+            || boost::ends_with(filenameLower, ".nc")
+            || boost::ends_with(filenameLower, ".zarr")
+            || boost::ends_with(filenameLower, ".am")
+            || boost::ends_with(filenameLower, ".bin")
+            || boost::ends_with(filenameLower, ".field")
+            || boost::ends_with(filenameLower, ".cvol")
+            || boost::ends_with(filenameLower, ".nii")
+#ifdef USE_ECCODES
+            || boost::ends_with(filenameLower, ".grib")
+            || boost::ends_with(filenameLower, ".grb")
+#endif
+            || boost::ends_with(filenameLower, ".dat")
+            || boost::ends_with(filenameLower, ".raw")
+            || boost::ends_with(filenameLower, ".mhd")
+            || boost::ends_with(filenameLower, ".ctl")) {
+        return true;
+    }
+    return false;
+}
+
+void MainApp::onFileDropped(const std::string& droppedFileName) {
+    std::string filenameLower = boost::to_lower_copy(droppedFileName);
+    if (checkHasValidExtension(filenameLower)) {
+        device->waitIdle();
+        fileDialogDirectory = sgl::FileUtils::get()->getPathToFile(droppedFileName);
+        selectedDataSetIndex = 0;
+        customDataSetFileName = droppedFileName;
+        customDataSetFileNames.clear();
+        dataSetType = DataSetType::VOLUME;
+        loadVolumeDataSet(getSelectedDataSetFilenames());
+    } else {
+        sgl::Logfile::get()->writeError(
+                "The dropped file name has an unknown extension \""
+                + sgl::FileUtils::get()->getFileExtension(filenameLower) + "\".");
     }
 }
 
