@@ -155,7 +155,7 @@ if (NOT ${SUPPORT_PYTORCH} OR NOT Torch_FOUND)
     list(REMOVE_ITEM SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/Calculators/PyTorchCorrelationCalculator.cpp)
 endif()
 
-if ("SUPPORT_CUDA_INTEROP" IN_LIST SGL_INTERFACE_COMPILE_DEFINITIONS AND NOT MSYS AND NOT MINGW)
+if ("SUPPORT_CUDA_INTEROP" IN_LIST SGL_INTERFACE_COMPILE_DEFINITIONS)
     if(${CMAKE_VERSION} VERSION_LESS "3.18.0")
         # https://cmake.org/cmake/help/git-stage/module/FindCUDA.html
         find_package(CUDA QUIET)
