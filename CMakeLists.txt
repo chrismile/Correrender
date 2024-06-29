@@ -70,19 +70,19 @@ option(SUPPORT_RENDERDOC_DEBUGGER "Build with the RenderDoc debugger." OFF)
 set(DATA_PATH "${CMAKE_SOURCE_DIR}/Data" CACHE PATH "Location of folder 'Data'")
 add_definitions(-DDATA_PATH=\"${DATA_PATH}\")
 
-if ((UNIX OR MSYS) AND (NOT APPLE OR NOT VCPKG_TOOLCHAIN))
+if ((UNIX OR MSYS OR MINGW) AND (NOT APPLE OR NOT VCPKG_TOOLCHAIN))
     find_package(PkgConfig REQUIRED)
 endif()
 
 # CUDA nvcc does not support MSYS/MinGW.
-if (MSYS)
+if (MSYS OR MINGW)
     set(SUPPORT_PYTORCH OFF)
     set(SUPPORT_TINY_CUDA_NN OFF)
     set(SUPPORT_QUICK_MLP OFF)
 endif()
 
 
-if((MSYS OR (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")) AND ${USE_GLIBCXX_DEBUG})
+if((MSYS OR MINGW OR (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")) AND ${USE_GLIBCXX_DEBUG})
     add_compile_definitions(_GLIBCXX_DEBUG)
 endif()
 
@@ -155,27 +155,25 @@ if (NOT ${SUPPORT_PYTORCH} OR NOT Torch_FOUND)
     list(REMOVE_ITEM SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/Calculators/PyTorchCorrelationCalculator.cpp)
 endif()
 
-if (${SUPPORT_TINY_CUDA_NN} OR ${SUPPORT_QUICK_MLP})
-    if ("SUPPORT_CUDA_INTEROP" IN_LIST SGL_INTERFACE_COMPILE_DEFINITIONS)
-        if(${CMAKE_VERSION} VERSION_LESS "3.18.0")
-            # https://cmake.org/cmake/help/git-stage/module/FindCUDA.html
-            find_package(CUDA QUIET)
-            if(${CUDA_FOUND})
-                set(CUDA_ENABLED true)
-            endif()
-        else()
-            # https://cmake.org/cmake/help/git-stage/module/FindCUDAToolkit.html
-            find_package(CUDAToolkit QUIET)
-            if(${CUDAToolkit_FOUND})
-                set(CUDA_ENABLED true)
-            endif()
-        endif()
-        if (NOT CUDA_FOUND AND NOT CUDAToolkit_FOUND)
-            MESSAGE(STATUS "CUDA could not be found. Disabling tiny-cuda-nn an QuickMLP support.")
+if ("SUPPORT_CUDA_INTEROP" IN_LIST SGL_INTERFACE_COMPILE_DEFINITIONS AND NOT MSYS AND NOT MINGW)
+    if(${CMAKE_VERSION} VERSION_LESS "3.18.0")
+        # https://cmake.org/cmake/help/git-stage/module/FindCUDA.html
+        find_package(CUDA QUIET)
+        if(${CUDA_FOUND})
+            set(CUDA_ENABLED true)
         endif()
     else()
-        MESSAGE(STATUS "sgl was not built with CUDA interoperability support. Disabling tiny-cuda-nn an QuickMLP support.")
+        # https://cmake.org/cmake/help/git-stage/module/FindCUDAToolkit.html
+        find_package(CUDAToolkit QUIET)
+        if(${CUDAToolkit_FOUND})
+            set(CUDA_ENABLED true)
+        endif()
     endif()
+    if (NOT CUDA_FOUND AND NOT CUDAToolkit_FOUND)
+        MESSAGE(STATUS "CUDA could not be found. Disabling tiny-cuda-nn an QuickMLP support.")
+    endif()
+else()
+    MESSAGE(STATUS "sgl was not built with CUDA interoperability support or using unsupported host compiler. Disabling tiny-cuda-nn an QuickMLP support.")
 endif()
 
 set(CUDA_HOST_COMPILER_COMPATIBLE true)
@@ -239,7 +237,7 @@ else()
     add_executable(Correrender ${SOURCES} ${CUDA_SOURCES})
 endif()
 
-if((MSYS OR (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")) AND ${USE_STATIC_STD_LIBRARIES})
+if((MSYS OR MINGW OR (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")) AND ${USE_STATIC_STD_LIBRARIES})
     target_link_options(Correrender PRIVATE -static-libgcc -static-libstdc++)
 endif()
 
@@ -284,14 +282,17 @@ if(MSVC)
 endif()
 
 if(MSVC)
-	# Setting /bigobj globally will lead to problems with nvcc. Two of the errors I noticed:
-	# nvcc fatal   : Don't know what to do with 'C:/bigobj'
-	# nvcc fatal   : A single input file is required for a non-link phase when an outputfile is specified
-	#add_compile_options(/bigobj)
+    # Setting /bigobj globally will lead to problems with nvcc. Two of the errors I noticed:
+    # nvcc fatal   : Don't know what to do with 'C:/bigobj'
+    # nvcc fatal   : A single input file is required for a non-link phase when an outputfile is specified
+    #add_compile_options(/bigobj)
 
-	# Add /bigobj to these files, as otherwise cl.exe will complain during the debug build.
-	SET_SOURCE_FILES_PROPERTIES(${CMAKE_CURRENT_SOURCE_DIR}/src/Renderers/Diagram/HEBChartCorrelation.cpp PROPERTIES COMPILE_FLAGS /bigobj)
-	SET_SOURCE_FILES_PROPERTIES(${CMAKE_CURRENT_SOURCE_DIR}/src/Optimization/OLS/EigenSolver.cpp PROPERTIES COMPILE_FLAGS /bigobj)
+    # Add /bigobj to these files, as otherwise cl.exe will complain during the debug build.
+    SET_SOURCE_FILES_PROPERTIES(${CMAKE_CURRENT_SOURCE_DIR}/src/Renderers/Diagram/HEBChartCorrelation.cpp PROPERTIES COMPILE_FLAGS /bigobj)
+    SET_SOURCE_FILES_PROPERTIES(${CMAKE_CURRENT_SOURCE_DIR}/src/Optimization/OLS/EigenSolver.cpp PROPERTIES COMPILE_FLAGS /bigobj)
+endif()
+if(MSYS OR MINGW)
+    SET_SOURCE_FILES_PROPERTIES(${CMAKE_CURRENT_SOURCE_DIR}/src/Optimization/OLS/EigenSolver.cpp PROPERTIES COMPILE_FLAGS -Wa,-mbig-obj)
 endif()
 
 add_subdirectory(submodules/IsosurfaceCpp)
@@ -309,7 +310,7 @@ if (NOT MSVC)
     endif()
 endif()
 
-if((${CMAKE_GENERATOR} STREQUAL "MinGW Makefiles") OR (${CMAKE_GENERATOR} STREQUAL "MSYS Makefiles"))
+if(MSYS OR MINGW OR (${CMAKE_GENERATOR} STREQUAL "MinGW Makefiles") OR (${CMAKE_GENERATOR} STREQUAL "MSYS Makefiles"))
     if (CMAKE_BUILD_TYPE STREQUAL "Debug")
         set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -mconsole")
     else()
@@ -562,19 +563,6 @@ else()
 endif()
 
 
-# Compile all CUDA modules if sgl is built with CUDA support.
-if ("SUPPORT_CUDA_INTEROP" IN_LIST SGL_INTERFACE_COMPILE_DEFINITIONS AND NOT MSYS)
-    if(${CMAKE_VERSION} VERSION_LESS "3.18.0")
-        # https://cmake.org/cmake/help/git-stage/module/FindCUDA.html
-        find_package(CUDA QUIET)
-    else()
-        # https://cmake.org/cmake/help/git-stage/module/FindCUDAToolkit.html
-        find_package(CUDAToolkit QUIET)
-    endif()
-    file(MAKE_DIRECTORY "${CMAKE_SOURCE_DIR}/Data/__cudacache__")
-    MESSAGE(STATUS "Adding CUDA module compile commands.")
-endif()
-
 function(compile_fatbin SRC OUTPUT)
     add_custom_command(
             OUTPUT "${OUTPUT}"
@@ -584,7 +572,9 @@ function(compile_fatbin SRC OUTPUT)
     )
 endfunction()
 
-if ("SUPPORT_CUDA_INTEROP" IN_LIST SGL_INTERFACE_COMPILE_DEFINITIONS AND NOT MSYS AND ${CUDA_HOST_COMPILER_COMPATIBLE})
+if ("SUPPORT_CUDA_INTEROP" IN_LIST SGL_INTERFACE_COMPILE_DEFINITIONS AND NOT MSYS AND NOT MINGW AND ${CUDA_HOST_COMPILER_COMPATIBLE})
+    file(MAKE_DIRECTORY "${CMAKE_SOURCE_DIR}/Data/__cudacache__")
+    MESSAGE(STATUS "Adding CUDA module compile commands.")
     foreach(CUDA_MODULE IN LISTS CUDA_MODULES)
         get_filename_component(CUDA_MODULE_NAME "${CUDA_MODULE}" NAME_WE)
         set(DEST "${CUDA_MODULE_NAME}.fatbin")
@@ -617,7 +607,7 @@ if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/limbo" AND Eigen3_FOUND)
     else()
         target_link_libraries(Correrender PRIVATE nlopt)
     endif()
-    if (MSVC)
+    if (MSVC OR MSYS OR MINGW)
         target_link_libraries(Correrender PRIVATE ws2_32)
     endif()
     if (${USE_TBB})
