@@ -1021,7 +1021,6 @@ void MainApp::renderGui() {
                         focusedWindowIndex = i;
                     }
                     sgl::ImGuiWrapper::get()->setWindowViewport(i, ImGui::GetWindowViewport());
-                    sgl::ImGuiWrapper::get()->setWindowViewport(i, ImGui::GetWindowViewport());
                     sgl::ImGuiWrapper::get()->setWindowPosAndSize(i, ImGui::GetWindowPos(), ImGui::GetWindowSize());
 
                     ImVec2 cursorPos = ImGui::GetCursorScreenPos();
