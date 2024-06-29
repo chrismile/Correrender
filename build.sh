@@ -255,9 +255,9 @@ if $use_msys && command -v pacman &> /dev/null && [ ! -d $build_dir_debug ] && [
             || ! is_installed_pacman "mingw-w64-x86_64-opencl-headers" \
             || ! is_installed_pacman "mingw-w64-x86_64-opencl-icd" || ! is_installed_pacman "mingw-w64-x86_64-jsoncpp" \
             || ! is_installed_pacman "mingw-w64-x86_64-nlohmann-json" || ! is_installed_pacman "mingw-w64-x86_64-blosc" \
-            || ! is_installed_pacman "mingw-w64-x86_64-netcdf" || ! is_installed_pacman "mingw-w64-x86_64-eccodes" \
-            || ! is_installed_pacman "mingw-w64-x86_64-eigen3" || ! is_installed_pacman "mingw-w64-x86_64-libtiff" \
-            || ! is_installed_pacman "mingw-w64-x86_64-nlopt"; then
+            || ! is_installed_pacman "mingw-w64-x86_64-netcdf" || ! is_installed_pacman "mingw-w64-x86_64-hdf5" \
+            || ! is_installed_pacman "mingw-w64-x86_64-eccodes" || ! is_installed_pacman "mingw-w64-x86_64-eigen3" \
+            || ! is_installed_pacman "mingw-w64-x86_64-libtiff" || ! is_installed_pacman "mingw-w64-x86_64-nlopt"; then
         echo "------------------------"
         echo "installing dependencies "
         echo "------------------------"
@@ -268,8 +268,8 @@ if $use_msys && command -v pacman &> /dev/null && [ ! -d $build_dir_debug ] && [
         mingw64/mingw-w64-x86_64-vulkan-validation-layers mingw64/mingw-w64-x86_64-shaderc \
         mingw64/mingw-w64-x86_64-opencl-headers mingw64/mingw-w64-x86_64-opencl-icd mingw64/mingw-w64-x86_64-jsoncpp \
         mingw64/mingw-w64-x86_64-nlohmann-json mingw64/mingw-w64-x86_64-blosc mingw64/mingw-w64-x86_64-netcdf \
-        mingw64/mingw-w64-x86_64-eccodes mingw64/mingw-w64-x86_64-eigen3 mingw64/mingw-w64-x86_64-libtiff \
-        mingw64/mingw-w64-x86_64-nlopt
+        mingw64/mingw-w64-x86_64-hdf5 mingw64/mingw-w64-x86_64-eccodes mingw64/mingw-w64-x86_64-eigen3 \
+        mingw64/mingw-w64-x86_64-libtiff mingw64/mingw-w64-x86_64-nlopt
     fi
     if ! (is_installed_pacman "mingw-w64-x86_64-curl" || is_installed_pacman "mingw-w64-x86_64-curl-gnutls" \
             || is_installed_pacman "mingw-w64-x86_64-curl-winssl"); then
@@ -359,6 +359,9 @@ elif $use_macos && command -v brew &> /dev/null && [ ! -d $build_dir_debug ] && 
         if ! is_installed_brew "netcdf"; then
             brew install netcdf
         fi
+        if ! is_installed_brew "hdf5"; then
+            brew install hdf5
+        fi
         if ! is_installed_brew "eigen"; then
             brew install eigen
         fi
@@ -407,17 +410,17 @@ elif command -v apt &> /dev/null && ! $use_conda; then
                 || ! is_installed_apt "opencl-c-headers" || ! is_installed_apt "ocl-icd-opencl-dev" \
                 || ! is_installed_apt "libjsoncpp-dev" || ! is_installed_apt "nlohmann-json3-dev" \
                 || ! is_installed_apt "libblosc-dev" || ! is_installed_apt "liblz4-dev" \
-                || ! is_installed_apt "libnetcdf-dev" || ! is_installed_apt "libeccodes-dev" \
-                || ! is_installed_apt "libeccodes-tools" || ! is_installed_apt "libopenjp2-7-dev" \
-                || ! is_installed_apt "libeigen3-dev" || ! is_installed_apt "libtiff-dev" \
-                || ! is_installed_apt "libnlopt-cxx-dev"; then
+                || ! is_installed_apt "libnetcdf-dev" || ! is_installed_apt "libhdf5-dev" \
+                || ! is_installed_apt "libeccodes-dev" || ! is_installed_apt "libeccodes-tools" \
+                || ! is_installed_apt "libopenjp2-7-dev" || ! is_installed_apt "libeigen3-dev" \
+                || ! is_installed_apt "libtiff-dev" || ! is_installed_apt "libnlopt-cxx-dev"; then
             echo "------------------------"
             echo "installing dependencies "
             echo "------------------------"
             sudo apt install -y libboost-filesystem-dev libglm-dev libarchive-dev libtinyxml2-dev libpng-dev libsdl2-dev \
             libsdl2-image-dev libglew-dev opencl-c-headers ocl-icd-opencl-dev libjsoncpp-dev nlohmann-json3-dev \
-            libblosc-dev liblz4-dev libnetcdf-dev libeccodes-dev libeccodes-tools libopenjp2-7-dev libeigen3-dev \
-            libtiff-dev libnlopt-cxx-dev
+            libblosc-dev liblz4-dev libnetcdf-dev libhdf5-dev libeccodes-dev libeccodes-tools libopenjp2-7-dev \
+            libeigen3-dev libtiff-dev libnlopt-cxx-dev
         fi
         if ! (is_installed_apt "libcurl4-openssl-dev" || is_installed_apt "libcurl4-gnutls-dev" \
                 || is_installed_apt "libcurl4-nss-dev"); then
@@ -451,14 +454,14 @@ elif command -v pacman &> /dev/null && ! $use_conda; then
                 || ! is_installed_pacman "vulkan-devel" || ! is_installed_pacman "shaderc" \
                 || ! is_installed_pacman "opencl-headers" || ! is_installed_pacman "ocl-icd" \
                 || ! is_installed_pacman "jsoncpp" || ! is_installed_pacman "nlohmann-json" \
-                || ! is_installed_pacman "blosc" || ! is_installed_pacman "netcdf" || ! is_installed_pacman "eigen" \
-                || ! is_installed_pacman "libtiff" || ! is_installed_pacman "curl" \
+                || ! is_installed_pacman "blosc" || ! is_installed_pacman "netcdf" || ! is_installed_pacman "hdf5" \
+                || ! is_installed_pacman "eigen" || ! is_installed_pacman "libtiff" || ! is_installed_pacman "curl" \
                 || ! is_installed_pacman "nlopt"; then
             echo "------------------------"
             echo "installing dependencies "
             echo "------------------------"
             sudo pacman -S boost glm libarchive tinyxml2 libpng sdl2 sdl2_image glew vulkan-devel shaderc opencl-headers \
-            ocl-icd jsoncpp nlohmann-json blosc netcdf eigen libtiff curl nlopt
+            ocl-icd jsoncpp nlohmann-json blosc netcdf hdf5 eigen libtiff curl nlopt
         fi
         if ! command -v yay &> /dev/null && ! is_installed_yay "eccodes"; then
             echo "------------------------"
@@ -499,15 +502,17 @@ elif command -v yum &> /dev/null && ! $use_conda; then
                 || ! is_installed_rpm "libshaderc-devel" || ! is_installed_rpm "opencl-headers" \
                 || ! is_installed_rpm "ocl-icd" || ! is_installed_rpm "jsoncpp-devel" || ! is_installed_rpm "json-devel" \
                 || ! is_installed_rpm "blosc-devel" || ! is_installed_rpm "netcdf-devel" \
-                || ! is_installed_rpm "eccodes-devel" || ! is_installed_rpm "eigen3-devel" \
-                || ! is_installed_rpm "libtiff-devel" || ! is_installed_rpm "libcurl-devel" \
-                || ! is_installed_rpm "NLopt-devel" || ! is_installed_rpm "expat-devel"; then
+                || ! is_installed_rpm "hdf5-devel" || ! is_installed_rpm "eccodes-devel" \
+                || ! is_installed_rpm "eigen3-devel" || ! is_installed_rpm "libtiff-devel" \
+                || ! is_installed_rpm "libcurl-devel" || ! is_installed_rpm "NLopt-devel" \
+                || ! is_installed_rpm "expat-devel"; then
             echo "------------------------"
             echo "installing dependencies "
             echo "------------------------"
             sudo yum install -y boost-devel glm-devel libarchive-devel tinyxml2-devel libpng-devel SDL2-devel \
             SDL2_image-devel glew-devel vulkan-headers libshaderc-devel opencl-headers ocl-icd jsoncpp-devel json-devel \
-            blosc-devel netcdf-devel eccodes-devel eigen3-devel libtiff-devel libcurl-devel NLopt-devel expat-devel
+            blosc-devel netcdf-devel hdf5-devel eccodes-devel eigen3-devel libtiff-devel libcurl-devel NLopt-devel \
+            expat-devel
         fi
     fi
 elif $use_conda && ! $use_macos; then
@@ -570,9 +575,9 @@ elif $use_conda && ! $use_macos; then
             || ! list_contains "$conda_pkg_list" "libvulkan-headers" || ! list_contains "$conda_pkg_list" "shaderc" \
             || ! list_contains "$conda_pkg_list" "jsoncpp" || ! list_contains "$conda_pkg_list" "nlohmann_json" \
             || ! list_contains "$conda_pkg_list" "blosc" || ! list_contains "$conda_pkg_list" "netcdf4" \
-            || ! list_contains "$conda_pkg_list" "eccodes" || ! list_contains "$conda_pkg_list" "eigen" \
-            || ! list_contains "$conda_pkg_list" "libtiff" || ! list_contains "$conda_pkg_list" "libcurl" \
-            || ! list_contains "$conda_pkg_list" "nlopt"; then
+            || ! list_contains "$conda_pkg_list" "hdf5" || ! list_contains "$conda_pkg_list" "eccodes" \
+            || ! list_contains "$conda_pkg_list" "eigen" || ! list_contains "$conda_pkg_list" "libtiff" \
+            || ! list_contains "$conda_pkg_list" "libcurl" || ! list_contains "$conda_pkg_list" "nlopt"; then
         echo "------------------------"
         echo "installing dependencies "
         echo "------------------------"
@@ -580,7 +585,7 @@ elif $use_conda && ! $use_macos; then
         pkg-config gdb git mesa-libgl-devel-cos7-x86_64 libglvnd-glx-cos7-x86_64 mesa-dri-drivers-cos7-aarch64 \
         libxau-devel-cos7-aarch64 libselinux-devel-cos7-aarch64 libxdamage-devel-cos7-aarch64 \
         libxxf86vm-devel-cos7-aarch64 libxext-devel-cos7-aarch64 xorg-libxfixes xorg-libxau xorg-libxrandr patchelf \
-        libvulkan-headers shaderc jsoncpp nlohmann_json blosc netcdf4 eccodes eigen libtiff libcurl nlopt
+        libvulkan-headers shaderc jsoncpp nlohmann_json blosc netcdf4 hdf5 eccodes eigen libtiff libcurl nlopt
     fi
 else
     echo "Warning: Unsupported system package manager detected." >&2
