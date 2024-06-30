@@ -102,6 +102,10 @@ do
         use_custom_vcpkg_triplet=true
     elif [ ${!i} = "--custom-glslang" ]; then
         custom_glslang=true
+    elif [ ${!i} = "--vkvg" ] || [ ${!i} = "--use-vkvg" ]; then
+        build_with_vkvg_support=true
+    elif [ ${!i} = "--skia" ] || [ ${!i} = "--use-skia" ]; then
+        build_with_skia_support=true
     elif [ ${!i} = "--dlswap" ]; then
         use_download_swapchain=true
         build_with_vkvg_support=true
