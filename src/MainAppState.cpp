@@ -59,13 +59,23 @@ static SettingsMap jsonToSettingsMap(const Json::Value& node) {
 
 static void camToJson(const sgl::CameraPtr& camera, Json::Value& cameraNode) {
     cameraNode["fovy"] = camera->getFOVy();
-    cameraNode["yaw"] = camera->getYaw();
-    cameraNode["pitch"] = camera->getPitch();
+
     Json::Value positionNode;
     positionNode["x"] = camera->getPosition().x;
     positionNode["y"] = camera->getPosition().y;
     positionNode["z"] = camera->getPosition().z;
     cameraNode["position"] = positionNode;
+
+    // Legacy yaw-pitch mode.
+    //cameraNode["yaw"] = camera->getYaw();
+    //cameraNode["pitch"] = camera->getPitch();
+    Json::Value orientationNode;
+    orientationNode["w"] = camera->getOrientation().w;
+    orientationNode["x"] = camera->getOrientation().x;
+    orientationNode["y"] = camera->getOrientation().y;
+    orientationNode["z"] = camera->getOrientation().z;
+    cameraNode["orientation"] = orientationNode;
+
     Json::Value lookAtNode;
     lookAtNode["x"] = camera->getLookAtLocation().x;
     lookAtNode["y"] = camera->getLookAtLocation().y;
@@ -79,8 +89,16 @@ static void jsonToCam(const Json::Value& cameraNode, sgl::CameraPtr& camera) {
     camera->setPosition(glm::vec3(
             positionNode["x"].asFloat(), positionNode["y"].asFloat(), positionNode["z"].asFloat()));
     camera->setFOVy(cameraNode["fovy"].asFloat());
-    camera->setYaw(cameraNode["yaw"].asFloat());
-    camera->setPitch(cameraNode["pitch"].asFloat());
+    // Use legacy yaw only if roll is not set.
+    if (cameraNode.isMember("yaw") && cameraNode.isMember("pitch")) {
+        camera->setYaw(cameraNode["yaw"].asFloat());
+        camera->setPitch(cameraNode["pitch"].asFloat());
+    } else if (cameraNode.isMember("orientation")) {
+        const Json::Value& orientationNode = cameraNode["orientation"];
+        camera->setOrientation(glm::quat(
+                orientationNode["w"].asFloat(), orientationNode["x"].asFloat(),
+                orientationNode["y"].asFloat(), orientationNode["z"].asFloat()));
+    }
     camera->setLookAtLocation(glm::vec3(
             lookAtNode["x"].asFloat(), lookAtNode["y"].asFloat(), lookAtNode["z"].asFloat()));
 }
