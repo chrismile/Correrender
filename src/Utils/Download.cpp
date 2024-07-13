@@ -27,8 +27,9 @@
  */
 
 #include <iostream>
-#include <boost/algorithm/string/replace.hpp>
+
 #include <Utils/Dialog.hpp>
+#include <Utils/StringUtils.hpp>
 
 #include "Download.hpp"
 
@@ -65,8 +66,8 @@ bool downloadFile(const std::string &url, const std::string &localFileName) {
 
     char* compressedUrl = curl_easy_escape(curlHandle, url.c_str(), int(url.size()));
     std::string fixedUrl = compressedUrl;
-    boost::replace_all(fixedUrl, "%3A", ":");
-    boost::replace_all(fixedUrl, "%2F", "/");
+    sgl::stringReplaceAll(fixedUrl, "%3A", ":");
+    sgl::stringReplaceAll(fixedUrl, "%2F", "/");
     std::cout << "Starting to download \"" << fixedUrl << "\"..." << std::endl;
 
     curl_easy_setopt(curlHandle, CURLOPT_URL, fixedUrl.c_str());

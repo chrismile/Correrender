@@ -26,7 +26,6 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <boost/algorithm/string/case_conv.hpp>
 #include <json/json.h>
 
 #include <Utils/AppSettings.hpp>
@@ -45,13 +44,13 @@ DeepLearningCorrelationCalculator::DeepLearningCorrelationCalculator(
         const std::string& implName, const std::string& implNameKey, sgl::vk::Renderer* renderer)
         : ICorrelationCalculator(renderer), implName(implName), implNameKey(implNameKey) {
     implNameKeyUpper = implNameKey;
-    std::string firstCharUpper = boost::to_upper_copy(implNameKeyUpper);
+    std::string firstCharUpper = sgl::toUpperCopy(implNameKeyUpper);
     implNameKeyUpper.at(0) = firstCharUpper.at(0);
     fileDialogKey = "Choose" + implNameKeyUpper + "ModelFile";
     fileDialogDescription = "Choose " + implName + " Model File";
     modelFilePathSettingsKey = implNameKey + "CorrelationCalculatorModelFilePath";
 
-    std::string implNameKeyLower = boost::to_lower_copy(implNameKeyUpper);
+    std::string implNameKeyLower = sgl::toLowerCopy(implNameKeyUpper);
     if (implNameKeyLower == "vmlp") {
         implNameKeyLower = "tinycudann";
     }

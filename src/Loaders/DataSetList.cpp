@@ -26,13 +26,12 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <boost/algorithm/string/predicate.hpp>
-#include <boost/algorithm/string/case_conv.hpp>
 #include <json/json.h>
 
 #include <Utils/AppSettings.hpp>
 #include <Utils/StringUtils.hpp>
 #include <Utils/File/Logfile.hpp>
+#include <Utils/File/FileUtils.hpp>
 #include <Utils/Regex/TransformString.hpp>
 
 #include "DataSetList.hpp"
@@ -87,13 +86,7 @@ void processDataSetNodeChildren(Json::Value& childList, DataSetInformation* data
         if (filenames.isArray()) {
             for (const auto& filename : filenames) {
                 std::string pathString = filename.asString();
-#ifdef _WIN32
-                bool isAbsolutePath =
-                    (pathString.size() > 1 && pathString.at(1) == ':')
-                    || boost::starts_with(pathString, "/") || boost::starts_with(pathString, "\\");
-#else
-                bool isAbsolutePath = boost::starts_with(pathString, "/");
-#endif
+                bool isAbsolutePath = sgl::FileUtils::get()->getIsPathAbsolute(pathString);
                 if (isAbsolutePath) {
                     dataSetInformation->filenames.push_back(pathString);
                 } else {
@@ -102,13 +95,7 @@ void processDataSetNodeChildren(Json::Value& childList, DataSetInformation* data
             }
         } else {
             std::string pathString = filenames.asString();
-#ifdef _WIN32
-            bool isAbsolutePath =
-                    (pathString.size() > 1 && pathString.at(1) == ':')
-                    || boost::starts_with(pathString, "/") || boost::starts_with(pathString, "\\");
-#else
-            bool isAbsolutePath = boost::starts_with(pathString, "/");
-#endif
+            bool isAbsolutePath = sgl::FileUtils::get()->getIsPathAbsolute(pathString);
             if (isAbsolutePath) {
                 dataSetInformation->filenames.push_back(pathString);
             } else {
@@ -196,7 +183,7 @@ void processDataSetNodeChildren(Json::Value& childList, DataSetInformation* data
         // Optional data: Cast scalar data to a different format?
         if (source.isMember("format_cast")) {
             dataSetInformation->useFormatCast = true;
-            std::string formatString = boost::to_lower_copy(source["format_cast"].asString());
+            std::string formatString = sgl::toLowerCopy(source["format_cast"].asString());
             if (formatString == "float") {
                 dataSetInformation->formatTarget = ScalarDataFormat::FLOAT;
             } else if (formatString == "short" || formatString == "ushort") {

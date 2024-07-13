@@ -99,6 +99,7 @@ if(NOT sgl_FOUND)
     set(CMAKE_PREFIX_PATH ${CMAKE_PREFIX_PATH};third_party/sgl/install/lib/cmake/sgl)
     find_package(sgl REQUIRED)
 endif()
+# Boost still necessary for boost::math::digamma and filesystem for dependencies.
 find_package(Boost COMPONENTS system filesystem REQUIRED)
 if(VCPKG_TOOLCHAIN)
     find_package(netCDF CONFIG REQUIRED)
@@ -324,8 +325,8 @@ else()
     target_link_libraries(Correrender PUBLIC SDL2::Main)
 endif()
 
-target_link_libraries(Correrender PUBLIC sgl ${Boost_LIBRARIES})
-include_directories(${sgl_INCLUDES} ${Boost_INCLUDE_DIR})
+target_link_libraries(Correrender PRIVATE sgl ${Boost_LIBRARIES})
+target_include_directories(Correrender PRIVATE ${sgl_INCLUDES} ${Boost_INCLUDE_DIR})
 
 if(VCPKG_TOOLCHAIN)
     target_link_libraries(Correrender PRIVATE tinyxml2::tinyxml2 netCDF::netcdf)

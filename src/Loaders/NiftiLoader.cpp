@@ -26,8 +26,6 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <boost/algorithm/string/case_conv.hpp>
-
 #include <Utils/File/Logfile.hpp>
 #include <Utils/File/FileUtils.hpp>
 #include <Utils/File/FileLoader.hpp>
@@ -68,7 +66,7 @@ bool NiftiLoader::setInputFiles(
     dataOffset = ptrdiff_t(header->vox_offset);
 
     std::string filenameRawLower = sgl::FileUtils::get()->getPureFilename(dataSourceFilename);
-    boost::to_lower(filenameRawLower);
+    sgl::toLower(filenameRawLower);
 
     if (header->dim[0] != 3) {
         sgl::Logfile::get()->throwError(

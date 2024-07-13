@@ -31,8 +31,6 @@
 #include <algorithm>
 #include <csignal>
 
-#include <boost/algorithm/string.hpp>
-
 #ifdef USE_ZEROMQ
 #include <zmq.h>
 #endif
@@ -437,9 +435,9 @@ void MainApp::setNewState(const InternalState &newState) {
     // 3. Load the correct data set file.
     if (newState.dataSetDescriptor != lastState.dataSetDescriptor) {
         selectedDataSetIndex = 0;
-        std::string nameLower = boost::algorithm::to_lower_copy(newState.dataSetDescriptor.name);
+        std::string nameLower = sgl::toLowerCopy(newState.dataSetDescriptor.name);
         for (size_t i = 0; i < dataSetInformationList.size(); i++) {
-            if (boost::algorithm::to_lower_copy(dataSetInformationList.at(i)->name) == nameLower) {
+            if (sgl::toLowerCopy(dataSetInformationList.at(i)->name) == nameLower) {
                 selectedDataSetIndex = int(i) + NUM_MANUAL_LOADERS;
                 break;
             }
@@ -814,7 +812,7 @@ void MainApp::renderGui() {
 
             fileDialogDirectory = sgl::FileUtils::get()->getPathToFile(filename);
 
-            std::string filenameLower = boost::to_lower_copy(filename);
+            std::string filenameLower = sgl::toLowerCopy(filename);
             if (checkHasValidExtension(filenameLower)) {
                 selectedDataSetIndex = 0;
                 customDataSetFileName = filename;
@@ -865,8 +863,8 @@ void MainApp::renderGui() {
 
             exportFieldFileDialogDirectory = sgl::FileUtils::get()->getPathToFile(filename);
 
-            std::string filenameLower = boost::to_lower_copy(filename);
-            if (boost::ends_with(filenameLower, ".nc") || boost::ends_with(filenameLower, ".cvol")) {
+            std::string filenameLower = sgl::toLowerCopy(filename);
+            if (sgl::endsWith(filenameLower, ".nc") || sgl::endsWith(filenameLower, ".cvol")) {
                 volumeData->saveFieldToFile(filename, FieldType::SCALAR, selectedFieldIndexExport);
             } else {
                 sgl::Logfile::get()->writeError(
@@ -1902,35 +1900,35 @@ void MainApp::onCameraReset() {
 }
 
 bool MainApp::checkHasValidExtension(const std::string& filenameLower) {
-    if (boost::ends_with(filenameLower, ".vtk")
-            || boost::ends_with(filenameLower, ".vti")
-            || boost::ends_with(filenameLower, ".vts")
-            || boost::ends_with(filenameLower, ".vtr")
-            || boost::ends_with(filenameLower, ".nc")
+    if (sgl::endsWith(filenameLower, ".vtk")
+            || sgl::endsWith(filenameLower, ".vti")
+            || sgl::endsWith(filenameLower, ".vts")
+            || sgl::endsWith(filenameLower, ".vtr")
+            || sgl::endsWith(filenameLower, ".nc")
 #ifdef USE_HDF5
-            || boost::ends_with(filenameLower, ".hdf5")
+            || sgl::endsWith(filenameLower, ".hdf5")
 #endif
-            || boost::ends_with(filenameLower, ".zarr")
-            || boost::ends_with(filenameLower, ".am")
-            || boost::ends_with(filenameLower, ".bin")
-            || boost::ends_with(filenameLower, ".field")
-            || boost::ends_with(filenameLower, ".cvol")
-            || boost::ends_with(filenameLower, ".nii")
+            || sgl::endsWith(filenameLower, ".zarr")
+            || sgl::endsWith(filenameLower, ".am")
+            || sgl::endsWith(filenameLower, ".bin")
+            || sgl::endsWith(filenameLower, ".field")
+            || sgl::endsWith(filenameLower, ".cvol")
+            || sgl::endsWith(filenameLower, ".nii")
 #ifdef USE_ECCODES
-            || boost::ends_with(filenameLower, ".grib")
-            || boost::ends_with(filenameLower, ".grb")
+            || sgl::endsWith(filenameLower, ".grib")
+            || sgl::endsWith(filenameLower, ".grb")
 #endif
-            || boost::ends_with(filenameLower, ".dat")
-            || boost::ends_with(filenameLower, ".raw")
-            || boost::ends_with(filenameLower, ".mhd")
-            || boost::ends_with(filenameLower, ".ctl")) {
+            || sgl::endsWith(filenameLower, ".dat")
+            || sgl::endsWith(filenameLower, ".raw")
+            || sgl::endsWith(filenameLower, ".mhd")
+            || sgl::endsWith(filenameLower, ".ctl")) {
         return true;
     }
     return false;
 }
 
 void MainApp::onFileDropped(const std::string& droppedFileName) {
-    std::string filenameLower = boost::to_lower_copy(droppedFileName);
+    std::string filenameLower = sgl::toLowerCopy(droppedFileName);
     if (checkHasValidExtension(filenameLower)) {
         device->waitIdle();
         fileDialogDirectory = sgl::FileUtils::get()->getPathToFile(droppedFileName);

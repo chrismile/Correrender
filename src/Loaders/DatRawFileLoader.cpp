@@ -26,9 +26,6 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <boost/algorithm/string/case_conv.hpp>
-#include <boost/algorithm/string/predicate.hpp>
-#include <boost/algorithm/string/trim.hpp>
 #include <glm/vec3.hpp>
 
 #ifdef USE_TBB
@@ -59,17 +56,17 @@ bool DatRawFileLoader::setInputFiles(
     dataSourceFilename = filePath;
     dataSetInformation = _dataSetInformation;
 
-    if (boost::ends_with(dataSourceFilename, ".dat")) {
+    if (sgl::endsWith(dataSourceFilename, ".dat")) {
         datFilePath = dataSourceFilename;
     }
-    if (boost::ends_with(dataSourceFilename, ".raw")) {
+    if (sgl::endsWith(dataSourceFilename, ".raw")) {
         rawFilePaths.push_back(dataSourceFilename);
 
         // We need to find the corresponding .dat file.
         std::string rawFileDirectory = sgl::FileUtils::get()->getPathToFile(rawFilePaths.front());
         std::vector<std::string> filesInDir = sgl::FileUtils::get()->getFilesInDirectoryVector(rawFileDirectory);
         for (const std::string& filePath : filesInDir) {
-            if (boost::ends_with(filePath, ".dat")) {
+            if (sgl::endsWith(filePath, ".dat")) {
                 datFilePath = filePath;
                 break;
             }
@@ -125,9 +122,9 @@ bool DatRawFileLoader::setInputFiles(
 
         std::string datKey = splitLineString.at(0);
         std::string datValue = splitLineString.at(1);
-        boost::trim(datKey);
-        boost::to_lower(datKey);
-        boost::trim(datValue);
+        sgl::stringTrimCopy(datKey);
+        sgl::toLower(datKey);
+        sgl::stringTrimCopy(datValue);
         datDict.insert(std::make_pair(datKey, datValue));
     }
 
@@ -217,7 +214,7 @@ bool DatRawFileLoader::setInputFiles(
         sgl::Logfile::get()->throwError(
                 "Error in DatRawFileLoader::load: Entry 'Format' missing in \"" + datFilePath + "\".");
     }
-    formatString = boost::to_lower_copy(itFormat->second);
+    formatString = sgl::toLowerCopy(itFormat->second);
     if (formatString == "float") {
         numComponents = 1;
         bytesPerEntry = 4;

@@ -30,7 +30,6 @@
 #define __USE_FILE_OFFSET64
 
 #include <cstring>
-#include <boost/algorithm/string/case_conv.hpp>
 
 #include <Utils/StringUtils.hpp>
 #include <Utils/File/Logfile.hpp>
@@ -95,7 +94,7 @@ bool CtlLoader::setInputFiles(
         }
 
         std::string key = splitLineString.at(0);
-        boost::to_lower(key);
+        sgl::toLower(key);
 
         if ((!isVarsMode || key != "endvars")) {
             if (splitLineString.size() < 2) {
@@ -140,7 +139,7 @@ bool CtlLoader::setInputFiles(
             openDataFile(dataFileName);
         } else if (key == "options") {
             std::string optionName = splitLineString.at(1);
-            boost::to_lower(optionName);
+            sgl::toLower(optionName);
             if (optionName == "big_endian") {
                 info.isBigEndian = true;
             } else if (optionName == "little_endian") {
@@ -261,10 +260,10 @@ bool CtlLoader::parseDef(
     }
 
     auto defType = splitLineString.at(0);
-    boost::to_lower(defType);
+    sgl::toLower(defType);
     auto dimLen = ptrdiff_t(sgl::fromString<int>(splitLineString.at(1)));
     std::string dimType = splitLineString.at(2);
-    boost::to_lower(dimType);
+    sgl::toLower(dimType);
 
     std::vector<float> levelsArray;
     if (dimType == "linear") {

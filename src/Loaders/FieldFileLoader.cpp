@@ -26,8 +26,6 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <boost/algorithm/string/case_conv.hpp>
-
 #include <Math/half/half.hpp>
 #include <Utils/File/Logfile.hpp>
 #include <Utils/File/FileUtils.hpp>
@@ -63,7 +61,7 @@ bool FieldFileLoader::setInputFiles(
     buffer = nullptr;
 
     std::string filenameRawLower = sgl::FileUtils::get()->getPureFilename(dataSourceFilename);
-    boost::to_lower(filenameRawLower);
+    sgl::toLower(filenameRawLower);
     numBytesData = length - sizeof(FieldFileHeader);
     if (filenameRawLower.find("uvwp") != std::string::npos) {
         fileHeader.dimensions = 3;

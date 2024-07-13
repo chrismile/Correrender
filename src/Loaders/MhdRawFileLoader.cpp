@@ -26,9 +26,6 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <boost/algorithm/string/case_conv.hpp>
-#include <boost/algorithm/string/predicate.hpp>
-#include <boost/algorithm/string/trim.hpp>
 #include <glm/vec3.hpp>
 
 #ifdef USE_TBB
@@ -73,17 +70,17 @@ bool MhdRawFileLoader::setInputFiles(
     dataSourceFilename = filePath;
     dataSetInformation = _dataSetInformation;
 
-    if (boost::ends_with(dataSourceFilename, ".mhd")) {
+    if (sgl::endsWith(dataSourceFilename, ".mhd")) {
         mhdFilePath = dataSourceFilename;
     }
-    if (boost::ends_with(dataSourceFilename, ".raw")) {
+    if (sgl::endsWith(dataSourceFilename, ".raw")) {
         rawFilePath = dataSourceFilename;
 
         // We need to find the corresponding .mhd file.
         std::string rawFileDirectory = sgl::FileUtils::get()->getPathToFile(rawFilePath);
         std::vector<std::string> filesInDir = sgl::FileUtils::get()->getFilesInDirectoryVector(rawFileDirectory);
         for (const std::string& filePath : filesInDir) {
-            if (boost::ends_with(filePath, ".mhd")) {
+            if (sgl::endsWith(filePath, ".mhd")) {
                 mhdFilePath = filePath;
                 break;
             }
@@ -139,9 +136,9 @@ bool MhdRawFileLoader::setInputFiles(
 
         std::string mhdKey = splitLineString.at(0);
         std::string mhdValue = splitLineString.at(1);
-        boost::trim(mhdKey);
-        //boost::to_lower(mhdKey);
-        boost::trim(mhdValue);
+        sgl::stringTrimCopy(mhdKey);
+        //sgl::toLower(mhdKey);
+        sgl::stringTrimCopy(mhdValue);
         mhdDict.insert(std::make_pair(mhdKey, mhdValue));
     }
 

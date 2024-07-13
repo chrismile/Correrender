@@ -30,8 +30,6 @@
 #include <utility>
 #include <cstring>
 
-#include <boost/algorithm/string/case_conv.hpp>
-
 #ifdef USE_TBB
 #include <tbb/parallel_for.h>
 #include <tbb/parallel_reduce.h>
@@ -2433,7 +2431,7 @@ void VolumeData::setFileDialogInstance(ImGuiFileDialog* _fileDialogInstance) {
 }
 
 bool VolumeData::saveFieldToFile(const std::string& filePath, FieldType fieldType, int fieldIndex) {
-    std::string filenameLower = boost::to_lower_copy(filePath);
+    std::string filenameLower = sgl::toLowerCopy(filePath);
     if (fieldType != FieldType::SCALAR) {
         sgl::Logfile::get()->writeError(
                 "Error in VolumeData::saveFieldToFile: Currently, only the export of scalar fields is supported.");
