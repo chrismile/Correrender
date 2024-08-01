@@ -630,6 +630,7 @@ __global__ void mutualInformationKraskov(
     mi = fmaxf(mi, 0.0f);
 
 #ifdef MI_CORRELATION_COEFFICIENT
+    // For more information on MICC see "An informational measure of correlation", Linfoot 1957.
     mi = sqrtf(1.0f - expf(-2.0f * mi));
 #endif
 

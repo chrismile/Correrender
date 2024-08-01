@@ -40,6 +40,7 @@ const char* const DATA_MODE_NAMES[] = { "Image 3D Array", "Buffer Array" };
 
 enum class CorrelationMeasureType {
     PEARSON, SPEARMAN, KENDALL, MUTUAL_INFORMATION_BINNED, MUTUAL_INFORMATION_KRASKOV,
+    // For more information on MICC see "An informational measure of correlation", Linfoot 1957.
     BINNED_MI_CORRELATION_COEFFICIENT, KMI_CORRELATION_COEFFICIENT
 };
 const char* const CORRELATION_MEASURE_TYPE_NAMES[] = {

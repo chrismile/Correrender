@@ -33,7 +33,7 @@
 /*
  * - Overview over different analytic and iterative solvers:
  *   https://www.sci.utah.edu/~wald/Publications/2004/iso/IsoIsec_VMV2004.pdf
- * - Overview of analytic cubic solvrr with algorithm by Schwarze:
+ * - Overview of analytic cubic solver with algorithm by Schwarze:
  *   https://www.ppsloan.org/publications/iso98.pdf
      For more details on solver, see: https://dl.acm.org/doi/abs/10.5555/90767.90877
  */

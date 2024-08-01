@@ -154,6 +154,7 @@ void main() {
     }
 
 #ifdef MI_CORRELATION_COEFFICIENT
+    // For more information on MICC see "An informational measure of correlation", Linfoot 1957.
     mi = sqrt(1.0 - exp(-2.0 * mi));
 #endif
 
