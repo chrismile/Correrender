@@ -28,8 +28,8 @@
     {
         const uint numChannelsInPadded = layerIdx == 0 ? NUM_CHANNELS_IN_PADDED : NUM_CHANNELS_HIDDEN;
         const uint numChannelsOutPadded = layerIdx == NUM_LAYERS - 1 ? NUM_CHANNELS_OUT_PADDED : NUM_CHANNELS_HIDDEN;
-        const uint nCols = numChannelsInPadded / M;
-        const uint nRows = numChannelsOutPadded / M; // May be less than N_ROWS for the last layer.
+        const uint numCols = numChannelsInPadded / K;
+        const uint numRows = numChannelsOutPadded / M; // May be less than NUM_ROWS for the last layer.
         weightStride = numChannelsInPadded;
 #if defined(LAYER_USE_SHARED_MEMORY_INPUT) && defined(BANK_SKEW)
         inputStride = (numChannelsInPadded + BANK_SKEW) / SMEM_FACTOR;
@@ -42,20 +42,20 @@
         outputStride = numChannelsOutPadded / SMEM_FACTOR;
 #endif
 
-if (blockRowIdx < nRows) {
+        if (blockRowIdx < numRows) {
             // Clear the output matrices.
-            [[unroll]] for (uint b = 0; b < N_BATCH; b++) {
+            [[unroll]] for (uint b = 0; b < NUM_BATCHES; b++) {
                 outputMat[b] = CoopMatAcc(0.0);
             }
 
-            for (uint c = 0; c < nCols; c++) {
-                const uint weightOffset = weightOffsetBase + c * M + blockRowIdx * M * weightStride;
+            for (uint c = 0; c < numCols; c++) {
+                const uint weightOffset = weightOffsetBase + c * K + blockRowIdx * M * weightStride;
                 matLoad(weightsMat, parametersBuffer, weightOffset, weightStride, ROW_MAJOR);
-                [[unroll]] for (uint b = 0; b < N_BATCH; b++) {
+                [[unroll]] for (uint b = 0; b < NUM_BATCHES; b++) {
 #ifdef LAYER_USE_SHARED_MEMORY_INPUT
-                    inputOffset = c * (M / SMEM_FACTOR) + b * M * inputStride;
+                    inputOffset = c * (K / SMEM_FACTOR) + b * N * inputStride;
 #else
-                    inputOffset = c * (M / SMEM_FACTOR) + b * M * inputStride + batchOffset * NUM_CHANNELS_IN_PADDED;
+                    inputOffset = c * (K / SMEM_FACTOR) + b * N * inputStride + batchOffset * NUM_CHANNELS_IN_PADDED;
 #endif
                     matLoad(
                             inputMat,
@@ -73,12 +73,12 @@ if (blockRowIdx < nRows) {
 #ifdef NO_OUTPUT_ACTIVATION
             if (layerIdx != NUM_LAYERS - 1) {
 #endif
-                /*for (uint i = localThreadIdx; i < M * M * N_BATCH; i += SUBGROUP_SIZE) {
+                /*for (uint i = localThreadIdx; i < M * M * NUM_BATCHES; i += SUBGROUP_SIZE) {
                     const uint b = i % (M * M);
                     const uint j = i / (M * M);
                     outputMat[b][j] = ACTIVATION_FUNCTION(outputMat[b][j]);
                 }*/
-                [[unroll]] for (uint b = 0; b < N_BATCH; b++) {
+                [[unroll]] for (uint b = 0; b < NUM_BATCHES; b++) {
                     for (uint i = 0; i < outputMat[b].length(); ++i) {
                         outputMat[b][i] = ACTIVATION_FUNCTION(outputMat[b][i]);
                     }
@@ -90,13 +90,13 @@ if (blockRowIdx < nRows) {
 
         barrier();
 
-        if (blockRowIdx < nRows) {
+        if (blockRowIdx < numRows) {
             // Store to shared memory.
-            [[unroll]] for (uint b = 0; b < N_BATCH; b++) {
+            [[unroll]] for (uint b = 0; b < NUM_BATCHES; b++) {
 #ifdef LAYER_USE_SHARED_MEMORY_OUTPUT
-                outputOffset = blockRowIdx * (M / SMEM_FACTOR) + b * M * outputStride;
+                outputOffset = blockRowIdx * (M / SMEM_FACTOR) + b * N * outputStride;
 #else
-                outputOffset = blockRowIdx * (M / SMEM_FACTOR) + b * M * outputStride + batchOffset * NUM_CHANNELS_OUT_PADDED;
+                outputOffset = blockRowIdx * (M / SMEM_FACTOR) + b * N * outputStride + batchOffset * NUM_CHANNELS_OUT_PADDED;
 #endif
                 matStore(
                         outputMat[b],

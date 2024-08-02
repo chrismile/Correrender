@@ -34,6 +34,21 @@
 struct QuickMLPModuleWrapper;
 struct QuickMLPCacheWrapper;
 
+/**
+ * Uses QuickMLP for the implementation of the network architecture described in the following publication:
+ *
+ * Farokhmanesh, F., K. Höhlein, C. Neuhauser, T. Necker, M. Weissmann, T. Miyoshi, and R. Westermann (2023).
+ * "Neural Fields for Interactive Visualization of Statistical Dependencies in 3D Simulation Ensembles".
+ * In: Vision, Modeling, and Visualization. The Eurographics Association. ISBN: 978-3-03868-232-5.
+ * DOI: https://doi.org/10.2312/vmv.20231229.
+ *
+ * For more details see:
+ * - Weiss, S. (2023). tiny-cuda-nn. URL: https://github.com/shamanDevel/quick-mlp.
+ * - Müller, T., A. Evans, C. Schied, and A. Keller (2022). "Instant Neural Graphics Primitives with a Multiresolution
+ *   Hash Encoding". In: ACM Trans. Graph. 41.4. ISSN: 0730-0301. DOI: https://doi.org/10.1145/3528223.3530127.
+ * - Müller, T., F. Rousselle, J. Novák, and A. Keller (2021). "Real-Time Neural Radiance Caching for Path Tracing".
+ *   In: ACM Trans. Graph. 40.4. ISSN: 0730-0301. DOI: https://doi.org/10.1145/3450626.3459812.
+ */
 class QuickMLPCorrelationCalculator : public DeepLearningCudaCorrelationCalculator {
 public:
     explicit QuickMLPCorrelationCalculator(sgl::vk::Renderer* renderer);

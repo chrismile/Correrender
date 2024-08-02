@@ -42,6 +42,14 @@
 #include "VMLP/Symmetrizer.hpp"
 #include "VMLPCorrelationCalculator.hpp"
 
+std::string MatrixBlockSize::toString() {
+    if (M == K && K == N) {
+        return std::to_string(M);
+    } else {
+        return "M=" + std::to_string(M) + ", K=" + std::to_string(K) + ", N=" + std::to_string(N);
+    }
+}
+
 struct VMLPModuleWrapper {
     Json::Value configGeneral;
     Json::Value configEncoder;
@@ -344,21 +352,49 @@ VMLPCorrelationCalculator::VMLPCorrelationCalculator(sgl::vk::Renderer* renderer
         floatFormat = vmlp::FloatFormat::FLOAT16;
     }
 
+    /**
+     * On cooperative matrix formats:
+     * - We only care about float16 formats (no float32, no integer formats).
+     * - While we don't care about this, both NVIDIA, Intel and AMD support accumulation both in float16 and float32.
+     *
+     * NVIDIA supports the following matrix sizes (tested on real hardware):
+     * - M = K = N = 16
+     * - M = K = 16, N = 8
+     * - M = 16, K = N = 8
+     *
+     * Intel, according to the Mesa 3D drivers, supports:
+     * - M = 16, K = N = 8.
+     *
+     * AMD, according to Mesa 3D drivers (src/amd/vulkan/radv_physical_device.c), supports since RDNA3 (GFX11):
+     * - M = K = N = 16
+     * According to https://gpuopen.com/learn/amd-lab-notes/amd-lab-notes-matrix-cores-readme/, CDNA supports more
+     * formats, but these formats don't seem to be available on the open-source drivers for consumer GPUs.
+     */
+
 #ifdef VK_NV_cooperative_matrix
     if (device->getCooperativeMatrixFeaturesNV().cooperativeMatrix) {
         const auto& cooperativeMatrixProperties = device->getSupportedCooperativeMatrixPropertiesNV();
         //std::cout << "Supported modes (NV):\n" << std::endl;
         for (size_t i = 0; i < cooperativeMatrixProperties.size(); i++) {
             auto& props = cooperativeMatrixProperties[i];
+            /*
+             * For now, only up to 16x16 matrices are supported due to 32 byte padding.
+             * The minimum size is 8x8, as shared memory may be stored as uvec4, i.e., 8x float16_t.
+             */
             if (props.scope == VK_SCOPE_SUBGROUP_NV
                     && props.AType == VK_COMPONENT_TYPE_FLOAT16_NV
                     && props.BType == VK_COMPONENT_TYPE_FLOAT16_NV
                     && props.CType == VK_COMPONENT_TYPE_FLOAT16_NV
                     && props.DType == VK_COMPONENT_TYPE_FLOAT16_NV
-                    && props.MSize == props.NSize && props.NSize == props.KSize
-                    && props.MSize <= 16) {
-                // For now, only up to 16x16 matrices are supported due to 32 byte padding.
-                matrixBlockSizesNV.push_back(props.MSize);
+                    && sgl::isPowerOfTwo(int(props.MSize))
+                    && sgl::isPowerOfTwo(int(props.KSize))
+                    && sgl::isPowerOfTwo(int(props.NSize))
+                    && props.MSize <= 16 && props.KSize <= 16 && props.NSize <= 16
+                    && props.MSize >= 8 && props.KSize >= 8 && props.NSize >= 8) {
+                if (props.MSize == 16 && props.KSize == 16 && props.NSize == 16) {
+                    formatIdxNV = int(matrixBlockSizesNV.size());
+                }
+                matrixBlockSizesNV.push_back(MatrixBlockSize{ props.MSize, props.KSize, props.NSize });
             }
             //std::cout
             //        << "MSize: " << props.MSize
@@ -371,12 +407,12 @@ VMLPCorrelationCalculator::VMLPCorrelationCalculator(sgl::vk::Renderer* renderer
             //        << "\nscope: " << SCOPE_NAMES[int(props.scope)]
             //        << "\n" << std::endl;
         }
-        std::sort(matrixBlockSizesNV.begin(), matrixBlockSizesNV.end());
-        if (!matrixBlockSizesNV.empty()) {
-            formatIdxNV = int(matrixBlockSizesNV.size()) - 1;
-        }
+        //std::sort(matrixBlockSizesNV.begin(), matrixBlockSizesNV.end());
+        //if (!matrixBlockSizesNV.empty()) {
+        //    formatIdxNV = int(matrixBlockSizesNV.size()) - 1;
+        //}
         for (auto matrixBlockSize : matrixBlockSizesNV) {
-            matrixBlockSizesStringNV.push_back(std::to_string(matrixBlockSize));
+            matrixBlockSizesStringNV.push_back(matrixBlockSize.toString());
         }
     }
 #endif
@@ -386,15 +422,24 @@ VMLPCorrelationCalculator::VMLPCorrelationCalculator(sgl::vk::Renderer* renderer
         //std::cout << "Supported modes (KHR):\n" << std::endl;
         for (size_t i = 0; i < cooperativeMatrixProperties.size(); i++) {
             auto& props = cooperativeMatrixProperties[i];
+            /*
+             * For now, only up to 16x16 matrices are supported due to 32 byte padding.
+             * The minimum size is 8x8, as shared memory may be stored as uvec4, i.e., 8x float16_t.
+             */
             if (props.scope == VK_SCOPE_SUBGROUP_KHR
                     && props.AType == VK_COMPONENT_TYPE_FLOAT16_KHR
                     && props.BType == VK_COMPONENT_TYPE_FLOAT16_KHR
                     && props.CType == VK_COMPONENT_TYPE_FLOAT16_KHR
                     && props.ResultType == VK_COMPONENT_TYPE_FLOAT16_KHR
-                    && props.MSize == props.NSize && props.NSize == props.KSize
-                    && props.MSize <= 16) {
-                // For now, only up to 16x16 matrices are supported due to 32 byte padding.
-                matrixBlockSizesKHR.push_back(props.MSize);
+                    && sgl::isPowerOfTwo(int(props.MSize))
+                    && sgl::isPowerOfTwo(int(props.KSize))
+                    && sgl::isPowerOfTwo(int(props.NSize))
+                    && props.MSize <= 16 && props.KSize <= 16 && props.NSize <= 16
+                    && props.MSize >= 8 && props.KSize >= 8 && props.NSize >= 8) {
+                if (props.MSize == 16 && props.KSize == 16 && props.NSize == 16) {
+                    formatIdxKHR = int(matrixBlockSizesKHR.size());
+                }
+                matrixBlockSizesKHR.push_back(MatrixBlockSize{ props.MSize, props.KSize, props.NSize });
             }
             //std::cout
             //        << "\nMSize: " << props.MSize
@@ -408,19 +453,28 @@ VMLPCorrelationCalculator::VMLPCorrelationCalculator(sgl::vk::Renderer* renderer
             //        << "\nscope: " << SCOPE_NAMES[int(props.scope)]
             //        << "\n" << std::endl;
         }
-        std::sort(matrixBlockSizesKHR.begin(), matrixBlockSizesKHR.end());
-        if (!matrixBlockSizesKHR.empty()) {
-            formatIdxKHR = int(matrixBlockSizesKHR.size()) - 1;
-        }
+        //std::sort(matrixBlockSizesKHR.begin(), matrixBlockSizesKHR.end());
+        //if (!matrixBlockSizesKHR.empty()) {
+        //    formatIdxKHR = int(matrixBlockSizesKHR.size()) - 1;
+        //}
         for (auto matrixBlockSize : matrixBlockSizesKHR) {
-            matrixBlockSizesStringKHR.push_back(std::to_string(matrixBlockSize));
+            matrixBlockSizesStringKHR.push_back(matrixBlockSize.toString());
         }
     }
 #endif
 
     subgroupSizes.push_back(device->getPhysicalDeviceSubgroupProperties().subgroupSize);
 #ifdef VK_VERSION_1_3
-    if (device->getPhysicalDeviceVulkan13Features().subgroupSizeControl) {
+    /*
+     * TODO:
+     * - NVIDIA only supports subgroups of size 32, so this code is irrelevant.
+     * - AMD supports subgroups of size 32 and 64, with 64 being the default.
+     *   According to src/amd/vulkan/radv_shader_info.c in Mesa 3D, when cooperative matrices are enabled,
+     *   the full group size is used (i.e., 64). It seems like we can't change the subgroup size via
+     *   VkPipelineShaderStageRequiredSubgroupSizeCreateInfo in this case anyways, so this may lead to problems (?).
+     */
+    if (device->getPhysicalDeviceVulkan13Features().subgroupSizeControl
+            && (device->getPhysicalDeviceVulkan13Properties().requiredSubgroupSizeStages & VK_SHADER_STAGE_COMPUTE_BIT) != 0) {
         auto minSubgroupSize = device->getPhysicalDeviceVulkan13Properties().minSubgroupSize;
         auto maxSubgroupSize = device->getPhysicalDeviceVulkan13Properties().maxSubgroupSize;
         for (uint32_t subgroupSize = minSubgroupSize; subgroupSize < maxSubgroupSize; subgroupSize++) {
@@ -514,7 +568,8 @@ void VMLPCorrelationCalculator::updateMlpSettingsNetwork(const std::shared_ptr<v
     auto& formatIdx = useKhrExtension ? formatIdxKHR : formatIdxNV;
     network->setUseFusedMlp(useFusedMlp);
     network->setFusedMlpExtension(useKhrExtension);
-    network->setFusedMlpMatrixBlockSize(matrixBlockSizes.at(formatIdx));
+    const auto& matrixBlockSize = matrixBlockSizes.at(formatIdx);
+    network->setFusedMlpMatrixBlockSize(matrixBlockSize.M, matrixBlockSize.K, matrixBlockSize.N);
     network->setFusedMlpSubgroupSize(subgroupSizes.at(subgroupSizeIdx));
     network->setFusedMlpSharedMemoryType(memoryType);
     network->setFusedMlpDirectLoad(fusedMlpDirectLoad);

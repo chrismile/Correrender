@@ -214,7 +214,7 @@ public:
     // Fused MLP settings.
     void checkRecreateFusedPass();
     void setUseFusedMlp(bool _useFusedMlp);
-    void setFusedMlpMatrixBlockSize(uint32_t _matrixBlockSize);
+    void setFusedMlpMatrixBlockSize(uint32_t _M, uint32_t _K, uint32_t _N);
     void setFusedMlpExtension(bool _useKhrExtension);
     void setFusedMlpSubgroupSize(uint32_t _subgroupSize);
     void setFusedMlpSharedMemoryType(FusedMlpMemoryType _memoryType);
@@ -243,7 +243,8 @@ private:
     uint32_t batchSize = 0;
     bool shallRecreateFusePass = false;
     bool useFusedMlp = false;
-    uint32_t matrixBlockSize = 16;
+    /// Matrix block sizes for operation: R^{M x N} = R^{M x K} * R^{K x N} + R^{M x N}
+    uint32_t M = 16, K = 16, N = 16;
     bool useKhrExtension = false;
     uint32_t subgroupSize = false;
     FusedMlpMemoryType memoryType = FusedMlpMemoryType::FLOAT16_NO_PADDING;

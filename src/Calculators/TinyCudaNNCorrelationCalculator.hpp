@@ -35,6 +35,23 @@
 struct TinyCudaNNModuleWrapper;
 struct TinyCudaNNCacheWrapper;
 
+/**
+ * Uses a fork of tiny-cuda-nn for the implementation of the network architecture described in the following publication:
+ *
+ * Farokhmanesh, F., K. Höhlein, C. Neuhauser, T. Necker, M. Weissmann, T. Miyoshi, and R. Westermann (2023).
+ * "Neural Fields for Interactive Visualization of Statistical Dependencies in 3D Simulation Ensembles".
+ * In: Vision, Modeling, and Visualization. The Eurographics Association. ISBN: 978-3-03868-232-5.
+ * DOI: https://doi.org/10.2312/vmv.20231229.
+ *
+ * For more details see:
+ * - Müller, T. (2021). tiny-cuda-nn. Version 1.7. URL: https://github.com/NVlabs/tiny-cuda-nn.
+ * - Neuhauser, C. and T. Müller (2024). tiny-cuda-nn (fork).
+ *   URL: https://github.com/chrismile/tiny-cuda-nn/tree/activations.
+ * - Müller, T., A. Evans, C. Schied, and A. Keller (2022). "Instant Neural Graphics Primitives with a Multiresolution
+ *   Hash Encoding". In: ACM Trans. Graph. 41.4. ISSN: 0730-0301. DOI: https://doi.org/10.1145/3528223.3530127.
+ * - Müller, T., F. Rousselle, J. Novák, and A. Keller (2021). "Real-Time Neural Radiance Caching for Path Tracing".
+ *   In: ACM Trans. Graph. 40.4. ISSN: 0730-0301. DOI: https://doi.org/10.1145/3450626.3459812.
+ */
 class TinyCudaNNCorrelationCalculator : public DeepLearningCudaCorrelationCalculator {
 public:
     explicit TinyCudaNNCorrelationCalculator(sgl::vk::Renderer* renderer);

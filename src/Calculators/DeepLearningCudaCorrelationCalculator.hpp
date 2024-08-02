@@ -37,6 +37,14 @@
 #include "SymmetrizerType.hpp"
 #include "DeepLearningCorrelationCalculator.hpp"
 
+/**
+ * Abstract class for CUDA implementations of the network architecture described in the following publication:
+ *
+ * Farokhmanesh, F., K. Höhlein, C. Neuhauser, T. Necker, M. Weissmann, T. Miyoshi, and R. Westermann (2023).
+ * "Neural Fields for Interactive Visualization of Statistical Dependencies in 3D Simulation Ensembles".
+ * In: Vision, Modeling, and Visualization. The Eurographics Association. ISBN: 978-3-03868-232-5.
+ * DOI: https://doi.org/10.2312/vmv.20231229.
+ */
 class DeepLearningCudaCorrelationCalculator : public DeepLearningCorrelationCalculator {
 public:
     /**
