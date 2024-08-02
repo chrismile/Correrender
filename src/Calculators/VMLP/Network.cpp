@@ -509,10 +509,13 @@ void MlpFusedPass::loadShader() {
         preprocessorDefines.insert(std::make_pair("COL_MAJOR", "true"));
     }
 
-    /*
-     * TODO: Use VkPipelineShaderStageRequiredSubgroupSizeCreateInfo?
-     */
-    shaderStages = sgl::vk::ShaderManager->getShaderStages({"NetworkFused.Compute"}, preprocessorDefines);
+    // Use required subgroup size if the requested size not equal to the default size.
+    uint32_t requiredSubgroupSize = 0;
+    if (subgroupSize != device->getPhysicalDeviceSubgroupProperties().subgroupSize) {
+        requiredSubgroupSize = subgroupSize;
+    }
+    shaderStages = sgl::vk::ShaderManager->getShaderStages(
+            {"NetworkFused.Compute"}, preprocessorDefines, requiredSubgroupSize);
 }
 
 void MlpFusedPass::createComputeData(sgl::vk::Renderer* renderer, sgl::vk::ComputePipelinePtr& computePipeline) {
