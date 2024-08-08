@@ -470,12 +470,13 @@ VMLPCorrelationCalculator::VMLPCorrelationCalculator(sgl::vk::Renderer* renderer
      * - AMD supports subgroups of size 32 and 64, with 64 being the default.
      *   According to src/amd/vulkan/radv_shader_info.c in Mesa 3D, when cooperative matrices are enabled,
      *   the full group size is preferrable (i.e., 64). It should be checked if other values may lead to problems.
+     * - INTEL supports subgroups of size 8 to 32 (tested on Mesa 3D 24.1).
      */
     if (device->getPhysicalDeviceVulkan13Features().subgroupSizeControl
             && (device->getPhysicalDeviceVulkan13Properties().requiredSubgroupSizeStages & VK_SHADER_STAGE_COMPUTE_BIT) != 0) {
         auto minSubgroupSize = device->getPhysicalDeviceVulkan13Properties().minSubgroupSize;
         auto maxSubgroupSize = device->getPhysicalDeviceVulkan13Properties().maxSubgroupSize;
-        for (uint32_t subgroupSize = minSubgroupSize; subgroupSize < maxSubgroupSize; subgroupSize++) {
+        for (uint32_t subgroupSize = minSubgroupSize; subgroupSize < maxSubgroupSize; subgroupSize *= 2) {
             if (subgroupSize != device->getPhysicalDeviceSubgroupProperties().subgroupSize) {
                 subgroupSizes.push_back(subgroupSize);
             }
