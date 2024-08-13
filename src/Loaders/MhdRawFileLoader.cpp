@@ -33,6 +33,7 @@
 #include <tbb/blocked_range.h>
 #endif
 
+#include <Math/half/half.hpp>
 #include <Utils/Convert.hpp>
 #include <Utils/StringUtils.hpp>
 #include <Utils/File/Logfile.hpp>
@@ -253,7 +254,7 @@ bool MhdRawFileLoader::setInputFiles(
     } else if (formatString == "MET_UCHAR") {
         numComponents = 1;
         bytesPerEntry = 1;
-    } else if (formatString == "MET_USHORT") {
+    } else if (formatString == "MET_USHORT" || formatString == "MET_FLOAT16" || formatString == "MET_HALF") {
         numComponents = 1;
         bytesPerEntry = 2;
     } else {
@@ -349,6 +350,15 @@ bool MhdRawFileLoader::getFieldEntry(
         memcpy(scalarAttributeField, bufferRaw, sizeof(uint16_t) * totalSize);
         if (useCustomTransform) {
             auto* data = reinterpret_cast<uint16_t*>(scalarAttributeField);
+            transposeField(data, uint32_t(xs), uint32_t(ys), uint32_t(zs), mirrorAxes);
+            scalarAttributeField = data;
+        }
+    } else if (formatString == "MET_FLOAT16" || formatString == "MET_HALF") {
+        dataFormat = ScalarDataFormat::FLOAT16;
+        scalarAttributeField = new HalfFloat[scalarFieldNumEntries];
+        memcpy((void*)scalarAttributeField, (const void*)bufferRaw, sizeof(HalfFloat) * totalSize);
+        if (useCustomTransform) {
+            auto* data = reinterpret_cast<HalfFloat*>(scalarAttributeField);
             transposeField(data, uint32_t(xs), uint32_t(ys), uint32_t(zs), mirrorAxes);
             scalarAttributeField = data;
         }
