@@ -137,9 +137,9 @@ bool MhdRawFileLoader::setInputFiles(
 
         std::string mhdKey = splitLineString.at(0);
         std::string mhdValue = splitLineString.at(1);
-        sgl::stringTrimCopy(mhdKey);
+        sgl::stringTrim(mhdKey);
         //sgl::toLower(mhdKey);
-        sgl::stringTrimCopy(mhdValue);
+        sgl::stringTrim(mhdValue);
         mhdDict.insert(std::make_pair(mhdKey, mhdValue));
     }
 

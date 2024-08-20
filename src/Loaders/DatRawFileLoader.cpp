@@ -122,9 +122,9 @@ bool DatRawFileLoader::setInputFiles(
 
         std::string datKey = splitLineString.at(0);
         std::string datValue = splitLineString.at(1);
-        sgl::stringTrimCopy(datKey);
+        sgl::stringTrim(datKey);
         sgl::toLower(datKey);
-        sgl::stringTrimCopy(datValue);
+        sgl::stringTrim(datValue);
         datDict.insert(std::make_pair(datKey, datValue));
     }
 
