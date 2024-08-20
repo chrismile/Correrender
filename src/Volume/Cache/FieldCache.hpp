@@ -116,6 +116,10 @@ public:
         );
     }
 
+    void doForEach(const std::function<void(const CacheEntry&)>& functor) {
+        cache.do_for_each(functor);
+    }
+
     // Calculators may need auxiliary memory during their lifetime, which counts to the maximum limit.
     AuxiliaryMemoryToken pushAuxiliaryMemory(size_t sizeInBytes) {
         AuxiliaryMemoryToken token = tokenCounter++;

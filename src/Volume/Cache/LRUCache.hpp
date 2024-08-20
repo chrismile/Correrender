@@ -32,7 +32,13 @@
 #include <list>
 #include <unordered_map>
 #include <memory>
+#include <type_traits>
 #include "Volume/FieldAccess.hpp"
+
+template<class T>
+struct is_shared_ptr : std::false_type {};
+template<class T>
+struct is_shared_ptr<std::shared_ptr<T>> : std::true_type {};
 
 /**
  * Last-recently-used (LRU) cache system.
@@ -90,6 +96,13 @@ public:
             }
         }
     }
+
+    void do_for_each(const std::function<void(const V&)>& functor) {
+        for (auto& entry : itemList) {
+            functor(entry.second);
+        }
+    }
+
 };
 
 #endif //CORRERENDER_LRUCACHE_HPP

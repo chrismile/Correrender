@@ -85,6 +85,13 @@ class ComputeHistogramMaxPass;
 class ComputeHistogramDividePass;
 class DivergentMinMaxPass;
 
+enum class TextureInterpolationMode {
+    NEAREST, LINEAR
+};
+const char* const TEXTURE_INTERPOLATION_MODE_NAMES[] = {
+        "Nearest", "Linear"
+};
+
 class VolumeData {
     friend class MainApp;
 public:
@@ -364,6 +371,9 @@ protected:
     std::unordered_map<FieldType, std::vector<std::string>> typeToFieldNamesMapBase; ///< Without calculator output.
     std::unordered_map<FieldType, std::vector<std::string>> typeToFieldUnitsMap; ///< Without calculator output.
     std::vector<std::string> fieldNamesMapColorOrScalar;
+
+    void createImageSampler();
+    TextureInterpolationMode textureInterpolationMode = TextureInterpolationMode::LINEAR;
     sgl::vk::ImageSamplerPtr imageSampler{};
 
     // Utility functions.

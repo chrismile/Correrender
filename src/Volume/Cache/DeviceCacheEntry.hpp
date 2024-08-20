@@ -68,6 +68,7 @@ public:
     [[nodiscard]] std::string getImageFormatGlslString() const;
     const sgl::vk::ImageViewPtr& getVulkanImageView();
     const sgl::vk::TexturePtr& getVulkanTexture();
+    void setImageSampler(const sgl::vk::ImageSamplerPtr& _vulkanSampler);
 #ifdef SUPPORT_CUDA_INTEROP
     CUtexObject getCudaTexture();
     sgl::vk::TextureCudaExternalMemoryVkPtr getTextureCudaExternalMemory();

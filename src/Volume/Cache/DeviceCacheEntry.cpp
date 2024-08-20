@@ -98,6 +98,13 @@ const sgl::vk::TexturePtr& DeviceCacheEntryType::getVulkanTexture() {
     return vulkanTexture;
 }
 
+void DeviceCacheEntryType::setImageSampler(const sgl::vk::ImageSamplerPtr& _vulkanSampler) {
+    if (vulkanTexture) {
+        vulkanTexture = {};
+    }
+    vulkanSampler = _vulkanSampler;
+}
+
 #ifdef SUPPORT_CUDA_INTEROP
 CUtexObject DeviceCacheEntryType::getCudaTexture() {
     if (!cudaTexture) {

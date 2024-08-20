@@ -231,8 +231,7 @@ VolumeData::VolumeData(sgl::vk::Renderer* renderer) : renderer(renderer), multiV
     factoriesCalculator.emplace_back(
             "KL-Divergence Calculator", [renderer]() { return new DKLCalculator(renderer); });
 
-    sgl::vk::ImageSamplerSettings samplerSettings{};
-    imageSampler = std::make_shared<sgl::vk::ImageSampler>(device, samplerSettings, 0.0f);
+    createImageSampler();
 
     renderRestrictionUniformBuffer = std::make_shared<sgl::vk::Buffer>(
             device, 4 * sizeof(float), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
@@ -265,6 +264,18 @@ VolumeData::~VolumeData() {
     if (heightData) {
         delete[] heightData;
     }
+}
+
+void VolumeData::createImageSampler() {
+    sgl::vk::ImageSamplerSettings samplerSettings{};
+    if (textureInterpolationMode == TextureInterpolationMode::NEAREST) {
+        samplerSettings.minFilter = VK_FILTER_NEAREST;
+        samplerSettings.magFilter = VK_FILTER_NEAREST;
+    } else if (textureInterpolationMode == TextureInterpolationMode::LINEAR) {
+        samplerSettings.minFilter = VK_FILTER_LINEAR;
+        samplerSettings.magFilter = VK_FILTER_LINEAR;
+    }
+    imageSampler = std::make_shared<sgl::vk::ImageSampler>(device, samplerSettings, 0.0f);
 }
 
 void VolumeData::setTransposeAxes(const glm::ivec3& axes) {
@@ -1811,6 +1822,16 @@ void VolumeData::renderGui(sgl::PropertyEditor& propertyEditor) {
                 "Ensemble Member", &currentEnsembleIdx, 0, es - 1) == ImGui::EditMode::INPUT_FINISHED) {
             currentEnsembleIdx = std::clamp(currentEnsembleIdx, 0, std::max(es - 1, 0));
             setBaseFieldsDirty();
+        }
+        if (propertyEditor.addCombo(
+                "Texture Interpolation", (int*)&textureInterpolationMode,
+                TEXTURE_INTERPOLATION_MODE_NAMES, IM_ARRAYSIZE(TEXTURE_INTERPOLATION_MODE_NAMES))) {
+            createImageSampler();
+            deviceFieldCache->doForEach([this](const DeviceCacheEntry& cacheEntry) {
+                cacheEntry->setImageSampler(imageSampler);
+            });
+            dirty = true;
+            reRender = true;
         }
         propertyEditor.addCheckbox("Render Color Legend", &shallRenderColorLegendWidgets);
         propertyEditor.endNode();
