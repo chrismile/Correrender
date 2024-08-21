@@ -106,6 +106,7 @@ private:
     VolumeDataPtr volumeData;
     sgl::vk::ImageViewPtr sceneImageView;
     float voxelSize = 1.0f;
+    bool useInterpolationNearestCached = false;
 
     // Renderer settings.
     std::string selectedScalarFieldName;

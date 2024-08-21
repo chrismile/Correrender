@@ -114,6 +114,23 @@ bool rayBoxIntersectionRayCoords(
     return true;
 }
 
+bool rayBoxIntersectionRayCoordsDir(
+        vec3 rayOrigin, vec3 rayDirection, vec3 lower, vec3 upper, out int dir) {
+    float tNearBest = -1e7;
+    for (int i = 0; i < 3; i++) {
+        float tNear = -1e7, tFar = 1e7; // Infinite values
+        if (!rayBoxPlaneIntersection(rayOrigin[i], rayDirection[i], lower[i], upper[i], tNear, tFar)) {
+            return false;
+        }
+        if (tNear > tNearBest) {
+            // We want the largest tNear
+            tNearBest = tNear;
+            dir = i;
+        }
+    }
+    return true;
+}
+
 
 /**
  * Returns whether the bounding box with bounds lower, upper contains the passed point.

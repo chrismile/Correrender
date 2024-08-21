@@ -270,6 +270,13 @@ void IsoSurfaceRayCastingPass::setVolumeData(VolumeDataPtr& _volumeData, bool is
     renderSettingsData.dy = volumeData->getDy();
     renderSettingsData.dz = volumeData->getDz();
 
+    bool useInterpolationNearest =
+            volumeData->getImageSampler()->getImageSamplerSettings().minFilter == VK_FILTER_NEAREST;
+    if (useInterpolationNearest != useInterpolationNearestCached) {
+        setShaderDirty();
+        useInterpolationNearestCached = useInterpolationNearest;
+    }
+
     dataDirty = true;
 }
 
@@ -284,6 +291,9 @@ void IsoSurfaceRayCastingPass::setSelectedScalarFieldName(const std::string& _fi
 void IsoSurfaceRayCastingPass::loadShader() {
     sgl::vk::ShaderManager->invalidateShaderCache();
     std::map<std::string, std::string> preprocessorDefines;
+    if (volumeData && volumeData->getImageSampler()->getImageSamplerSettings().minFilter == VK_FILTER_NEAREST) {
+        preprocessorDefines.insert(std::make_pair("USE_INTERPOLATION_NEAREST_NEIGHBOR", ""));
+    }
     if (analyticIntersections) {
         preprocessorDefines.insert(std::make_pair("ANALYTIC_INTERSECTIONS", ""));
     }
