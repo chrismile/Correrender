@@ -1400,11 +1400,17 @@ void CorrelationComputePass::setVolumeData(VolumeData *_volumeData, int correlat
     uniformData.ys = uint32_t(ys);
     uniformData.zs = uint32_t(zs);
     uniformData.cs = uint32_t(correlationMemberCount);
-    uniformBuffer->updateData(
-            sizeof(UniformData), &uniformData, renderer->getVkCommandBuffer());
-    renderer->insertMemoryBarrier(
-            VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_UNIFORM_READ_BIT,
-            VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+    // Can be called by MainApp::onFileDropped. In this case, renderer->getVkCommandBuffer() is not recording.
+    if (renderer->getIsCommandBufferInRecordingState()) {
+        uniformBuffer->updateData(sizeof(UniformData), &uniformData, renderer->getVkCommandBuffer());
+        renderer->insertMemoryBarrier(
+                VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_UNIFORM_READ_BIT,
+                VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+    } else {
+        auto commandBuffer = device->beginSingleTimeCommands();
+        uniformBuffer->updateData(sizeof(UniformData), &uniformData, commandBuffer);
+        device->endSingleTimeCommands(commandBuffer);
+    }
     spearmanReferenceRankComputePass->setVolumeData(_volumeData, isNewData);
     if (cachedCorrelationMemberCount != correlationMemberCount) {
         cachedCorrelationMemberCount = correlationMemberCount;
@@ -1432,11 +1438,17 @@ void CorrelationComputePass::overrideGridSize(int _xsr, int _ysr, int _zsr, int 
 
 void CorrelationComputePass::setCorrelationMemberCount(int correlationMemberCount) {
     uniformData.cs = uint32_t(correlationMemberCount);
-    uniformBuffer->updateData(
-            sizeof(UniformData), &uniformData, renderer->getVkCommandBuffer());
-    renderer->insertMemoryBarrier(
-            VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_UNIFORM_READ_BIT,
-            VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+    // Can be called by MainApp::onFileDropped. In this case, renderer->getVkCommandBuffer() is not recording.
+    if (renderer->getIsCommandBufferInRecordingState()) {
+        uniformBuffer->updateData(sizeof(UniformData), &uniformData, renderer->getVkCommandBuffer());
+        renderer->insertMemoryBarrier(
+                VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_UNIFORM_READ_BIT,
+                VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+    } else {
+        auto commandBuffer = device->beginSingleTimeCommands();
+        uniformBuffer->updateData(sizeof(UniformData), &uniformData, commandBuffer);
+        device->endSingleTimeCommands(commandBuffer);
+    }
     if (cachedCorrelationMemberCount != correlationMemberCount) {
         cachedCorrelationMemberCount = correlationMemberCount;
         setShaderDirty();
