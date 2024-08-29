@@ -233,10 +233,11 @@ void NetworkWithInputEncoding::runInference() {
 class MlpPass : public sgl::vk::ComputePass {
 public:
     MlpPass(
-            sgl::vk::Renderer* renderer, uint32_t layerChannelsIn, uint32_t layerChannelsOut,
+            sgl::vk::Renderer* renderer, bool mlpUseSharedMemory, uint32_t layerChannelsIn, uint32_t layerChannelsOut,
             ActivationFunction activationFunction,
             uint32_t parametersBufferOffset, sgl::vk::BufferPtr& parametersBuffer)
-            : ComputePass(renderer), layerChannelsIn(layerChannelsIn), layerChannelsOut(layerChannelsOut),
+            : ComputePass(renderer), mlpUseSharedMemory(mlpUseSharedMemory),
+              layerChannelsIn(layerChannelsIn), layerChannelsOut(layerChannelsOut),
               activationFunction(activationFunction),
               parametersBufferOffset(parametersBufferOffset), parametersBuffer(parametersBuffer) {}
 
@@ -253,6 +254,7 @@ protected:
 private:
     const uint32_t BLOCK_SIZE = 256;
     FloatFormat format = FloatFormat::FLOAT32;
+    bool mlpUseSharedMemory = true;
     uint32_t layerChannelsIn, layerChannelsOut;
     ActivationFunction activationFunction;
     uint32_t parametersBufferOffset;
@@ -292,7 +294,14 @@ void MlpPass::loadShader() {
                 "ACTIVATION_FUNCTION", ACTIVATION_FUNCTION_NAMES[int(activationFunction)]));
     }
     addPreprocessorDefinesFormat(preprocessorDefines, format);
-    shaderStages = sgl::vk::ShaderManager->getShaderStages({"Network.GlobalMemory.Compute"}, preprocessorDefines);
+
+    std::string shaderName;
+    if (mlpUseSharedMemory) {
+        shaderName = "Network.SharedMemory.Compute";
+    } else {
+        shaderName = "Network.GlobalMemory.Compute";
+    }
+    shaderStages = sgl::vk::ShaderManager->getShaderStages({ shaderName }, preprocessorDefines);
 }
 
 void MlpPass::createComputeData(sgl::vk::Renderer* renderer, sgl::vk::ComputePipelinePtr& computePipeline) {
@@ -303,9 +312,15 @@ void MlpPass::createComputeData(sgl::vk::Renderer* renderer, sgl::vk::ComputePip
 }
 
 void MlpPass::_render() {
-    const uint32_t numThreads = layerChannelsOut * batchSize;
-    renderer->pushConstants(getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, 0, numThreads);
-    renderer->dispatch(computeData, sgl::uiceil(numThreads, BLOCK_SIZE), 1, 1);
+    if (mlpUseSharedMemory) {
+        auto numChannelsOutPadded = nextMultiple(layerChannelsOut, 16);
+        renderer->pushConstants(getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, 0, batchSize);
+        renderer->dispatch(computeData, sgl::uiceil(numChannelsOutPadded, 16u), sgl::uiceil(batchSize, 16u), 1);
+    } else {
+        const uint32_t numThreads = layerChannelsOut * batchSize;
+        renderer->pushConstants(getComputePipeline(), VK_SHADER_STAGE_COMPUTE_BIT, 0, numThreads);
+        renderer->dispatch(computeData, sgl::uiceil(numThreads, BLOCK_SIZE), 1, 1);
+    }
     renderer->insertBufferMemoryBarrier(
             VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
@@ -571,7 +586,26 @@ MlpNetwork::MlpNetwork(sgl::vk::Renderer* renderer, const Json::Value& settingsN
                 + numChannelsHidden * numChannelsOutPadded;
     }
 
+    recreateMlpPass();
+
+    subgroupSize = device->getPhysicalDeviceSubgroupProperties().subgroupSize;
+}
+
+void MlpNetwork::setUseFusedMlp(bool _useFusedMlp) {
+    if (useFusedMlp != _useFusedMlp) {
+        useFusedMlp = _useFusedMlp;
+        if (useFusedMlp) {
+            shallRecreateFusedPass = true;
+        } else {
+            fusedPass = {};
+        }
+    }
+}
+
+
+void MlpNetwork::recreateMlpPass() {
     uint32_t parametersBufferOffset = 0;
+    layerPasses.clear();
     layerPasses.reserve(numLayers);
     for (size_t i = 0; i < numLayers; i++) {
         uint32_t layerChannelsIn, layerChannelsOut;
@@ -589,14 +623,50 @@ MlpNetwork::MlpNetwork(sgl::vk::Renderer* renderer, const Json::Value& settingsN
             layerActivationFunction = activationFunction;
         }
         auto layerPass = std::make_shared<MlpPass>(
-                renderer, layerChannelsIn, layerChannelsOut, layerActivationFunction,
+                renderer, mlpUseSharedMemory, layerChannelsIn, layerChannelsOut, layerActivationFunction,
                 parametersBufferOffset, parametersBuffer);
+        layerPass->setFloatFormat(format);
         layerPasses.push_back(layerPass);
         parametersBufferOffset += layerChannelsIn * layerChannelsOut;
-    }
 
-    subgroupSize = device->getPhysicalDeviceSubgroupProperties().subgroupSize;
+        if (inputBuffer && outputBuffer) {
+            sgl::vk::BufferPtr bufferIn, bufferOut;
+            if (i == 0) {
+                bufferIn = inputBuffer;
+            } else {
+                bufferIn = intermediateOutputBuffers[i % 2];
+            }
+            if (i == numLayers - 1) {
+                bufferOut = outputBuffer;
+            } else {
+                bufferOut = intermediateOutputBuffers[(i + 1) % 2];
+            }
+            layerPass->setBuffersInOut(bufferIn, bufferOut);
+        }
+
+        if (batchSize != 0) {
+            layerPasses.at(0)->setBatchSize(batchSize);
+        }
+    }
+    shallRecreateMlpPass = false;
 }
+
+void MlpNetwork::checkRecreateMlpPass() {
+    if (!useFusedMlp && shallRecreateMlpPass) {
+        shallRecreateMlpPass = false;
+        recreateMlpPass();
+    }
+}
+
+void MlpNetwork::setMlpUseSharedMemory(bool _useSharedMemory) {
+    if (mlpUseSharedMemory != _useSharedMemory) {
+        mlpUseSharedMemory = _useSharedMemory;
+        if (!useFusedMlp) {
+            shallRecreateMlpPass = true;
+        }
+    }
+}
+
 
 void MlpNetwork::recreateFusedPass() {
     fusedPass = std::make_shared<MlpFusedPass>(
@@ -611,24 +681,13 @@ void MlpNetwork::recreateFusedPass() {
     if (batchSize != 0) {
         fusedPass->setBatchSize(batchSize);
     }
-    shallRecreateFusePass = false;
+    shallRecreateFusedPass = false;
 }
 
 void MlpNetwork::checkRecreateFusedPass() {
-    if (useFusedMlp && shallRecreateFusePass) {
-        shallRecreateFusePass = false;
+    if (useFusedMlp && shallRecreateFusedPass) {
+        shallRecreateFusedPass = false;
         recreateFusedPass();
-    }
-}
-
-void MlpNetwork::setUseFusedMlp(bool _useFusedMlp) {
-    if (useFusedMlp != _useFusedMlp) {
-        useFusedMlp = _useFusedMlp;
-        if (useFusedMlp) {
-            shallRecreateFusePass = true;
-        } else {
-            fusedPass = {};
-        }
     }
 }
 
@@ -638,7 +697,7 @@ void MlpNetwork::setFusedMlpMatrixBlockSize(uint32_t _M, uint32_t _K, uint32_t _
         K = _K;
         N = _N;
         if (useFusedMlp) {
-            shallRecreateFusePass = true;
+            shallRecreateFusedPass = true;
         }
     }
 }
@@ -647,7 +706,7 @@ void MlpNetwork::setFusedMlpExtension(bool _useKhrExtension) {
     if (useKhrExtension != _useKhrExtension) {
         useKhrExtension = _useKhrExtension;
         if (useFusedMlp) {
-            shallRecreateFusePass = true;
+            shallRecreateFusedPass = true;
         }
     }
 }
@@ -656,7 +715,7 @@ void MlpNetwork::setFusedMlpSubgroupSize(uint32_t _subgroupSize) {
     if (subgroupSize != _subgroupSize) {
         subgroupSize = _subgroupSize;
         if (useFusedMlp) {
-            shallRecreateFusePass = true;
+            shallRecreateFusedPass = true;
         }
     }
 }
@@ -665,7 +724,7 @@ void MlpNetwork::setFusedMlpSharedMemoryType(FusedMlpMemoryType _memoryType) {
     if (memoryType != _memoryType) {
         memoryType = _memoryType;
         if (useFusedMlp) {
-            shallRecreateFusePass = true;
+            shallRecreateFusedPass = true;
         }
     }
 }
@@ -674,7 +733,7 @@ void MlpNetwork::setFusedMlpDirectLoad(bool _fusedMlpDirectLoad) {
     if (fusedMlpDirectLoad != _fusedMlpDirectLoad) {
         fusedMlpDirectLoad = _fusedMlpDirectLoad;
         if (useFusedMlp) {
-            shallRecreateFusePass = true;
+            shallRecreateFusedPass = true;
         }
     }
 }
@@ -683,7 +742,7 @@ void MlpNetwork::setUseSharedMemoryBankSkew(bool _useSharedMemoryBankSkew) {
     if (useSharedMemoryBankSkew != _useSharedMemoryBankSkew) {
         useSharedMemoryBankSkew = _useSharedMemoryBankSkew;
         if (useFusedMlp) {
-            shallRecreateFusePass = true;
+            shallRecreateFusedPass = true;
         }
     }
 }

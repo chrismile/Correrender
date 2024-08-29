@@ -109,11 +109,16 @@ protected:
     bool deviceSupporsFp16 = false;
     vmlp::FloatFormat floatFormat = vmlp::FloatFormat::FLOAT32;
 
-    // Fused MLP/cooperative matrices.
+    // MLP settings.
     void updateMlpSettings();
     void updateMlpSettingsNetwork(const std::shared_ptr<vmlp::Module>& module);
     bool supportsFusedMlp = false;
     bool useFusedMlp = false;
+
+    // Non-fused MLP.
+    bool mlpUseSharedMemory = true;
+
+    // Fused MLP/cooperative matrices.
     bool useKhrExtension = false;
     std::vector<uint32_t> subgroupSizes;
     std::vector<std::string> subgroupSizesString;

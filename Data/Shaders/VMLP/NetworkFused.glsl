@@ -73,7 +73,6 @@ layout(local_size_x = SUBGROUP_SIZE, local_size_y = NUM_ROWS, local_size_z = 1) 
 //#define STORAGE_TYPE float16_t
 shared STORAGE_TYPE sharedMemory[SHARED_MEMORY_SIZE / SMEM_FACTOR];
 
-// Analogous to tiny-cuda-nn with column major format.
 //#define WEIGHT_IDX(channelOutIdx, channelInIdx) (WEIGHT_OFFSET + (channelInIdx) + (channelOutIdx) * NUM_CHANNELS_IN_PADDED)
 #define IDX_IN(channelIdx, batchIdx) ((channelIdx) + (batchIdx) * NUM_CHANNELS_IN)
 #ifdef FLOAT16_NO_PADDING
@@ -82,14 +81,17 @@ shared STORAGE_TYPE sharedMemory[SHARED_MEMORY_SIZE / SMEM_FACTOR];
 #define IDX_OUT(channelIdx, batchIdx) ((channelIdx) + (batchIdx) * NUM_CHANNELS_OUT_PADDED)
 #endif
 
+// Row major.
 layout(binding = 0, scalar) readonly buffer ParametersBuffer {
     float16_t parametersBuffer[];
 };
 
+// Column major.
 layout(binding = 1, scalar) readonly buffer InputBuffer {
     STORAGE_TYPE inputBuffer[];
 };
 
+// Column major.
 layout(binding = 2, scalar) writeonly buffer OutputBuffer {
     STORAGE_TYPE outputBuffer[];
 };
@@ -238,7 +240,6 @@ layout(local_size_x = SUBGROUP_SIZE, local_size_y = NUM_ROWS, local_size_z = 1) 
 //#define STORAGE_TYPE float16_t
 shared STORAGE_TYPE sharedMemory[SHARED_MEMORY_SIZE / SMEM_FACTOR];
 
-// Analogous to tiny-cuda-nn with column major format.
 //#define WEIGHT_IDX(channelOutIdx, channelInIdx) (WEIGHT_OFFSET + (channelInIdx) + (channelOutIdx) * NUM_CHANNELS_IN_PADDED)
 #define IDX_IN(channelIdx, batchIdx) ((channelIdx) + (batchIdx) * NUM_CHANNELS_IN)
 #ifdef FLOAT16_NO_PADDING
@@ -247,14 +248,17 @@ shared STORAGE_TYPE sharedMemory[SHARED_MEMORY_SIZE / SMEM_FACTOR];
 #define IDX_OUT(channelIdx, batchIdx) ((channelIdx) + (batchIdx) * NUM_CHANNELS_OUT_PADDED)
 #endif
 
+// Row major.
 layout(binding = 0, scalar) readonly buffer ParametersBuffer {
     float16_t parametersBuffer[];
 };
 
+// Column major.
 layout(binding = 1, scalar) readonly buffer InputBuffer {
     STORAGE_TYPE inputBuffer[];
 };
 
+// Column major.
 layout(binding = 2, scalar) writeonly buffer OutputBuffer {
     STORAGE_TYPE outputBuffer[];
 };

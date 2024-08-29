@@ -563,9 +563,13 @@ void VMLPCorrelationCalculator::updateMlpSettings() {
 
 void VMLPCorrelationCalculator::updateMlpSettingsNetwork(const std::shared_ptr<vmlp::Module>& module) {
     auto* network = reinterpret_cast<vmlp::MlpNetwork*>(module.get());
+    network->setUseFusedMlp(useFusedMlp);
+
+    network->setMlpUseSharedMemory(mlpUseSharedMemory);
+    network->checkRecreateMlpPass();
+
     auto& matrixBlockSizes = useKhrExtension ? matrixBlockSizesKHR : matrixBlockSizesNV;
     auto& formatIdx = useKhrExtension ? formatIdxKHR : formatIdxNV;
-    network->setUseFusedMlp(useFusedMlp);
     network->setFusedMlpExtension(useKhrExtension);
     const auto& matrixBlockSize = matrixBlockSizes.at(formatIdx);
     network->setFusedMlpMatrixBlockSize(matrixBlockSize.M, matrixBlockSize.K, matrixBlockSize.N);
@@ -585,6 +589,11 @@ void VMLPCorrelationCalculator::renderGuiImplAdvanced(sgl::PropertyEditor& prope
             onFloatFormatChanged();
         }
         updateMlpSettings();
+    }
+    if (!useFusedMlp) {
+        if (propertyEditor.addCheckbox("Use Shared Memory", &mlpUseSharedMemory)) {
+            updateMlpSettings();
+        }
     }
     if (useFusedMlp) {
         if (!matrixBlockSizesNV.empty() && !matrixBlockSizesKHR.empty()) {

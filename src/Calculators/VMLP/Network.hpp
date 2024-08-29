@@ -211,9 +211,14 @@ public:
 
     void runInference() override;
 
+    void setUseFusedMlp(bool _useFusedMlp);
+
+    // Non-fused MLP settings.
+    void checkRecreateMlpPass();
+    void setMlpUseSharedMemory(bool _useSharedMemory);
+
     // Fused MLP settings.
     void checkRecreateFusedPass();
-    void setUseFusedMlp(bool _useFusedMlp);
     void setFusedMlpMatrixBlockSize(uint32_t _M, uint32_t _K, uint32_t _N);
     void setFusedMlpExtension(bool _useKhrExtension);
     void setFusedMlpSubgroupSize(uint32_t _subgroupSize);
@@ -234,15 +239,21 @@ private:
     sgl::vk::BufferPtr intermediateOutputBuffers[2];
     bool floatFormatChanged = true;
     uint32_t cachedBatchSize = 0;
+
+    bool useFusedMlp = false;
+
+    // Non-fused MLP.
+    void recreateMlpPass();
     std::vector<std::shared_ptr<MlpPass>> layerPasses;
+    bool shallRecreateMlpPass = false;
+    bool mlpUseSharedMemory = true;
 
     // Fused MLP.
     void recreateFusedPass();
     std::shared_ptr<MlpFusedPass> fusedPass;
     sgl::vk::BufferPtr inputBuffer, outputBuffer;
     uint32_t batchSize = 0;
-    bool shallRecreateFusePass = false;
-    bool useFusedMlp = false;
+    bool shallRecreateFusedPass = false;
     /// Matrix block sizes for operation: R^{M x N} = R^{M x K} * R^{K x N} + R^{M x N}
     uint32_t M = 16, K = 16, N = 16;
     bool useKhrExtension = false;

@@ -201,6 +201,10 @@ void MainApp::saveStateToFile(const std::string& stateFilePath) {
     builder["indentation"] = "    ";
     std::unique_ptr<Json::StreamWriter> writer(builder.newStreamWriter());
     std::ofstream jsonFileStream(stateFilePath.c_str());
+    if (!jsonFileStream.is_open()) {
+        sgl::Logfile::get()->writeError("Error in MainApp::saveStateToFile: Couldn't open \"" + stateFilePath + "\".");
+        return;
+    }
     writer->write(root, &jsonFileStream);
     jsonFileStream.close();
 }

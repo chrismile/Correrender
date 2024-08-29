@@ -28,8 +28,6 @@
 
 -- Header
 
-layout(local_size_x = BLOCK_SIZE, local_size_y = 1, local_size_z = 1) in;
-
 /**
  * Global defines:
  * - WEIGHT_OFFSET: The offset into the weights buffer.
@@ -38,25 +36,29 @@ layout(local_size_x = BLOCK_SIZE, local_size_y = 1, local_size_z = 1) in;
  * - ACTIVATION_FUNCTION: Name of the activation function.
  */
 
-// Analogous to tiny-cuda-nn with column major format.
 #define WEIGHT_IDX(channelOutIdx, channelInIdx) (WEIGHT_OFFSET + (channelInIdx) + (channelOutIdx) * NUM_CHANNELS_IN_PADDED)
 #define IDX_IN(channelIdx, batchIdx) ((channelIdx) + (batchIdx) * NUM_CHANNELS_IN)
 #define IDX_OUT(channelIdx, batchIdx) ((channelIdx) + (batchIdx) * NUM_CHANNELS_OUT)
 
+// Row major.
 layout(binding = 0, std430) readonly buffer ParametersBuffer {
     real parametersBufferGlobal[];
 };
 
+// Column major.
 layout(binding = 1, std430) readonly buffer InputBuffer {
     real inputBuffer[];
 };
 
+// Column major.
 layout(binding = 2, std430) writeonly buffer OutputBuffer {
     real outputBuffer[];
 };
 
 
 -- GlobalMemory.Compute
+
+layout(local_size_x = BLOCK_SIZE, local_size_y = 1, local_size_z = 1) in;
 
 #version 450 core
 
@@ -87,4 +89,69 @@ void main() {
 #endif
 
     outputBuffer[IDX_OUT(channelOutIdx, batchIdx)] = valueOut;
+}
+
+
+-- SharedMemory.Compute
+
+#version 450 core
+
+#extension GL_EXT_control_flow_attributes : require
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+#import ".Header"
+#include "ActivationFunctions.glsl"
+
+layout(push_constant) uniform PushConstants {
+    uint numBatches; // The number of outputs to be written in total.
+};
+
+// We assume BLOCK_SIZE == 16 * 16 == 256
+shared real weightsMat[16 * 16];
+shared real inputsMat[16 * 16];
+
+void main() {
+    const uint threadIdxX = gl_LocalInvocationID.x; // local out channel
+    const uint threadIdxY = gl_LocalInvocationID.y; // local batch index
+    const uint blockIdxX = gl_WorkGroupID.x;
+    const uint blockIdxY = gl_WorkGroupID.y;
+    const uint channelOutIdx = gl_GlobalInvocationID.x;
+    const uint batchIdx = gl_GlobalInvocationID.y;
+    const uint numCols = NUM_CHANNELS_IN_PADDED / 16u;
+
+    real weightVal;
+    real inputVal;
+    real valueOut = real(0.0);
+    uint channelInIdx = threadIdxX;
+
+    /**
+     * The following code is comparable to GPU5 from: https://www.cise.ufl.edu/~sahni/papers/gpuMatrixMultiply.pdf
+     * We use parametersBufferGlobal as row major and inputBuffer as column major.
+     */
+
+    // We should be able to use unroll, as numCols is compile time constant.
+    [[unroll]] for (uint c = 0; c < numCols; c++) {
+        weightsMat[threadIdxY * 16u + threadIdxX] = parametersBufferGlobal[WEIGHT_IDX(blockIdxX * 16u + threadIdxY, channelInIdx)];
+        inputsMat[threadIdxY * 16u + threadIdxX] = inputBuffer[IDX_IN(channelInIdx, batchIdx)];
+        channelInIdx += 16u;
+        memoryBarrierShared();
+        barrier();
+
+        for (uint i = 0; i < 16u; i++) {
+            weightVal = weightsMat[threadIdxX * 16u + i];
+            inputVal = inputsMat[threadIdxY * 16u + i];
+            valueOut = fma(weightVal, inputVal, valueOut);
+        }
+        memoryBarrierShared();
+        barrier();
+    }
+
+#ifdef ACTIVATION_FUNCTION
+    valueOut = ACTIVATION_FUNCTION(valueOut);
+#endif
+
+    if (channelOutIdx < NUM_CHANNELS_OUT && batchIdx < numBatches) {
+        outputBuffer[IDX_OUT(channelOutIdx, batchIdx)] = valueOut;
+    }
 }
