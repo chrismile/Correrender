@@ -159,7 +159,7 @@ void DeepLearningCorrelationCalculator::renderGuiImplSub(sgl::PropertyEditor& pr
                 ".*,.zip,.7z,.tar,.tar.zip,.tar.gz,.tar.bz2,.tar.xz,.tar.lzma,.tar.7z",
                 fileDialogDirectory.c_str(),
                 "", 1, nullptr,
-                ImGuiFileDialogFlags_ConfirmOverwrite);
+                ImGuiFileDialogFlags_None);
     }
 
     if (!modelPresets.empty() && propertyEditor.addCombo(
