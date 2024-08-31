@@ -30,6 +30,7 @@
 #include <tiny-cuda-nn/network_with_input_encoding.h>
 #include <tiny-cuda-nn/networks/fully_fused_mlp.h>
 
+#include <Utils/AppSettings.hpp>
 #include <Utils/File/Archive.hpp>
 #include <Graphics/Vulkan/Render/Renderer.hpp>
 #include <Graphics/Vulkan/Render/CommandBuffer.hpp>

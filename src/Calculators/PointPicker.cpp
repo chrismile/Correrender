@@ -44,7 +44,11 @@ PointPicker::PointPicker(
         RefPosSetter _refPosSetter, ViewUsedIndexQuery _viewUsedIndexQuery)
         : viewManager(_viewManager), fixPickingZPlane(fixPickingZPlane), fixedZPlanePercentage(fixedZPlanePercentage),
           refPosSetter(std::move(_refPosSetter)), viewUsedIndexQuery(std::move(_viewUsedIndexQuery)) {
+#ifdef SGL_INPUT_API_V2
+    keyMod = int(ImGuiKey_ModCtrl);
+#else
     keyMod = KMOD_CTRL;
+#endif
     mouseButton = 1;
 }
 
@@ -72,7 +76,11 @@ void PointPicker::update(float dt) {
     if (mouseHoverWindowIndex >= 0) {
         SceneData* sceneData = viewManager->getViewSceneData(uint32_t(mouseHoverWindowIndex));
         if (viewUsedIndexQuery(mouseHoverWindowIndex)) {
+#ifdef SGL_INPUT_API_V2
+            if (sgl::Keyboard->getModifier(ImGuiKey(keyMod))) {
+#else
             if (sgl::Keyboard->getModifier() & SDL_Keymod(keyMod)) {
+#endif
                 if (sgl::Mouse->buttonPressed(mouseButton) || (sgl::Mouse->isButtonDown(mouseButton)
                         && sgl::Mouse->mouseMoved())) {
                     ImVec2 mousePosGlobal = ImGui::GetMousePos();

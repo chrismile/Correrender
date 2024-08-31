@@ -619,7 +619,11 @@ void HEBChart::update(float dt) {
             showCorrelationForClickedPointNew = showCorrelationForClickedPoint;
         } else if (hoveredPointIdx >= 0) {
             clickedPointIdx = hoveredPointIdx;
+#ifdef SGL_INPUT_API_V2
+            if (regionsEqual && sgl::Keyboard->getModifier(ImGuiKey_ModCtrl)) {
+#else
             if (regionsEqual && (sgl::Keyboard->getModifier() & KMOD_CTRL) != 0) {
+#endif
                 showCorrelationForClickedPointNew = true;
                 showCorrelationForClickedPointChanged = true;
                 clickedPointGridIdx = uint32_t(std::find(

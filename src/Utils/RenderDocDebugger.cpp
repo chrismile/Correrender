@@ -87,9 +87,15 @@ RenderDocDebugger::~RenderDocDebugger() {
 
 void RenderDocDebugger::update() {
     if (isInitialized) {
+#ifdef SGL_INPUT_API_V2
+        if (sgl::Keyboard->keyPressed(ImGuiKey_Y) && sgl::Keyboard->getModifier(ImGuiKey_ModCtrl)) {
+            shallCaptureFrame = true;
+        }
+#else
         if (sgl::Keyboard->keyPressed(SDLK_y) && (sgl::Keyboard->getModifier() & (KMOD_LCTRL | KMOD_RCTRL))) {
             shallCaptureFrame = true;
         }
+#endif
     }
 }
 

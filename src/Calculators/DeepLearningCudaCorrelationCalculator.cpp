@@ -29,6 +29,7 @@
 #include <iostream>
 
 #include <Math/Math.hpp>
+#include <Utils/AppSettings.hpp>
 #include <Utils/File/FileLoader.hpp>
 #include <Utils/File/Archive.hpp>
 #include <Graphics/Vulkan/Utils/Swapchain.hpp>

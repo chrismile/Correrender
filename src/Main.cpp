@@ -49,7 +49,11 @@
 #include "MainApp.hpp"
 
 void vulkanErrorCallbackHeadless() {
+#ifdef SGL_INPUT_API_V2
+    sgl::AppSettings::get()->captureMouse(false);
+#else
     SDL_CaptureMouse(SDL_FALSE);
+#endif
     std::cerr << "Application callback" << std::endl;
 }
 
