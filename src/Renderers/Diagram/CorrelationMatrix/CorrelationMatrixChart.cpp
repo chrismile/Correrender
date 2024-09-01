@@ -303,7 +303,7 @@ void CorrelationMatrixChart::renderScatterPlot() {
         const float y0 = startY + (float(numRows - i - 1) + 0.5f) * h;
         const float x1 = startX + (float(i) + 0.5f) * w;
         const float y1 = startY + float(numRows) * h;
-        const float angleCenter = float(M_PI) / 4.0f;
+        const float angleCenter = sgl::PI / 4.0f;
         std::string labelText = fieldNames.at(i);
         if (vg) {
             // Text side

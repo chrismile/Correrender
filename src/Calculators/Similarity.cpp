@@ -74,9 +74,9 @@ float computeFieldSimilarity(
     } else if (useAllTimeSteps && !useAllEnsembleMembers) {
         for (size_t tidx = 0; tidx < ts; tidx++) {
             VolumeData::HostCacheEntry fieldEntry0 = volumeData->getFieldEntryCpu(
-                    FieldType::SCALAR, fieldNames.at(similarityFieldIdx0), tidx, -1);
+                    FieldType::SCALAR, fieldNames.at(similarityFieldIdx0), int(tidx), -1);
             VolumeData::HostCacheEntry fieldEntry1 = volumeData->getFieldEntryCpu(
-                    FieldType::SCALAR, fieldNames.at(similarityFieldIdx1), tidx, -1);
+                    FieldType::SCALAR, fieldNames.at(similarityFieldIdx1), int(tidx), -1);
             const float* data0 = fieldEntry0->data<float>();
             const float* data1 = fieldEntry1->data<float>();
             for (size_t i = 0; i < numVoxels; i++) {
@@ -91,9 +91,9 @@ float computeFieldSimilarity(
     } else if (!useAllTimeSteps) {
         for (size_t eidx = 0; eidx < ts; eidx++) {
             VolumeData::HostCacheEntry fieldEntry0 = volumeData->getFieldEntryCpu(
-                    FieldType::SCALAR, fieldNames.at(similarityFieldIdx0), -1, eidx);
+                    FieldType::SCALAR, fieldNames.at(similarityFieldIdx0), -1, int(eidx));
             VolumeData::HostCacheEntry fieldEntry1 = volumeData->getFieldEntryCpu(
-                    FieldType::SCALAR, fieldNames.at(similarityFieldIdx1), -1, eidx);
+                    FieldType::SCALAR, fieldNames.at(similarityFieldIdx1), -1, int(eidx));
             const float* data0 = fieldEntry0->data<float>();
             const float* data1 = fieldEntry1->data<float>();
             for (size_t i = 0; i < numVoxels; i++) {
@@ -109,9 +109,9 @@ float computeFieldSimilarity(
         for (size_t tidx = 0; tidx < ts; tidx++) {
             for (size_t eidx = 0; eidx < ts; eidx++) {
                 VolumeData::HostCacheEntry fieldEntry0 = volumeData->getFieldEntryCpu(
-                        FieldType::SCALAR, fieldNames.at(similarityFieldIdx0), tidx, eidx);
+                        FieldType::SCALAR, fieldNames.at(similarityFieldIdx0), int(tidx), int(eidx));
                 VolumeData::HostCacheEntry fieldEntry1 = volumeData->getFieldEntryCpu(
-                        FieldType::SCALAR, fieldNames.at(similarityFieldIdx1), tidx, eidx);
+                        FieldType::SCALAR, fieldNames.at(similarityFieldIdx1), int(tidx), int(eidx));
                 const float* data0 = fieldEntry0->data<float>();
                 const float* data1 = fieldEntry1->data<float>();
                 for (size_t i = 0; i < numVoxels; i++) {

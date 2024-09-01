@@ -133,17 +133,17 @@ bool Hdf5Loader::setInputFiles(
                 "Error in Hdf5Loader::setInputFiles: File \"" + filePath + "\" has unsupported data rank.");
         return false;
     }
-    int cs = (dims[1]);
+    int cs = int(dims[1]);
     if (cs != 4) {
         sgl::Logfile::get()->writeError(
                 "Error in Hdf5Loader::setInputFiles: File \"" + filePath + "\" does not contain RGBA colors.");
         return false;
     }
     isColorData = true;
-    ts = (dims[0]);
-    zs = (dims[2]);
-    ys = (dims[3]);
-    xs = (dims[4]);
+    ts = int(dims[0]);
+    zs = int(dims[2]);
+    ys = int(dims[3]);
+    xs = int(dims[4]);
 
     if (ts > 1) {
         volumeData->setNumTimeSteps(ts);
@@ -157,7 +157,7 @@ bool Hdf5Loader::setInputFiles(
     volumeData->setGridExtent(int(xs), int(ys), int(zs), dx, dy, dz);
 
     std::unordered_map<FieldType, std::vector<std::string>> fieldNameMap;
-    fieldNameMap[FieldType::COLOR].push_back("Color");
+    fieldNameMap[FieldType::COLOR].emplace_back("Color");
     volumeData->setFieldNames(fieldNameMap);
 
     return true;

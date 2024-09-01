@@ -53,7 +53,7 @@ float computeDKLBinned(float* valueArray, int numBins, int es, Real* histogram) 
     Real maxVal = std::numeric_limits<Real>::lowest();
     for (int c = 0; c < es; c++) {
         Real val = (valueArray[c] - mean) / stdev;
-        valueArray[c] = val;
+        valueArray[c] = float(val);
         minVal = std::min(minVal, val);
         maxVal = std::max(maxVal, val);
     }
@@ -79,9 +79,9 @@ float computeDKLBinned(float* valueArray, int numBins, int es, Real* histogram) 
         }
     }
     if (std::isinf(dkl)) {
-        dkl = std::numeric_limits<float>::quiet_NaN();
+        return std::numeric_limits<float>::quiet_NaN();
     }
-    return dkl;
+    return float(dkl);
 }
 
 template
@@ -143,7 +143,8 @@ float computeDKLKNNEstimate(float* valueArray, int k, int es) {
     }
     Real stdev = std::sqrt(variance);
     for (int c = 0; c < es; c++) {
-        valueArray[c] = (valueArray[c] - mean) / stdev;
+        Real val = (valueArray[c] - mean) / stdev;
+        valueArray[c] = float(val);
     }
 
     std::sort(valueArray, valueArray + es);

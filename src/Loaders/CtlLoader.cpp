@@ -199,10 +199,10 @@ bool CtlLoader::setInputFiles(
     }
 
     if (info.ts > 1) {
-        volumeData->setNumTimeSteps(info.ts);
+        volumeData->setNumTimeSteps(int(info.ts));
     }
     if (info.es > 1) {
-        volumeData->setEnsembleMemberCount(info.es);
+        volumeData->setEnsembleMemberCount(int(info.es));
     }
 
     bool isLatLonData = true;
