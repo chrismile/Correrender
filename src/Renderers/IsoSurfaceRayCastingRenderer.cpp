@@ -115,6 +115,7 @@ void IsoSurfaceRayCastingRenderer::addViewImpl(uint32_t viewIdx) {
     isoSurfaceRayCastingPass->setStepSize(stepSize);
     isoSurfaceRayCastingPass->setIsoSurfaceColor(isoSurfaceColor);
     isoSurfaceRayCastingPass->setIntersectionSolver(intersectionSolver);
+    isoSurfaceRayCastingPass->setCloseIsoSurface(closeIsoSurface);
     isoSurfaceRayCastingPasses.push_back(isoSurfaceRayCastingPass);
 }
 
@@ -165,6 +166,12 @@ void IsoSurfaceRayCastingRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEd
     if (propertyEditor.addColorEdit4("Iso Surface Color", &isoSurfaceColor.x)) {
         for (auto& isoSurfaceRayCastingPass : isoSurfaceRayCastingPasses) {
             isoSurfaceRayCastingPass->setIsoSurfaceColor(isoSurfaceColor);
+        }
+        reRender = true;
+    }
+    if (!analyticIntersections && propertyEditor.addCheckbox("Close Iso Surface", &closeIsoSurface)) {
+        for (auto& isoSurfaceRayCastingPass : isoSurfaceRayCastingPasses) {
+            isoSurfaceRayCastingPass->setCloseIsoSurface(closeIsoSurface);
         }
         reRender = true;
     }
@@ -225,6 +232,13 @@ void IsoSurfaceRayCastingRenderer::setSettings(const SettingsMap& settings) {
         }
         reRender = true;
     }
+
+    if (settings.getValueOpt("close_iso_surface", closeIsoSurface)) {
+        for (auto& isoSurfaceRayCastingPass : isoSurfaceRayCastingPasses) {
+            isoSurfaceRayCastingPass->setCloseIsoSurface(closeIsoSurface);
+        }
+        reRender = true;
+    }
 }
 
 void IsoSurfaceRayCastingRenderer::getSettings(SettingsMap& settings) {
@@ -238,6 +252,7 @@ void IsoSurfaceRayCastingRenderer::getSettings(SettingsMap& settings) {
     settings.addKeyValue("iso_surface_color_g", isoSurfaceColor.g);
     settings.addKeyValue("iso_surface_color_b", isoSurfaceColor.b);
     settings.addKeyValue("iso_surface_color_a", isoSurfaceColor.a);
+    settings.addKeyValue("close_iso_surface", closeIsoSurface);
 }
 
 void IsoSurfaceRayCastingRenderer::reloadShaders() {
@@ -296,6 +311,9 @@ void IsoSurfaceRayCastingPass::loadShader() {
     }
     if (analyticIntersections) {
         preprocessorDefines.insert(std::make_pair("ANALYTIC_INTERSECTIONS", ""));
+    }
+    if (!analyticIntersections && closeIsoSurface) {
+        preprocessorDefines.insert(std::make_pair("CLOSE_ISOSURFACES", ""));
     }
     if (intersectionSolver == IntersectionSolver::LINEAR_INTERPOLATION) {
         preprocessorDefines.insert(std::make_pair("SOLVER_LINEAR_INTERPOLATION", ""));

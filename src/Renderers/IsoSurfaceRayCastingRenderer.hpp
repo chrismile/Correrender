@@ -75,6 +75,7 @@ private:
     float stepSize = 0.1f;
     glm::vec4 isoSurfaceColor = glm::vec4(0.8f, 0.8f, 0.8f, 1.0f);
     IntersectionSolver intersectionSolver = IntersectionSolver::MARMITT;
+    bool closeIsoSurface = false; //< Only for ray marching at the moment.
 };
 
 /**
@@ -92,6 +93,7 @@ public:
     inline void setStepSize(float _stepSize) { stepSize = _stepSize; }
     inline void setIsoSurfaceColor(const glm::vec4& _color) { renderSettingsData.isoSurfaceColor = _color; }
     inline void setIntersectionSolver(IntersectionSolver _solver) { intersectionSolver = _solver; setShaderDirty(); }
+    inline void setCloseIsoSurface(bool _closeIsoSurface) { closeIsoSurface = _closeIsoSurface; setShaderDirty(); }
     void recreateSwapchain(uint32_t width, uint32_t height) override;
 
 protected:
@@ -113,6 +115,7 @@ private:
     bool analyticIntersections = false;
     float stepSize = 0.1f;
     IntersectionSolver intersectionSolver = IntersectionSolver::MARMITT;
+    bool closeIsoSurface = false; //< Only for ray marching at the moment.
 
     struct RenderSettingsData {
         glm::mat4 inverseViewMatrix;
