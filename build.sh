@@ -269,7 +269,8 @@ if $use_msys && command -v pacman &> /dev/null && [ ! -d $build_dir_debug ] && [
             || ! is_installed_pacman "mingw-w64-x86_64-nlohmann-json" || ! is_installed_pacman "mingw-w64-x86_64-blosc" \
             || ! is_installed_pacman "mingw-w64-x86_64-netcdf" || ! is_installed_pacman "mingw-w64-x86_64-hdf5" \
             || ! is_installed_pacman "mingw-w64-x86_64-eccodes" || ! is_installed_pacman "mingw-w64-x86_64-eigen3" \
-            || ! is_installed_pacman "mingw-w64-x86_64-libtiff" || ! is_installed_pacman "mingw-w64-x86_64-nlopt"; then
+            || ! is_installed_pacman "mingw-w64-x86_64-libtiff" || ! is_installed_pacman "mingw-w64-x86_64-nlopt" \
+            || ! is_installed_pacman "mingw-w64-x86_64-glfw"; then
         echo "------------------------"
         echo "installing dependencies "
         echo "------------------------"
@@ -281,7 +282,7 @@ if $use_msys && command -v pacman &> /dev/null && [ ! -d $build_dir_debug ] && [
         mingw64/mingw-w64-x86_64-opencl-headers mingw64/mingw-w64-x86_64-opencl-icd mingw64/mingw-w64-x86_64-jsoncpp \
         mingw64/mingw-w64-x86_64-nlohmann-json mingw64/mingw-w64-x86_64-blosc mingw64/mingw-w64-x86_64-netcdf \
         mingw64/mingw-w64-x86_64-hdf5 mingw64/mingw-w64-x86_64-eccodes mingw64/mingw-w64-x86_64-eigen3 \
-        mingw64/mingw-w64-x86_64-libtiff mingw64/mingw-w64-x86_64-nlopt
+        mingw64/mingw-w64-x86_64-libtiff mingw64/mingw-w64-x86_64-nlopt mingw64/mingw-w64-x86_64-glfw
     fi
     if ! (is_installed_pacman "mingw-w64-x86_64-curl" || is_installed_pacman "mingw-w64-x86_64-curl-gnutls" \
             || is_installed_pacman "mingw-w64-x86_64-curl-winssl"); then
