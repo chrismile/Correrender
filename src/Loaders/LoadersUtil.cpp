@@ -199,7 +199,9 @@ void swapEndianness(uint8_t* byteArray, size_t sizeInBytes, size_t bytesPerEntry
         for (auto i = r.begin(); i != r.end(); i += r.grainsize()) {
 #else
     uint8_t swappedEntry[8];
-#pragma omp parallel for shared(byteArray, sizeInBytes, bytesPerEntry) private(swappedEntry) default(none)
+#if _OPENMP >= 201107
+    #pragma omp parallel for shared(byteArray, sizeInBytes, bytesPerEntry) private(swappedEntry) default(none)
+#endif
     for (size_t i = 0; i < sizeInBytes; i += bytesPerEntry) {
 #endif
         for (size_t j = 0; j < bytesPerEntry; j++) {
