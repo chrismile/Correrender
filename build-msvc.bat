@@ -115,6 +115,7 @@ pushd third_party
 IF "%VULKAN_SDK%"=="" (
   for /D %%F in (C:\VulkanSDK\*) do (
     set VULKAN_SDK=%%F
+    set "PATH=%%F\Bin;%PATH%"
     goto vulkan_finished
   )
 )
