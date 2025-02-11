@@ -244,7 +244,7 @@ void IsoSurfaceRasterizer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
     }
     if (propertyEditor.beginNode("Advanced Settings")) {
         propertyEditor.addInputAction("File Path", &exportFilePath);
-        if (propertyEditor.addButton("", "Export Mesh")) {
+        if (propertyEditor.addButton("##export-mesh-label", "Export Mesh")) {
             std::vector<uint32_t> triangleIndices;
             std::vector<glm::vec3> vertexPositions;
             std::vector<glm::vec3> vertexNormals;

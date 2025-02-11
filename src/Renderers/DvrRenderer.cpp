@@ -271,7 +271,7 @@ void DvrRenderer::renderGuiImpl(sgl::PropertyEditor& propertyEditor) {
 
     if (propertyEditor.beginNode("Advanced Settings")) {
         propertyEditor.addInputAction("File Path", &exportFilePath);
-        if (propertyEditor.addButton("", "Export Tet Mesh")) {
+        if (propertyEditor.addButton("##export-tet-mesh-label", "Export Tet Mesh")) {
             std::vector<uint32_t> cellIndices;
             std::vector<glm::vec3> vertexPositions;
             std::vector<glm::vec4> vertexColors;

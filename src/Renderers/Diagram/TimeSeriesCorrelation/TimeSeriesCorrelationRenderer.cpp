@@ -696,7 +696,7 @@ void TimeSeriesCorrelationRenderer::renderGuiImpl(sgl::PropertyEditor& propertyE
 
     propertyEditor.addInputAction("Time Series Path", &timeSeriesFilePath);
     propertyEditor.addInputAction("Model Path", &modelFilePath);
-    if (propertyEditor.addButton("", "Load")) {
+    if (propertyEditor.addButton("##load-model-label", "Load")) {
         unloadModel();
         loadTimeSeriesFromFile(timeSeriesFilePath);
         loadModelFromFile(modelFilePath);
@@ -751,7 +751,7 @@ void TimeSeriesCorrelationRenderer::renderGuiImpl(sgl::PropertyEditor& propertyE
         reRender = true;
         reRenderTriggeredByDiagram = true;
     }
-    if (propertyEditor.addButton("", "Reset Range")) {
+    if (propertyEditor.addButton("##reset-range-label", "Reset Range")) {
         minCorrelationValue = minCorrelationValueGlobal;
         maxCorrelationValue = maxCorrelationValueGlobal;
         updateCorrelationRange();

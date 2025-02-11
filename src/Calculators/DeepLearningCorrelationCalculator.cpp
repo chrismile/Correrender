@@ -140,7 +140,7 @@ void DeepLearningCorrelationCalculator::renderGuiImplSub(sgl::PropertyEditor& pr
     }
 
     propertyEditor.addInputAction("Model Path", &modelFilePath);
-    if (propertyEditor.addButton("", "Load")) {
+    if (propertyEditor.addButton("##load-model-label", "Load")) {
         loadModelFromFile(modelFilePath);
         dirty = true;
     }

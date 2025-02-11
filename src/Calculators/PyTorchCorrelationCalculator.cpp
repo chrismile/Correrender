@@ -952,7 +952,7 @@ void PyTorchCorrelationCalculator::renderGuiImplSub(sgl::PropertyEditor& propert
         propertyEditor.addInputAction(
                 i == 0 ? ("Model Path (Encoder)##" + std::to_string(i)) : ("Model Path (Decoder)##" + std::to_string(i)),
                 i == 0 ? &modelFilePathEncoder : &modelFilePathDecoder);
-        if (propertyEditor.addButton("", "Load##" + std::to_string(i))) {
+        if (propertyEditor.addButton("##load-model-label" + std::to_string(i), "Load##" + std::to_string(i))) {
             loadModelFromFile(i, i == 0 ? modelFilePathEncoder : modelFilePathDecoder);
             dirty = true;
         }
