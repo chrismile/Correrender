@@ -36,7 +36,6 @@
 
 #ifdef SUPPORT_OSQP
 #include "osqp.h"
-#include "osqp_api_utils.h"
 #endif
 
 #include "lsqr.hpp"

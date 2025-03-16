@@ -1154,6 +1154,9 @@ if $build_with_osqp_support; then
             rm -rf "./osqp-src"
         fi
         git clone https://github.com/osqp/osqp osqp-src
+        pushd osqp-src >/dev/null
+        git checkout f45ceedea3a5dd4d85890e70012fb6c6fceea5af
+        popd >/dev/null
         mkdir -p osqp-src/build
         pushd osqp-src/build >/dev/null
         cmake .. ${params_gen[@]+"${params_gen[@]}"} -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="${projectpath}/third_party/osqp"
