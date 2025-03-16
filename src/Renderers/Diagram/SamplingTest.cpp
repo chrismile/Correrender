@@ -28,6 +28,7 @@
 
 #include <random>
 #include <numeric>
+#include <chrono>
 
 #include <Math/Math.hpp>
 #include <Utils/AppSettings.hpp>

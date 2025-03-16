@@ -27,6 +27,8 @@
  */
 
 #include <utility>
+#include <chrono>
+
 #include <json/json.h>
 
 #include <Math/Math.hpp>

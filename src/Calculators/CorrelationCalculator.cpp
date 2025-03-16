@@ -27,6 +27,7 @@
  */
 
 #include <iostream>
+#include <chrono>
 
 #ifdef USE_TBB
 #include <tbb/parallel_for.h>

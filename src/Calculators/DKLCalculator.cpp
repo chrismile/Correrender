@@ -26,6 +26,8 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <chrono>
+
 #ifdef USE_TBB
 #include <tbb/parallel_for.h>
 #include <tbb/blocked_range.h>
