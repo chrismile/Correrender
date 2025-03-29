@@ -339,7 +339,7 @@ if %build_with_zarr_support% == true (
         if exist ".\z5-src" (
             rmdir /s /q ".\z5-src"
         )
-        git clone https://github.com/constantinpape/z5.git z5-src
+        git clone https://github.com/chrismile/z5.git z5-src
         :: sed -i '/^SET(Boost_NO_SYSTEM_PATHS ON)$/s/^/#/' z5-src/CMakeLists.txt
         powershell -Command "(gc z5-src/CMakeLists.txt) -replace 'SET\(Boost_NO_SYSTEM_PATHS ON\)', '#SET(Boost_NO_SYSTEM_PATHS ON)' | Out-File -encoding ASCII z5-src/CMakeLists.txt"
         powershell -Command "(gc z5-src/CMakeLists.txt) -replace 'SET\(BOOST_ROOT \"\$\{CMAKE_PREFIX_PATH\}\/Library\"\)', '#SET(BOOST_ROOT \"${CMAKE_PREFIX_PATH}/Library\")' | Out-File -encoding ASCII z5-src/CMakeLists.txt"
