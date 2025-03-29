@@ -983,6 +983,20 @@ if [ ! -d "./sgl/install" ]; then
     popd >/dev/null
 fi
 
+# xtl and other dependencies broke compatibility with medium-old versions of CMake (< 3.29).
+is_old_cmake=false
+cmake_version=($(cmake --version))
+cmake_version=${cmake_version[2]}
+if [[ $cmake_version == "3."* ]]; then
+    # We will only check for 3.* here, as older versions (2.x) are not supported and newer CMake versions might break
+    # the versioning scheme.
+    cmake_version_medium_minor="${cmake_version#*.}"
+    cmake_version_medium="${cmake_version_medium_minor%%.*}"
+    if [ "$cmake_version_medium" -lt "29" ]; then
+        is_old_cmake=true
+    fi
+fi
+
 if $build_with_zarr_support; then
     if [ ! -d "./xtl" ]; then
         echo "------------------------"
@@ -993,6 +1007,11 @@ if $build_with_zarr_support; then
             rm -rf "./xtl-src"
         fi
         git clone https://github.com/xtensor-stack/xtl.git xtl-src
+        if $is_old_cmake; then
+            pushd xtl-src >/dev/null
+            git checkout 5566caa124a74c21104faef6e445376c5c113d53
+            popd >/dev/null
+        fi
         mkdir -p xtl-src/build
         pushd xtl-src/build >/dev/null
         cmake ${params_gen[@]+"${params_gen[@]}"} -DCMAKE_INSTALL_PREFIX="${projectpath}/third_party/xtl" ..
@@ -1008,6 +1027,11 @@ if $build_with_zarr_support; then
             rm -rf "./xtensor-src"
         fi
         git clone https://github.com/xtensor-stack/xtensor.git xtensor-src
+        if $is_old_cmake; then
+            pushd xtensor-src >/dev/null
+            git checkout c2e9b7b189b5ac9b383f6e8acb86566142c7bf9a
+            popd >/dev/null
+        fi
         mkdir -p xtensor-src/build
         pushd xtensor-src/build >/dev/null
         cmake ${params_gen[@]+"${params_gen[@]}"} -Dxtl_DIR="${projectpath}/third_party/xtl/share/cmake/xtl" \
@@ -1024,6 +1048,11 @@ if $build_with_zarr_support; then
             rm -rf "./xsimd-src"
         fi
         git clone https://github.com/xtensor-stack/xsimd.git xsimd-src
+        if $is_old_cmake; then
+            pushd xsimd-src >/dev/null
+            git checkout a507f83ead608fffc558b615b61b20f44f2f4672
+            popd >/dev/null
+        fi
         mkdir -p xsimd-src/build
         pushd xsimd-src/build >/dev/null
         cmake ${params_gen[@]+"${params_gen[@]}"} -Dxtl_DIR="${projectpath}/third_party/xtl/share/cmake/xtl" \
@@ -1048,7 +1077,7 @@ if $build_with_zarr_support; then
         if [ -d "./z5-src" ]; then
             rm -rf "./z5-src"
         fi
-        git clone https://github.com/constantinpape/z5.git z5-src
+        git clone https://github.com/chrismile/z5.git z5-src
         if [ $use_macos = true ]; then
             sed -i -e 's/SET(Boost_NO_SYSTEM_PATHS ON)/#SET(Boost_NO_SYSTEM_PATHS ON)/g' z5-src/CMakeLists.txt
         else
