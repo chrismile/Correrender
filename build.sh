@@ -318,6 +318,9 @@ elif $use_macos && command -v brew &> /dev/null && [ ! -d $build_dir_debug ] && 
     if ! is_installed_brew "libomp"; then
         brew install libomp
     fi
+    if ! is_installed_brew "make"; then
+        brew install make
+    fi
     if ! is_installed_brew "autoconf"; then
         brew install autoconf
     fi
@@ -417,13 +420,17 @@ elif command -v apt &> /dev/null && ! $use_conda; then
                 || ! is_installed_apt "libxxf86vm-dev" || ! is_installed_apt "libegl1-mesa-dev" \
                 || ! is_installed_apt "libglu1-mesa-dev" || ! is_installed_apt "mesa-common-dev" \
                 || ! is_installed_apt "libibus-1.0-dev" || ! is_installed_apt "autoconf" \
-                || ! is_installed_apt "automake" || ! is_installed_apt "autoconf-archive"; then
+                || ! is_installed_apt "automake" || ! is_installed_apt "autoconf-archive" \
+                || ! is_installed_apt "libxinerama-dev" || ! is_installed_apt "libxcursor-dev" \
+                || ! is_installed_apt "xorg-dev" || ! is_installed_apt "pkg-config" \
+                || ! is_installed_apt "wayland-protocols" || ! is_installed_apt "extra-cmake-modules"; then
             echo "------------------------"
             echo "installing dependencies "
             echo "------------------------"
             sudo apt install -y libgl-dev libxmu-dev libxi-dev libx11-dev libxft-dev libxext-dev libxrandr-dev \
             libwayland-dev libxkbcommon-dev libxxf86vm-dev libegl1-mesa-dev libglu1-mesa-dev mesa-common-dev \
-            libibus-1.0-dev autoconf automake autoconf-archive
+            libibus-1.0-dev autoconf automake autoconf-archive libxinerama-dev libxcursor-dev xorg-dev pkg-config \
+            wayland-protocols extra-cmake-modules
         fi
     else
         if ! is_installed_apt "libboost-filesystem-dev" || ! is_installed_apt "libicu-dev" \
@@ -466,11 +473,15 @@ elif command -v pacman &> /dev/null && ! $use_conda; then
         if ! is_installed_pacman "libgl" || ! is_installed_pacman "glu" || ! is_installed_pacman "vulkan-devel" \
                 || ! is_installed_pacman "shaderc" || ! is_installed_pacman "openssl" \
                 || ! is_installed_pacman "autoconf" || ! is_installed_pacman "automake" \
-                || ! is_installed_pacman "autoconf-archive"; then
+                || ! is_installed_pacman "autoconf-archive" || ! is_installed_pacman "libxinerama" \
+                || ! is_installed_pacman "libxcursor" || ! is_installed_pacman "pkgconf" \
+                || ! is_installed_pacman "libxkbcommon" || ! is_installed_pacman "wayland-protocols" \
+                || ! is_installed_pacman "wayland" || ! is_installed_pacman "extra-cmake-modules"; then
             echo "------------------------"
             echo "installing dependencies "
             echo "------------------------"
-            sudo pacman -S libgl glu vulkan-devel shaderc openssl autoconf automake autoconf-archive
+            sudo pacman -S libgl glu vulkan-devel shaderc openssl autoconf automake autoconf-archive libxinerama \
+            libxcursor pkgconf libxkbcommon wayland-protocols wayland extra-cmake-modules
         fi
     else
         if ! is_installed_pacman "boost" || ! is_installed_pacman "icu" || ! is_installed_pacman "glm" \
@@ -514,13 +525,18 @@ elif command -v yum &> /dev/null && ! $use_conda; then
                 || ! is_installed_rpm "glew-devel" || ! is_installed_rpm "libXext-devel" \
                 || ! is_installed_rpm "vulkan-headers" || ! is_installed_rpm "vulkan-loader" \
                 || ! is_installed_rpm "vulkan-tools" || ! is_installed_rpm "vulkan-validation-layers" \
-                || ! is_installed_rpm "libshaderc-devel"; then
+                || ! is_installed_rpm "libshaderc-devel" || ! is_installed_rpm "libXinerama-devel" \
+                || ! is_installed_rpm "libXrandr-devel" || ! is_installed_rpm "libXcursor-devel" \
+                || ! is_installed_rpm "libXi-devel" || ! is_installed_rpm "wayland-devel" \
+                || ! is_installed_rpm "libxkbcommon-devel" || ! is_installed_rpm "wayland-protocols-devel" \
+                || ! is_installed_rpm "extra-cmake-modules"; then
             echo "------------------------"
             echo "installing dependencies "
             echo "------------------------"
             sudo yum install -y perl libstdc++-devel libstdc++-static autoconf automake autoconf-archive \
             mesa-libGLU-devel glew-devel libXext-devel vulkan-headers vulkan-loader vulkan-tools \
-            vulkan-validation-layers libshaderc-devel
+            vulkan-validation-layers libshaderc-devel libXinerama-devel libXrandr-devel libXcursor-devel libXi-devel \
+            wayland-devel libxkbcommon-devel wayland-protocols-devel extra-cmake-modules
         fi
     else
         if ! is_installed_rpm "boost-devel" || ! is_installed_rpm "libicu-devel" || ! is_installed_rpm "glm-devel" \
@@ -658,21 +674,6 @@ fi
 [ -d "./third_party/" ] || mkdir "./third_party/"
 pushd third_party > /dev/null
 
-cmake_version=$(cmake --version | head -n 1 | awk '{print $NF}')
-cmake_version_major=$(echo $cmake_version | cut -d. -f1)
-cmake_version_minor=$(echo $cmake_version | cut -d. -f2)
-if [[ $cmake_version_major < 3 || ($cmake_version_major == 3 && $cmake_version_minor < 18) ]]; then
-    cmake_download_version="3.25.2"
-    if [ ! -d "cmake-${cmake_download_version}-linux-x86_64" ]; then
-        echo "------------------------"
-        echo "    downloading cmake   "
-        echo "------------------------"
-        curl --silent --show-error --fail -OL "https://github.com/Kitware/CMake/releases/download/v${cmake_download_version}/cmake-${cmake_download_version}-linux-x86_64.tar.gz"
-        tar -xf cmake-${cmake_download_version}-linux-x86_64.tar.gz -C .
-    fi
-    PATH="${projectpath}/third_party/cmake-${cmake_download_version}-linux-x86_64/bin:$PATH"
-fi
-
 params_sgl=()
 params=()
 params_run=()
@@ -685,14 +686,17 @@ if [ $use_msys = true ]; then
 fi
 
 if [ $use_vcpkg = false ] && [ $use_macos = true ]; then
+    brew_prefix="$(brew --prefix)"
     params_gen+=(-DCMAKE_FIND_USE_CMAKE_SYSTEM_PATH=False)
     params_gen+=(-DCMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH=False)
     params_gen+=(-DCMAKE_FIND_FRAMEWORK=LAST)
     params_gen+=(-DCMAKE_FIND_APPBUNDLE=NEVER)
-    params_gen+=(-DCMAKE_PREFIX_PATH="$(brew --prefix)")
+    params_gen+=(-DCMAKE_PREFIX_PATH="${brew_prefix}")
+    params_gen+=(-DCMAKE_C_COMPILER="${brew_prefix}/opt/llvm/bin/clang")
+    params_gen+=(-DCMAKE_CXX_COMPILER="${brew_prefix}/opt/llvm/bin/clang++")
     params_sgl+=(-DCMAKE_INSTALL_PREFIX="../install")
-    params_sgl+=(-DZLIB_ROOT="$(brew --prefix)/opt/zlib")
-    params+=(-DZLIB_ROOT="$(brew --prefix)/opt/zlib")
+    params_sgl+=(-DZLIB_ROOT="${brew_prefix}/opt/zlib")
+    params+=(-DZLIB_ROOT="${brew_prefix}/opt/zlib")
 fi
 
 if $glibcxx_debug; then
@@ -706,6 +710,43 @@ fi
 
 if [ $use_download_swapchain = true ]; then
     params_run+=(--dlswap)
+fi
+
+cmake_version=$(cmake --version | head -n 1 | awk '{print $NF}')
+cmake_version_major=$(echo $cmake_version | cut -d. -f1)
+cmake_version_minor=$(echo $cmake_version | cut -d. -f2)
+if [[ $cmake_version_major < 3 || ($cmake_version_major == 3 && $cmake_version_minor < 18) ]]; then
+    os_arch_cmake=${os_arch}
+    if [ "$os_arch" = "arm64" ]; then
+        os_arch_cmake="aarch64"
+    fi
+    cmake_download_version="4.0.0"
+    if [ ! -d "cmake-${cmake_download_version}-linux-x86_64" ]; then
+        echo "------------------------"
+        echo "    downloading cmake   "
+        echo "------------------------"
+        curl --silent --show-error --fail -OL "https://github.com/Kitware/CMake/releases/download/v${cmake_download_version}/cmake-${cmake_download_version}-linux-${os_arch_cmake}.tar.gz"
+        tar -xf cmake-${cmake_download_version}-linux-x86_64.tar.gz -C .
+    fi
+    PATH="${projectpath}/third_party/cmake-${cmake_download_version}-linux-x86_64/bin:$PATH"
+    cmake_version=$(cmake --version | head -n 1 | awk '{print $NF}')
+    cmake_version_major=$(echo $cmake_version | cut -d. -f1)
+    cmake_version_minor=$(echo $cmake_version | cut -d. -f2)
+fi
+if [ $use_msys = false ] && [ $use_macos = false ] && [ $use_conda = false ] && [ $use_vcpkg = false ] && [[ $cmake_version_major -ge 4 ]]; then
+    # Ubuntu 22.04 ships packages, such as libjsoncpp-dev, that are incompatible with CMake 4.0.
+    if (lsb_release -a 2> /dev/null | grep -q 'Ubuntu' || lsb_release -a 2> /dev/null | grep -q 'Mint'); then
+        if lsb_release -a 2> /dev/null | grep -q 'Ubuntu'; then
+            distro_code_name=$(lsb_release -cs)
+            distro_release=$(lsb_release -rs)
+        else
+            distro_code_name=$(cat /etc/upstream-release/lsb-release | grep "DISTRIB_CODENAME=" | sed 's/^.*=//')
+            distro_release=$(cat /etc/upstream-release/lsb-release | grep "DISTRIB_RELEASE=" | sed 's/^.*=//')
+        fi
+        if dpkg --compare-versions "$distro_release" "lt" "24.04"; then
+            params+=(-DCMAKE_POLICY_VERSION_MINIMUM=3.5)
+        fi
+    fi
 fi
 
 use_vulkan=false
@@ -985,16 +1026,8 @@ fi
 
 # xtl and other dependencies broke compatibility with medium-old versions of CMake (< 3.29).
 is_old_cmake=false
-cmake_version=($(cmake --version))
-cmake_version=${cmake_version[2]}
-if [[ $cmake_version == "3."* ]]; then
-    # We will only check for 3.* here, as older versions (2.x) are not supported and newer CMake versions might break
-    # the versioning scheme.
-    cmake_version_medium_minor="${cmake_version#*.}"
-    cmake_version_medium="${cmake_version_medium_minor%%.*}"
-    if [ "$cmake_version_medium" -lt "29" ]; then
-        is_old_cmake=true
-    fi
+if [[ $cmake_version_major < 3 || ($cmake_version_major == 3 && $cmake_version_minor < 29) ]]; then
+    is_old_cmake=true
 fi
 
 if $build_with_zarr_support; then
@@ -1188,9 +1221,6 @@ if $build_with_osqp_support; then
             rm -rf "./osqp-src"
         fi
         git clone https://github.com/osqp/osqp osqp-src
-        pushd osqp-src >/dev/null
-        git checkout f45ceedea3a5dd4d85890e70012fb6c6fceea5af
-        popd >/dev/null
         mkdir -p osqp-src/build
         pushd osqp-src/build >/dev/null
         cmake .. ${params_gen[@]+"${params_gen[@]}"} -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="${projectpath}/third_party/osqp"
@@ -1393,7 +1423,6 @@ elif [ $use_macos = true ] && [ $use_vcpkg = true ]; then
     [ -d $destination_dir ] || mkdir $destination_dir
     rsync -a "$build_dir/Correrender.app/Contents/MacOS/Correrender" $destination_dir
 elif [ $use_macos = true ] && [ $use_vcpkg = false ]; then
-    brew_prefix="$(brew --prefix)"
     mkdir -p $destination_dir
 
     if [ -d "$destination_dir/Correrender.app" ]; then

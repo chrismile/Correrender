@@ -400,9 +400,6 @@ if %build_with_osqp_support% == true (
             rmdir /s /q ".\osqp-src"
         )
         git clone https://github.com/osqp/osqp osqp-src
-        pushd "osqp-src"
-        git checkout f45ceedea3a5dd4d85890e70012fb6c6fceea5af
-        popd
         if not exist .\osqp-src\build\ mkdir .\osqp-src\build\
         pushd "osqp-src\build"
         cmake %cmake_generator% %cmake_args_general% ^

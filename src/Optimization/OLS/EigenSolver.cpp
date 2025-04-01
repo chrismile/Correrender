@@ -165,8 +165,13 @@ void solveQuadprogBoxConstrainedOSQP(const Eigen::MatrixXr& lhs, const Eigen::Ma
         constrMatCscRowInd[i] = OSQPInt(i);
     }
     constrMatCscColPtr[n] = OSQPInt(n);
-    OSQPCscMatrix constrMat;
+    OSQPCscMatrix* constrMat;
+#ifdef OSQP_LEGACY_API
+    constrMat = new OSQPCscMatrix;
     csc_set_data(&constrMat, n, n, n, constrMatCscVals, constrMatCscRowInd, constrMatCscColPtr);
+#else
+    constrMat = OSQPCscMatrix_new(n, n, n, constrMatCscVals, constrMatCscRowInd, constrMatCscColPtr);
+#endif
 
     // Convert the three (two in upper triangular part) non-zero diagonals to the CSC format.
     const int maxNnz = 2 * n - 4; // 3 * n - 8 for complete matrix, not just upper triangular part.
@@ -188,8 +193,13 @@ void solveQuadprogBoxConstrainedOSQP(const Eigen::MatrixXr& lhs, const Eigen::Ma
     }
     auto nnz = OSQPInt(pCscVals.size());
     pCscColPtr.push_back(nnz);
-    OSQPCscMatrix P;
+    OSQPCscMatrix* P;
+#ifdef OSQP_LEGACY_API
+    P = new OSQPCscMatrix;
     csc_set_data(&P, n, n, nnz, pCscVals.data(), pCscRowInd.data(), pCscColPtr.data());
+#else
+    P = OSQPCscMatrix_new(n, n, n, constrMatCscVals, constrMatCscRowInd, constrMatCscColPtr);
+#endif
 
     // Lower and upper constraints.
     auto* l = new OSQPFloat[n], *u = new OSQPFloat[n];
@@ -204,7 +214,7 @@ void solveQuadprogBoxConstrainedOSQP(const Eigen::MatrixXr& lhs, const Eigen::Ma
     }
 
     OSQPSolver* solver = nullptr;
-    OSQPInt errorCode = osqp_setup(&solver, &P, q, &constrMat, l, u, n, n, &settings);
+    OSQPInt errorCode = osqp_setup(&solver, P, q, constrMat, l, u, n, n, &settings);
     if (errorCode == 0) {
         errorCode = osqp_solve(solver);
         if (errorCode == 0) {
@@ -220,6 +230,14 @@ void solveQuadprogBoxConstrainedOSQP(const Eigen::MatrixXr& lhs, const Eigen::Ma
         sgl::Logfile::get()->writeError("Error in solver OSQP: osqp_setup failed.");
         return;
     }
+
+#ifdef OSQP_LEGACY_API
+    delete constrMat;
+    delete P;
+#else
+    OSQPCscMatrix_free(constrMat);
+    OSQPCscMatrix_free(P);
+#endif
 
     delete[] constrMatCscVals;
     delete[] constrMatCscColPtr;
