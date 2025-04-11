@@ -168,7 +168,7 @@ void solveQuadprogBoxConstrainedOSQP(const Eigen::MatrixXr& lhs, const Eigen::Ma
     OSQPCscMatrix* constrMat;
 #ifdef OSQP_LEGACY_API
     constrMat = new OSQPCscMatrix;
-    csc_set_data(&constrMat, n, n, n, constrMatCscVals, constrMatCscRowInd, constrMatCscColPtr);
+    csc_set_data(constrMat, n, n, n, constrMatCscVals, constrMatCscRowInd, constrMatCscColPtr);
 #else
     constrMat = OSQPCscMatrix_new(n, n, n, constrMatCscVals, constrMatCscRowInd, constrMatCscColPtr);
 #endif
@@ -196,7 +196,7 @@ void solveQuadprogBoxConstrainedOSQP(const Eigen::MatrixXr& lhs, const Eigen::Ma
     OSQPCscMatrix* P;
 #ifdef OSQP_LEGACY_API
     P = new OSQPCscMatrix;
-    csc_set_data(&P, n, n, nnz, pCscVals.data(), pCscRowInd.data(), pCscColPtr.data());
+    csc_set_data(P, n, n, nnz, pCscVals.data(), pCscRowInd.data(), pCscColPtr.data());
 #else
     P = OSQPCscMatrix_new(n, n, n, constrMatCscVals, constrMatCscRowInd, constrMatCscColPtr);
 #endif
