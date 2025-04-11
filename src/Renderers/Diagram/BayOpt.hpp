@@ -34,6 +34,7 @@
 
 constexpr bool EVAL_TIMINGS = false;
 
+#include <cmath>
 #include <variant>
 
 #define USE_NLOPT

@@ -27,6 +27,7 @@
  */
 
 #define NOMINMAX
+#define _USE_MATH_DEFINES // for M_PI used by Limbo in BayOpt.hpp via cmath.
 
 #include <iostream>
 
