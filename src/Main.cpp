@@ -28,6 +28,10 @@
 
 #include <unordered_map>
 
+#ifdef SUPPORT_SDL3
+#include <SDL3/SDL_main.h>
+#endif
+
 #include <Utils/StringUtils.hpp>
 #include <Utils/AppSettings.hpp>
 #include <Utils/AppLogic.hpp>
