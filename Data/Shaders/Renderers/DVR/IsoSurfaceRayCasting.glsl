@@ -57,7 +57,7 @@ layout(binding = 0) uniform RendererUniformDataBuffer {
     vec3 voxelTexelSize;
 };
 
-layout (binding = 1, rgba32f) uniform image2D outputImage;
+layout (binding = 1, OUTPUT_IMAGE_FORMAT) uniform image2D outputImage;
 layout (binding = 2) uniform sampler3D scalarField;
 
 #ifdef SUPPORT_DEPTH_BUFFER

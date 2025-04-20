@@ -306,6 +306,11 @@ void IsoSurfaceRayCastingPass::setSelectedScalarFieldName(const std::string& _fi
 void IsoSurfaceRayCastingPass::loadShader() {
     sgl::vk::ShaderManager->invalidateShaderCache();
     std::map<std::string, std::string> preprocessorDefines;
+    preprocessorDefines.insert(std::make_pair(
+            "OUTPUT_IMAGE_FORMAT", sgl::vk::getImageFormatGlslString(outputImageFormat)));
+    if (volumeData) {
+        volumeData->getPreprocessorDefines(preprocessorDefines);
+    }
     if (volumeData && volumeData->getImageSampler()->getImageSamplerSettings().minFilter == VK_FILTER_NEAREST) {
         preprocessorDefines.insert(std::make_pair("USE_INTERPOLATION_NEAREST_NEIGHBOR", ""));
     }
@@ -344,6 +349,11 @@ void IsoSurfaceRayCastingPass::createComputeData(sgl::vk::Renderer* renderer, sg
 
 void IsoSurfaceRayCastingPass::recreateSwapchain(uint32_t width, uint32_t height) {
     sceneImageView = (*sceneData->sceneTexture)->getImageView();
+    VkFormat newOutputImageFormat = sceneImageView->getImage()->getImageSettings().format;
+    if (outputImageFormat != newOutputImageFormat) {
+        outputImageFormat = newOutputImageFormat;
+        setShaderDirty();
+    }
 
     if (computeData) {
         computeData->setStaticImageView(sceneImageView, "outputImage");

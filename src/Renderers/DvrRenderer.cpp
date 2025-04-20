@@ -389,7 +389,11 @@ void DvrPass::setSelectedScalarField(int _selectedFieldIdx, const std::string& _
 void DvrPass::loadShader() {
     sgl::vk::ShaderManager->invalidateShaderCache();
     std::map<std::string, std::string> preprocessorDefines;
-    volumeData->getPreprocessorDefines(preprocessorDefines);
+    preprocessorDefines.insert(std::make_pair(
+            "OUTPUT_IMAGE_FORMAT", sgl::vk::getImageFormatGlslString(outputImageFormat)));
+    if (volumeData) {
+        volumeData->getPreprocessorDefines(preprocessorDefines);
+    }
     if (sceneData->useDepthBuffer) {
         preprocessorDefines.insert(std::make_pair("SUPPORT_DEPTH_BUFFER", ""));
     }
@@ -420,6 +424,11 @@ void DvrPass::createComputeData(sgl::vk::Renderer* renderer, sgl::vk::ComputePip
 
 void DvrPass::recreateSwapchain(uint32_t width, uint32_t height) {
     sceneImageView = (*sceneData->sceneTexture)->getImageView();
+    VkFormat newOutputImageFormat = sceneImageView->getImage()->getImageSettings().format;
+    if (outputImageFormat != newOutputImageFormat) {
+        outputImageFormat = newOutputImageFormat;
+        setShaderDirty();
+    }
 
     if (computeData) {
         computeData->setStaticImageView(sceneImageView, "outputImage");

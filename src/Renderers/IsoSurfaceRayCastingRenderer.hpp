@@ -107,6 +107,7 @@ private:
     sgl::CameraPtr* camera;
     VolumeDataPtr volumeData;
     sgl::vk::ImageViewPtr sceneImageView;
+    VkFormat outputImageFormat = VK_FORMAT_UNDEFINED;
     float voxelSize = 1.0f;
     bool useInterpolationNearestCached = false;
 
