@@ -223,6 +223,8 @@ MainApp::MainApp()
     sgl::AppSettings::get()->getSettings().getValueOpt("showFpsOverlay", showFpsOverlay);
     sgl::AppSettings::get()->getSettings().getValueOpt("showCoordinateAxesOverlay", showCoordinateAxesOverlay);
 
+    deviceSelector = device->getDeviceSelector();
+
     useLinearRGB = false;
     coordinateAxesOverlayWidget.setClearColor(clearColor);
 
@@ -1527,6 +1529,9 @@ void MainApp::renderGuiMenuBar() {
                 std::cout << "Pitch: " << camera->getPitch() << std::endl;
                 std::cout << "FoVy: " << (camera->getFOVy() / sgl::PI * 180.0f) << std::endl;
             }
+
+            deviceSelector->renderGuiMenu();
+
             ImGui::EndMenu();
         }
 
@@ -1631,6 +1636,11 @@ void MainApp::renderGuiMenuBar() {
         }
         ImGui::SetItemDefaultFocus();
         ImGui::EndPopup();
+    }
+
+    deviceSelector->renderGuiDialog();
+    if (deviceSelector->getShallRestartApp()) {
+        quit();
     }
 
     if (openOptimizeTFDialog) {
