@@ -12,10 +12,6 @@
             "name": "boost-interprocess",
             "platform": "windows"
         },
-        {
-            "name": "glfw3",
-            "platform": "!linux"
-        },
         "tinyxml2",
         {
             "name": "libarchive",
@@ -85,6 +81,12 @@
                     "features": [],
                     "platform": "linux"
                 }
+            ]
+        },
+        "glfw3": {
+            "description": "GLFW3 backend support.",
+            "dependencies": [
+                "glfw3"
             ]
         },
         "tbb": {
