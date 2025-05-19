@@ -45,8 +45,11 @@
 #include <Graphics/Vulkan/Shader/ShaderManager.hpp>
 
 #ifdef SUPPORT_OPENGL
-#include <Graphics/OpenGL/Context/OffscreenContextEGL.hpp>
-#include <Graphics/OpenGL/Context/OffscreenContextGlfw.hpp>
+#include <Graphics/OpenGL/Context/OffscreenContext.hpp>
+#ifdef _WIN32
+#include <Graphics/OpenGL/Context/DeviceSelectionWGL.hpp>
+#include <Graphics/OpenGL/Context/DeviceSelectionWGLGlobals.hpp>
+#endif
 #endif
 
 #include "Renderers/Diagram/SamplingTest.hpp"
@@ -299,6 +302,10 @@ int main(int argc, char *argv[]) {
         setenv("__GLX_VENDOR_LIBRARY_NAME", "mesa", 0);
         setenv("MESA_LOADER_DRIVER_OVERRIDE", "zink", 0);
         setenv("GALLIUM_DRIVER", "zink", 0);
+#endif
+#ifdef _WIN32
+        sgl::attemptForceWglContextForVulkanDevice(
+                device, &NvOptimusEnablement, &AmdPowerXpressRequestHighPerformance);
 #endif
         offscreenContext = sgl::createOffscreenContext(device, params, false);
         if (offscreenContext && offscreenContext->getIsInitialized()) {
