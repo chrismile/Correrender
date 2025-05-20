@@ -1220,7 +1220,7 @@ void HEBChart::createBatchCacheData(uint32_t& batchSizeSamplesMax) {
     batchSizeSamplesMax = std::max(batchSizeSamplesMax, deviceCoresInfo.numCudaCoresEquivalent);
 
     if (!computeRenderer) {
-        computeRenderer = new sgl::vk::Renderer(device, 100);
+        computeRenderer = new sgl::vk::Renderer(device, 1200);
         if (device->getGraphicsQueue() == device->getComputeQueue()) {
             supportsAsyncCompute = false;
         }
