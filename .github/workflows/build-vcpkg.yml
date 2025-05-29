@@ -41,8 +41,8 @@ jobs:
       - name: Set up vcpkg
         shell: bash
         run: |
-          mkdir -p ${{env.VCPKG_ROOT}}
-          git clone https://github.com/microsoft/vcpkg.git ${{env.VCPKG_ROOT}}
+          mkdir -p "${{env.VCPKG_ROOT}}"
+          git clone https://github.com/microsoft/vcpkg.git "${{env.VCPKG_ROOT}}"
           pushd "${{env.VCPKG_ROOT}}"
           if [ -z "${{env.VCPKG_COMMIT_ID}}" ]; then
             echo "VCPKG_COMMIT_ID=$(git rev-parse HEAD)" >> $GITHUB_ENV
