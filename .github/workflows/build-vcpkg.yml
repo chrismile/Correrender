@@ -51,7 +51,7 @@ jobs:
           fi
           popd
           echo "VCPKG_CACHE_KEY=vcpkg-${{env.VCPKG_DEFAULT_TRIPLET}}-${{env.VCPKG_COMMIT_ID}}-" >> $GITHUB_ENV
-          echo "VCPKG_CACHE_FULL=vcpkg-${{env.VCPKG_CACHE_KEY}}${{ hashFiles('vcpkg.json') }}" >> $GITHUB_ENV
+          echo "VCPKG_CACHE_KEY_FULL=vcpkg-${{env.VCPKG_CACHE_KEY}}${{ hashFiles('vcpkg.json') }}" >> $GITHUB_ENV
           if [ "$RUNNER_OS" == "Linux" ]; then
             echo "VCPKG_COPY_TRIPLET=x64-linux" >> $GITHUB_ENV
             echo "VCPKG_DEFAULT_TRIPLET=x64-linux-${{matrix.linking}}-release-only" >> $GITHUB_ENV
