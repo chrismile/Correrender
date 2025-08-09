@@ -50,10 +50,10 @@ DeepLearningCudaCorrelationCalculator::DeepLearningCudaCorrelationCalculator(
         : DeepLearningCorrelationCalculator(implName, implNameKey, renderer) {
     sgl::vk::Device* device = renderer->getDevice();
     if (device->getDeviceDriverId() != VK_DRIVER_ID_NVIDIA_PROPRIETARY
-            || !sgl::vk::getIsCudaDeviceApiFunctionTableInitialized()) {
+            || !sgl::getIsCudaDeviceApiFunctionTableInitialized()) {
         sgl::Logfile::get()->throwError(
                 "Error in DeepLearningCudaCorrelationCalculator::DeepLearningCudaCorrelationCalculator: "
-                "sgl::vk::getIsCudaDeviceApiFunctionTableInitialized() returned false.");
+                "sgl::getIsCudaDeviceApiFunctionTableInitialized() returned false.");
     }
 
     // e.g., 131072 for RTX 3090 (rounded up from 83968).
@@ -67,7 +67,7 @@ DeepLearningCudaCorrelationCalculator::DeepLearningCudaCorrelationCalculator(
 }
 
 void DeepLearningCudaCorrelationCalculator::initialize() {
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamCreate(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuStreamCreate(
             &stream, 0), "Error in cuStreamCreate: ");
 
     uint8_t* moduleBuffer = nullptr;
@@ -75,62 +75,62 @@ void DeepLearningCudaCorrelationCalculator::initialize() {
     sgl::loadFileFromSource(
             sgl::AppSettings::get()->getDataDirectory() + "/__cudacache__/CombineCorrelationMembers.fatbin",
             moduleBuffer, bufferSize, true);
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleLoadFatBinary(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuModuleLoadFatBinary(
             &combineCorrelationMembersModuleCu, moduleBuffer), "Error in cuModuleLoadFatBinary: ");
 
     // Functions that take a 3D image array as an input.
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
             &combineCorrelationMembersFunctionCu, combineCorrelationMembersModuleCu,
             "combineCorrelationMembers"), "Error in cuModuleGetFunction: ");
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
             &combineCorrelationMembersReferenceFunctionCu, combineCorrelationMembersModuleCu,
             "combineCorrelationMembersReference"), "Error in cuModuleGetFunction: ");
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
             &combineCorrelationMembersAlignedFunctionCu, combineCorrelationMembersModuleCu,
             "combineCorrelationMembersAligned"), "Error in cuModuleGetFunction: ");
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
             &combineCorrelationMembersReferenceAlignedFunctionCu, combineCorrelationMembersModuleCu,
             "combineCorrelationMembersReferenceAligned"), "Error in cuModuleGetFunction: ");
 
     // Functions that take a buffer as an input.
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
             &combineCorrelationMembersBufferFunctionCu, combineCorrelationMembersModuleCu,
             "combineCorrelationMembersBuffer"), "Error in cuModuleGetFunction: ");
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
             &combineCorrelationMembersReferenceBufferFunctionCu, combineCorrelationMembersModuleCu,
             "combineCorrelationMembersReferenceBuffer"), "Error in cuModuleGetFunction: ");
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
             &combineCorrelationMembersAlignedBufferFunctionCu, combineCorrelationMembersModuleCu,
             "combineCorrelationMembersAlignedBuffer"), "Error in cuModuleGetFunction: ");
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
             &combineCorrelationMembersReferenceAlignedBufferFunctionCu, combineCorrelationMembersModuleCu,
             "combineCorrelationMembersReferenceAlignedBuffer"), "Error in cuModuleGetFunction: ");
 
     // Functions that take a tiled buffer as an input.
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
             &combineCorrelationMembersBufferTiledFunctionCu, combineCorrelationMembersModuleCu,
             "combineCorrelationMembersBufferTiled"), "Error in cuModuleGetFunction: ");
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
             &combineCorrelationMembersReferenceBufferTiledFunctionCu, combineCorrelationMembersModuleCu,
             "combineCorrelationMembersReferenceBufferTiled"), "Error in cuModuleGetFunction: ");
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
             &combineCorrelationMembersAlignedBufferTiledFunctionCu, combineCorrelationMembersModuleCu,
             "combineCorrelationMembersAlignedBufferTiled"), "Error in cuModuleGetFunction: ");
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
             &combineCorrelationMembersReferenceAlignedBufferTiledFunctionCu, combineCorrelationMembersModuleCu,
             "combineCorrelationMembersReferenceAlignedBufferTiled"), "Error in cuModuleGetFunction: ");
 
     // For networkType == NetworkType::SRN_MINE.
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
             &writeGridPositionsFunctionCu, combineCorrelationMembersModuleCu,
             "writeGridPositions"), "Error in cuModuleGetFunction: ");
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
             &writeGridPositionsStencilFunctionCu, combineCorrelationMembersModuleCu,
             "writeGridPositionsStencil"), "Error in cuModuleGetFunction: ");
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
             &writeGridPositionReferenceFunctionCu, combineCorrelationMembersModuleCu,
             "writeGridPositionReference"), "Error in cuModuleGetFunction: ");
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
             &unpackStencilValuesFunctionCu, combineCorrelationMembersModuleCu,
             "unpackStencilValues"), "Error in cuModuleGetFunction: ");
     delete[] moduleBuffer;
@@ -140,48 +140,48 @@ void DeepLearningCudaCorrelationCalculator::initialize() {
 
 DeepLearningCudaCorrelationCalculator::~DeepLearningCudaCorrelationCalculator() {
     if (permutationIndicesBufferCu != 0) {
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFree(
+        sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemFree(
                 permutationIndicesBufferCu), "Error in cuMemFree: ");
     }
     if (outputImageBufferCu != 0) {
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFree(
+        sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemFree(
                 outputImageBufferCu), "Error in cuMemFree: ");
     }
     if (outputImageBufferUnpackedCu != 0) {
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFree(
+        sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemFree(
                 outputImageBufferUnpackedCu), "Error in cuMemFree: ");
     }
     if (fieldTextureArrayCu != 0) {
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFree(
+        sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemFree(
                 fieldTextureArrayCu), "Error in cuMemFree: ");
     }
     if (fieldBufferArrayCu != 0) {
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFree(
+        sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemFree(
                 fieldBufferArrayCu), "Error in cuMemFree: ");
     }
     if (nonNanIndexBufferCu != 0) {
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFree(
+        sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemFree(
                 nonNanIndexBufferCu), "Error in cuMemFree: ");
     }
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleUnload(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuModuleUnload(
             combineCorrelationMembersModuleCu), "Error in cuModuleUnload: ");
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamDestroy(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuStreamDestroy(
             stream), "Error in cuStreamDestroy: ");
 }
 
 void DeepLearningCudaCorrelationCalculator::computeNanStencilBuffer() {
     std::vector<uint32_t> nonNanIndexBuffer = DeepLearningCorrelationCalculator::computeNanStencilBufferHost();
     if (nonNanIndexBufferCu != 0) {
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
+        sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
                 nonNanIndexBufferCu, stream), "Error in cuMemFreeAsync: ");
         nonNanIndexBufferCu = 0;
     }
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
             &nonNanIndexBufferCu, sizeof(uint32_t) * numNonNanValues, stream), "Error in cuMemAllocAsync: ");
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyHtoDAsync(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemcpyHtoDAsync(
             nonNanIndexBufferCu, nonNanIndexBuffer.data(), sizeof(uint32_t) * numNonNanValues,
             stream), "Error in cuMemcpyHtoDAsync: ");
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
             stream), "Error in cuStreamSynchronize: ");
 }
 
@@ -216,28 +216,28 @@ void DeepLearningCudaCorrelationCalculator::calculateDevice(
     size_t volumeDataSlice3dSize = volumeData->getSlice3dSizeInBytes(FieldType::SCALAR);
     if (cachedVolumeDataSlice3dSize != volumeDataSlice3dSize) {
         if (outputImageBufferCu != 0) {
-            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
+            sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
                     outputImageBufferCu, stream), "Error in cuMemFreeAsync: ");
             outputImageBufferCu = 0;
         }
         cachedVolumeDataSlice3dSize = volumeDataSlice3dSize;
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
+        sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
                 &outputImageBufferCu, volumeDataSlice3dSize, stream), "Error in cuMemAllocAsync: ");
     }
     bool recreatedUnpackBuffer = false;
     if (useDataNanStencil && cachedVolumeDataSlice3dSizeUnpacked != volumeDataSlice3dSize) {
         if (outputImageBufferUnpackedCu != 0) {
-            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
+            sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
                     outputImageBufferUnpackedCu, stream), "Error in cuMemFreeAsync: ");
             outputImageBufferUnpackedCu = 0;
         }
         cachedVolumeDataSlice3dSizeUnpacked = volumeDataSlice3dSize;
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
+        sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
                 &outputImageBufferUnpackedCu, volumeDataSlice3dSize, stream), "Error in cuMemAllocAsync: ");
         recreatedUnpackBuffer = true;
     }
     if (!useDataNanStencil && outputImageBufferUnpackedCu != 0) {
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
+        sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
                 outputImageBufferUnpackedCu, stream), "Error in cuMemFreeAsync: ");
         outputImageBufferUnpackedCu = 0;
         cachedVolumeDataSlice3dSizeUnpacked = 0;
@@ -245,35 +245,35 @@ void DeepLearningCudaCorrelationCalculator::calculateDevice(
     if (useDataNanStencil && (recreatedUnpackBuffer || !isNanStencilInitialized)) {
         const uint32_t fillValueUint = sgl::convertBitRepresentationFloatToUint32(
                 std::numeric_limits<float>::quiet_NaN());
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemsetD32Async(
+        sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemsetD32Async(
                 outputImageBufferUnpackedCu, fillValueUint, cachedVolumeDataSlice3dSizeUnpacked / sizeof(float),
                 stream), "Error in cuMemsetD32Async: ");
     }
 
     if (cachedCorrelationMemberCountDevice != size_t(cs)) {
         if (permutationIndicesBufferCu != 0) {
-            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
+            sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
                     permutationIndicesBufferCu, stream), "Error in cuMemFreeAsync: ");
             permutationIndicesBufferCu = 0;
         }
         if (fieldTextureArrayCu != 0) {
-            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
+            sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
                     fieldTextureArrayCu, stream), "Error in cuMemFreeAsync: ");
             fieldTextureArrayCu = 0;
         }
         if (fieldBufferArrayCu != 0) {
-            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
+            sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
                     fieldBufferArrayCu, stream), "Error in cuMemFreeAsync: ");
             fieldBufferArrayCu = 0;
         }
         cachedCorrelationMemberCountDevice = size_t(cs);
 
         if (networkType == NetworkType::MINE) {
-            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
+            sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
                     &permutationIndicesBufferCu, gpuBatchSize1D * cs * sizeof(uint32_t), stream), "Error in cuMemAllocAsync: ");
-            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
+            sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
                     &fieldTextureArrayCu, cs * sizeof(CUtexObject), stream), "Error in cuMemAllocAsync: ");
-            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
+            sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
                     &fieldBufferArrayCu, cs * sizeof(CUdeviceptr), stream), "Error in cuMemAllocAsync: ");
         }
         cacheNeedsRecreate = true;
@@ -342,16 +342,16 @@ void DeepLearningCudaCorrelationCalculator::calculateDevice(
 
         if (useImageArray && cachedFieldTexturesCu != fieldTexturesCu) {
             cachedFieldTexturesCu = fieldTexturesCu;
-            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
+            sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
                     stream), "Error in cuStreamSynchronize: ");
-            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyHtoD(
+            sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemcpyHtoD(
                     fieldTextureArrayCu, fieldTexturesCu.data(), sizeof(CUtexObject) * cs), "Error in cuMemcpyHtoD: ");
         }
         if (!useImageArray && cachedFieldBuffersCu != fieldBuffersCu) {
             cachedFieldBuffersCu = fieldBuffersCu;
-            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
+            sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
                     stream), "Error in cuStreamSynchronize: ");
-            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyHtoD(
+            sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemcpyHtoD(
                     fieldBufferArrayCu, fieldBuffersCu.data(), sizeof(CUdeviceptr) * cs), "Error in cuMemcpyHtoD: ");
         }
 
@@ -421,7 +421,7 @@ void DeepLearningCudaCorrelationCalculator::calculateDevice(
         };
         referenceInputAssemblyFunction = writeGridPositionReferenceFunctionCu;
     }
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuLaunchKernel(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuLaunchKernel(
             referenceInputAssemblyFunction,
             networkType == NetworkType::MINE ? sgl::uiceil(cs, 256) : 1, 1, 1, //< Grid size.
             networkType == NetworkType::MINE ? 256 : 1, 1, 1, //< Block size.
@@ -482,7 +482,7 @@ void DeepLearningCudaCorrelationCalculator::calculateDevice(
                 queryInputAssemblyFunction = writeGridPositionsFunctionCu;
             }
         }
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuLaunchKernel(
+        sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuLaunchKernel(
                 queryInputAssemblyFunction,
                 sgl::uiceil(batchSize, 256), 1, 1, //< Grid size.
                 256, 1, 1, //< Block size.
@@ -498,10 +498,10 @@ void DeepLearningCudaCorrelationCalculator::calculateDevice(
     // For debugging purposes.
     /*float miCenter = 0.0f;
     CUdeviceptr offsetCenter = (referencePointIndex.x + referencePointIndex.y * xs + referencePointIndex.z * xs * ys) * sizeof(float);
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyDtoHAsync(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemcpyDtoHAsync(
             &miCenter, outputImageBufferCu + offsetCenter,
             sizeof(float), stream), "Error in cuMemcpyDtoHAsync: ");
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
             stream), "Error in cuStreamSynchronize: ");
     std::cout << "MI center: " << miCenter << std::endl << std::endl;*/
 
@@ -509,7 +509,7 @@ void DeepLearningCudaCorrelationCalculator::calculateDevice(
         void* kernelParameters[] = {
                 &numNonNanValues, &nonNanIndexBufferCu, &outputImageBufferCu, &outputImageBufferUnpackedCu
         };
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuLaunchKernel(
+        sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuLaunchKernel(
                 unpackStencilValuesFunctionCu,
                 sgl::uiceil(numNonNanValues, 256), 1, 1, //< Grid size.
                 256, 1, 1, //< Block size.

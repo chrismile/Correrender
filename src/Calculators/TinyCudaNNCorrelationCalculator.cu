@@ -90,9 +90,9 @@ TinyCudaNNCorrelationCalculator::TinyCudaNNCorrelationCalculator(sgl::vk::Render
     if (foundDevice) {
         CUresult cuResult;
         int computeCapabilityMajor = 7;
-        cuResult = sgl::vk::g_cudaDeviceApiFunctionTable.cuDeviceGetAttribute(
+        cuResult = sgl::g_cudaDeviceApiFunctionTable.cuDeviceGetAttribute(
                 &computeCapabilityMajor, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, cuDevice);
-        sgl::vk::checkCUresult(cuResult, "Error in cuDeviceGetAttribute: ");
+        sgl::checkCUresult(cuResult, "Error in cuDeviceGetAttribute: ");
         deviceSupporsFullyFusedMlp = computeCapabilityMajor >= 7;
     }
 
@@ -513,10 +513,10 @@ void TinyCudaNNCorrelationCalculator::runInferenceReference() {
 #endif
 
     /*float* refInput = new float[3];
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyDtoHAsync(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemcpyDtoHAsync(
             refInput, (CUdeviceptr)cacheWrapper->referenceInput.data(),
             sizeof(float) * 3, stream), "Error in cuMemcpyDtoHAsync: ");
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
             stream), "Error in cuStreamSynchronize: ");
     std::cout << "refInput:" << std::endl;
     for (int i = 0; i < 3; i++) {
@@ -534,10 +534,10 @@ void TinyCudaNNCorrelationCalculator::runInferenceReference() {
     int testSize = 160;
     __half* dataHalf = new __half[copySize];
     dataHalf[0] = 1000.0f;
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyDtoHAsync(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemcpyDtoHAsync(
             dataHalf, (CUdeviceptr)cacheWrapper->queryInputHalf.data(),
             sizeof(__half) * copySize, stream), "Error in cuMemcpyDtoHAsync: ");
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
             stream), "Error in cuStreamSynchronize: ");
     std::cout << "queryInputHalf:" << std::endl;
     for (int i = 0; i < testSize; i++) {
@@ -592,10 +592,10 @@ void TinyCudaNNCorrelationCalculator::runInferenceBatch(uint32_t batchOffset, ui
     int testSize = 160;
     float* dataFloat = new float[copySize];
     dataFloat[0] = 1000.0f;
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyDtoHAsync(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemcpyDtoHAsync(
             dataFloat, (CUdeviceptr)cacheWrapper->queryInput.data(),
             sizeof(float) * copySize, stream), "Error in cuMemcpyDtoHAsync: ");
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
             stream), "Error in cuStreamSynchronize: ");
     std::cout << "queryInput:" << std::endl;
     for (int i = 0; i < testSize; i++) {
@@ -614,10 +614,10 @@ void TinyCudaNNCorrelationCalculator::runInferenceBatch(uint32_t batchOffset, ui
     int testSize = 160;
     float* dataFloat = new float[copySize];
     dataFloat[0] = 1000.0f;
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyDtoHAsync(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemcpyDtoHAsync(
             dataFloat, (CUdeviceptr)cacheWrapper->queryInput.data(),
             sizeof(float) * copySize, stream), "Error in cuMemcpyDtoHAsync: ");
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
             stream), "Error in cuStreamSynchronize: ");
     std::cout << "queryInput:" << std::endl;
     for (int i = 0; i < testSize; i++) {
@@ -635,10 +635,10 @@ void TinyCudaNNCorrelationCalculator::runInferenceBatch(uint32_t batchOffset, ui
     __half* dataHalf = new __half[copySize];
     dataHalf = new __half[copySize];
     dataHalf[0] = 1000.0f;
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyDtoHAsync(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemcpyDtoHAsync(
             dataHalf, (CUdeviceptr)cacheWrapper->queryEncoded.data(),
             sizeof(__half) * copySize, stream), "Error in cuMemcpyDtoHAsync: ");
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
             stream), "Error in cuStreamSynchronize: ");
     std::cout << "queryEncoded:" << std::endl;
     for (int i = 0; i < testSize; i++) {
@@ -669,10 +669,10 @@ void TinyCudaNNCorrelationCalculator::runInferenceBatch(uint32_t batchOffset, ui
     /*tcnn::FullyFusedMLP<precision_t, 128>* fmlp = (tcnn::FullyFusedMLP<precision_t, 128>*)moduleWrapper->networkEncoderHalf.get();
     const auto& tensor = fmlp->weight_matrix_at(tcnn::WeightUsage::Inference, 1);
 
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemsetD16Async(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemsetD16Async(
             (CUdeviceptr)tensor.data(), 0, 1, stream), "Error in cuMemsetD16Async: ");*/
 
-    /*sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyAsync(
+    /*sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemcpyAsync(
             (CUdeviceptr)cacheWrapper->queryEncodedPermuted.data(),
             (CUdeviceptr)cacheWrapper->queryEncoded.data(),
             cacheWrapper->queryEncoded.n() * cacheWrapper->queryEncoded.m(),
@@ -699,10 +699,10 @@ void TinyCudaNNCorrelationCalculator::runInferenceBatch(uint32_t batchOffset, ui
     /*int testSize = 10 * es;
     auto* dataUint32 = new uint32_t[batchSize * es];
     dataUint32[0] = 1000;
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyDtoHAsync(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemcpyDtoHAsync(
             dataUint32, (CUdeviceptr)permutationIndicesBuffer,
             sizeof(uint32_t) * batchSize * es, stream), "Error in cuMemcpyDtoHAsync: ");
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
             stream), "Error in cuStreamSynchronize: ");
     std::cout << "permutationIndicesBuffer:" << std::endl;
     for (int i = 0; i < testSize; i++) {
@@ -719,10 +719,10 @@ void TinyCudaNNCorrelationCalculator::runInferenceBatch(uint32_t batchOffset, ui
 
     /*dataHalf = new __half[copySize];
     dataHalf[0] = 1000.0f;
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyDtoHAsync(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemcpyDtoHAsync(
             dataHalf, (CUdeviceptr)cacheWrapper->queryEncodedPermuted.data(),
             sizeof(__half) * copySize, stream), "Error in cuMemcpyDtoHAsync: ");
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
             stream), "Error in cuStreamSynchronize: ");
     std::cout << "queryEncodedPermuted:" << std::endl;
     for (int i = 0; i < testSize; i++) {
@@ -750,10 +750,10 @@ void TinyCudaNNCorrelationCalculator::runInferenceBatch(uint32_t batchOffset, ui
 
     /*dataHalf = new __half[copySize];
     dataHalf[0] = 1000.0f;
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyDtoHAsync(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemcpyDtoHAsync(
             dataHalf, (CUdeviceptr)cacheWrapper->symmetrizedReferenceInput.data(),
             sizeof(__half) * copySize, stream), "Error in cuMemcpyDtoHAsync: ");
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
             stream), "Error in cuStreamSynchronize: ");
     std::cout << "symmetrizedReferenceInput:" << std::endl;
     for (int i = 0; i < testSize; i++) {
@@ -766,10 +766,10 @@ void TinyCudaNNCorrelationCalculator::runInferenceBatch(uint32_t batchOffset, ui
         }
     }
     std::cout << std::endl;
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyDtoHAsync(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemcpyDtoHAsync(
             dataHalf, (CUdeviceptr)cacheWrapper->symmetrizedQueryInput.data(),
             sizeof(__half) * copySize, stream), "Error in cuMemcpyDtoHAsync: ");
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
             stream), "Error in cuStreamSynchronize: ");
     std::cout << "symmetrizedQueryInput:" << std::endl;
     for (int i = 0; i < testSize; i++) {
@@ -802,10 +802,10 @@ void TinyCudaNNCorrelationCalculator::runInferenceBatch(uint32_t batchOffset, ui
 
     /*dataHalf = new __half[copySize];
     dataHalf[0] = 1000.0f;
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyDtoHAsync(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemcpyDtoHAsync(
             dataHalf, (CUdeviceptr)cacheWrapper->queryDecoded.data(),
             sizeof(__half) * copySize, stream), "Error in cuMemcpyDtoHAsync: ");
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
             stream), "Error in cuStreamSynchronize: ");
     std::cout << "queryDecoded:" << std::endl;
     for (int i = 0; i < testSize; i++) {
@@ -818,10 +818,10 @@ void TinyCudaNNCorrelationCalculator::runInferenceBatch(uint32_t batchOffset, ui
         }
     }
     std::cout << std::endl;
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyDtoHAsync(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemcpyDtoHAsync(
             dataHalf, (CUdeviceptr)cacheWrapper->referenceDecoded.data(),
             sizeof(__half) * copySize, stream), "Error in cuMemcpyDtoHAsync: ");
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
             stream), "Error in cuStreamSynchronize: ");
     std::cout << "referenceDecoded:" << std::endl;
     for (int i = 0; i < testSize; i++) {
@@ -857,10 +857,10 @@ void TinyCudaNNCorrelationCalculator::runInferenceBatch(uint32_t batchOffset, ui
     /*copySize = batchSize;
     float* data = new float[copySize];
     data[0] = 1000.0f;
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyDtoHAsync(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemcpyDtoHAsync(
             data, (CUdeviceptr)miOutput,
             sizeof(float) * copySize, stream), "Error in cuMemcpyDtoHAsync: ");
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
             stream), "Error in cuStreamSynchronize: ");
     std::cout << "miOutput:" << std::endl;
     for (int i = 0; i < testSize; i++) {

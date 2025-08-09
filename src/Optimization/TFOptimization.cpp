@@ -64,7 +64,7 @@ TFOptimization::TFOptimization(sgl::vk::Renderer* parentRenderer) : parentRender
     }
 //#ifdef CUDA_ENABLED
 //    if (device->getDeviceDriverId() == VK_DRIVER_ID_NVIDIA_PROPRIETARY
-//            && sgl::vk::getIsCudaDeviceApiFunctionTableInitialized()) {
+//            && sgl::getIsCudaDeviceApiFunctionTableInitialized()) {
 //        settings.backend = OLSBackend::CUDA;
 //        settings.useSparseSolve = true;
 //    }
@@ -141,7 +141,7 @@ void TFOptimization::renderGuiDialog() {
                 int numBackends = 2;
 #ifdef CUDA_ENABLED
                 if (device->getDeviceDriverId() == VK_DRIVER_ID_NVIDIA_PROPRIETARY
-                        && sgl::vk::getIsCudaDeviceApiFunctionTableInitialized()) {
+                        && sgl::getIsCudaDeviceApiFunctionTableInitialized()) {
                     numBackends++;
                 }
 #endif
@@ -296,7 +296,7 @@ void TFOptimizationWorker::initialize() {
     }
 #ifdef CUDA_ENABLED
     else if (device->getDeviceDriverId() == VK_DRIVER_ID_NVIDIA_PROPRIETARY
-             && sgl::vk::getIsCudaDeviceApiFunctionTableInitialized()) {
+             && sgl::getIsCudaDeviceApiFunctionTableInitialized()) {
         cudaInit(true, cudaContext);
     }
 #endif
@@ -306,7 +306,7 @@ TFOptimizationWorker::~TFOptimizationWorker() {
 #ifdef CUDA_ENABLED
     sgl::vk::Device* device = sgl::AppSettings::get()->getPrimaryDevice();
     if (!supportsAsyncCompute && device->getDeviceDriverId() == VK_DRIVER_ID_NVIDIA_PROPRIETARY
-            && sgl::vk::getIsCudaDeviceApiFunctionTableInitialized()) {
+            && sgl::getIsCudaDeviceApiFunctionTableInitialized()) {
         cudaRelease();
     }
 #endif
@@ -414,7 +414,7 @@ void TFOptimizationWorker::mainLoop() {
 #ifdef CUDA_ENABLED
     sgl::vk::Device* device = sgl::AppSettings::get()->getPrimaryDevice();
     if (device->getDeviceDriverId() == VK_DRIVER_ID_NVIDIA_PROPRIETARY
-            && sgl::vk::getIsCudaDeviceApiFunctionTableInitialized()) {
+            && sgl::getIsCudaDeviceApiFunctionTableInitialized()) {
         cudaInit(false, cudaContext);
     }
 #endif
@@ -441,7 +441,7 @@ void TFOptimizationWorker::mainLoop() {
 
 #ifdef CUDA_ENABLED
     if (device->getDeviceDriverId() == VK_DRIVER_ID_NVIDIA_PROPRIETARY
-            && sgl::vk::getIsCudaDeviceApiFunctionTableInitialized()) {
+            && sgl::getIsCudaDeviceApiFunctionTableInitialized()) {
         cudaRelease();
     }
 #endif

@@ -568,7 +568,7 @@ void ICorrelationCalculator::getSettings(SettingsMap& settings) {
 
 CorrelationCalculator::CorrelationCalculator(sgl::vk::Renderer* renderer) : ICorrelationCalculator(renderer) {
 #ifdef SUPPORT_CUDA_INTEROP
-    useCuda = sgl::vk::getIsCudaDeviceApiFunctionTableInitialized() && sgl::vk::getIsNvrtcFunctionTableInitialized();
+    useCuda = sgl::getIsCudaDeviceApiFunctionTableInitialized() && sgl::getIsNvrtcFunctionTableInitialized();
 #endif
 
     correlationComputePass = std::make_shared<CorrelationComputePass>(renderer);
@@ -598,8 +598,7 @@ void CorrelationCalculator::onCorrelationMemberCountChanged() {
     cachedMemberCount = cs;
 
 #ifdef SUPPORT_CUDA_INTEROP
-    bool canUseCuda =
-            sgl::vk::getIsCudaDeviceApiFunctionTableInitialized() && sgl::vk::getIsNvrtcFunctionTableInitialized();
+    bool canUseCuda = sgl::getIsCudaDeviceApiFunctionTableInitialized() && sgl::getIsNvrtcFunctionTableInitialized();
 #else
     bool canUseCuda = false;
 #endif
@@ -655,7 +654,7 @@ void CorrelationCalculator::renderGuiImplSub(sgl::PropertyEditor& propertyEditor
     }
 
 #ifdef SUPPORT_CUDA_INTEROP
-    if (sgl::vk::getIsCudaDeviceApiFunctionTableInitialized() && sgl::vk::getIsNvrtcFunctionTableInitialized()
+    if (sgl::getIsCudaDeviceApiFunctionTableInitialized() && sgl::getIsNvrtcFunctionTableInitialized()
             && isMeasureKraskovMI(correlationMeasureType)) {
         const char* const choices[] = {
                 "CPU", "Vulkan", "CUDA"
@@ -736,7 +735,7 @@ void CorrelationCalculator::setSettings(const SettingsMap& settings) {
             choice = 1;
         }
 #else
-        if (choice == 2 && !sgl::vk::getIsCudaDeviceApiFunctionTableInitialized()) {
+        if (choice == 2 && !sgl::getIsCudaDeviceApiFunctionTableInitialized()) {
             choice = 1;
         }
 #endif
@@ -1345,8 +1344,8 @@ CorrelationComputePass::CorrelationComputePass(sgl::vk::Renderer* renderer) : Co
     spearmanReferenceRankComputePass = std::make_shared<SpearmanReferenceRankComputePass>(renderer, uniformBuffer);
 
 #ifdef SUPPORT_CUDA_INTEROP
-    if (sgl::vk::getIsCudaDeviceApiFunctionTableInitialized()) {
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamCreate(
+    if (sgl::getIsCudaDeviceApiFunctionTableInitialized()) {
+        sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuStreamCreate(
                 &stream, 0), "Error in cuStreamCreate: ");
     }
 #endif
@@ -1356,7 +1355,7 @@ CorrelationComputePass::CorrelationComputePass(sgl::vk::Renderer* renderer) : Co
 struct CorrelationCalculatorKernelCache {
     ~CorrelationCalculatorKernelCache() {
         if (cumodule) {
-            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleUnload(
+            sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuModuleUnload(
                     cumodule), "Error in cuModuleUnload: ");
         }
     }
@@ -1370,15 +1369,15 @@ struct CorrelationCalculatorKernelCache {
 CorrelationComputePass::~CorrelationComputePass() {
 #ifdef SUPPORT_CUDA_INTEROP
     if (outputImageBufferCu != 0) {
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFree(
+        sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemFree(
                 outputImageBufferCu), "Error in cuMemFree: ");
     }
     if (fieldTextureArrayCu != 0) {
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFree(
+        sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemFree(
                 fieldTextureArrayCu), "Error in cuMemFree: ");
     }
     if (fieldBufferArrayCu != 0) {
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFree(
+        sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemFree(
                 fieldBufferArrayCu), "Error in cuMemFree: ");
     }
     if (kernelCache) {
@@ -1386,7 +1385,7 @@ CorrelationComputePass::~CorrelationComputePass() {
         kernelCache = nullptr;
     }
     if (stream) {
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamDestroy(
+        sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuStreamDestroy(
                 stream), "Error in cuStreamDestroy: ");
     }
 #endif
@@ -1842,27 +1841,27 @@ void CorrelationComputePass::computeCuda(
     size_t volumeDataSlice3dSize = volumeData->getSlice3dSizeInBytes(FieldType::SCALAR);
     if (cachedVolumeDataSlice3dSize != volumeDataSlice3dSize) {
         if (outputImageBufferCu != 0) {
-            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
+            sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
                     outputImageBufferCu, stream), "Error in cuMemFreeAsync: ");
         }
         cachedVolumeDataSlice3dSize = volumeDataSlice3dSize;
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
+        sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
                 &outputImageBufferCu, volumeDataSlice3dSize, stream), "Error in cuMemAllocAsync: ");
     }
 
     if (cachedCorrelationMemberCountDevice != size_t(cs)) {
         if (fieldTextureArrayCu != 0) {
-            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
+            sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
                     fieldTextureArrayCu, stream), "Error in cuMemFreeAsync: ");
         }
         if (fieldBufferArrayCu != 0) {
-            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
+            sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
                     fieldBufferArrayCu, stream), "Error in cuMemFreeAsync: ");
         }
         cachedCorrelationMemberCountDevice = size_t(cs);
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
+        sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
                 &fieldTextureArrayCu, cs * sizeof(CUtexObject), stream), "Error in cuMemAllocAsync: ");
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
+        sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
                 &fieldBufferArrayCu, cs * sizeof(CUdeviceptr), stream), "Error in cuMemAllocAsync: ");
     }
 
@@ -1913,16 +1912,16 @@ void CorrelationComputePass::computeCuda(
 
     if (useImageArray && cachedFieldTexturesCu != fieldTexturesCu) {
         cachedFieldTexturesCu = fieldTexturesCu;
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
+        sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
                 stream), "Error in cuStreamSynchronize: ");
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyHtoD(
+        sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemcpyHtoD(
                 fieldTextureArrayCu, fieldTexturesCu.data(), sizeof(CUtexObject) * cs), "Error in cuMemcpyHtoD: ");
     }
     if (!useImageArray && cachedFieldBuffersCu != fieldBuffersCu) {
         cachedFieldBuffersCu = fieldBuffersCu;
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
+        sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
                 stream), "Error in cuStreamSynchronize: ");
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyHtoD(
+        sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemcpyHtoD(
                 fieldBufferArrayCu, fieldBuffersCu.data(), sizeof(CUdeviceptr) * cs), "Error in cuMemcpyHtoD: ");
     }
 
@@ -1989,44 +1988,44 @@ void CorrelationComputePass::computeCuda(
         code += kernelCache->kernelString;
 
         nvrtcProgram prog;
-        sgl::vk::checkNvrtcResult(sgl::vk::g_nvrtcFunctionTable.nvrtcCreateProgram(
+        sgl::checkNvrtcResult(sgl::g_nvrtcFunctionTable.nvrtcCreateProgram(
                 &prog, code.c_str(), "MutualInformationKraskov.cu", 0, nullptr, nullptr), "Error in nvrtcCreateProgram: ");
-        auto retVal = sgl::vk::g_nvrtcFunctionTable.nvrtcCompileProgram(prog, 0, nullptr);
+        auto retVal = sgl::g_nvrtcFunctionTable.nvrtcCompileProgram(prog, 0, nullptr);
         if (retVal == NVRTC_ERROR_COMPILATION) {
             size_t logSize = 0;
-            sgl::vk::checkNvrtcResult(sgl::vk::g_nvrtcFunctionTable.nvrtcGetProgramLogSize(
+            sgl::checkNvrtcResult(sgl::g_nvrtcFunctionTable.nvrtcGetProgramLogSize(
                     prog, &logSize), "Error in nvrtcGetProgramLogSize: ");
             char* log = new char[logSize];
-            sgl::vk::checkNvrtcResult(sgl::vk::g_nvrtcFunctionTable.nvrtcGetProgramLog(
+            sgl::checkNvrtcResult(sgl::g_nvrtcFunctionTable.nvrtcGetProgramLog(
                     prog, log), "Error in nvrtcGetProgramLog: ");
             std::cerr << "NVRTC log:" << std::endl << log << std::endl;
             delete[] log;
-            sgl::vk::checkNvrtcResult(sgl::vk::g_nvrtcFunctionTable.nvrtcDestroyProgram(
+            sgl::checkNvrtcResult(sgl::g_nvrtcFunctionTable.nvrtcDestroyProgram(
                     &prog), "Error in nvrtcDestroyProgram: ");
             exit(1);
         }
 
         size_t ptxSize = 0;
-        sgl::vk::checkNvrtcResult(sgl::vk::g_nvrtcFunctionTable.nvrtcGetPTXSize(
+        sgl::checkNvrtcResult(sgl::g_nvrtcFunctionTable.nvrtcGetPTXSize(
                 prog, &ptxSize), "Error in nvrtcGetPTXSize: ");
         char* ptx = new char[ptxSize];
-        sgl::vk::checkNvrtcResult(sgl::vk::g_nvrtcFunctionTable.nvrtcGetPTX(
+        sgl::checkNvrtcResult(sgl::g_nvrtcFunctionTable.nvrtcGetPTX(
                 prog, ptx), "Error in nvrtcGetPTX: ");
-        sgl::vk::checkNvrtcResult(sgl::vk::g_nvrtcFunctionTable.nvrtcDestroyProgram(
+        sgl::checkNvrtcResult(sgl::g_nvrtcFunctionTable.nvrtcDestroyProgram(
                 &prog), "Error in nvrtcDestroyProgram: ");
 
         kernelCache->preprocessorDefines = preprocessorDefines;
 
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleLoadDataEx(
+        sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuModuleLoadDataEx(
                 &kernelCache->cumodule, ptx, 0, nullptr, nullptr), "Error in cuModuleLoadDataEx: ");
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
+        sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
                 &kernelCache->kernel, kernelCache->cumodule, "mutualInformationKraskov"), "Error in cuModuleGetFunction: ");
         delete[] ptx;
     }
 
     int minGridSize = 0;
     int bestBlockSize = 32;
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuOccupancyMaxPotentialBlockSize(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuOccupancyMaxPotentialBlockSize(
             &minGridSize, &bestBlockSize, kernelCache->kernel, nullptr, 0, 0), "Error in cuOccupancyMaxPotentialBlockSize: ");
 
     sgl::DeviceThreadInfo deviceCoresInfo = sgl::getDeviceThreadInfo(device);
@@ -2058,7 +2057,7 @@ void CorrelationComputePass::computeCuda(
                 &scalarFields, &referenceValuesPtr, &miArray, &xs, &ys, &zs, &referencePointIndex.x,
                 &batchOffset, &batchSize
         };
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuLaunchKernel(
+        sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuLaunchKernel(
                 kernelCache->kernel, sgl::iceil(int(M), BLOCK_SIZE), 1, 1, //< Grid size.
                 BLOCK_SIZE, 1, 1, //< Block size.
                 0, //< Dynamic shared memory size.
@@ -2077,7 +2076,7 @@ void CorrelationComputePass::computeCuda(
                     &scalarFields, &referenceValuesPtr, &miArray, &xs, &ys, &zs, &referencePointIndex.x,
                     &batchOffset, &batchSize
             };
-            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuLaunchKernel(
+            sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuLaunchKernel(
                     kernelCache->kernel, sgl::iceil(int(batchSizeLocal), BLOCK_SIZE), 1, 1, //< Grid size.
                     BLOCK_SIZE, 1, 1, //< Block size.
                     0, //< Dynamic shared memory size.

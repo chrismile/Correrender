@@ -88,29 +88,29 @@ PyTorchCorrelationCalculator::PyTorchCorrelationCalculator(sgl::vk::Renderer* re
     // Support CUDA on NVIDIA GPUs using the proprietary driver.
     if (device->getDeviceDriverId() == VK_DRIVER_ID_NVIDIA_PROPRIETARY && torch::cuda::is_available()) {
         pyTorchDevice = PyTorchDevice::CUDA;
-        if (!sgl::vk::getIsCudaDeviceApiFunctionTableInitialized()) {
+        if (!sgl::getIsCudaDeviceApiFunctionTableInitialized()) {
             sgl::Logfile::get()->throwError(
                     "Error in PyTorchCorrelationCalculator::PyTorchCorrelationCalculator: "
-                    "sgl::vk::getIsCudaDeviceApiFunctionTableInitialized() returned false.");
+                    "sgl::getIsCudaDeviceApiFunctionTableInitialized() returned false.");
         }
         uint8_t* moduleBuffer = nullptr;
         size_t bufferSize = 0;
         sgl::loadFileFromSource(
                 sgl::AppSettings::get()->getDataDirectory() + "/__cudacache__/CombineCorrelationMembers.fatbin",
                 moduleBuffer, bufferSize, true);
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleLoadFatBinary(
+        sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuModuleLoadFatBinary(
                 &combineCorrelationMembersModuleCu, moduleBuffer), "Error in cuModuleLoadFatBinary: ");
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
+        sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
                 &combineCorrelationMembersFunctionCu, combineCorrelationMembersModuleCu, "combineCorrelationMembers"), "Error in cuModuleGetFunction: ");
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
+        sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
                 &combineCorrelationMembersBufferFunctionCu, combineCorrelationMembersModuleCu, "combineCorrelationMembersBuffer"), "Error in cuModuleGetFunction: ");
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
+        sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
                 &combineCorrelationMembersBufferTiledFunctionCu, combineCorrelationMembersModuleCu, "combineCorrelationMembersBufferTiled"), "Error in cuModuleGetFunction: ");
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
+        sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
                 &memcpyFloatClampToZeroFunctionCu, combineCorrelationMembersModuleCu, "memcpyFloatClampToZero"), "Error in cuModuleGetFunction: ");
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
+        sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
                 &writeGridPositionsFunctionCu, combineCorrelationMembersModuleCu, "writeGridPositions"), "Error in cuModuleGetFunction: ");
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
+        sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuModuleGetFunction(
                 &writeGridPositionReferenceFunctionCu, combineCorrelationMembersModuleCu, "writeGridPositionReference"), "Error in cuModuleGetFunction: ");
         delete[] moduleBuffer;
     }
@@ -185,19 +185,19 @@ PyTorchCorrelationCalculator::~PyTorchCorrelationCalculator() {
         batchInputValues = nullptr;
     }
     if (outputImageBufferCu != 0) {
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFree(
+        sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemFree(
                 outputImageBufferCu), "Error in cuMemFree: ");
     }
     if (fieldTextureArrayCu != 0) {
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFree(
+        sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemFree(
                 fieldTextureArrayCu), "Error in cuMemFree: ");
     }
     if (fieldBufferArrayCu != 0) {
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFree(
+        sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemFree(
                 fieldBufferArrayCu), "Error in cuMemFree: ");
     }
-    if (sgl::vk::getIsCudaDeviceApiFunctionTableInitialized()) {
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuModuleUnload(
+    if (sgl::getIsCudaDeviceApiFunctionTableInitialized()) {
+        sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuModuleUnload(
                 combineCorrelationMembersModuleCu), "Error in cuModuleUnload: ");
     }
 }
@@ -548,11 +548,11 @@ void PyTorchCorrelationCalculator::calculateDevice(
     size_t volumeDataSlice3dSize = volumeData->getSlice3dSizeInBytes(FieldType::SCALAR);
     if (cachedVolumeDataSlice3dSize != volumeDataSlice3dSize) {
         if (outputImageBufferCu != 0) {
-            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
+            sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
                     outputImageBufferCu, stream), "Error in cuMemFreeAsync: ");
         }
         cachedVolumeDataSlice3dSize = volumeDataSlice3dSize;
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
+        sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
                 &outputImageBufferCu, volumeDataSlice3dSize, stream), "Error in cuMemAllocAsync: ");
     }
 
@@ -560,21 +560,21 @@ void PyTorchCorrelationCalculator::calculateDevice(
         referenceInputBufferCu = {};
         inputBufferCu = {};
         if (fieldTextureArrayCu != 0) {
-            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
+            sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
                     fieldTextureArrayCu, stream), "Error in cuMemFreeAsync: ");
             fieldTextureArrayCu = 0;
         }
         if (fieldBufferArrayCu != 0) {
-            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
+            sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemFreeAsync(
                     fieldBufferArrayCu, stream), "Error in cuMemFreeAsync: ");
             fieldBufferArrayCu = 0;
         }
         cachedCorrelationMemberCountDevice = size_t(cs);
 
         if (networkType == NetworkType::MINE) {
-            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
+            sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
                     &fieldTextureArrayCu, cs * sizeof(CUtexObject), stream), "Error in cuMemAllocAsync: ");
-            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
+            sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemAllocAsync(
                     &fieldBufferArrayCu, cs * sizeof(CUdeviceptr), stream), "Error in cuMemAllocAsync: ");
             auto referenceInputBufferVk = std::make_shared<sgl::vk::Buffer>(
                     renderer->getDevice(), sizeof(float) * cs * 4,
@@ -686,16 +686,16 @@ void PyTorchCorrelationCalculator::calculateDevice(
         } else {
             if (useImageArray && cachedFieldTexturesCu != fieldTexturesCu) {
                 cachedFieldTexturesCu = fieldTexturesCu;
-                sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
+                sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
                         stream), "Error in cuStreamSynchronize: ");
-                sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyHtoD(
+                sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemcpyHtoD(
                         fieldTextureArrayCu, fieldTexturesCu.data(), sizeof(CUtexObject) * cs), "Error in cuMemcpyHtoD: ");
             }
             if (!useImageArray && cachedFieldBuffersCu != fieldBuffersCu) {
                 cachedFieldBuffersCu = fieldBuffersCu;
-                sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
+                sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuStreamSynchronize(
                         stream), "Error in cuStreamSynchronize: ");
-                sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyHtoD(
+                sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemcpyHtoD(
                         fieldBufferArrayCu, fieldBuffersCu.data(), sizeof(CUdeviceptr) * cs), "Error in cuMemcpyHtoD: ");
             }
         }
@@ -742,7 +742,7 @@ void PyTorchCorrelationCalculator::calculateDevice(
         void* kernelParameters[] = {
                 &xs, &ys, &zs, &referencePointIndex.x, &outputBufferRef
         };
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuLaunchKernel(
+        sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuLaunchKernel(
                 writeGridPositionReferenceFunctionCu,
                 1, 1, 1, //< Grid size.
                 1, 1, 1, //< Block size.
@@ -816,7 +816,7 @@ void PyTorchCorrelationCalculator::calculateDevice(
                 };
                 queryInputAssemblyFunction = writeGridPositionsFunctionCu;
             }
-            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuLaunchKernel(
+            sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuLaunchKernel(
                     queryInputAssemblyFunction,
                     sgl::uiceil(batchSize, 256), 1, 1, //< Grid size.
                     256, 1, 1, //< Block size.
@@ -841,7 +841,7 @@ void PyTorchCorrelationCalculator::calculateDevice(
             }
             correlationMetricTensor = correlationMetricTensor.contiguous();
         }
-        //sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyAsync(
+        //sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemcpyAsync(
         //        outputImageBufferCu + batchOffset * sizeof(float),
         //        (CUdeviceptr)correlationMetricTensor.data_ptr(),
         //        sizeof(float) * batchSize, stream), "Error in cuMemcpyAsync: ");
@@ -849,7 +849,7 @@ void PyTorchCorrelationCalculator::calculateDevice(
         CUdeviceptr outputBuffer = outputImageBufferCu + batchOffset * sizeof(float);
         auto inputBuffer = (CUdeviceptr)correlationMetricTensor.data_ptr();
         void* kernelParametersCopy[] = { &outputBuffer, &inputBuffer, &batchSize };
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuLaunchKernel(
+        sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuLaunchKernel(
                 memcpyFloatClampToZeroFunctionCu,
                 sgl::uiceil(batchSize, 256), 1, 1, //< Grid size.
                 256, 1, 1, //< Block size.

@@ -175,8 +175,7 @@ void DistributionSimilarityRenderer::onCorrelationMemberCountChanged() {
     cachedMemberCount = cs;
 
 #ifdef SUPPORT_CUDA_INTEROP
-    bool canUseCuda =
-            sgl::vk::getIsCudaDeviceApiFunctionTableInitialized() && sgl::vk::getIsNvrtcFunctionTableInitialized();
+    bool canUseCuda = sgl::getIsCudaDeviceApiFunctionTableInitialized() && sgl::getIsNvrtcFunctionTableInitialized();
 #else
     bool canUseCuda = false;
 #endif
@@ -1433,7 +1432,7 @@ void DistributionSimilarityRenderer::setSettings(const SettingsMap& settings) {
             choice = 1;
         }
 #else
-        if (choice == 2 && !sgl::vk::getIsCudaDeviceApiFunctionTableInitialized()) {
+        if (choice == 2 && !sgl::getIsCudaDeviceApiFunctionTableInitialized()) {
             choice = 1;
         }
 #endif

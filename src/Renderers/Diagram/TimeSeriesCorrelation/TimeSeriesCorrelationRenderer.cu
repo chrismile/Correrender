@@ -82,10 +82,10 @@ void TimeSeriesCorrelationRenderer::initializeCuda() {
 
     sgl::vk::Device* device = renderer->getDevice();
     if (device->getDeviceDriverId() != VK_DRIVER_ID_NVIDIA_PROPRIETARY
-        || !sgl::vk::getIsCudaDeviceApiFunctionTableInitialized()) {
+        || !sgl::getIsCudaDeviceApiFunctionTableInitialized()) {
         sgl::Logfile::get()->throwError(
                 "Error in DeepLearningCudaCorrelationCalculator::DeepLearningCudaCorrelationCalculator: "
-                "sgl::vk::getIsCudaDeviceApiFunctionTableInitialized() returned false.");
+                "sgl::getIsCudaDeviceApiFunctionTableInitialized() returned false.");
     }
 
     // e.g., 131072 for RTX 3090 (rounded up from 83968).
@@ -101,9 +101,9 @@ void TimeSeriesCorrelationRenderer::initializeCuda() {
     if (foundDevice) {
         CUresult cuResult;
         int computeCapabilityMajor = 7;
-        cuResult = sgl::vk::g_cudaDeviceApiFunctionTable.cuDeviceGetAttribute(
+        cuResult = sgl::g_cudaDeviceApiFunctionTable.cuDeviceGetAttribute(
                 &computeCapabilityMajor, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, cuDevice);
-        sgl::vk::checkCUresult(cuResult, "Error in cuDeviceGetAttribute: ");
+        sgl::checkCUresult(cuResult, "Error in cuDeviceGetAttribute: ");
         deviceSupporsFullyFusedMlp = computeCapabilityMajor >= 7;
     }
 
@@ -111,7 +111,7 @@ void TimeSeriesCorrelationRenderer::initializeCuda() {
         networkImplementation = TinyCudaNNNetworkImplementation::CUTLASS_MLP;
     }
 
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamCreate(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuStreamCreate(
             &stream, 0), "Error in cuStreamCreate: ");
 }
 
@@ -120,7 +120,7 @@ void TimeSeriesCorrelationRenderer::cleanupCuda() {
     //    volumeData->popAuxiliaryMemoryDevice(cacheWrapper->auxMemoryToken);
     //}
 
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamDestroy(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuStreamDestroy(
             stream), "Error in cuStreamDestroy: ");
 }
 

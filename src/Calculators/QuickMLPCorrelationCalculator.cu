@@ -125,7 +125,7 @@ void loadNetwork(
     }
 
     qmlp::Tensor parameters(precision, { network->networkParameterCount() });
-    sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyHtoD(
+    sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemcpyHtoD(
             reinterpret_cast<CUdeviceptr>(parameters.rawPtr()), paramsDataHost,
             qmlp::Tensor::BytesPerEntry[precision] * network->networkParameterCount()), "Error in cuMemcpyHtoD: ");
     network->setNetworkParameter(parameters, qmlp::Tensor::INFERENCE);
@@ -141,7 +141,7 @@ void loadNetwork(
                         + modelPath + "\".");
             }
             qmlp::Tensor parametersEncoding(precisionEncoding, { encoding->parameterCount() });
-            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyHtoD(
+            sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemcpyHtoD(
                     reinterpret_cast<CUdeviceptr>(parametersEncoding.rawPtr()), paramsDataHost + parameterOffset,
                     qmlp::Tensor::BytesPerEntry[precisionEncoding] * encoding->parameterCount()), "Error in cuMemcpyHtoD: ");
             encoding->setParameter(parametersEncoding, qmlp::Tensor::INFERENCE);
@@ -309,7 +309,7 @@ void QuickMLPCorrelationCalculator::runInferenceBatch(uint32_t batchOffset, uint
 
     moduleWrapper->networkEncoder->inference(cacheWrapper->queryInput, cacheWrapper->queryEncoded, stream);
 
-    /*sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuMemcpyAsync(
+    /*sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuMemcpyAsync(
             (CUdeviceptr)cacheWrapper->queryEncodedPermuted.rawPtr(),
             (CUdeviceptr)cacheWrapper->queryEncoded.rawPtr(),
             sizeof(float) * batchSize, stream), "Error in cuMemcpyAsync: ");*/

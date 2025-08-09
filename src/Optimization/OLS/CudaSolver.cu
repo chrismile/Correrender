@@ -61,7 +61,7 @@ void cudaInit(bool isMainThread, CUcontext cudaContext, void* cudaStream) {
         }
         useCustomCudaContext = true;
     } else {
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuCtxCreate(
+        sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuCtxCreate(
                 &cuContext, CU_CTX_SCHED_AUTO, 0), "Error in cuCtxCreate: ");
     }
     if (cudaStream) {
@@ -69,7 +69,7 @@ void cudaInit(bool isMainThread, CUcontext cudaContext, void* cudaStream) {
         useCustomCudaStream = true;
     } else {
         //cudaErrorCheck(cudaStreamCreate(&stream));
-        sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamCreate(
+        sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuStreamCreate(
                 &cuStream, 0), "Error in cuStreamCreate: ");
         stream = cuStream;
     }
@@ -107,11 +107,11 @@ void cudaRelease() {
     if (stream) {
         if (!useCustomCudaStream) {
             //cudaErrorCheck(cudaStreamDestroy(stream));
-            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuStreamDestroy(
+            sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuStreamDestroy(
                     cuStream), "Error in cuStreamDestroy: ");
         }
         if (!useCustomCudaContext) {
-            sgl::vk::checkCUresult(sgl::vk::g_cudaDeviceApiFunctionTable.cuCtxDestroy(
+            sgl::checkCUresult(sgl::g_cudaDeviceApiFunctionTable.cuCtxDestroy(
                     cuContext), "Error in cuCtxDestroy: ");
         }
         stream = nullptr;

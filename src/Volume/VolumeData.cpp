@@ -215,7 +215,7 @@ VolumeData::VolumeData(sgl::vk::Renderer* renderer) : renderer(renderer), multiV
 #endif
 #ifdef SUPPORT_CUDA_INTEROP
     if (device->getDeviceDriverId() == VK_DRIVER_ID_NVIDIA_PROPRIETARY
-            && sgl::vk::getIsCudaDeviceApiFunctionTableInitialized()) {
+            && sgl::getIsCudaDeviceApiFunctionTableInitialized()) {
 #ifdef SUPPORT_TINY_CUDA_NN
         factoriesCalculator.emplace_back(
                 "tiny-cuda-nn Similarity Calculator", [renderer]() { return new TinyCudaNNCorrelationCalculator(renderer); });
@@ -776,7 +776,7 @@ bool VolumeData::setInputFiles(
 #endif
 #ifdef SUPPORT_CUDA_INTEROP
         if (device->getDeviceDriverId() == VK_DRIVER_ID_NVIDIA_PROPRIETARY
-            && sgl::vk::getIsCudaDeviceApiFunctionTableInitialized()) {
+            && sgl::getIsCudaDeviceApiFunctionTableInitialized()) {
 #ifdef SUPPORT_TINY_CUDA_NN
             addCalculator(std::make_shared<TinyCudaNNCorrelationCalculator>(renderer));
 #endif
@@ -1336,7 +1336,7 @@ VolumeData::DeviceCacheEntry VolumeData::allocDeviceCacheEntryImage(
     imageSettings.memoryUsage = VMA_MEMORY_USAGE_GPU_ONLY;
 
 #ifdef SUPPORT_CUDA_INTEROP
-    bool canUseCuda = sgl::vk::getIsCudaDeviceApiFunctionTableInitialized();
+    bool canUseCuda = sgl::getIsCudaDeviceApiFunctionTableInitialized();
 #else
     bool canUseCuda = false;
 #endif
@@ -1364,7 +1364,7 @@ VolumeData::DeviceCacheEntry VolumeData::allocDeviceCacheEntryBuffer(
         size_t& bufferSize, FieldAccess& access,
         bool tileBufferMemory, uint32_t tileSizeX, uint32_t tileSizeY, uint32_t tileSizeZ) {
 #ifdef SUPPORT_CUDA_INTEROP
-    bool canUseCuda = sgl::vk::getIsCudaDeviceApiFunctionTableInitialized();
+    bool canUseCuda = sgl::getIsCudaDeviceApiFunctionTableInitialized();
 #else
     bool canUseCuda = false;
 #endif
