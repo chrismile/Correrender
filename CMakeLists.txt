@@ -94,7 +94,7 @@ if(NOT sgl_FOUND)
     find_package(sgl REQUIRED)
 endif()
 # Boost still necessary for boost::math::digamma and filesystem for dependencies.
-find_package(Boost COMPONENTS system filesystem REQUIRED)
+find_package(Boost 1.69.0 COMPONENTS filesystem REQUIRED)
 if(VCPKG_TOOLCHAIN)
     find_package(netCDF CONFIG REQUIRED)
     find_package(tinyxml2 CONFIG REQUIRED)
