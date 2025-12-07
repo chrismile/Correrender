@@ -577,7 +577,7 @@ void HEBChart::updateRegion() {
     }
 
     sgl::vk::Device* device = sgl::AppSettings::get()->getPrimaryDevice();
-    auto memoryHeapIndex = uint32_t(device->findMemoryHeapIndex(VK_MEMORY_HEAP_DEVICE_LOCAL_BIT));
+    auto memoryHeapIndex = device->findMemoryHeapIndex(VK_MEMORY_HEAP_DEVICE_LOCAL_BIT);
     size_t availableVram = device->getMemoryHeapBudgetVma(memoryHeapIndex);
     int cs = getCorrelationMemberCount();
     size_t sizeFields = size_t(xs) * size_t(ys) * size_t(zs) * size_t(cs) * sizeof(float);

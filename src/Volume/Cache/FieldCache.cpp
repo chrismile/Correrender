@@ -37,7 +37,7 @@ HostFieldCache::HostFieldCache() {
 }
 
 DeviceFieldCache::DeviceFieldCache(sgl::vk::Device* device) {
-    auto memoryHeapIndex = uint32_t(device->findMemoryHeapIndex(VK_MEMORY_HEAP_DEVICE_LOCAL_BIT));
+    auto memoryHeapIndex = device->findMemoryHeapIndex(VK_MEMORY_HEAP_DEVICE_LOCAL_BIT);
     size_t availableVram = device->getMemoryHeapBudgetVma(memoryHeapIndex);
     cacheSizeMax = size_t(double(availableVram) * availableMemoryFactor);
 }
