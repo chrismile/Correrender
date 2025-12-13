@@ -320,22 +320,22 @@ if $use_msys && command -v pacman &> /dev/null && [ ! -d $build_dir_debug ] && [
             || ! is_installed_pacman "${pkg_prefix}-glew" || ! is_installed_pacman "${pkg_prefix}-vulkan-headers" \
             || ! is_installed_pacman "${pkg_prefix}-vulkan-loader" \
             || ! is_installed_pacman "${pkg_prefix}-vulkan-validation-layers" \
-            || ! is_installed_pacman "${pkg_prefix}-shaderc" || ! is_installed_pacman "${pkg_prefix}-opencl-headers" \
-            || ! is_installed_pacman "${pkg_prefix}-opencl-icd" || ! is_installed_pacman "${pkg_prefix}-jsoncpp" \
-            || ! is_installed_pacman "${pkg_prefix}-nlohmann-json" || ! is_installed_pacman "${pkg_prefix}-blosc" \
-            || ! is_installed_pacman "${pkg_prefix}-netcdf" || ! is_installed_pacman "${pkg_prefix}-hdf5" \
-            || ! is_installed_pacman "${pkg_prefix}-eccodes" || ! is_installed_pacman "${pkg_prefix}-eigen3" \
-            || ! is_installed_pacman "${pkg_prefix}-libtiff" || ! is_installed_pacman "${pkg_prefix}-nlopt" \
-            || ! is_installed_pacman "${pkg_prefix}-glfw"; then
+            || ! is_installed_pacman "${pkg_prefix}-shaderc" || ! is_installed_pacman "${pkg_prefix}-glslang" \
+            || ! is_installed_pacman "${pkg_prefix}-opencl-headers" || ! is_installed_pacman "${pkg_prefix}-opencl-icd" \
+            || ! is_installed_pacman "${pkg_prefix}-jsoncpp" || ! is_installed_pacman "${pkg_prefix}-nlohmann-json" \
+            || ! is_installed_pacman "${pkg_prefix}-blosc" || ! is_installed_pacman "${pkg_prefix}-netcdf" \
+            || ! is_installed_pacman "${pkg_prefix}-hdf5" || ! is_installed_pacman "${pkg_prefix}-eccodes" \
+            || ! is_installed_pacman "${pkg_prefix}-eigen3" || ! is_installed_pacman "${pkg_prefix}-libtiff" \
+            || ! is_installed_pacman "${pkg_prefix}-nlopt" || ! is_installed_pacman "${pkg_prefix}-glfw"; then
         echo "------------------------"
         echo "installing dependencies "
         echo "------------------------"
         pacman --noconfirm --needed -S ${pkg_prefix}-boost ${pkg_prefix}-icu ${pkg_prefix}-glm ${pkg_prefix}-libarchive \
         ${pkg_prefix}-tinyxml2 ${pkg_prefix}-libpng ${pkg_prefix}-sdl3 ${pkg_prefix}-sdl3-image ${pkg_prefix}-glew \
         ${pkg_prefix}-vulkan-headers ${pkg_prefix}-vulkan-loader ${pkg_prefix}-vulkan-validation-layers \
-        ${pkg_prefix}-shaderc ${pkg_prefix}-opencl-headers ${pkg_prefix}-opencl-icd ${pkg_prefix}-jsoncpp \
-        ${pkg_prefix}-nlohmann-json ${pkg_prefix}-blosc ${pkg_prefix}-netcdf ${pkg_prefix}-hdf5 ${pkg_prefix}-eccodes \
-        ${pkg_prefix}-eigen3 ${pkg_prefix}-libtiff ${pkg_prefix}-nlopt ${pkg_prefix}-glfw
+        ${pkg_prefix}-shaderc ${pkg_prefix}-glslang ${pkg_prefix}-opencl-headers ${pkg_prefix}-opencl-icd \
+        ${pkg_prefix}-jsoncpp ${pkg_prefix}-nlohmann-json ${pkg_prefix}-blosc ${pkg_prefix}-netcdf ${pkg_prefix}-hdf5 \
+        ${pkg_prefix}-eccodes ${pkg_prefix}-eigen3 ${pkg_prefix}-libtiff ${pkg_prefix}-nlopt ${pkg_prefix}-glfw
     fi
     if ! (is_installed_pacman "${pkg_prefix}-curl" || is_installed_pacman "${pkg_prefix}-curl-gnutls" \
             || is_installed_pacman "${pkg_prefix}-curl-winssl"); then
@@ -556,16 +556,17 @@ elif command -v pacman &> /dev/null && ! $use_conda; then
                 || ! is_installed_pacman "libarchive" || ! is_installed_pacman "tinyxml2" \
                 || ! is_installed_pacman "libpng" || ! is_installed_pacman "glew" \
                 || ! is_installed_pacman "vulkan-devel" || ! is_installed_pacman "shaderc" \
-                || ! is_installed_pacman "opencl-headers" || ! is_installed_pacman "ocl-icd" \
-                || ! is_installed_pacman "jsoncpp" || ! is_installed_pacman "nlohmann-json" \
-                || ! is_installed_pacman "blosc" || ! is_installed_pacman "netcdf" || ! is_installed_pacman "hdf5" \
-                || ! is_installed_pacman "eigen" || ! is_installed_pacman "libtiff" || ! is_installed_pacman "curl" \
+                || ! is_installed_pacman "glslang" || ! is_installed_pacman "opencl-headers" \
+                || ! is_installed_pacman "ocl-icd" || ! is_installed_pacman "jsoncpp" \
+                || ! is_installed_pacman "nlohmann-json" || ! is_installed_pacman "blosc" \
+                || ! is_installed_pacman "netcdf" || ! is_installed_pacman "hdf5" || ! is_installed_pacman "eigen" \
+                || ! is_installed_pacman "libtiff" || ! is_installed_pacman "curl" \
                 || ! is_installed_pacman "nlopt"; then
             echo "------------------------"
             echo "installing dependencies "
             echo "------------------------"
             sudo pacman --noconfirm --needed -S boost icu glm libarchive tinyxml2 libpng glew vulkan-devel shaderc \
-            opencl-headers ocl-icd jsoncpp nlohmann-json blosc netcdf hdf5 eigen libtiff curl nlopt
+            glslang opencl-headers ocl-icd jsoncpp nlohmann-json blosc netcdf hdf5 eigen libtiff curl nlopt
         fi
         if is_available_pacman "sdl3"; then
             if ! is_installed_pacman "sdl3"; then
@@ -600,7 +601,7 @@ elif command -v yum &> /dev/null && ! $use_conda; then
                 || ! is_installed_rpm "autoconf" || ! is_installed_rpm "automake" \
                 || ! is_installed_rpm "autoconf-archive" || ! is_installed_rpm "mesa-libGLU-devel" \
                 || ! is_installed_rpm "glew-devel" || ! is_installed_rpm "libXext-devel" \
-                || ! is_installed_rpm "vulkan-headers" || ! is_installed_rpm "vulkan-loader" \
+                || ! is_installed_rpm "vulkan-headers" || ! is_installed_rpm "vulkan-loader-devel" \
                 || ! is_installed_rpm "vulkan-tools" || ! is_installed_rpm "vulkan-validation-layers" \
                 || ! is_installed_rpm "libshaderc-devel" || ! is_installed_rpm "libXinerama-devel" \
                 || ! is_installed_rpm "libXrandr-devel" || ! is_installed_rpm "libXcursor-devel" \
@@ -611,7 +612,7 @@ elif command -v yum &> /dev/null && ! $use_conda; then
             echo "installing dependencies "
             echo "------------------------"
             sudo yum install -y perl libstdc++-devel libstdc++-static autoconf automake autoconf-archive \
-            mesa-libGLU-devel glew-devel libXext-devel vulkan-headers vulkan-loader vulkan-tools \
+            mesa-libGLU-devel glew-devel libXext-devel vulkan-headers vulkan-loader-devel vulkan-tools \
             vulkan-validation-layers libshaderc-devel libXinerama-devel libXrandr-devel libXcursor-devel libXi-devel \
             wayland-devel libxkbcommon-devel wayland-protocols-devel extra-cmake-modules
         fi
@@ -619,7 +620,8 @@ elif command -v yum &> /dev/null && ! $use_conda; then
         if ! is_installed_rpm "boost-devel" || ! is_installed_rpm "libicu-devel" || ! is_installed_rpm "glm-devel" \
                 || ! is_installed_rpm "libarchive-devel" || ! is_installed_rpm "tinyxml2-devel" \
                 || ! is_installed_rpm "libpng-devel" || ! is_installed_rpm "glew-devel" \
-                || ! is_installed_rpm "vulkan-headers" || ! is_installed_rpm "libshaderc-devel" \
+                || ! is_installed_rpm "vulkan-headers" || ! is_installed_rpm "vulkan-loader-devel" \
+                || ! is_installed_rpm "libshaderc-devel" || ! is_installed_rpm "glslang-devel" \
                 || ! is_installed_rpm "opencl-headers" || ! is_installed_rpm "ocl-icd" \
                 || ! is_installed_rpm "jsoncpp-devel" || ! is_installed_rpm "json-devel" \
                 || ! is_installed_rpm "blosc-devel" || ! is_installed_rpm "netcdf-devel" \
@@ -631,8 +633,9 @@ elif command -v yum &> /dev/null && ! $use_conda; then
             echo "installing dependencies "
             echo "------------------------"
             sudo yum install -y boost-devel libicu-devel glm-devel libarchive-devel tinyxml2-devel libpng-devel \
-            glew-devel vulkan-headers libshaderc-devel opencl-headers ocl-icd jsoncpp-devel json-devel blosc-devel \
-            netcdf-devel hdf5-devel eccodes-devel eigen3-devel libtiff-devel libcurl-devel NLopt-devel expat-devel
+            glew-devel vulkan-headers vulkan-loader-devel libshaderc-devel glslang-devel opencl-headers ocl-icd \
+            jsoncpp-devel json-devel blosc-devel netcdf-devel hdf5-devel eccodes-devel eigen3-devel libtiff-devel \
+            libcurl-devel NLopt-devel expat-devel
         fi
         if is_available_yum "SDL3-devel"; then
             if ! is_installed_rpm "SDL3-devel"; then
@@ -711,11 +714,12 @@ elif $use_conda && ! $use_macos; then
             || ! list_contains "$conda_pkg_list" "xorg-libxfixes" || ! list_contains "$conda_pkg_list" "xorg-libxau" \
             || ! list_contains "$conda_pkg_list" "xorg-libxrandr" || ! list_contains "$conda_pkg_list" "patchelf" \
             || ! list_contains "$conda_pkg_list" "libvulkan-headers" || ! list_contains "$conda_pkg_list" "shaderc" \
-            || ! list_contains "$conda_pkg_list" "jsoncpp" || ! list_contains "$conda_pkg_list" "nlohmann_json" \
-            || ! list_contains "$conda_pkg_list" "blosc" || ! list_contains "$conda_pkg_list" "netcdf4" \
-            || ! list_contains "$conda_pkg_list" "hdf5" || ! list_contains "$conda_pkg_list" "eccodes" \
-            || ! list_contains "$conda_pkg_list" "eigen" || ! list_contains "$conda_pkg_list" "libtiff" \
-            || ! list_contains "$conda_pkg_list" "libcurl" || ! list_contains "$conda_pkg_list" "nlopt"; then
+            || ! list_contains "$conda_pkg_list" "glslang" || ! list_contains "$conda_pkg_list" "jsoncpp" \
+            || ! list_contains "$conda_pkg_list" "nlohmann_json" || ! list_contains "$conda_pkg_list" "blosc" \
+            || ! list_contains "$conda_pkg_list" "netcdf4" || ! list_contains "$conda_pkg_list" "hdf5" \
+            || ! list_contains "$conda_pkg_list" "eccodes" || ! list_contains "$conda_pkg_list" "eigen" \
+            || ! list_contains "$conda_pkg_list" "libtiff" || ! list_contains "$conda_pkg_list" "libcurl" \
+            || ! list_contains "$conda_pkg_list" "nlopt"; then
         echo "------------------------"
         echo "installing dependencies "
         echo "------------------------"
@@ -723,8 +727,8 @@ elif $use_conda && ! $use_macos; then
         make cmake pkg-config gdb git mesa-libgl-devel-cos7-x86_64 libglvnd-glx-cos7-x86_64 \
         mesa-dri-drivers-cos7-aarch64 libxau-devel-cos7-aarch64 libselinux-devel-cos7-aarch64 \
         libxdamage-devel-cos7-aarch64 libxxf86vm-devel-cos7-aarch64 libxext-devel-cos7-aarch64 xorg-libxfixes \
-        xorg-libxau xorg-libxrandr patchelf libvulkan-headers shaderc jsoncpp nlohmann_json blosc netcdf4 hdf5 eccodes \
-        eigen libtiff libcurl nlopt
+        xorg-libxau xorg-libxrandr patchelf libvulkan-headers shaderc glslang jsoncpp nlohmann_json blosc netcdf4 hdf5 \
+        eccodes eigen libtiff libcurl nlopt
     fi
 else
     echo "Warning: Unsupported system package manager detected." >&2
