@@ -111,13 +111,51 @@ Supported formats currently are:
 - The custom .field, .bin, .dat and .raw file formats used in our research group.
 
 
+[![](https://www.replicabilitystamp.org/logo/Reproducibility-tiny.png)](http://www.replicabilitystamp.org#https-github-com-chrismile-correrender)
+
+## Publications using Correrender
+
+### Neural Fields for Interactive Visualization of Statistical Dependencies in 3D Simulation Ensembles
+
+Fatemeh Farokhmanesh, Kevin Höhlein, Christoph Neuhauser, Tobias Necker, Martin Weissmann, Takemasa Miyoshi, Rüdiger Westermann \
+Vision, Modeling, and Visualization (VMV), 2023 \
+[[Project page](https://chrismile.net/publications/neural-fields-stat-dep-ensembles/)]
+[[Paper](https://diglib.eg.org/handle/10.2312/vmv20231229)]
+[[Preprint](https://chrismile.net/preprints/2023/neural-fields-stat-dep.pdf)]
+[[BIB](https://chrismile.net/publications/neural-fields-stat-dep-ensembles/ref.bib)]
+[[Video](https://diglib.eg.org/bitstream/handle/10.2312/vmv20231229/paper1051_mm.mp4)]
+
+![Teaser image of volumetric Focus+Context visualization.](https://chrismile.net/github/correrender/teaser-corr.png)
+
+
+### Adaptive Sampling of 3D Spatial Correlations for Focus+Context Visualization
+
+Christoph Neuhauser, Josef Stumpfegger, Rüdiger Westermann \
+IEEE Transactions on Visualization and Computer Graphics (TVCG), 2024 \
+[Paper] [Preprint] [BIB] [Code]
+
+[[Project page](https://chrismile.net/publications/fc-correlation-analysis/)]
+[[Paper](https://ieeexplore.ieee.org/document/10294214)]
+[[Preprint](https://chrismile.net/publications/fc-correlation-analysis/ref.bib)]
+[[BIB](https://github.com/chrismile/Correrender)]
+
+![Teaser image of volumetric Focus+Context visualization.](https://chrismile.net/github/correrender/teaser-fc.png)
+
+
+### A Compact and Efficient Neural Data Structure for Mutual Information Estimation in Large Timeseries
+
+Fatemeh Farokhmanesh, Christoph Neuhauser, Rüdiger Westermann \
+36th International Conference on Scientific and Statistical Database Management (SSDBM), 2024 \
+[[Project page](https://chrismile.net/publications/mi-timeseries/)]
+[[Paper](https://dl.acm.org/doi/pdf/10.1145/3676288.3676295)]
+[[BIB](https://chrismile.net/publications/mi-timeseries/ref.bib)]
+
+
 ## Replicability Stamp
 
 This repository takes part in the Graphics Replicability Stamp Initiative (GRSI).
 For more information, please refer to `replicability/README.md`.
 For more details on the Replicability Stamp itself, please refer to http://www.replicabilitystamp.org/.
-
-[![](https://www.replicabilitystamp.org/logo/Reproducibility-tiny.png)](http://www.replicabilitystamp.org#https-github-com-chrismile-correrender)
 
 
 ## How to report bugs
