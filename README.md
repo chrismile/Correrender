@@ -111,8 +111,6 @@ Supported formats currently are:
 - The custom .field, .bin, .dat and .raw file formats used in our research group.
 
 
-[![](https://www.replicabilitystamp.org/logo/Reproducibility-tiny.png)](http://www.replicabilitystamp.org#https-github-com-chrismile-correrender)
-
 ## Publications using Correrender
 
 ### Neural Fields for Interactive Visualization of Statistical Dependencies in 3D Simulation Ensembles
@@ -156,6 +154,8 @@ Fatemeh Farokhmanesh, Christoph Neuhauser, Rüdiger Westermann \
 This repository takes part in the Graphics Replicability Stamp Initiative (GRSI).
 For more information, please refer to `replicability/README.md`.
 For more details on the Replicability Stamp itself, please refer to http://www.replicabilitystamp.org/.
+
+[![](https://www.replicabilitystamp.org/logo/Reproducibility-tiny.png)](http://www.replicabilitystamp.org#https-github-com-chrismile-correrender)
 
 
 ## How to report bugs
