@@ -130,8 +130,6 @@ Vision, Modeling, and Visualization (VMV), 2023 \
 
 Christoph Neuhauser, Josef Stumpfegger, Rüdiger Westermann \
 IEEE Transactions on Visualization and Computer Graphics (TVCG), 2024 \
-[Paper] [Preprint] [BIB] [Code]
-
 [[Project page](https://chrismile.net/publications/fc-correlation-analysis/)]
 [[Paper](https://ieeexplore.ieee.org/document/10294214)]
 [[Preprint](https://chrismile.net/publications/fc-correlation-analysis/ref.bib)]
